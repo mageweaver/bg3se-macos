@@ -41,3 +41,9 @@ scripts/launch_via_steam.sh
 plans/archive/
 .osgrep
 pyghidra_mcp_projects/
+
+# Live-attempt artifacts (screenshots, agent outputs, bytecode)
+.screenshots/
+.subdaimon-output/
+__pycache__/
+*.pyc
