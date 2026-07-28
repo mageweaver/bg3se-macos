@@ -1,10 +1,12 @@
 # BG3SE-macOS Roadmap
 
-This document tracks the development roadmap for achieving feature parity with Windows BG3SE (Norbyte's Script Extender).
+This document tracks the development roadmap for scope-corrected 100% parity with Windows BG3SE (Norbyte's Script Extender): 100% of the supported macOS surface.
 
-## Current Status: v0.37.1+headless
+## Current Status: v0.37.1
 
-**Overall Feature Parity: ~94%** (based on comprehensive API function count analysis)
+**Overall Feature Parity: approximately 94.7%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix))
+
+**Excluded or deferred surfaces:** `Ext.UI`/Noesis is excluded by decision and has a stub layer only. Lua Debugger/DAP, entity replication (`Replicate`, `GetReplicationFlags`, `SetReplicationFlags`), Virtual Textures, and Input Injection are deferred. These surfaces are outside the scope-corrected parity denominator.
 
 **Working Features:**
 - DYLD injection and Dobby hooking infrastructure
@@ -36,21 +38,21 @@ This document tracks the development roadmap for achieving feature parity with W
 | `Ext.Osiris` | ✅ Full | ✅ RegisterListener + NewCall/NewQuery/NewEvent/RaiseEvent/GetCustomFunctions | **100%** | 1 |
 | `Ext.Json` | ✅ Full (2) | ✅ Parse, Stringify | **100%** | 1 |
 | `Ext.IO` | ✅ Full (4) | ✅ LoadFile, SaveFile, AddPathOverride, GetPathOverride (4) | **100%** | 1 |
-| `Ext.Entity` | ✅ Full (26) | ✅ Get, GetByHandle, **Dual EntityWorld**, components, enumeration, **Entity Events** (Subscribe/OnCreate/OnDestroy + 8 variants, Unsubscribe), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId** (30) | **100%** | 2 |
-| `Ext.Stats` | ✅ Full (52) | ✅ **100% parity** — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable stubs (52) | **100%** | 3 |
+| `Ext.Entity` | ✅ Full (26) | ✅ Get, GetByHandle, **Dual EntityWorld**, components, enumeration, **Entity Events** (Subscribe/OnCreate/OnDestroy + 8 variants, Unsubscribe), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId** (30)[^entity-stubs] | **100%** | 2 |
+| `Ext.Stats` | ✅ Full (52) | ✅ **100% function-count parity** — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable stubs (52)[^stats-stubs] | **100%** | 3 |
 | `Ext.Events` | ✅ Full (~33) | ✅ 33 events (13 lifecycle + 17 engine + 2 functor + 1 network) + Subscribe/Unsubscribe/Prevent | **100%** | 2.5 |
 | `Ext.Timer` | ✅ Full (13) | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, IsPaused, MonotonicTime, MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, IsGamePaused, +6 persistent (20) | **100%** | 2.3 |
 | `Ext.Debug` | ✅ Full (8) | ✅ Memory introspection (11 macOS-specific) | **100%** | 2.3 |
 | `Ext.Vars` | ✅ Full (8) | ✅ User + Mod Variables (12) | **100%** | 2.6 |
-| `Ext.Types` | ✅ Full (15) | ✅ GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers (9) | **90%** | 7 |
+| `Ext.Types` | ✅ Full (15) | ⚠️ 9/15 functional: GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers; Serialize, Unserialize, and Construct are stubs (`src/lua/lua_ext.c:877-934`); GetValueType, GetHashSetValueAt, and GetFunctionLocation are missing | **60%** | 7 |
 | `Ext.Enums` | ✅ Full | ✅ 14 enum/bitfield types | **100%** | 7 |
-| `Ext.Math` | ✅ Full (59) | ✅ 59 functions (vectors, matrices, 16 quaternions, scalars, **Fract**) | **100%** | 7.5 |
+| `Ext.Math` | ✅ Full (59) | ⚠️ 57/59 functions (vectors, matrices, 16 quaternions, scalars, **Fract**); Smoothstep and IsNaN are missing | **96.6%** | 7.5 |
 | `Ext.Input` | ✅ Full | ✅ CGEventTap capture, hotkeys (8 macOS-specific) | **100%** | 9 |
 | `Ext.Net` | ✅ Full | ✅ Phase 4I Complete (handshake, version negotiation, full multiplayer transport) | **95%** | 6 |
-| `Ext.UI` | ✅ Full (9) | ❌ Not impl | **0%** | 8 |
+| `Ext.UI` | ✅ Full (9) | Excluded by decision; compatibility stub layer only | — | 8 |
 | `Ext.IMGUI` | ✅ Full (7+) | ✅ Complete widget system (40 types) - All widgets, events, Metal backend | **100%** | 8 |
-| `Ext.Level` | ✅ Full (21) | ✅ RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, singleton accessors, **SweepClosest** (Sphere, Capsule, Box), **SweepAll** (Sphere, Capsule, Box) (15) | **71%** | 9 |
-| `Ext.Audio` | ✅ Full (17) | ✅ PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, **PlayExternalSound** (STDString ABI) (13) | **76%** | 10 |
+| `Ext.Level` | ✅ Full (21) | ⚠️ 15/21 functions: RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, singleton accessors, **SweepClosest** (Sphere, Capsule, Box), **SweepAll** (Sphere, Capsule, Box); missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and the pathfinding suite | **71%** | 9 |
+| `Ext.Audio` | ✅ Full (17) | ⚠️ 13/17 functions: PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, **PlayExternalSound** (STDString ABI); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank | **76%** | 10 |
 | `Ext.Localization` | ✅ Full (2) | ✅ GetLanguage, **CreateHandle** (2) | **100%** | 10 |
 | `Ext.StaticData` | ✅ Full (5) | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription), ForceCapture, HashLookup | **100%** | 10 |
 | `Ext.Resource` | ✅ Full (2) | ✅ Get, GetAll, GetTypes, GetCount, IsReady (5) | **100%** | 10 |
@@ -58,9 +60,12 @@ This document tracks the development roadmap for achieving feature parity with W
 | Console/REPL | ✅ Full | ✅ Socket + file + in-game overlay | **95%** | 5 |
 | PersistentVars | ✅ Full | ✅ File-based | **90%** | 2.4 |
 | Client Lua State | ✅ Full | ✅ Context awareness, two-phase bootstrap | **90%** | 2.7 |
-| Debugger | ✅ Full | ❌ Not impl | **0%** | 11 |
+| Debugger | ✅ Full | Deferred (Lua Debugger/DAP) | — | 11 |
 
 ---
+
+[^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).
+[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:955-958`). `entity:Replicate()` is a no-op. Component property reads work, but writes are stubbed and return false (`src/entity/component_property.c:418`).
 
 ## Phase 1: Core Osiris Integration (Complete)
 
@@ -1112,7 +1117,7 @@ local layouts = Ext.Types.GetAllLayouts()  -- Returns array of all 534 layouts
 ```
 
 ### 7.5 Ext.Math Library
-**Status:** ❌ Not Started
+**Status:** ⚠️ 57/59 functions (Smoothstep and IsNaN missing)
 
 From API.md (complete API surface):
 
@@ -1170,7 +1175,7 @@ Ext.Math.Acos(x), Asin(x), Atan(x), Atan2(x, y)
 ## Phase 8: UI Systems
 
 ### 8.1 Noesis UI (Custom ViewModels)
-**Status:** ❌ Not Started
+**Status:** Excluded by decision; compatibility stub layer only
 
 From API.md: "SE supports the creation and modification of Noesis viewmodels."
 
@@ -1241,7 +1246,7 @@ From ReleaseNotes.md v23-27:
 ## Phase 9: Advanced Features
 
 ### 9.1 Input Injection (Ext.Input)
-**Status:** ❌ Not Started
+**Status:** Deferred; excluded from the supported macOS parity surface
 
 ```lua
 Ext.Input.InjectKeyPress(key)
@@ -1273,16 +1278,20 @@ Ext.Level.TestSphere(pos, radius, [flags])              -- ✅
 
 -- Not yet implemented
 Ext.Level.SweepCylinderClosest(...)
+Ext.Level.SweepCylinderAll(...)
+Ext.Level.GetEntitiesOnTile(...)
+Ext.Level.GetTileDebugInfo(...)
 Ext.Level.GetActivePathfindingRequests()
+-- Remaining pathfinding suite
 ```
 
 ### 9.3 Virtual Textures
-**Status:** ❌ Not Started
+**Status:** Deferred; excluded from the supported macOS parity surface
 
 Configuration: `Mods/<ModName>/ScriptExtender/VirtualTextures.json`
 
 ### 9.4 Debugger Support
-**Status:** ❌ Not Started
+**Status:** Deferred; excluded from the supported macOS parity surface
 
 VS Code integration with breakpoints, stepping, watches.
 
@@ -1429,6 +1438,12 @@ Ext.Audio.LoadEvent(eventName)               -- ✅
 Ext.Audio.UnloadEvent(eventName)             -- ✅
 Ext.Audio.PlayExternalSound(path, entity)    -- ✅ (Qedeshot, STDString ABI)
 Ext.Audio.IsReady()                          -- ✅
+
+-- Missing
+Ext.Audio.LoadBank(...)
+Ext.Audio.UnloadBank(...)
+Ext.Audio.PrepareBank(...)
+Ext.Audio.UnprepareBank(...)
 ```
 
 ---
@@ -1436,7 +1451,7 @@ Ext.Audio.IsReady()                          -- ✅
 ## Phase 11: Developer Tools
 
 ### 11.1 VS Code Debugger
-**Status:** ❌ Not Started - [Issue #42](https://github.com/tdimino/bg3se-macos/issues/42)
+**Status:** Deferred; excluded from the supported macOS parity surface - [Issue #42](https://github.com/tdimino/bg3se-macos/issues/42)
 
 Full debugging experience with breakpoints, stepping, and variable inspection.
 
@@ -1498,7 +1513,7 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 
 | ID | Feature | Effort | Status |
 |----|---------|--------|--------|
-| C1 | Ext.Math Library | Medium | ✅ Complete |
+| C1 | Ext.Math Library | Medium | ⚠️ 57/59 (Smoothstep and IsNaN missing) |
 | C2 | Enum/Bitfield Objects | Medium | ✅ Complete (v0.26.0) |
 | C3 | Console Commands | Low | ✅ Complete |
 | C6 | Ext.Debug APIs | Low | ✅ Complete |
@@ -1509,16 +1524,16 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 
 | ID | Feature | Effort | Status | Issue |
 |----|---------|--------|--------|-------|
-| D1 | Noesis UI (Ext.UI) | High | ❌ Not Started | [#35](https://github.com/tdimino/bg3se-macos/issues/35) |
+| D1 | Noesis UI (Ext.UI) | High | Excluded by decision; stub layer only | [#35](https://github.com/tdimino/bg3se-macos/issues/35) |
 | D2 | IMGUI Debug Overlay | High | ✅ Complete (v0.36.21) - All 40 widget types | [#36](https://github.com/tdimino/bg3se-macos/issues/36) |
-| D3 | Physics/Raycasting (Ext.Level) | High | ⚠️ 15 functions (71%, RaycastAll + 6 Sweep via Qedeshot) | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
-| D4 | Audio (Ext.Audio) | Medium | ⚠️ 13 functions (76%, PlayExternalSound re-enabled via STDString) | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
+| D3 | Physics/Raycasting (Ext.Level) | High | ⚠️ 15/21 (71%, RaycastAll + 6 Sweep via Qedeshot); missing cylinder sweeps, tile queries/debug info, and pathfinding | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
+| D4 | Audio (Ext.Audio) | Medium | ⚠️ 13/17 (76%, PlayExternalSound re-enabled via STDString); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
 | D5 | Localization (Ext.Localization) | Low | ✅ Complete (GetLanguage + CreateHandle) | [#39](https://github.com/tdimino/bg3se-macos/issues/39) |
 | D6 | Static Data (Ext.StaticData) | Medium | 🔶 Blocked by #44 | [#40](https://github.com/tdimino/bg3se-macos/issues/40) |
 | D7 | Resource/Template Management | Medium | ✅ Complete (v0.36.2) | [#41](https://github.com/tdimino/bg3se-macos/issues/41) |
-| D8 | VS Code Debugger | High | ❌ Not Started | [#42](https://github.com/tdimino/bg3se-macos/issues/42) |
-| D9 | Input Injection | Medium | ❌ Not Started | - |
-| D10 | Virtual Textures | Medium | ❌ Not Started | - |
+| D8 | VS Code Debugger | High | Deferred | [#42](https://github.com/tdimino/bg3se-macos/issues/42) |
+| D9 | Input Injection | Medium | Deferred | - |
+| D10 | Virtual Textures | Medium | Deferred | - |
 
 ---
 
@@ -1534,7 +1549,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.37.1+headless | 2026-05-16 | **Headless CLI mode working** — GCD console poll timer (100ms, independent of Osiris events) fixes socket at main menu. Focus hack module reintegrated (BaseApp+0x142 force-focus). `launch --headless` achieves socket_connected in ~3.3s (windowed 1280x720, hidden via System Events). 229 tests (41 C + 41 pytest + 93 Tier 1 + 54 Tier 2). Known: `-continueGame` triggers pre-existing gui::HotbarSystem::Update crash |
+| v0.37.1 | 2026-05-16 | **Headless CLI mode working** — GCD console poll timer (100ms, independent of Osiris events) fixes socket at main menu. Focus hack module reintegrated (BaseApp+0x142 force-focus). `launch --headless` achieves socket_connected in ~3.3s (windowed 1280x720, hidden via System Events). 229 tests (41 C + 41 pytest + 93 Tier 1 + 54 Tier 2). Known: `-continueGame` triggers pre-existing gui::HotbarSystem::Update crash |
 | v0.36.50+harness | 2026-04-23 | **bg3se-harness CLI debut** — 36-command Python CLI for BG3. 7 new commands (Nexus changelog/versions/updated, wiki spell/item/verify/clear-cache), auto-skip intro videos (3-layer: UserDefaults + graphicSettings.lsx + CGEvent), CGEvent splash dismissal, tolerant version sort, path-aware 403 classifier, SHA-1-keyed wiki cache. One of the first CLIs purpose-built for a AAA RPG |
 | v0.36.50 | 2026-04-02 | **Qedeshot Knesset Swarm** - 23 commits, ~93%→~94% parity. 6 Sweep functions (Physics), PlayExternalSound re-enabled (STDString), 6 Ext.Types functions, Ext.Localization.CreateHandle, Ext.Math.Fract, generic Osi.DB_* accessor, Entity CreateComponent/RemoveComponent/GetEntityType/GetSalt/GetIndex/GetNetId, ExecuteFunctor Dobby hook, 8+ polling events, version detection sentinel probes (Issue #78), osiris_call_by_id unsafe fallback removed |
 | v0.36.50 | 2026-02-11 | **Osiris Crash Fix + Init Timing** - Arg clamping in osi_dynamic_call prevents TooManyArgs crash (EXC_BAD_ACCESS). Fixed 5 Tier 1 test failures (MCM + Stats). Init timing instrumentation. **Issues #66 and #68 CLOSED.** 125/125 tests passing |
@@ -1550,8 +1565,8 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 | v0.36.38 | 2026-02-06 | **Issue #66 Fix: Osiris Call Crash** - Hook RegisterDIVFunctions to capture DivFunctions::Call/Query (correct OsiArgumentDesc* signature). Fixes SIGSEGV on AddGold, TemplateAddTo, and all Osi.* calls on ARM64. |
 | v0.36.37 | 2026-02-06 | **Issue #65 Diagnostics + Net Parity** - BG3SE_NO_HOOKS env var, fallback deferred init in fake_InitGame, legacy NetMessage event, PlayerHasExtender (Issue #6) |
 | v0.36.36 | 2026-02-06 | **Issue #65 Diagnostics** - Added diagnostic timing and logging for user ShaiLaric's M4/Tahoe crash report |
-| v0.36.35 | 2026-02-06 | **Issue #65 Fix + Stats 100% Parity** - Deferred session init (all ~2,800 kernel calls moved to tick loop), state corruption fix in fake_InitGame, diagnostic timing, BG3SE_MINIMAL env var, build system auto-builds Dobby+Lua from source |
-| v0.36.34 | 2026-02-06 | **Ext.Stats 100% Parity** - 22 new items: Sync, CopyFrom, SetRawAttribute, ExecuteFunctors/ExecuteFunctor, PrepareFunctorParams, TreasureTable/TreasureCategory stubs, StatsObject methods |
+| v0.36.35 | 2026-02-06 | **Issue #65 Fix + Stats 100% Function-Count Parity** - Deferred session init (all ~2,800 kernel calls moved to tick loop), state corruption fix in fake_InitGame, diagnostic timing, BG3SE_MINIMAL env var, build system auto-builds Dobby+Lua from source |
+| v0.36.34 | 2026-02-06 | **Ext.Stats 100% Function-Count Parity** - 22 new items: Sync, CopyFrom, SetRawAttribute, ExecuteFunctors/ExecuteFunctor, PrepareFunctorParams, TreasureTable/TreasureCategory stubs, StatsObject methods |
 | v0.36.33 | 2026-02-06 | **Deferred Net Init (Issue #65)** - Move ~65 mach_vm_read_overwrite kernel calls from COsiris::Load to tick loop, fixing game startup failure on some machines. State machine with 500ms stability gate and exponential backoff retry. |
 | v0.36.41 | 2026-02-07 | **Comprehensive Test Suite** - Expanded `!test` from 8 assertions to 71 tests across 20 namespaces (Core, Json, Helpers, Stats, Timer, Events, Debug, Types, Enums, IO, Memory, Mod, Vars, Osi). Added `!test_ingame` (22 tests: Entity, Level, Audio, Net, IMGUI, StaticData). 93 total, all passing. Multi-string architecture for ISO C99 4095-char limit. AI-orchestrated: research agents verified API signatures, review agents caught 1 bug pre-runtime. |
 | v0.36.40 | 2026-02-07 | **Mach Exception Handler** - Catches EXC_BAD_ACCESS/EXC_BAD_INSTRUCTION before CrashReporter via Mach exception ports + MIG stubs. Fixed `!probe_osidef` crash (safe_memory_read vs safe_memory_read_pointer). Three-tier crash diagnostics (Issue #66) |
@@ -1571,7 +1586,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 | v0.36.19 | 2025-12-31 | **ImGui OSX Backend Bypass** - Skip ImGui_ImplOSX_NewFrame (overwrote CGEventTap coords), apply cached mouse pos directly (Issue #36) |
 | v0.36.18 | 2025-12-30 | **ImGui Mouse Input Fix** - Fixed Cocoa coordinate conversion, 4-step CG→Screen→Window→View, works fullscreen/windowed (Issue #36) |
 | v0.36.17 | 2025-12-28 | **IDE Types** - GenerateIdeHelpers for VS Code IntelliSense, GetComponentLayout, GetAllLayouts (Issue #7) |
-| v0.36.16 | 2025-12-28 | **Ext.Types Full Reflection** - GetAllTypes (~2050), GetTypeInfo, TypeOf, IsA, Validate (Issue #48) |
+| v0.36.16 | 2025-12-28 | **Ext.Types Reflection APIs** - GetAllTypes (~2050), GetTypeInfo, TypeOf, IsA, Validate (Issue #48) |
 | v0.36.15 | 2025-12-27 | **API Context Annotations** - Context column (B/S/C) added to all API tables in api-reference.md (Issue #46) |
 | v0.36.14 | 2025-12-27 | **Dual EntityWorld Complete** - Client singleton discovered (`0x10898c968`), both client + server worlds auto-captured |
 | v0.36.11 | 2025-12-26 | **30 Events Complete** - 11 new events (death, spell, hit, rest, approval, lifecycle), completes Issue #51 |
@@ -1655,7 +1670,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | **#49 Ext.IO** | Path Overrides | ✅ **Complete** | 2 functions, pure C implementation |
-| **#47 Ext.Math** | Full Math Library | ✅ **Complete** | 47 functions, pure math, no RE needed |
+| **#47 Ext.Math** | Full Math Library | ⚠️ **57/59** | Smoothstep and IsNaN missing |
 | **#50 Ext.Timer** | Persistent/Realtime | ✅ **Complete** | 20 functions, full timer system |
 | **#46 Context Docs** | API Annotations | ✅ **Complete** | Context column (B/S/C) added to all API tables |
 
@@ -1663,7 +1678,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | **#52 Components** | Coverage Expansion | **80%** | Tools ready: `extract_typeids.py` + stubs |
-| ~~#48 Ext.Types~~ | Full Reflection | ✅ **DONE** | Port from Windows Types.inl |
+| **#48 Ext.Types** | Full Reflection | ⚠️ **60%** | 9/15 functional; three stubs and three missing |
 | ~~#51 Ext.Events~~ | Engine Events | ✅ **DONE** | Hook game event dispatch |
 | ~~#53 Stats Functors~~ | ExecuteFunctors | ✅ **DONE** | Windows code portable |
 
@@ -1671,7 +1686,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | ~~#36~~ | IMGUI | ✅ DONE (v0.36.21) |
-| **#42 Debugger** | VS Code DAP | **60%** | DAP reference implementations |
+| **#42 Debugger** | VS Code DAP | **Deferred** | Excluded from the supported macOS parity surface |
 | **#38 Audio** | WWise Audio | **45%** | WWise SDK documented |
 | ~~#7 IDE Types~~ | LuaLS Annotations | ✅ **DONE** | GenerateIdeHelpers API |
 
@@ -1679,7 +1694,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | **#37 Ext.Level** | Physics/Raycast | **71%** | 15 functions (RaycastAll + 6 Sweep via Qedeshot swarm) |
-| **#35 Ext.UI** | Noesis UI | **25%** | Deep game UI hooks required |
+| **#35 Ext.UI** | Noesis UI | **Excluded** | Compatibility stub layer only |
 
 **Completed:**
 | Issue | Feature | Status |
@@ -1692,7 +1707,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | ~~#40~~ | StaticData | ✅ DONE (auto-capture) |
 | ~~#41~~ | Resource/Template | ✅ DONE |
 | ~~#7~~ | IDE Types | ✅ DONE (v0.36.17) |
-| ~~#48~~ | Ext.Types | ✅ DONE (v0.36.16) |
+| #48 | Ext.Types | ⚠️ 9/15 functional (60%) |
 | ~~#51~~ | Ext.Events | ✅ DONE (v0.36.11) |
 | ~~#53~~ | Stats Functors | ✅ DONE (v0.36.15) |
 
@@ -1730,7 +1745,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 | Order | Issue | Status | Why First |
 |-------|-------|--------|-----------|
 | 1 | **#49 Ext.IO** | ✅ Complete | 2 functions, pure C implementation |
-| 2 | **#47 Ext.Math** | ✅ Complete | 47 functions, pure math, no RE needed |
+| 2 | **#47 Ext.Math** | ⚠️ 57/59 | Smoothstep and IsNaN missing |
 | 3 | **#50 Ext.Timer** | ✅ Complete | 20 functions, full timer system |
 | 4 | **#46 Context Docs** | ✅ Complete | Context annotations added to API docs |
 
@@ -1738,7 +1753,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 
 | Order | Issue | Acceleration | Why This Order |
 |-------|-------|--------------|----------------|
-| 5 | ~~#48 Ext.Types~~ | ✅ Complete | Unlocks debugger/IDE features |
+| 5 | **#48 Ext.Types** | ⚠️ 9/15 (60%) | Three stubs and three missing |
 | 6 | ~~#51 Ext.Events~~ | ✅ Complete | Unlocks stat functors |
 | 7 | **#52 Components** | 80% | Accelerated workflow exists |
 | 8 | ~~#53 Stats Functors~~ | ✅ Complete | Needs #51 events |
@@ -1748,26 +1763,26 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 | Order | Issue | Acceleration | Why This Order |
 |-------|-------|--------------|----------------|
 | 9 | ~~#36 Ext.IMGUI~~ | ✅ Complete | All 40 widget types (v0.36.21) |
-| 10 | **#38 Ext.Audio** | 76% | 13 functions, PlayExternalSound re-enabled (STDString ABI) |
-| 11 | **#42 Debugger** | 60% | DAP reference exists |
+| 10 | **#38 Ext.Audio** | 76% | 13/17; PlayExternalSound re-enabled (STDString ABI); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank |
+| 11 | **#42 Debugger** | Deferred | Excluded from the supported macOS parity surface |
 | 12 | ~~#7 IDE Types~~ | ✅ Complete | GenerateIdeHelpers API |
 
 **Phase 4: Complex Integrations (2-4 weeks each)**
 
 | Order | Issue | Acceleration | Why Last |
 |-------|-------|--------------|----------|
-| 13 | **#37 Ext.Level** | 71% | 15 functions (RaycastAll + 6 Sweep), remaining: Cylinder, Pathfinding |
-| 14 | **#35 Ext.UI** | 25% | Deep Noesis hooks |
+| 13 | **#37 Ext.Level** | 71% | 15/21 (RaycastAll + 6 Sweep); missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and pathfinding |
+| 14 | **#35 Ext.UI** | Excluded | Compatibility stub layer only |
 | 15 | ~~#6 Ext.Net~~ | ⚠️ Phase 1 DONE | Phase 2-3 pending |
 
-**All Quick Wins Complete (as of v0.36.15):**
+**Quick-win status (as of v0.36.15):**
 1. ✅ **#49 Ext.IO** - 4 functions: LoadFile, SaveFile, AddPathOverride, GetPathOverride
-2. ✅ **#47 Ext.Math** - 47+ functions including 16 quaternion operations
+2. ⚠️ **#47 Ext.Math** - 57/59 functions; Smoothstep and IsNaN missing
 3. ✅ **#50 Ext.Timer** - 20 functions: core timers, time utilities, persistent timers
 4. ✅ **#46 Context Docs** - Context annotations (B/S/C) added to all API tables
 
-**Phase 2 Core Expansion Complete (as of v0.36.16):**
-5. ✅ **#48 Ext.Types** - 6 functions: GetAllTypes, GetTypeInfo, GetObjectType, Validate, TypeOf, IsA
+**Phase 2 core-expansion status (as of v0.36.16):**
+5. ⚠️ **#48 Ext.Types** - 9/15 functional (60%); Serialize/Unserialize/Construct are stubs, and GetValueType/GetHashSetValueAt/GetFunctionLocation are missing
 6. ✅ **#51 Ext.Events** - 32 engine events with priority/once/prevent patterns
 7. ✅ **#53 Stats Functors** - ExecuteFunctor/AfterExecuteFunctor for damage/heal hooks
 

@@ -1,8 +1,8 @@
 # BG3SE-macOS
 
-macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: feature parity with Windows BG3SE.
+macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-corrected 100% parity across the supported macOS surface.
 
-**Version:** v0.36.50 | **Parity:** ~94% | **Target:** Full Windows BG3SE mod compatibility
+**Version:** v0.37.1 | **Parity:** approximately 94.7% from the ROADMAP.md matrix | **Target:** 100% of the supported macOS surface
 
 ## Stack
 
@@ -166,7 +166,10 @@ Use `bg3se-macos-ghidra` skill for Ghidra workflows and ARM64 patterns.
 
 ## Current API Status
 
-~94% Windows BG3SE parity. Key namespaces: Osi.* (40+ functions, generic DB_* accessor), Ext.Stats (100% parity, 52 functions), Ext.Entity (1,999 components, CreateComponent/RemoveComponent, GetEntityType/GetSalt/GetIndex/GetNetId), Ext.Events (33 events + ExecuteFunctor hook), Ext.IMGUI (40 widgets), Ext.Net (RakNet backend), Ext.Level (15 functions incl. 6 Sweep + RaycastAll), Ext.Audio (13 functions + PlayExternalSound via STDString), Ext.Types (9 functions incl. GenerateIdeHelpers), Ext.Math (Random + Fract), Ext.Localization (GetLanguage + CreateHandle). Version detection sentinel probes for game update tolerance.
+Approximately 94.7% parity across the supported macOS surface, sourced from the ROADMAP.md matrix. Key namespaces: Osi.* (40+ functions, generic DB_* accessor), Ext.Stats (100% function-count parity, 52 functions)[^stats-stubs], Ext.Entity (1,999 components, CreateComponent/RemoveComponent, GetEntityType/GetSalt/GetIndex/GetNetId)[^entity-stubs], Ext.Events (33 events + ExecuteFunctor hook), Ext.IMGUI (40 widgets), Ext.Net (RakNet backend), Ext.Level (15/21, 71%; 6 Sweep functions + RaycastAll; missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and the pathfinding suite), Ext.Audio (13/17, 76%; PlayExternalSound via STDString; missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank), Ext.Types (9/15, 60%; GenerateIdeHelpers included; three stubs and three missing functions at `src/lua/lua_ext.c:877-934`), Ext.Math (57/59, 96.6%; Random and Fract included; Smoothstep and IsNaN missing), Ext.Localization (GetLanguage + CreateHandle). Version detection sentinel probes for game update tolerance.
+
+[^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).
+[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:955-958`). `entity:Replicate()` is a no-op. Component property reads work, but writes are stubbed and return false (`src/entity/component_property.c:418`).
 
 @agent_docs/api-status.md — Full per-namespace breakdown. Read when implementing new APIs or checking parity.
 

@@ -6,7 +6,9 @@
 
 **Baldur's Gate 3 Script Extender for macOS**
 
-A native macOS implementation of the BG3 Script Extender, working toward full feature parity with Norbyte's Windows BG3SE. Enables mods that require scripting capabilities to work on Mac—including companion mods, gameplay tweaks, UI enhancements, and more.
+A native macOS implementation of the BG3 Script Extender, working toward scope-corrected 100% parity with Norbyte's Windows BG3SE: 100% of the supported macOS surface. Enables mods that require scripting capabilities to work on Mac—including companion mods, gameplay tweaks, UI enhancements, and more.
+
+The supported surface excludes `Ext.UI`/Noesis by decision; only a stub layer is provided. Lua Debugger/DAP, entity replication (`Replicate`, `GetReplicationFlags`, `SetReplicationFlags`), Virtual Textures, and Input Injection are deferred. These exclusions are outside the scope-corrected parity denominator.
 
 > **Note:** This is a ground-up rebuild, not a port—the Windows BG3SE uses x86_64 assembly and Windows APIs that don't exist on macOS ARM64. We use the Windows codebase as architectural reference while reverse-engineering the macOS binary via Ghidra.
 
@@ -100,7 +102,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 
 ## Status
 
-**Version:** v0.36.50 | **Feature Parity:** ~94%
+**Version:** v0.37.1 | **Feature Parity:** approximately 94.7%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix)
 
 | Feature | Status |
 |---------|--------|
@@ -108,21 +110,21 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Lua Runtime | ✅ Lua 5.4 with Ext API |
 | Mod Loading | ✅ PAK file reading, auto-detection |
 | Ext.Osiris | ✅ Event listeners, custom functions (NewCall/NewQuery/NewEvent/RaiseEvent/GetCustomFunctions), **server context guards** |
-| Ext.Entity | ✅ GUID lookup, **Dual EntityWorld** (client + server), **1,999 components registered** (534 layouts: 169 verified + 365 generated), **1,577 ARM64 sizes** + **702 Windows estimates** = **1,730 total** (87% coverage), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId** |
-| Ext.Stats | ✅ **100% parity** — 15,774 stats, Get/GetAll/Create/Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory stubs |
+| Ext.Entity | ✅ GUID lookup, **Dual EntityWorld** (client + server), **1,999 components registered** (534 layouts: 169 verified + 365 generated), **1,577 ARM64 sizes** + **702 Windows estimates** = **1,730 total** (87% coverage), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId**[^entity-stubs] |
+| Ext.Stats | ✅ **100% function-count parity** — 15,774 stats, Get/GetAll/Create/Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory stubs[^stats-stubs] |
 | Ext.Events | ✅ 33 events (13 lifecycle + 17 engine + 2 functor + 1 network) with Prevent pattern, **runtime mod attribution** + `!mod_diag` |
 | Ext.IO | ✅ LoadFile, SaveFile, **AddPathOverride, GetPathOverride** |
 | Ext.Timer | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, **MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, Persistent timers (6 functions)** |
 | Ext.Vars | ✅ PersistentVars + User Variables + Mod Variables |
-| Ext.Input | ✅ Hotkeys, key injection |
-| Ext.Math | ✅ Vector/matrix operations, **16 quaternion functions**, scalar utils, **Fract** |
+| Ext.Input | ✅ Hotkeys and input capture; Input Injection is deferred and excluded |
+| Ext.Math | ⚠️ **57/59 (96.6%)** — vector/matrix operations, **16 quaternion functions**, scalar utils, and **Fract**; Smoothstep and IsNaN are missing |
 | Ext.Enums | ✅ 14 enum/bitfield types |
-| Ext.Types | ✅ Full reflection API (9 functions incl. **GenerateIdeHelpers**) for VS Code IntelliSense |
+| Ext.Types | ⚠️ **9/15 (60%)** — reflection API includes **GenerateIdeHelpers** for VS Code IntelliSense; Serialize, Unserialize, and Construct are stubs (`src/lua/lua_ext.c:877-934`); GetValueType, GetHashSetValueAt, and GetFunctionLocation are missing |
 | Ext.StaticData | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription) via ForceCapture |
 | Ext.Resource | ✅ Get, GetAll, GetTypes, GetCount (34 resource types) |
 | Ext.Template | ✅ **Auto-capture**, iteration (Cache/LocalCache), GUID resolution |
-| Ext.Level | ✅ **15 functions** - RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, singleton accessors, **SweepClosest** (Sphere, Capsule, Box), **SweepAll** (Sphere, Capsule, Box) |
-| Ext.Audio | ✅ **13 functions** - PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, SetRTPC, GetRTPC, ResetRTPC, LoadEvent, UnloadEvent, **PlayExternalSound** (STDString ABI) |
+| Ext.Level | ⚠️ **15/21 (71%)** — RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, singleton accessors, **SweepClosest** (Sphere, Capsule, Box), and **SweepAll** (Sphere, Capsule, Box); missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and the pathfinding suite |
+| Ext.Audio | ⚠️ **13/17 (76%)** — PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, SetRTPC, GetRTPC, ResetRTPC, LoadEvent, UnloadEvent, and **PlayExternalSound** (STDString ABI); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank |
 | Ext.Net | ✅ **Phase 4I Complete** - Full RakNet backend, PostMessageToServer/User/Client, BroadcastMessage, IsHost, IsReady, PeerVersion, **Request/Reply Callbacks** |
 | Ext.RegisterNetListener | ✅ Per-channel network message listener (MCM backbone) |
 | Net.CreateChannel | ✅ **Phase 4I Complete** - High-level channel API with SetHandler, **SetRequestHandler**, SendToServer, **RequestToServer with callbacks**, Broadcast |
@@ -137,6 +139,9 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
 | Testing | ✅ 4-tier: 41 C (Tier 0) + 41 pytest (Tier H) + 93 `!test` (Tier 1) + 54 `!test_ingame` (Tier 2) = **229 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
+
+[^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).
+[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:955-958`). `entity:Replicate()` is a no-op. Component property reads work, but writes are stubbed and return false (`src/entity/component_property.c:418`).
 
 See [ROADMAP.md](ROADMAP.md) for detailed progress.
 
