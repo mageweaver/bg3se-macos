@@ -1031,7 +1031,16 @@ _MENU_STALL_FIRST_ACTION_S = 20.0
 _MENU_STALL_RETRY_INTERVAL_S = 12.0
 _MENU_STALL_MAX_ACTIONS = 6
 _MENU_STALL_ABORT_S = 120.0
-BOOT_RETRYABLE_STAGES = {"timeout", "menu_stalled"}
+# Extra budget granted once the socket responds but a session is still
+# required (require_session=True): Continue click + level load can take
+# well over the plain socket timeout.
+_SESSION_LOAD_GRACE_S = 240.0
+# !identity game_state values that mean a save is actually loaded.
+_SESSION_LOADED_STATES = {"Running", "Paused"}
+# game_state values during which menu/modal clicking is still safe.
+# Once the state leaves this set the game is loading — hands off the mouse.
+_MENU_SAFE_STATES = {None, "Unknown", "Uninitialized", "Init"}
+BOOT_RETRYABLE_STAGES = {"timeout", "menu_stalled", "session_timeout"}
 _CONTINUE_CLICK_FRACTIONS = [
     # Measured from .screenshots/boot-stall-1778937630.png after watching
     # the cursor land right/below the button. Fractions are relative to the
@@ -1072,9 +1081,70 @@ def _watchdog_target_for_attempt(attempt):
     return _WATCHDOG_CLICK_SEQUENCE[index]
 
 
+# Standard macOS title bar height in points. The watchdog fractions are
+# measured against the full System Events window bounds (title bar included);
+# the in-process !click command takes fractions of the LSMTLView content
+# bounds, which exclude it in windowed mode.
+_TITLE_BAR_PT = 28.0
+
+
+def _window_to_view_fractions(xf, yf, win_h):
+    """Convert full-window fractions to LSMTLView content-bounds fractions."""
+    if not win_h or win_h <= _TITLE_BAR_PT * 2:
+        return xf, yf
+    content_h = win_h - _TITLE_BAR_PT
+    view_yf = (yf * win_h - _TITLE_BAR_PT) / content_h
+    return xf, min(max(view_yf, 0.0), 1.0)
+
+
+def _socket_command(cmd, timeout=2.0):
+    """Send one console command over the SE socket; return reply text or None."""
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect(SOCKET_PATH)
+        try:
+            sock.recv(4096)
+        except socket.timeout:
+            pass
+        sock.sendall((cmd + "\n").encode())
+        time.sleep(0.2)
+        data = b""
+        try:
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            pass
+        sock.close()
+        return data.decode("utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _socket_click(xf_window, yf_window, win_h):
+    """In-process click via !click (no cursor move, no focus). None if socket down."""
+    vxf, vyf = _window_to_view_fractions(xf_window, yf_window, win_h)
+    resp = _socket_command(f"!click {vxf:.4f} {vyf:.4f}")
+    if resp is None:
+        return None
+    return {"success": "click posted" in resp, "view_fraction": {"x": round(vxf, 4), "y": round(vyf, 4)},
+            "method": "in_process_click", "response": resp.strip()[:200]}
+
+
 def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
-                    tracker=None):
+                    tracker=None, require_session=False):
     """Wait for the SE socket to respond to Lua commands.
+
+    When require_session is True (a --continue/--save launch), a responsive
+    socket is NOT success: the console answers !identity from the main menu
+    while game_state is still "Init". The loop keeps running — and keeps the
+    menu/mod-verification watchdog alive — until identity reports game_state
+    Running/Paused, granting itself _SESSION_LOAD_GRACE_S beyond the socket
+    timeout. Watchdog clicks stop the moment game_state leaves the menu-safe
+    set, so nothing touches the UI during a level load.
 
     When dismiss_splash is True, periodically sends Escape+Space via
     System Events key code to dismiss the BG3 splash screen while waiting.
@@ -1105,6 +1175,9 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
     socket_listening_at = None
     menu_watchdog_actions = []
     phases = []
+    socket_first_responded = False
+    session_wait_extended = False
+    last_game_state = None
 
     def _phase(name, detail=""):
         elapsed = time.monotonic() - start
@@ -1203,6 +1276,7 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
             should_act = (
                 dismiss_splash
                 and bg3_pid
+                and last_game_state in _MENU_SAFE_STATES
                 and stalled_for >= _MENU_STALL_FIRST_ACTION_S
                 and len(menu_watchdog_actions) < _MENU_STALL_MAX_ACTIONS
                 and (
@@ -1226,13 +1300,15 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
             if (
                 dismiss_splash
                 and socket_ever_connected
+                and last_game_state in _MENU_SAFE_STATES
                 and len(menu_watchdog_actions) >= _MENU_STALL_MAX_ACTIONS
                 and stalled_for >= _MENU_STALL_ABORT_S
             ):
                 elapsed_ms = int((time.monotonic() - start) * 1000)
                 _phase("menu_stalled", f"{elapsed_ms}ms")
                 return {
-                    "socket_connected": False,
+                    "socket_connected": socket_first_responded,
+                    "session_loaded": False,
                     "stage": "menu_stalled",
                     "elapsed_ms": elapsed_ms,
                     "dismiss_attempts": dismiss_count,
@@ -1252,6 +1328,10 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
                 if found:
                     menu_detected = True
                     _phase("menu_detected", f"buttons={buttons}")
+                    # Menu visible — stop the in-process Escape/Space loop
+                    # before it can fight menu clicks (Escape reopens/closes
+                    # menu overlays).
+                    _socket_command("!splash_done")
 
         if menu_detected and not continue_sent:
             # In-process CGEventPostToPid/NSApp sendEvent can't reach
@@ -1335,9 +1415,11 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
                 text = re.sub(rb'\033\[[0-9;]*m', b'', response).decode(
                     "utf-8", errors="replace").strip()
                 elapsed_ms = int((time.monotonic() - start) * 1000)
-                _phase("socket_responded", f"{elapsed_ms}ms")
-                if tracker:
-                    tracker.set_socket_ready()
+                if not socket_first_responded:
+                    socket_first_responded = True
+                    _phase("socket_responded", f"{elapsed_ms}ms")
+                    if tracker:
+                        tracker.set_socket_ready()
                 result = {
                     "socket_connected": True,
                     "se_version": text if text else "connected",
@@ -1350,7 +1432,24 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
                     result["identity_pid"] = identity_pid
                 if peer_pid is not None:
                     result["peer_pid"] = peer_pid
-                return result
+                if menu_watchdog_actions:
+                    result["watchdog_actions"] = menu_watchdog_actions
+
+                if not require_session:
+                    return result
+
+                last_game_state = (identity or {}).get("game_state")
+                if last_game_state in _SESSION_LOADED_STATES:
+                    _phase("session_loaded", f"game_state={last_game_state}")
+                    result["session_loaded"] = True
+                    return result
+
+                if not session_wait_extended:
+                    session_wait_extended = True
+                    timeout = max(timeout, elapsed + _SESSION_LOAD_GRACE_S)
+                    _phase("session_waiting",
+                           f"game_state={last_game_state}, "
+                           f"grace={_SESSION_LOAD_GRACE_S:.0f}s")
 
         except (ConnectionRefusedError, FileNotFoundError, OSError):
             pass
@@ -1362,9 +1461,13 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
     if tracker and tracker.phase == "waiting_for_steam_relaunch":
         stage = "steam_relaunch_timeout"
         tracker.set_failed("steam_relaunch_timeout")
-    _phase(stage, f"{elapsed_ms}ms")
+    elif require_session and socket_first_responded:
+        stage = "session_timeout"
+    _phase(stage, f"{elapsed_ms}ms, game_state={last_game_state}")
     return {
-        "socket_connected": False,
+        "socket_connected": socket_first_responded,
+        "session_loaded": False,
+        "last_game_state": last_game_state,
         "stage": stage,
         "elapsed_ms": elapsed_ms,
         "dismiss_attempts": dismiss_count,
@@ -1543,61 +1646,71 @@ def _collect_boot_diagnostics():
 
 def should_retry_boot(health):
     """Return True when a failed boot is likely transient/retryable."""
-    if health.get("socket_connected"):
+    if health.get("socket_connected") and health.get("session_loaded", True):
         return False
     return health.get("stage") in BOOT_RETRYABLE_STAGES
 
 
 def _try_watchdog_continue(pid, attempt):
-    """Retry menu progress with a measured foreground mouse click."""
+    """Retry menu progress with in-process socket clicks (no cursor movement).
+
+    Prefers !click over the SE socket — synthetic [LSMTLView mouseDown:]
+    events that need no focus, no activation, and never move the physical
+    cursor. OCR-derived button centers beat the hardcoded fractions when
+    available. Falls back to a foreground physical click only when the
+    socket is unreachable.
+    """
     action = {
         "attempt": attempt,
-        "method": "foreground_physical_left_click",
+        "method": "in_process_click",
         "success": False,
     }
     try:
         from .menu import click_fraction, detect_menu
 
         detection = detect_menu()
-        buttons = [b.get("text") for b in detection.get("buttons", [])]
-        action["buttons"] = buttons
+        buttons = {b.get("text"): b for b in detection.get("buttons", [])}
+        action["buttons"] = list(buttons)
         action["menu_detected"] = bool({"Continue", "New Game", "Load Game", "Multiplayer"} & set(buttons))
         action["ocr_error"] = detection.get("error")
+        window = detection.get("window") or {}
+        win_h = window.get("height")
+
+        # The dismisser has done its job once we can see any UI to click.
+        _socket_command("!splash_done")
+
         purpose, fraction = _watchdog_target_for_attempt(attempt)
         if action["menu_detected"] and purpose == "dismiss_splash":
             purpose = "click_continue"
             fraction = _CONTINUE_CLICK_FRACTIONS[0]
-        action["purpose"] = purpose
 
+        # Prefer the OCR-measured Continue position over the constants.
+        target_btn = buttons.get("Continue") if purpose == "click_continue" else None
+        if target_btn and window.get("width") and win_h:
+            fraction = {
+                "x": (target_btn["screen_x"] - window.get("x", 0)) / window["width"],
+                "y": (target_btn["screen_y"] - window.get("y", 0)) / win_h,
+                "label": "continue_button_ocr",
+            }
+        action["purpose"] = purpose
         action["target_fraction"] = fraction
 
-        if isinstance(fraction, list):
-            clicks = []
-            geometry = detection.get("geometry")
-            for item in fraction:
+        targets = fraction if isinstance(fraction, list) else [fraction]
+        clicks = []
+        for item in targets:
+            click_result = _socket_click(item["x"], item["y"], win_h)
+            if click_result is None:
+                # Socket down — last resort: physical foreground click.
                 click_result = click_fraction(
-                    item["x"],
-                    item["y"],
-                    method="both",
-                    activate=True,
+                    item["x"], item["y"], method="both", activate=True,
                 )
-                click_result["target_fraction"] = item
-                clicks.append(click_result)
-                geometry = click_result.get("geometry") or geometry
-                time.sleep(0.25)
-            action["clicks"] = clicks
-            action["geometry"] = geometry
-            action["success"] = any(bool(c.get("success")) for c in clicks)
-        else:
-            click_result = click_fraction(
-                fraction["x"],
-                fraction["y"],
-                method="both",
-                activate=True,
-            )
-            action["click"] = click_result
-            action["geometry"] = click_result.get("geometry") or detection.get("geometry")
-            action["success"] = bool(click_result.get("success"))
+                click_result["method"] = "foreground_physical_left_click"
+            click_result["target_fraction"] = item
+            clicks.append(click_result)
+            time.sleep(0.25)
+        action["clicks"] = clicks
+        action["geometry"] = detection.get("geometry")
+        action["success"] = any(bool(c.get("success")) for c in clicks)
     except Exception as exc:
         action["error"] = str(exc)
     return action
@@ -1633,11 +1746,15 @@ def _try_dismiss_splash(attempt, pid=None):
 
 
 def _try_click_continue(pid):
-    """Send Enter to click the highlighted Continue button."""
+    """Send Enter to activate the focused Continue button (in-process first)."""
+    resp = _socket_command(f"!key {_kVK_Return}")
+    if resp is not None:
+        print("Sent Enter to click Continue (in-process)", file=sys.stderr)
+        return
     try:
         from .menu import cg_key_to_pid
         cg_key_to_pid(pid, _kVK_Return)
-        print("Sent Enter to click Continue", file=sys.stderr)
+        print("Sent Enter to click Continue (SystemEvents fallback)", file=sys.stderr)
     except Exception:
         pass
 

@@ -142,15 +142,31 @@ static bool try_direct_view_mouse_click(double x_fraction, double y_fraction_top
     NSWindow *win = [view window];
     NSInteger winNum = win ? [win windowNumber] : 0;
     NSRect bounds = [view bounds];
-    CGFloat x = NSMinX(bounds) + NSWidth(bounds) * x_fraction;
-    CGFloat y = NSMinY(bounds) + NSHeight(bounds) * (1.0 - y_fraction_top_origin);
-    NSPoint location = NSMakePoint(x, y);
+    CGFloat vx = NSMinX(bounds) + NSWidth(bounds) * x_fraction;
+    CGFloat vy = [view isFlipped]
+        ? NSMinY(bounds) + NSHeight(bounds) * y_fraction_top_origin
+        : NSMinY(bounds) + NSHeight(bounds) * (1.0 - y_fraction_top_origin);
+    // NSEvent locations are window-base coordinates. BG3's mouseDown: input
+    // record carries no coordinates at all — Noesis hit-tests against the
+    // engine cursor state established by the preceding mouseMoved:, so the
+    // moved event must land exactly where the click should.
+    NSPoint location = [view convertPoint:NSMakePoint(vx, vy) toView:nil];
     NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+
+    NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+                                       location:location
+                                  modifierFlags:0
+                                      timestamp:now
+                                   windowNumber:winNum
+                                        context:nil
+                                    eventNumber:0
+                                     clickCount:0
+                                       pressure:0.0];
 
     NSEvent *down = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
                                        location:location
                                   modifierFlags:0
-                                      timestamp:now
+                                      timestamp:now + 0.02
                                    windowNumber:winNum
                                         context:nil
                                     eventNumber:0
@@ -167,9 +183,9 @@ static bool try_direct_view_mouse_click(double x_fraction, double y_fraction_top
                                    clickCount:1
                                      pressure:0.0];
 
-    LOG_CORE_DEBUG("[FocuslessInput] Calling [LSMTLView mouseDown:] x=%.1f y=%.1f xf=%.3f yf=%.3f inputMgr=%p win=%ld",
-                  x, y, x_fraction, y_fraction_top_origin, inputMgr, (long)winNum);
-    [view mouseMoved:down];
+    LOG_CORE_DEBUG("[FocuslessInput] Calling [LSMTLView mouseDown:] winloc=(%.1f, %.1f) xf=%.3f yf=%.3f inputMgr=%p win=%ld",
+                  location.x, location.y, x_fraction, y_fraction_top_origin, inputMgr, (long)winNum);
+    [view mouseMoved:move];
     [view mouseDown:down];
     [view mouseUp:up];
     return true;

@@ -160,33 +160,32 @@ def _normalise_click_result(result, method):
 
 
 def activate_bg3():
-    """Bring BG3 to the foreground for input probes."""
-    script = (
-        'tell application "Baldur\'s Gate 3" to activate\n'
-        'tell application "System Events"\n'
-        '  if exists process "Baldur\'s Gate 3" then\n'
-        '    set frontmost of process "Baldur\'s Gate 3" to true\n'
-        '    return "ok"\n'
-        '  else\n'
-        '    return "no_process"\n'
-        '  end if\n'
-        'end tell'
-    )
+    """Bring an already-running BG3 to the foreground for input probes.
+
+    Activates by PID via NSRunningApplication. Never uses
+    `tell application ... to activate` — LaunchServices treats that as a
+    launch request when the app is not running, which spawned fresh BG3
+    instances (Steam bounce pairs) mid-automation whenever the tracked
+    process had died.
+    """
+    pid = _get_bg3_pid()
+    if not pid:
+        return {"success": False, "method": "nsrunningapplication",
+                "error": "BG3 not running"}
     try:
-        r = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=5,
+        from AppKit import (
+            NSRunningApplication,
+            NSApplicationActivateIgnoringOtherApps,
         )
-        if r.returncode == 0 and "ok" in r.stdout:
-            return {"success": True, "method": "activate_and_frontmost"}
-        return {
-            "success": False,
-            "method": "activate_and_frontmost",
-            "error": r.stderr.strip() or r.stdout.strip(),
-            "returncode": r.returncode,
-        }
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        return {"success": False, "method": "activate_and_frontmost", "error": str(exc)}
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is None:
+            return {"success": False, "method": "nsrunningapplication",
+                    "pid": pid, "error": f"no running application for pid {pid}"}
+        ok = bool(app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps))
+        return {"success": ok, "method": "nsrunningapplication", "pid": pid}
+    except Exception as exc:
+        return {"success": False, "method": "nsrunningapplication",
+                "pid": pid, "error": str(exc)}
 
 
 def cg_key(keycode):

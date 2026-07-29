@@ -158,12 +158,16 @@ def _launch_until_socket(
             dismiss_splash=True,
             process=session.direct_process,
             tracker=session.tracker,
+            require_session=bool(continue_game or load_save),
         )
         health["pid"] = session.pid
         health["attempt"] = attempt
         attempts.append(health)
 
-        if health.get("socket_connected"):
+        boot_ok = health.get("socket_connected") and (
+            not (continue_game or load_save) or health.get("session_loaded")
+        )
+        if boot_ok:
             return session, health, attempts
 
         retryable = launch_mod.should_retry_boot(health)
