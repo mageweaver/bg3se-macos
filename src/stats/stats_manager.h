@@ -234,6 +234,63 @@ const char* stats_get_name_at(const char *type, int index);
 const char** stats_get_all_names_filtered(const char *type, int *out_count);
 
 // ============================================================================
+// Treasure Tables / Categories (read-only)
+// ============================================================================
+
+typedef struct {
+    void *address;
+    const char *name;
+    int32_t min_level;
+    int32_t max_level;
+    bool ignore_level_diff;
+    bool use_treasure_group_containers;
+    bool can_merge;
+    uint32_t subtable_count;
+} StatsTreasureTableInfo;
+
+typedef struct {
+    void *address;
+    int32_t total_frequency;
+    int32_t total_count;
+    int32_t start_level;
+    int32_t end_level;
+} StatsTreasureSubTableInfo;
+
+typedef struct {
+    void *address;
+    const char *name;
+    uint32_t item_count;
+} StatsTreasureCategoryInfo;
+
+typedef struct {
+    void *address;
+    const char *name;
+    int32_t priority;
+    int32_t min_amount;
+    int32_t max_amount;
+    int32_t act_part;
+    int32_t unique;
+    int32_t min_level;
+    int32_t max_level;
+} StatsTreasureCategoryItemInfo;
+
+/**
+ * Read a treasure table/category snapshot by name.
+ * Returns false when RPGStats is unavailable, the manager layout guard fails,
+ * or no matching entry exists.
+ */
+bool stats_get_treasure_table_info(const char *name,
+                                   StatsTreasureTableInfo *out_info);
+bool stats_get_treasure_subtable_info(
+    const StatsTreasureTableInfo *table, uint32_t index,
+    StatsTreasureSubTableInfo *out_info);
+bool stats_get_treasure_category_info(
+    const char *name, StatsTreasureCategoryInfo *out_info);
+bool stats_get_treasure_category_item_info(
+    const StatsTreasureCategoryInfo *category, uint32_t index,
+    StatsTreasureCategoryItemInfo *out_info);
+
+// ============================================================================
 // Stat Creation - Phase 5
 // ============================================================================
 

@@ -1,36 +1,62 @@
 {
-  "task": "Implement Phase 1 of systematic top-5 SE mod vetting plan",
+  "task": "Goal 2.3 (Wave 2): replace Ext.Stats stubs with honest implementations",
   "status": "done",
-  "started_at": "2026-05-02T20:28:56Z",
-  "completed_at": "2026-05-02T20:29:52Z",
+  "started_at": "2026-07-29T00:00:00-04:00",
+  "completed_at": "2026-07-29T13:48:00-04:00",
   "features": [
     {
-      "name": "Fix popular_mods.json catalog discrepancies",
-      "status": "completed",
-      "files": ["tools/bg3se_harness/catalog/popular_mods.json"],
-      "completed_at": "2026-05-02T20:28:56Z"
-    },
-    {
-      "name": "Create top mod scenario manifests",
+      "name": "Real mod load order for Ext.Stats",
       "status": "completed",
       "files": [
-        "tools/bg3se_harness/scenarios/5e_spells.json",
-        "tools/bg3se_harness/scenarios/combat_extender.json",
-        "tools/bg3se_harness/scenarios/party_limit_begone.json"
+        "src/mod/mod_loader.h",
+        "src/mod/mod_loader.c",
+        "src/lua/lua_stats.c"
       ],
-      "completed_at": "2026-05-02T20:28:56Z"
+      "completed_at": "2026-07-29T13:40:00-04:00"
     },
     {
-      "name": "Create baseline compatibility reports directory",
+      "name": "Honest status and passive prototype synchronization",
       "status": "completed",
-      "files": ["docs/compat-reports/baseline/"],
-      "started_at": "2026-05-02T20:28:56Z",
-      "completed_at": "2026-05-02T20:28:56Z"
+      "files": [
+        "src/stats/prototype_managers.c",
+        "tests/harness/test_offset_audit.py"
+      ],
+      "completed_at": "2026-07-29T13:41:00-04:00"
+    },
+    {
+      "name": "Treasure table and category reads",
+      "status": "completed",
+      "files": [
+        "src/stats/stats_manager.h",
+        "src/stats/stats_manager.c",
+        "src/lua/lua_stats.c"
+      ],
+      "completed_at": "2026-07-29T13:44:00-04:00"
+    },
+    {
+      "name": "Honest AddAttribute and AddEnumerationValue gates",
+      "status": "completed",
+      "files": [
+        "src/lua/lua_stats.c"
+      ],
+      "completed_at": "2026-07-29T13:44:00-04:00"
+    },
+    {
+      "name": "Proposed tier-1 and tier-2 Lua tests",
+      "status": "completed",
+      "files": [
+        "docs/e2e-review/wave2-goal23-proposed-tests.lua"
+      ],
+      "completed_at": "2026-07-29T13:45:00-04:00"
     }
   ],
   "verification": {
-    "json_parse": true,
-    "scenario_listing": true,
-    "catalog_check": true
+    "build": true,
+    "tests": true,
+    "lint": true,
+    "tier0": "55/55 passed",
+    "harness": "180 passed",
+    "lua_syntax": true,
+    "diff_check": true
   }
 }

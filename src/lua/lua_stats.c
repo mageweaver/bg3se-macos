@@ -10,6 +10,7 @@
 #include "../stats/prototype_managers.h"
 #include "../strings/fixed_string.h"
 #include "../lifetime/lifetime.h"
+#include "../mod/mod_loader.h"
 #include "logging.h"
 
 #include "../../lib/lua/src/lua.h"
@@ -17,6 +18,7 @@
 #include "../../lib/lua/src/lualib.h"
 
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 
 // Forward declarations
@@ -778,29 +780,42 @@ static int lua_stats_get_modifier_attributes(lua_State *L) {
 }
 
 // Ext.Stats.AddAttribute(modifierList, modifierName, typeName) -> bool
-// Stub: requires CNamedElementManager Insert (memory allocation in game heap)
-// Windows note: only safe to call before stats data files load (StatsStructureLoaded event)
+// Deliberately gated: Windows allocates Modifier on the game heap and inserts
+// it into ModifierList.Attributes. 4.1.1.7209685 exposes manager Insert symbols,
+// but nm does not expose a safely identifiable game allocator plus a verified
+// Modifier construction/layout ABI, so allocating here would mix heaps.
 static int lua_stats_add_attribute(lua_State *L) {
     const char *modifier_list = luaL_checkstring(L, 1);
     const char *modifier_name = luaL_checkstring(L, 2);
     const char *type_name = luaL_checkstring(L, 3);
 
-    LOG_STATS_DEBUG("Ext.Stats.AddAttribute('%s', '%s', '%s'): "
-                    "Not yet implemented on macOS (requires game heap allocation)",
-                    modifier_list, modifier_name, type_name);
+    static bool warned = false;
+    if (!warned) {
+        LOG_STATS_WARN("Ext.Stats.AddAttribute('%s', '%s', '%s') disabled: "
+                       "game allocator and Modifier layout ABI are not safely "
+                       "derivable from 4.1.1.7209685 nm symbols",
+                       modifier_list, modifier_name, type_name);
+        warned = true;
+    }
     lua_pushboolean(L, 0);
     return 1;
 }
 
 // Ext.Stats.AddEnumerationValue(typeName, enumLabel) -> int or nil
-// Stub: requires RPGEnumeration.Values map insertion
+// Deliberately gated for the same allocator/container-ABI reason as
+// AddAttribute; a raw write to RPGEnumeration.Values would corrupt its map.
 static int lua_stats_add_enumeration_value(lua_State *L) {
     const char *type_name = luaL_checkstring(L, 1);
     const char *enum_label = luaL_checkstring(L, 2);
 
-    LOG_STATS_DEBUG("Ext.Stats.AddEnumerationValue('%s', '%s'): "
-                    "Not yet implemented on macOS (requires game heap allocation)",
-                    type_name, enum_label);
+    static bool warned = false;
+    if (!warned) {
+        LOG_STATS_WARN("Ext.Stats.AddEnumerationValue('%s', '%s') disabled: "
+                       "RPGEnumeration map allocation/insertion ABI is not "
+                       "safely derivable from 4.1.1.7209685 nm symbols",
+                       type_name, enum_label);
+        warned = true;
+    }
     lua_pushnil(L);
     return 1;
 }
@@ -1105,68 +1120,203 @@ static int lua_stats_execute_functor(lua_State *L) {
 }
 
 // ============================================================================
-// GetStatsLoadedBefore (Phase 3)
+// Stats module load order
 // ============================================================================
 
-// Ext.Stats.GetStatsLoadedBefore(modUuid, type?) -> array of names
-// Stub: returns empty table. Mod load order tracking not yet implemented on macOS.
-static int lua_stats_get_stats_loaded_before(lua_State *L) {
-    luaL_checkstring(L, 1);  // modUuid (validate arg exists)
-    // type is optional arg 2
-
-    static bool warned = false;
-    if (!warned) {
-        LOG_STATS_DEBUG("Ext.Stats.GetStatsLoadedBefore(): Mod load order tracking not yet available on macOS, returning empty table");
-        warned = true;
-    }
+static void push_stats_loaded_mods(lua_State *L, int last_index) {
     lua_newtable(L);
+    int count = mod_get_detected_count();
+    int out_index = 1;
+
+    if (last_index >= count) last_index = count - 1;
+    for (int i = 0; i <= last_index; i++) {
+        const char *uuid = mod_get_detected_uuid(i);
+        const char *name = mod_get_detected_name(i);
+        const char *id = (uuid && uuid[0]) ? uuid : name;
+        if (!id || !id[0]) continue;
+
+        lua_pushstring(L, id);
+        lua_rawseti(L, -2, out_index++);
+    }
+}
+
+// Ext.Stats.GetStatsLoadedMods() -> array of module UUIDs in stats load order.
+// modsettings.lsx is ordered by the engine and mod_loader preserves that order.
+static int lua_stats_get_stats_loaded_mods(lua_State *L) {
+    push_stats_loaded_mods(L, mod_get_detected_count() - 1);
+    return 1;
+}
+
+// Ext.Stats.GetStatsLoadedBefore(modUuid, type?) -> array of module UUIDs
+//
+// macOS does not hook individual Stats/*.txt opens, so it cannot honestly
+// attribute every stat object to its declaring/overriding module as Windows
+// BG3SE does. What it can report exactly is the engine module order through the
+// requested module (matching the Windows helper's inclusive boundary).
+static int lua_stats_get_stats_loaded_before(lua_State *L) {
+    const char *mod_id = luaL_checkstring(L, 1);
+    int count = mod_get_detected_count();
+    int last_index = -1;
+
+    if (!lua_isnoneornil(L, 2)) {
+        luaL_checkstring(L, 2);
+        static bool warned_type_filter = false;
+        if (!warned_type_filter) {
+            LOG_STATS_WARN("Ext.Stats.GetStatsLoadedBefore(): per-stat type "
+                           "filtering is unavailable without Stats/*.txt load "
+                           "hooks; returning the exact module load order");
+            warned_type_filter = true;
+        }
+    }
+
+    for (int i = 0; i < count; i++) {
+        const char *uuid = mod_get_detected_uuid(i);
+        const char *name = mod_get_detected_name(i);
+        if ((uuid && uuid[0] && strcasecmp(uuid, mod_id) == 0) ||
+            (name && strcasecmp(name, mod_id) == 0)) {
+            last_index = i;
+            break;
+        }
+    }
+
+    if (last_index < 0) {
+        static bool warned_missing_mod = false;
+        if (!warned_missing_mod) {
+            LOG_STATS_WARN("Ext.Stats.GetStatsLoadedBefore(): requested module "
+                           "'%s' is not present in modsettings load order",
+                           mod_id);
+            warned_missing_mod = true;
+        }
+    }
+
+    push_stats_loaded_mods(L, last_index);
     return 1;
 }
 
 // ============================================================================
-// TreasureTable / TreasureCategory Stubs (Phase 4)
+// TreasureTable / TreasureCategory
 // ============================================================================
 
-static int lua_stats_treasure_table_get(lua_State *L) {
-    luaL_checkstring(L, 1);
-    static bool warned = false;
-    if (!warned) {
-        LOG_STATS_DEBUG("Ext.Stats.TreasureTable.Get(): Requires runtime offset discovery (RPGStats.TreasureTables)");
-        warned = true;
+static void push_treasure_subtable(lua_State *L,
+                                   const StatsTreasureSubTableInfo *info) {
+    lua_newtable(L);
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)info->address);
+    lua_setfield(L, -2, "Address");
+    lua_pushinteger(L, info->total_frequency);
+    lua_setfield(L, -2, "TotalFrequency");
+    lua_pushinteger(L, info->total_count);
+    lua_setfield(L, -2, "TotalCount");
+    lua_pushinteger(L, info->start_level);
+    lua_setfield(L, -2, "StartLevel");
+    lua_pushinteger(L, info->end_level);
+    lua_setfield(L, -2, "EndLevel");
+}
+
+static void push_treasure_table(lua_State *L,
+                                const StatsTreasureTableInfo *info) {
+    lua_newtable(L);
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)info->address);
+    lua_setfield(L, -2, "Address");
+    lua_pushstring(L, info->name);
+    lua_setfield(L, -2, "Name");
+    lua_pushinteger(L, info->min_level);
+    lua_setfield(L, -2, "MinLevel");
+    lua_pushinteger(L, info->max_level);
+    lua_setfield(L, -2, "MaxLevel");
+    lua_pushboolean(L, info->ignore_level_diff);
+    lua_setfield(L, -2, "IgnoreLevelDiff");
+    lua_pushboolean(L, info->use_treasure_group_containers);
+    lua_setfield(L, -2, "UseTreasureGroupContainers");
+    lua_pushboolean(L, info->can_merge);
+    lua_setfield(L, -2, "CanMerge");
+
+    lua_newtable(L);
+    int out_index = 1;
+    for (uint32_t i = 0; i < info->subtable_count; i++) {
+        StatsTreasureSubTableInfo subtable;
+        if (stats_get_treasure_subtable_info(info, i, &subtable)) {
+            push_treasure_subtable(L, &subtable);
+            lua_rawseti(L, -2, out_index++);
+        }
     }
-    lua_pushnil(L);
+    lua_setfield(L, -2, "SubTables");
+}
+
+static int lua_stats_treasure_table_get(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    StatsTreasureTableInfo info;
+    if (!stats_get_treasure_table_info(name, &info)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    push_treasure_table(L, &info);
     return 1;
 }
 
 static int lua_stats_treasure_table_get_legacy(lua_State *L) {
-    luaL_checkstring(L, 1);
-    static bool warned = false;
-    if (!warned) {
-        LOG_STATS_DEBUG("Ext.Stats.TreasureTable.GetLegacy(): Requires runtime offset discovery");
-        warned = true;
-    }
-    lua_pushnil(L);
-    return 1;
+    return lua_stats_treasure_table_get(L);
 }
 
 static int lua_stats_treasure_table_update(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     static bool warned = false;
     if (!warned) {
-        LOG_STATS_DEBUG("Ext.Stats.TreasureTable.Update(): Requires runtime offset discovery");
+        LOG_STATS_WARN("Ext.Stats.TreasureTable.Update(): read access is "
+                       "implemented, but mutation is disabled because the game "
+                       "allocator and Insert ABI are not safely mapped");
         warned = true;
     }
     return 0;
 }
 
+static void push_treasure_category_item(
+    lua_State *L, const StatsTreasureCategoryItemInfo *info) {
+    lua_newtable(L);
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)info->address);
+    lua_setfield(L, -2, "Address");
+    lua_pushstring(L, info->name);
+    lua_setfield(L, -2, "Name");
+    lua_pushinteger(L, info->priority);
+    lua_setfield(L, -2, "Priority");
+    lua_pushinteger(L, info->min_amount);
+    lua_setfield(L, -2, "MinAmount");
+    lua_pushinteger(L, info->max_amount);
+    lua_setfield(L, -2, "MaxAmount");
+    lua_pushinteger(L, info->act_part);
+    lua_setfield(L, -2, "ActPart");
+    lua_pushinteger(L, info->unique);
+    lua_setfield(L, -2, "Unique");
+    lua_pushinteger(L, info->min_level);
+    lua_setfield(L, -2, "MinLevel");
+    lua_pushinteger(L, info->max_level);
+    lua_setfield(L, -2, "MaxLevel");
+}
+
 static int lua_stats_treasure_category_get_legacy(lua_State *L) {
-    luaL_checkstring(L, 1);
-    static bool warned = false;
-    if (!warned) {
-        LOG_STATS_DEBUG("Ext.Stats.TreasureCategory.GetLegacy(): Requires runtime offset discovery");
-        warned = true;
+    const char *name = luaL_checkstring(L, 1);
+    StatsTreasureCategoryInfo info;
+    if (!stats_get_treasure_category_info(name, &info)) {
+        lua_pushnil(L);
+        return 1;
     }
-    lua_pushnil(L);
+
+    lua_newtable(L);
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)info.address);
+    lua_setfield(L, -2, "Address");
+    lua_pushstring(L, info.name);
+    lua_setfield(L, -2, "Category");
+
+    lua_newtable(L);
+    int out_index = 1;
+    for (uint32_t i = 0; i < info.item_count; i++) {
+        StatsTreasureCategoryItemInfo item;
+        if (stats_get_treasure_category_item_info(&info, i, &item)) {
+            push_treasure_category_item(L, &item);
+            lua_rawseti(L, -2, out_index++);
+        }
+    }
+    lua_setfield(L, -2, "Items");
     return 1;
 }
 
@@ -1175,7 +1325,9 @@ static int lua_stats_treasure_category_update(lua_State *L) {
     luaL_checktype(L, 2, LUA_TTABLE);
     static bool warned = false;
     if (!warned) {
-        LOG_STATS_DEBUG("Ext.Stats.TreasureCategory.Update(): Requires runtime offset discovery");
+        LOG_STATS_WARN("Ext.Stats.TreasureCategory.Update(): read access is "
+                       "implemented, but mutation is disabled because the game "
+                       "allocator and Insert ABI are not safely mapped");
         warned = true;
     }
     return 0;
@@ -1199,8 +1351,8 @@ static const luaL_Reg stats_functions[] = {
     {"EnumIndexToLabel", lua_stats_enum_index_to_label},
     {"EnumLabelToIndex", lua_stats_enum_label_to_index},
     {"GetModifierAttributes", lua_stats_get_modifier_attributes},
-    {"AddAttribute", lua_stats_add_attribute},  // Stub
-    {"AddEnumerationValue", lua_stats_add_enumeration_value},  // Stub
+    {"AddAttribute", lua_stats_add_attribute},  // Explicitly allocator-gated
+    {"AddEnumerationValue", lua_stats_add_enumeration_value},  // Explicitly allocator-gated
     {"Sync", lua_stats_sync},
     {"Create", lua_stats_create},
     {"IsReady", lua_stats_isready},
@@ -1216,6 +1368,7 @@ static const luaL_Reg stats_functions[] = {
     {"DumpPrototypeManagers", lua_stats_dump_prototype_managers},  // Debug: prototype manager status
     {"ProbePrototypeManager", lua_stats_probe_prototype_manager},  // Debug: probe a manager
     {"GetPrototypeManagerPtrs", lua_stats_get_prototype_manager_ptrs},  // Debug: raw manager pointers
+    {"GetStatsLoadedMods", lua_stats_get_stats_loaded_mods},
     {"GetStatsLoadedBefore", lua_stats_get_stats_loaded_before},
     {"ExecuteFunctors", lua_stats_execute_functors},
     {"ExecuteFunctor", lua_stats_execute_functor},

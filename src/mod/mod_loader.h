@@ -45,6 +45,12 @@ int mod_get_detected_count(void);
 const char *mod_get_detected_name(int index);
 
 /**
+ * Get the UUID of a detected mod by load-order index.
+ * @return Mod UUID (empty string if unavailable), or NULL if out of range
+ */
+const char *mod_get_detected_uuid(int index);
+
+/**
  * Get the number of SE mods (mods with Script Extender support).
  */
 int mod_get_se_count(void);

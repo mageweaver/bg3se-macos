@@ -151,6 +151,14 @@ static bool safe_write_i32(void *addr, int32_t value) {
 #define RPGSTATS_OFFSET_MODIFIER_LISTS      0x60   // CNamedElementManager<ModifierList> ModifierLists (verified)
 #define RPGSTATS_OFFSET_FIXEDSTRINGS        0x348  // TrackedCompactSet<FixedString> FixedStrings (Ghidra: StatsObject::GetFixedStringValue)
 
+// RPGStats-relative only: the Windows reference orders TreasureCategories and
+// TreasureTables immediately after Objects. Runtime probing established a 0x60
+// CNamedElementManager stride on macOS (+0x60 ModifierLists, +0xC0 Objects), so
+// the next two manager starts are +0x120 and +0x180. Accessors below validate
+// every buffer/capacity/size before traversal and fail closed if this changes.
+#define RPGSTATS_OFFSET_TREASURE_CATEGORIES 0x120
+#define RPGSTATS_OFFSET_TREASURE_TABLES     0x180
+
 // Array<T*> offsets within CNamedElementManager
 #define ARRAY_OFFSET_BUFFER       0x00
 #define ARRAY_OFFSET_CAPACITY     0x08
@@ -559,6 +567,41 @@ static void* get_modifier_value_lists_manager(void) {
     return (char*)rpgstats + RPGSTATS_OFFSET_MODIFIER_VALUE_LISTS;
 }
 
+static bool treasure_manager_is_sane(void *manager, const char *manager_name) {
+    void *buffer = NULL;
+    uint32_t capacity = 0;
+    uint32_t size = 0;
+
+    if (!manager ||
+        !safe_read_ptr((char*)manager + CNEM_OFFSET_VALUES_BUF, &buffer) ||
+        !safe_read_u32((char*)manager + CNEM_OFFSET_VALUES_CAP, &capacity) ||
+        !safe_read_u32((char*)manager + CNEM_OFFSET_VALUES_SIZE, &size) ||
+        size > capacity || capacity > 100000 || (size > 0 && !buffer)) {
+        static bool warned_categories = false;
+        static bool warned_tables = false;
+        bool *warned = strcmp(manager_name, "TreasureCategories") == 0
+            ? &warned_categories : &warned_tables;
+        if (!*warned) {
+            LOG_STATS_WARN("%s manager rejected at documented RPGStats-relative "
+                           "offset; treasure reads disabled for this layout",
+                           manager_name);
+            *warned = true;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+static void* get_treasure_manager(uintptr_t offset,
+                                  const char *manager_name) {
+    void *rpgstats = stats_manager_get_raw();
+    if (!rpgstats) return NULL;
+
+    void *manager = (char*)rpgstats + offset;
+    return treasure_manager_is_sane(manager, manager_name) ? manager : NULL;
+}
+
 // RPGEnumeration structure offsets (ARM64)
 // struct RPGEnumeration {
 //   FixedString Name;              // +0x00 (4 bytes, padded?)
@@ -876,6 +919,163 @@ static void* get_manager_element(void *manager, int index) {
     }
 
     return element;
+}
+
+// ============================================================================
+// Treasure Table / Category Reads
+// ============================================================================
+
+static void* find_treasure_element(void *manager, const char *name) {
+    if (!manager || !name) return NULL;
+
+    int count = get_manager_count(manager);
+    for (int i = 0; i < count; i++) {
+        void *element = get_manager_element(manager, i);
+        if (!element) continue;
+
+        const char *element_name = read_fixed_string(element);
+        if (element_name && strcmp(element_name, name) == 0) {
+            return element;
+        }
+    }
+
+    return NULL;
+}
+
+static bool read_pointer_array_count(void *array, uint32_t *out_count) {
+    void *buffer = NULL;
+    uint32_t capacity = 0;
+    uint32_t size = 0;
+    if (!array || !out_count ||
+        !safe_read_ptr(array, &buffer) ||
+        !safe_read_u32((char*)array + 0x08, &capacity) ||
+        !safe_read_u32((char*)array + 0x0C, &size) ||
+        size > capacity || capacity > 100000 || (size > 0 && !buffer)) {
+        return false;
+    }
+    *out_count = size;
+    return true;
+}
+
+bool stats_get_treasure_table_info(const char *name,
+                                   StatsTreasureTableInfo *out_info) {
+    if (!name || !out_info) return false;
+    memset(out_info, 0, sizeof(*out_info));
+
+    void *manager = get_treasure_manager(
+        RPGSTATS_OFFSET_TREASURE_TABLES, "TreasureTables");
+    void *table = find_treasure_element(manager, name);
+    if (!table) return false;
+
+    uint32_t subtable_count = 0;
+    uint8_t ignore_level_diff = 0;
+    uint8_t use_group_containers = 0;
+    uint8_t can_merge = 0;
+    if (!safe_read_i32((char*)table + 0x04, &out_info->min_level) ||
+        !safe_read_i32((char*)table + 0x08, &out_info->max_level) ||
+        !safe_read_u8((char*)table + 0x0C, &ignore_level_diff) ||
+        !safe_read_u8((char*)table + 0x0D, &use_group_containers) ||
+        !safe_read_u8((char*)table + 0x0E, &can_merge) ||
+        !read_pointer_array_count((char*)table + 0x10, &subtable_count)) {
+        return false;
+    }
+
+    out_info->address = table;
+    out_info->name = read_fixed_string(table);
+    out_info->ignore_level_diff = ignore_level_diff != 0;
+    out_info->use_treasure_group_containers = use_group_containers != 0;
+    out_info->can_merge = can_merge != 0;
+    out_info->subtable_count = subtable_count;
+    return out_info->name != NULL;
+}
+
+bool stats_get_treasure_subtable_info(
+    const StatsTreasureTableInfo *table, uint32_t index,
+    StatsTreasureSubTableInfo *out_info) {
+    if (!table || !table->address || !out_info ||
+        index >= table->subtable_count) {
+        return false;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+
+    void *buffer = NULL;
+    void *subtable = NULL;
+    if (!safe_read_ptr((char*)table->address + 0x10, &buffer) || !buffer ||
+        !safe_read_ptr((char*)buffer + index * sizeof(void*), &subtable) ||
+        !subtable ||
+        !safe_read_i32((char*)subtable + 0x20,
+                       &out_info->total_frequency) ||
+        !safe_read_i32((char*)subtable + 0x48, &out_info->total_count) ||
+        !safe_read_i32((char*)subtable + 0x4C, &out_info->start_level) ||
+        !safe_read_i32((char*)subtable + 0x50, &out_info->end_level)) {
+        return false;
+    }
+
+    out_info->address = subtable;
+    return true;
+}
+
+bool stats_get_treasure_category_info(
+    const char *name, StatsTreasureCategoryInfo *out_info) {
+    if (!name || !out_info) return false;
+    memset(out_info, 0, sizeof(*out_info));
+
+    void *manager = get_treasure_manager(
+        RPGSTATS_OFFSET_TREASURE_CATEGORIES, "TreasureCategories");
+    void *category = find_treasure_element(manager, name);
+    if (!category) return false;
+
+    void *begin = NULL;
+    void *end = NULL;
+    if (!safe_read_ptr((char*)category + 0x08, &begin) ||
+        !safe_read_ptr((char*)category + 0x10, &end)) {
+        return false;
+    }
+
+    uint32_t item_count = 0;
+    if (begin || end) {
+        uintptr_t begin_addr = (uintptr_t)begin;
+        uintptr_t end_addr = (uintptr_t)end;
+        if (!begin || !end || end_addr < begin_addr ||
+            (end_addr - begin_addr) % sizeof(void*) != 0 ||
+            (end_addr - begin_addr) / sizeof(void*) > 100000) {
+            return false;
+        }
+        item_count = (uint32_t)((end_addr - begin_addr) / sizeof(void*));
+    }
+
+    out_info->address = category;
+    out_info->name = read_fixed_string(category);
+    out_info->item_count = item_count;
+    return out_info->name != NULL;
+}
+
+bool stats_get_treasure_category_item_info(
+    const StatsTreasureCategoryInfo *category, uint32_t index,
+    StatsTreasureCategoryItemInfo *out_info) {
+    if (!category || !category->address || !out_info ||
+        index >= category->item_count) {
+        return false;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+
+    void *begin = NULL;
+    void *item = NULL;
+    if (!safe_read_ptr((char*)category->address + 0x08, &begin) || !begin ||
+        !safe_read_ptr((char*)begin + index * sizeof(void*), &item) || !item ||
+        !safe_read_i32((char*)item + 0x04, &out_info->priority) ||
+        !safe_read_i32((char*)item + 0x08, &out_info->min_amount) ||
+        !safe_read_i32((char*)item + 0x0C, &out_info->max_amount) ||
+        !safe_read_i32((char*)item + 0x10, &out_info->act_part) ||
+        !safe_read_i32((char*)item + 0x14, &out_info->unique) ||
+        !safe_read_i32((char*)item + 0x18, &out_info->min_level) ||
+        !safe_read_i32((char*)item + 0x1C, &out_info->max_level)) {
+        return false;
+    }
+
+    out_info->address = item;
+    out_info->name = read_fixed_string(item);
+    return out_info->name != NULL;
 }
 
 // ============================================================================

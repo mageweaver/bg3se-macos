@@ -123,6 +123,7 @@ TABLE_FIELD_SYMBOLS = {
     "fn_try_get_uuid_mapping": "ToHandleMappingComponent",
     "fn_storage_tryget":       "ecs::EntityStorageContainer::TryGet",
     "fn_spell_proto_init":     "eoc::SpellPrototype::Init",
+    "fn_status_proto_init":    "eoc::StatusPrototype::Init",
     "component_data_shift":    None,  # delta, not an address
     "osiris_interface_ptr":    None,  # no symbol — disasm-audited, see
                                       # test_osiris_interface_slot_matches_disasm

@@ -588,6 +588,11 @@ const char *mod_get_detected_name(int index) {
     return detected_mods[index];
 }
 
+const char *mod_get_detected_uuid(int index) {
+    if (index < 0 || index >= detected_mod_count) return NULL;
+    return detected_uuids[index];
+}
+
 int mod_get_se_count(void) {
     return se_mod_count;
 }

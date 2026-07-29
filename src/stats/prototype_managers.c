@@ -75,6 +75,11 @@
 // SpellPrototype struct is estimated ~300+ bytes
 #define SPELL_PROTOTYPE_SIZE     0x200  // 512 bytes (conservative estimate)
 
+// StatusPrototype contains scalar fields plus several DynamicArray members.
+// The Windows reference layout is below 0x100 bytes; reserve 0x200 so Init has
+// zero-initialized storage without depending on an unverified exact tail size.
+#define STATUS_PROTOTYPE_SIZE    0x200
+
 // ============================================================================
 // Memory Safety Helpers
 // ============================================================================
@@ -154,6 +159,11 @@ static bool safe_write_i32(void *addr, int32_t value) {
 // NOTE: FixedString const& means we pass a POINTER to the FixedString value
 typedef void (*SpellPrototypeInit_fn)(void* prototype, const uint32_t* spell_name_fs_ptr);
 
+// StatusPrototype::Init(StatusPrototype* this, FixedString const&, bool)
+typedef void (*StatusPrototypeInit_fn)(void* prototype,
+                                       const uint32_t* status_name_fs_ptr,
+                                       bool flags);
+
 // ============================================================================
 // Global State
 // ============================================================================
@@ -170,6 +180,7 @@ static void **g_pStatusPrototypeManagerPtr = NULL;
 
 // Cached function pointers (resolved during init)
 static SpellPrototypeInit_fn g_SpellPrototypeInit = NULL;
+static StatusPrototypeInit_fn g_StatusPrototypeInit = NULL;
 
 // ============================================================================
 // Helper: Calculate runtime address from Ghidra offset
@@ -253,8 +264,13 @@ bool prototype_managers_init(void *main_binary_base) {
         g_SpellPrototypeInit = (off && off->fn_spell_proto_init)
             ? (SpellPrototypeInit_fn)offset_table_fn(off->fn_spell_proto_init)
             : NULL;
+        g_StatusPrototypeInit = (off && off->fn_status_proto_init)
+            ? (StatusPrototypeInit_fn)offset_table_fn(off->fn_status_proto_init)
+            : NULL;
         LOG_STATS_DEBUG("[PrototypeManagers] SpellPrototype::Init at: %p",
                         (void*)g_SpellPrototypeInit);
+        LOG_STATS_DEBUG("[PrototypeManagers] StatusPrototype::Init at: %p",
+                        (void*)g_StatusPrototypeInit);
     }
 
     g_Initialized = true;
@@ -701,6 +717,17 @@ bool sync_spell_prototype(StatsObjectPtr obj, const char *name) {
 bool sync_status_prototype(StatsObjectPtr obj, const char *name) {
     if (!obj || !name) return false;
 
+    if (!g_StatusPrototypeInit) {
+        static bool warned = false;
+        if (!warned) {
+            LOG_STATS_WARN("[PrototypeManagers] StatusPrototype sync disabled: "
+                           "StatusPrototype::Init is unavailable for this game "
+                           "version");
+            warned = true;
+        }
+        return false;
+    }
+
     void *manager = get_status_prototype_manager();
     if (!manager) {
         LOG_STATS_DEBUG("[PrototypeManagers] sync_status_prototype: Manager not accessible for '%s'", name);
@@ -709,43 +736,61 @@ bool sync_status_prototype(StatsObjectPtr obj, const char *name) {
 
     LOG_STATS_DEBUG("[PrototypeManagers] sync_status_prototype: Manager found at %p for '%s'", manager, name);
 
-    // StatusPrototypeManager uses RefMap<FixedString, StatusPrototype> for lookup
-    // Singleton found via Ghidra at 0x1089bdb30
+    uint32_t fs_key = 0;
+    if (!safe_read_u32((char*)obj + STATS_OBJECT_OFFSET_NAME, &fs_key) ||
+        fs_key == 0 || fs_key == FS_NULL_INDEX) {
+        LOG_STATS_DEBUG("[PrototypeManagers]   Status stat '%s' has no valid "
+                        "FixedString key", name);
+        return false;
+    }
 
-    // TODO: Implementation requires:
-    // 1. Find or create StatusPrototype in manager's HashMap
-    // 2. Call StatusPrototype::Init(statsObject) or manually populate fields
-    // 3. StatusPrototype struct layout needs discovery
+    void *prototype = refmap_lookup(manager, fs_key);
+    if (prototype) {
+        g_StatusPrototypeInit(prototype, &fs_key, false);
+        LOG_STATS_DEBUG("[PrototypeManagers]   Refreshed StatusPrototype '%s' "
+                        "at %p", name, prototype);
+        return true;
+    }
 
-    LOG_STATS_DEBUG("[PrototypeManagers]   TODO: Insert prototype into manager's RefMap");
+    // Mirror spell sync for newly registered game stats: use zero-initialized
+    // storage, publish it in the manager RefMap, then let the game's Init fill
+    // the prototype from RPGStats.
+    void *new_prototype = calloc(1, STATUS_PROTOTYPE_SIZE);
+    if (!new_prototype) {
+        LOG_STATS_DEBUG("[PrototypeManagers]   Failed to allocate "
+                        "StatusPrototype for '%s'", name);
+        return false;
+    }
 
+    int32_t slot = refmap_insert(manager, fs_key, new_prototype);
+    if (slot < 0) {
+        free(new_prototype);
+        LOG_STATS_DEBUG("[PrototypeManagers]   Failed to insert "
+                        "StatusPrototype '%s'", name);
+        return false;
+    }
+
+    g_StatusPrototypeInit(new_prototype, &fs_key, false);
+    LOG_STATS_DEBUG("[PrototypeManagers]   Initialized StatusPrototype '%s' "
+                    "at RefMap slot %d", name, slot);
     return true;
 }
 
 bool sync_passive_prototype(StatsObjectPtr obj, const char *name) {
     if (!obj || !name) return false;
 
-    void *manager = get_passive_prototype_manager();
-    if (!manager) {
-        LOG_STATS_DEBUG("[PrototypeManagers] sync_passive_prototype: Manager not accessible for '%s'", name);
-        return false;
+    // 4.1.1.7209685 has constructor/Clean/destructor symbols for
+    // PassivePrototype, but no PassivePrototype::Init symbol (checked with both
+    // `nm -gU | c++filt` and the full local symbol table). Calling or inserting
+    // a half-initialized prototype would corrupt the manager, so fail honestly.
+    static bool warned = false;
+    if (!warned) {
+        LOG_STATS_WARN("[PrototypeManagers] PassivePrototype sync disabled: "
+                       "PassivePrototype::Init is absent from the "
+                       "4.1.1.7209685 symbol table");
+        warned = true;
     }
-
-    LOG_STATS_DEBUG("[PrototypeManagers] sync_passive_prototype: Manager found at %p for '%s'", manager, name);
-
-    // PassivePrototypeManager uses DEPRECATED_RefMapImpl for lookup
-    // From GetPassivePrototype decompilation:
-    //   uVar4 = ls::DEPRECATED_RefMapImpl<...eoc::PassivePrototype...>::operator[](...)
-
-    // TODO: Implementation requires:
-    // 1. Understand RefMap layout (likely: HashMap + Array)
-    // 2. Find the Insert or operator[] function
-    // 3. Either call PassivePrototype::Init or insert manually
-
-    LOG_STATS_DEBUG("[PrototypeManagers]   Passive manager uses RefMap<FixedString, PassivePrototype>");
-    LOG_STATS_DEBUG("[PrototypeManagers]   TODO: Insert prototype into manager's RefMap");
-
-    return true;
+    return false;
 }
 
 bool sync_interrupt_prototype(StatsObjectPtr obj, const char *name) {

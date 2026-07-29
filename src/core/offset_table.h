@@ -72,6 +72,7 @@ typedef struct {
     uintptr_t fn_try_get_uuid_mapping;  // ecs::legacy::Helper::TryGetSingleton<uuid::ToHandleMappingComponent>
     uintptr_t fn_storage_tryget;        // ecs::EntityStorageContainer::TryGet(EntityHandle)
     uintptr_t fn_spell_proto_init;      // eoc::SpellPrototype::Init(FixedString const&)
+    uintptr_t fn_status_proto_init;     // eoc::StatusPrototype::Init(FixedString const&, bool)
     intptr_t component_data_shift;      // signed delta added to compiled-in __DATA Ghidra
                                         // addresses (TypeIds, prototype-manager singletons,
                                         // TranslatedStringRepository::m_ptr) to reach THIS
