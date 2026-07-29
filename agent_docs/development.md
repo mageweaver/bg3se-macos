@@ -154,23 +154,23 @@ echo '!help' > ~/Library/Application\ Support/BG3SE/commands.txt
 | `!typeids` | Show TypeId resolution status |
 | `!probe_osidef [N]` | Hex dump OsiFunctionDef layout for N functions (default 5) |
 | `!test [filter]` | Run Tier 1 regression tests (109 tests, always works). Optional filter: `!test Stats`, `!test Parity` |
-| `!test_ingame [filter]` | Run Tier 2 tests (67 tests, needs loaded save). Tests Entity, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity |
+| `!test_ingame [filter]` | Run Tier 2 tests (74 tests, needs loaded save). Tests Entity, Stats, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity |
 | `!identity` | JSON identity/readiness handshake: pid, version, game_state, session_init, stats_ready, dylib image. Verify before trusting live test results |
 
-### Test Suite (385 tests)
+### Test Suite (429 tests)
 
-Four tiers, 385 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
+Four tiers, 429 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
 
 | Tier | Command | Tests | Requires |
 |------|---------|-------|----------|
 | 0 | `./build/bin/bg3se_test_tier0` | 55 | None (CI-safe) |
-| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 154 | Python 3.12 (CI-safe) |
+| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 191 | Python 3.12 (CI-safe) |
 | 1 | `!test` | 109 | Console only (no save needed) |
-| 2 | `!test_ingame` | 67 | Loaded save game |
+| 2 | `!test_ingame` | 74 | Loaded save game |
 
-**Categories (Tier 1):** Stats (12), Entity (8), Events (7), Timer (6), Types (5), Vars (3), MCM (4), Utils (4), Debug (5), Ext.Mod (5), Ext.Level (2), Ext.Audio (2), Ext.Net (4), Context (3), StaticData (6), Template (3), Resource (3), Console (1), Localization (1), IMGUI (1), **Parity (8)**
+**Categories (Tier 1):** Core (6), Json (4), Helpers (5), Stats (14), Timer (8), Events (5), Debug (10), Types (6), Enums (3), IO (3), Memory (3), Mod (4), Vars (2), Osi (4), MCM (10), **Parity (22)**
 
-**Categories (Tier 2):** Entity (10), Level (3), Audio (3), Net (3), IMGUI (3), StaticData (7), Osi dispatch (8), EntityEvents (3), **Parity (14)**
+**Categories (Tier 2):** Entity (8), Stats (2), Level (5), Audio (4), Net (4), IMGUI (2), StaticData (2), Osi dispatch (8), Osi edge cases (5), EntityEvents (5), **Parity (29)**
 
 **Filtering:** `!test Stats` runs only tests with "Stats" in the name. Same for `!test_ingame Entity`.
 

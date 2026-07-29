@@ -1,63 +1,44 @@
 {
-  "task": "Goal 2.2 (Wave 2): re-enable functor hooks on 4.1.1.7209685 and wire damage events",
+  "task": "Goal 2.4 (Wave 2): register staged tests and convert presence checks to execution assertions",
   "status": "done",
   "started_at": "2026-07-29T00:00:00-04:00",
-  "completed_at": "2026-07-29T14:30:00-04:00",
+  "completed_at": "2026-07-29T18:10:18-04:00",
   "features": [
     {
-      "name": "7209685 functor offsets and ABI typedefs",
+      "name": "Reconcile staged tests with existing Lua test idioms",
       "status": "completed",
       "files": [
-        "src/stats/functor_types.h",
-        "src/core/offset_table.c",
-        "tools/offset_manifest.json"
+        "src/lua/lua_ext.c",
+        "docs/e2e-review/wave2-goal21-proposed-tests.lua",
+        "docs/e2e-review/wave2-goal23-proposed-tests.lua"
       ]
     },
     {
-      "name": "Two-parameter functor wrappers and EntityWorld interrupt wrapper",
+      "name": "Register Wave 2 execution-assertion tests",
       "status": "completed",
       "files": [
-        "src/stats/functor_hooks.c"
+        "src/lua/lua_ext.c"
       ]
     },
     {
-      "name": "BeforeDealDamage and DealDamage event wiring",
+      "name": "Update documented test counts and remove staged proposals",
       "status": "completed",
       "files": [
-        "src/stats/functor_hooks.c",
-        "src/lua/lua_events.c",
-        "src/lua/lua_events.h"
+        "docs/testing.md",
+        "agent_docs/development.md"
       ]
     },
     {
-      "name": "ExecuteFunctors safety assessment",
-      "status": "completed",
-      "files": [
-        "src/lua/lua_stats.c"
-      ]
-    },
-    {
-      "name": "Local-symbol offset audit and functor recovery documentation",
-      "status": "completed",
-      "files": [
-        "tests/harness/test_offset_audit.py",
-        "ghidra/offsets/FUNCTORS.md"
-      ]
-    },
-    {
-      "name": "Build and requested test suites",
+      "name": "Run acceptance verification",
       "status": "completed",
       "files": []
     }
   ],
   "verification": {
     "build": true,
-    "tests": true,
-    "lint": true,
     "clean_build": "cmake --build build --clean-first",
     "tier0": "55/55 passed",
     "harness": "191 passed",
-    "offset_manifest": "24 fields + 18 remap entries match",
     "diff_check": true
   }
 }

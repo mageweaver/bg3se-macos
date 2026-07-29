@@ -13,7 +13,7 @@ Comprehensive reference for the BG3SE-macOS test suite.
   - [Core](#core-6-tests)
   - [Json](#json-4-tests)
   - [Helpers](#helpers-5-tests)
-  - [Stats](#stats-12-tests)
+  - [Stats](#stats-14-tier-1-tests)
   - [Timer](#timer-8-tests)
   - [Events](#events-5-tests)
   - [Debug](#debug-10-tests)
@@ -25,7 +25,7 @@ Comprehensive reference for the BG3SE-macOS test suite.
   - [Vars](#vars-2-tests)
   - [Osi (Tier 1)](#osi-tier-1-4-tests)
   - [MCM](#mcm-10-tests)
-  - [Entity](#entity-5-tests)
+  - [Entity](#entity-8-tests)
   - [Level](#level-5-tests)
   - [Audio](#audio-4-tests)
   - [Net](#net-4-tests)
@@ -51,16 +51,16 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 229 (82 offline + 147 in-game Lua) |
-| **Tier 0 (C unit)** | 41 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 41 — Python harness, no game, CI-safe |
-| **Tier 1 (General)** | 93 — Lua, run anytime, no save needed (+8 parity) |
-| **Tier 2 (In-Game)** | 54 — Lua, require loaded save (+14 parity) |
+| **Total tests** | 429 (246 offline + 183 Lua) |
+| **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
+| **Tier H (pytest)** | 191 — Python harness, no game, CI-safe |
+| **Tier 1 (General)** | 109 — Lua, run anytime, no save needed (22 parity) |
+| **Tier 2 (In-Game)** | 74 — Lua, require loaded save (29 parity) |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
 
-41 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
+55 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
 Tests memory-safety-critical C code without any game process.
 
 ```bash
@@ -73,10 +73,11 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 | pattern_scan | 10 | parse_pattern (null, empty, simple, wildcard), find_pattern (exact, wildcard, boundaries) |
 | osiris_handles | 8 | encode/decode roundtrips, low/high type funcIndex, part4 bit 31 |
 | entity_events | 6 | MAKE_SUB_ID/SUB_ID_TYPE/SUB_ID_INDEX macro roundtrips, all types, max index |
+| mod_paths | 14 | pak stem parsing and Public directory path matching |
 
 ### Tier H: Python Harness Tests
 
-41 tests in `tests/harness/`. Run with pytest, no game dependency.
+191 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -84,14 +85,19 @@ PYTHONPATH=tools pytest tests/harness/ -v
 
 | Module | Count | What it Tests |
 |--------|-------|---------------|
-| test_test_runner | 6 | parse_test_output (SLOW token, missing summary, empty, unrelated lines), run_tests error handling |
-| test_launch | 6 | wait_for_socket lifecycle (process exit, timeout, dismiss ordering, menu stall watchdog) |
-| test_cli | 8 | headless hide ordering, build pipeline failures, test process exit, boot retry |
-| test_mod | 7 | name→UUID resolution (exact, substring, case-insensitive, ambiguous, not found), mod enable/list |
-| test_savegames | 2 | restore backup behavior (with/without existing save) |
+| test_cli | 11 | headless lifecycle, build failures, memory-pressure flags |
 | test_compat | 3 | log timestamp scoping (all, filtered, future) |
+| test_crashlog | 3 | IPS parsing, crash classification, enabled-mod extraction |
+| test_game_path | 10 | Steam library parsing and BG3 app bundle resolution |
 | test_headless_graphics | 4 | windowed mode graphics prep and restore |
+| test_launch | 6 | wait_for_socket lifecycle and menu-stall watchdog |
+| test_launch_lifecycle | 51 | process adoption, identity, graphics, Steam, and memory gates |
 | test_menu | 5 | menu detection, click delivery, coordinate geometry |
+| test_mod | 16 | UUID resolution, pak metadata, registry reconciliation, preflight |
+| test_monitor | 8 | process tracking, atomic health writes, graphics restoration |
+| test_offset_audit | 64 | symbol manifest, offset-table, remap, and functor invariants |
+| test_savegames | 4 | restore backups and save-mod marker classification |
+| test_test_runner | 6 | output parsing and socket error handling |
 
 ### Tier 1+2: Lua In-Game Tests
 
@@ -120,14 +126,14 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 1: General Tests
 
-85 tests that run without a loaded save. Test API registration, namespace existence, basic functionality.
+109 tests that run without a loaded save. Test API registration and behavior, including 22 parity tests.
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
 | Core | 6 | Print, GetVersion, IsServer, IsClient, GetContext, RegisterConsoleCommand |
 | Json | 4 | Parse, ParseArray, Roundtrip, ParseInvalid (returns nil) |
 | Helpers | 5 | _P, _H, _D, _DS, _PE global helpers |
-| Stats | 12 | Get, GetName, GetProperty, GetNonexistent, GetAll, GetAllFiltered, IsReady, Sync, EnumIndexToLabel, EnumLabelToIndex, CreateSync, SetRawAttribute |
+| Stats | 14 | Core reads/writes plus Goal 2.3 honest surface and module load order |
 | Timer | 8 | WaitFor, Cancel, PauseResume, MonotonicTime, MicrosecTime, GameTime, DeltaTime, Ticks |
 | Events | 5 | TickSubscribe, TickUnsubscribe, SessionLoaded, OnNextTick, SubscribeOptions |
 | Debug | 10 | ReadPtr, ReadU32, ReadI32, ReadFloat, IsValidPointer, ClassifyNull, ClassifySmallInt, Time, Timestamp, SessionAge |
@@ -139,14 +145,15 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 | Vars | 2 | Exists, ReloadPersistentVars |
 | Osi | 4 | Exists, SafeCall, MetatableExists, IndexReturnsFunction |
 | MCM | 10 | ModEventsExists, SubscribeExists, ThrowExists, UnsubscribeExists, EventRoundtrip, RegisterNetListener, NetCreateChannel, PostMessageToServer, OsirisRegisterListener, OsirisNewCall |
+| Parity | 22 | Behavioral compatibility assertions, including functor event subscription lifecycles |
 
 ### Tier 2: In-Game Tests
 
-40 tests requiring a loaded save (entity access, Osiris queries, physics).
+74 tests requiring a loaded save (entity access, Osiris queries, physics, and 29 parity tests).
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
-| Entity | 5 | ModuleExists, Get, GetByHandle, HostChar, ComponentAccess |
+| Entity | 8 | Core entity access plus component write round-trip/refusal guards |
 | Level | 5 | IsReady, GetCurrentLevel, GetPhysicsScene, GetAiGrid, GetHeightsAt |
 | Audio | 4 | IsReady, GetSoundObjectId, PostEvent, SetState |
 | Net | 4 | IsReady, IsHost, Version, PostMessageToServer |
@@ -155,6 +162,8 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 | Osi Dispatch | 8 | GetHostCharacter, MetatableIndex, IsInCombat, NonexistentSafe, CacheConsistency, GetLevel, GetHitpoints, IsAlive |
 | Osi Edge Cases | 5 | WrongArgCount, WrongArgType, NilArg, TooManyArgs (regression), LongStringArg |
 | Entity Events | 5 | SubscribeExists, OnCreateExists, OnDestroyExists, SubscribeReturnsHandle, UnsubscribeWorks |
+| Stats | 2 | Goal 2.3 treasure reads and prototype sync honesty |
+| Parity | 29 | Loaded-save compatibility, including damage event subscription lifecycles |
 
 ---
 
@@ -182,7 +191,7 @@ Global debug helper functions.
 - `Helpers.Dump` / `Helpers.DumpShallow` — `_D()` / `_DS()` on tables
 - `Helpers.PrintError` — `_PE()` logs error
 
-### Stats (12 tests)
+### Stats (14 Tier 1 tests)
 RPGStats system access via `Ext.Stats`.
 - `Stats.Get` — Fetch "WPN_Longsword" stat object
 - `Stats.GetName` — Stat name matches input
@@ -194,7 +203,11 @@ RPGStats system access via `Ext.Stats`.
 - `Stats.Sync` — Sync function exists and is callable
 - `Stats.EnumIndexToLabel` / `EnumLabelToIndex` — Enum conversion
 - `Stats.CreateSync` — Create stat + Sync + verify
-- `Stats.SetRawAttribute` — Stat object access works
+- `Stats.SetRawAttribute` — Shadow-stat write/read/restore round-trip
+- `Stats.Goal23.HonestSurface` — Calls gated mutations and missing treasure lookups, asserting honest results
+- `Stats.Goal23.ModuleLoadOrder` — Executes `GetStatsLoadedMods` / `GetStatsLoadedBefore` and checks prefix semantics
+
+Tier 2 adds `Stats.Goal23.TreasureReads` and `Stats.Goal23.PrototypeSyncHonesty`.
 
 ### Timer (8 tests)
 Timer system via `Ext.Timer`.
@@ -265,12 +278,15 @@ Mod Configuration Menu compatibility (Issue #68).
 - `MCM.PostMessageToServer` — Network function
 - `MCM.OsirisRegisterListener` / `OsirisNewCall` — Osiris listener API
 
-### Entity (5 tests)
+### Entity (8 tests)
 Entity system with loaded save.
 - `Entity.ModuleExists` — Ext.Entity namespace
 - `Entity.Get` / `GetByHandle` — Entity lookup
 - `Entity.HostChar` — `Osi.GetHostCharacter()` → entity (validates Issue #66)
 - `Entity.ComponentAccess` — Health component readable
+- `Entity.ComponentWrite.HealthHpRoundTrip` — Write/read/restore verified Health HP
+- `Entity.ComponentWrite.FixedStringRefused` — FixedString write errors without changing memory
+- `Entity.ComponentWrite.OneFrameRefused` — One-frame component write is rejected
 
 ### Level (5 tests)
 Level/physics access.
@@ -324,9 +340,9 @@ Entity event subscription system.
 ### Console Commands
 
 ```lua
-!test                    -- Run all 85 Tier 1 tests
+!test                    -- Run all 109 Tier 1 tests
 !test Stats              -- Filter: only Stats.* tests
-!test_ingame             -- Run all 40 Tier 2 tests (needs save)
+!test_ingame             -- Run all 74 Tier 2 tests (needs save)
 !test_ingame Osi         -- Filter: only Osi.* Tier 2 tests
 !test_ingame EntityEvents -- Filter: Entity Events tests
 ```
@@ -356,14 +372,14 @@ echo '!test' | nc -U /tmp/bg3se.sock > /tmp/test_results.txt 2>&1
 ## Test Output Format
 
 ```
-=== BG3SE General Tests (85 tests) ===
+=== BG3SE General Tests (109 tests) ===
 
 --- Stats ---
-  PASS: Stats.Get (175ms) [16/85]
-  PASS: Stats.GetAllFiltered (4276ms) [SLOW 4276ms] [21/85]
-  FAIL: Stats.Example (0ms) - assertion failed: expected X [22/85]
+  PASS: Stats.Get (175ms) [16/109]
+  PASS: Stats.GetAllFiltered (4276ms) [SLOW 4276ms] [21/109]
+  FAIL: Stats.Example (0ms) - assertion failed: expected X [22/109]
 
-=== Results: 84/85 passed, 1 failed, 0 skipped (9443ms) ===
+=== Results: 108/109 passed, 1 failed, 0 skipped (9443ms) ===
 Failures:
   * Stats.Example: assertion failed: expected X
 SOME TESTS FAILED

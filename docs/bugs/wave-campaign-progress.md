@@ -194,3 +194,17 @@ Offline gate after resolution: 41 C + 144 pytest (was 130), build clean.
 Deferred (documented, not ship-blocking): functor hooks disabled on 7209685 until
 Ghidra re-derivation; PassivePrototypeManager unverified (no nm symbol); deeper
 integration-level monitor tests.
+
+---
+
+## 2026-07-29 — Wave 2 (Parity Closure A) in flight: Goals 2.1 + 2.3 landed, functor addresses recovered without Ghidra GUI
+
+**Goal 2.1 (component property writes) — committed `a0bc648`.** `component_property_write()` implemented for INT32/UINT8/BOOL/FLOAT + whole-table INT32_ARRAY via `safe_memory_write`; refusals (FixedString, pointer-backed/dynamic arrays, OneFrame/Request transients, readOnly, unknown layouts, OOB fields, unsized generated layouts) raise `luaL_error` matching Norbyte's proxy UX. Codex builder (gpt-5.6-sol), offline gate green.
+
+**Goal 2.3 (Ext.Stats honesty) — committed `4bec7ae`.** Real mod load order (new `mod_get_detected_uuid`), status prototype sync via nm-derived `eoc::StatusPrototype::Init` (offset-table row: 7209685 `0x01ff7150`, 6995620 fail-closed 0, audit entry added), passive sync un-lied (gated WARN + false), TreasureTable/Category reads through guarded RPGStats-relative managers (+0x120 categories, +0x180 tables), AddAttribute/AddEnumerationValue deferred honestly. Codex builder, offline gate green.
+
+**Goal 2.2 recon — 12/12 functor addresses recovered on 7209685, no Ghidra GUI needed.** Method: (1) headless `analyzeHeadless -readOnly -postScript ghidra/scripts/dump_functor_bytes.py` against the archived May-16 project (`~/BaldursGate3.gpr`, old-build bytes preserved in the .rep) dumped 512 bytes per target; (2) `scripts/re/sig_scan_functors.py` masked-signature scan (ADRP/ADR/B/BL/B.cond/CBZ/TBZ/LDR-lit + post-ADRP ADD/LDR imm12 masked) over the new binary's `__text`. All 12 unique; 10 functor-region targets independently converged on slide `-0x1009c`, DealDamage region on `-0x10ac0`.
+
+**Ground-truth validation:** 7209685 keeps LOCAL symbols (`nm` without `-gU`) — every scan hit matches a demangled symbol exactly. Confirmed ABI: the 8 non-Interrupt `esv::functor::ExecuteStatsFunctors` wrappers are free 2-param functions `(StatsFunctorList const*, <Ctx>ContextData&)`; **Interrupt gained a leading `ecs::EntityWorld&`** (3 params) exactly as the Phase-5 researcher warned; `ProcessDealDamageFunctors` @ `0x10537e8b4` (exact name). The old `DealDamageFunctor::ApplyDamage 0x10538e8fc` label maps into `(anonymous)::ProcessSpellFunctors` @ `0x10537de24` on this build — old FUNCTORS.md attribution was wrong; not a hook target.
+
+**In flight:** Goal 2.2 codex builder (functor_types.h/functor_hooks.c ABI rewrite, FUNCTOR_ADDRS_VERIFIED_BUILD flip, BeforeDealDamage/DealDamage wiring, audit + FUNCTORS.md). Then Goal 2.4 (register staged tests from docs/e2e-review/wave2-goal2{1,3}-proposed-tests.lua + presence→execution conversions), then live validation on a combat save.

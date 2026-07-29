@@ -1486,7 +1486,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(1, 'Helpers.DumpShallow', function() _DS({a=1}) end)\n"
         "BG3SE_AddTest(1, 'Helpers.PrintError', function() _PE('test error') end)\n";
 
-    // Tier 1: Stats (10 tests)
+    // Tier 1: Stats (12 tests)
     static const char *console_cmd_test_stats =
         "BG3SE_AddTest(1, 'Stats.Get', function()\n"
         "  local s = Ext.Stats.Get('WPN_Longsword')\n"
@@ -1544,10 +1544,59 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  end\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Stats.SetRawAttribute', function()\n"
-        "  -- SetRawAttribute is on stat objects, not Ext.Stats namespace\n"
-        "  local s = Ext.Stats.Get('WPN_Longsword')\n"
-        "  if s then\n"
-        "    assert(s.SetRawAttribute ~= nil or type(s) == 'table', 'Stat object should exist')\n"
+        "  local name = 'BG3SE_TestRawAttribute'\n"
+        "  local s = Ext.Stats.Get(name) or\n"
+        "    Ext.Stats.Create(name, 'Weapon', 'WPN_Longsword')\n"
+        "  AssertNotNil(s, 'shadow Weapon stat')\n"
+        "  local original = s.Damage\n"
+        "  AssertNotNil(original, 'shadow Damage before write')\n"
+        "  local candidate = original == '1d4' and '1d6' or '1d4'\n"
+        "  AssertEquals(s:SetRawAttribute('Damage', candidate), true,\n"
+        "    'SetRawAttribute result')\n"
+        "  AssertEquals(s.Damage, candidate, 'Damage write round-trip')\n"
+        "  AssertEquals(s:SetRawAttribute('Damage', original), true,\n"
+        "    'SetRawAttribute restore result')\n"
+        "  AssertEquals(s.Damage, original, 'Damage restore round-trip')\n"
+        "end)\n";
+
+    // Tier 1: Wave 2 Stats honesty (2 tests)
+    static const char *console_cmd_test_wave2_stats =
+        "BG3SE_AddTest(1, 'Stats.Goal23.HonestSurface', function()\n"
+        "  AssertType(Ext.Stats.GetStatsLoadedMods, 'function', 'GetStatsLoadedMods')\n"
+        "  AssertType(Ext.Stats.GetStatsLoadedBefore, 'function', 'GetStatsLoadedBefore')\n"
+        "  AssertType(Ext.Stats.TreasureTable.Get, 'function', 'TreasureTable.Get')\n"
+        "  AssertType(Ext.Stats.TreasureTable.GetLegacy, 'function', 'TreasureTable.GetLegacy')\n"
+        "  AssertType(Ext.Stats.TreasureCategory.GetLegacy, 'function',\n"
+        "    'TreasureCategory.GetLegacy')\n"
+        "  AssertEquals(Ext.Stats.AddAttribute('Weapon',\n"
+        "    'BG3SE_Goal23_MustNotExist', 'FixedString'), false,\n"
+        "    'allocator-gated AddAttribute')\n"
+        "  assert(Ext.Stats.AddEnumerationValue('DamageType',\n"
+        "    'BG3SE_Goal23_MustNotExist') == nil,\n"
+        "    'allocator-gated AddEnumerationValue must return nil')\n"
+        "  assert(Ext.Stats.TreasureTable.Get(\n"
+        "    'BG3SE_Goal23_MissingTreasureTable') == nil,\n"
+        "    'unknown treasure table must return nil')\n"
+        "  assert(Ext.Stats.TreasureCategory.GetLegacy(\n"
+        "    'BG3SE_Goal23_MissingTreasureCategory') == nil,\n"
+        "    'unknown treasure category must return nil')\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Stats.Goal23.ModuleLoadOrder', function()\n"
+        "  local loaded = Ext.Stats.GetStatsLoadedMods()\n"
+        "  AssertType(loaded, 'table', 'GetStatsLoadedMods result')\n"
+        "  assert(#loaded > 0, 'expected at least the base module in load order')\n"
+        "  local base = Ext.Mod.GetBaseMod()\n"
+        "  AssertNotNil(base, 'base module')\n"
+        "  local baseUuid = base.UUID or (base.Info and base.Info.ModuleUUID)\n"
+        "  AssertType(baseUuid, 'string', 'base module UUID')\n"
+        "  local throughBase = Ext.Stats.GetStatsLoadedBefore(baseUuid)\n"
+        "  AssertType(throughBase, 'table', 'GetStatsLoadedBefore result')\n"
+        "  assert(#throughBase > 0, 'base-module boundary should be inclusive')\n"
+        "  AssertEquals(throughBase[#throughBase], baseUuid,\n"
+        "    'load-order prefix boundary')\n"
+        "  for i, moduleId in ipairs(throughBase) do\n"
+        "    AssertEquals(moduleId, loaded[i],\n"
+        "      'GetStatsLoadedBefore prefix entry ' .. i)\n"
         "  end\n"
         "end)\n";
 
@@ -2031,6 +2080,100 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(ok ~= false, 'Unsubscribe should succeed')\n"
         "end)\n";
 
+    // Tier 2: Wave 2 component property writes (3 tests)
+    static const char *console_cmd_test_wave2_components =
+        "BG3SE_AddTest(2, 'Entity.ComponentWrite.HealthHpRoundTrip', function()\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local health = entity.Health\n"
+        "  AssertNotNil(health, 'host Health component')\n"
+        "  local original = health.Hp\n"
+        "  AssertType(original, 'number', 'original Health.Hp')\n"
+        "  local candidate = original > 1 and original - 1 or original + 1\n"
+        "  local writeOk, writeErr = pcall(function()\n"
+        "    health.Hp = candidate\n"
+        "  end)\n"
+        "  local observed = health.Hp\n"
+        "  local restoreOk, restoreErr = pcall(function()\n"
+        "    health.Hp = original\n"
+        "  end)\n"
+        "  assert(restoreOk, 'Health.Hp restore failed: ' .. tostring(restoreErr))\n"
+        "  assert(writeOk, 'Health.Hp write failed: ' .. tostring(writeErr))\n"
+        "  AssertEquals(observed, candidate, 'Health.Hp write round-trip')\n"
+        "  AssertEquals(health.Hp, original, 'Health.Hp restore round-trip')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Entity.ComponentWrite.FixedStringRefused', function()\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local originalTemplate = entity['esv::OriginalTemplateComponent']\n"
+        "  AssertNotNil(originalTemplate, 'esv::OriginalTemplateComponent fixture')\n"
+        "  local before = originalTemplate.TemplateId\n"
+        "  local ok, err = pcall(function()\n"
+        "    originalTemplate.TemplateId = 'Goal21_MustNotIntern'\n"
+        "  end)\n"
+        "  assert(not ok, 'FixedString write should raise a Lua error')\n"
+        "  AssertType(err, 'string', 'FixedString refusal error')\n"
+        "  AssertEquals(originalTemplate.TemplateId, before,\n"
+        "    'refused FixedString write changed game memory')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Entity.ComponentWrite.OneFrameRefused', function()\n"
+        "  -- OneFrame components are transient (cleared each tick); the fixture\n"
+        "  -- only exists during the frame after its trigger, so its absence is\n"
+        "  -- the normal case, not a failure. Exercise the refusal path when the\n"
+        "  -- fixture happens to be live; otherwise verify absence and pass.\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local oneFrame = entity['esv::SaveCompletedOneFrameComponent']\n"
+        "  if oneFrame == nil then\n"
+        "    Ext.Print('    (OneFrame fixture absent as expected; refusal path not exercised)')\n"
+        "    return\n"
+        "  end\n"
+        "  local ok, err = pcall(function()\n"
+        "    oneFrame.Value = not oneFrame.Value\n"
+        "  end)\n"
+        "  assert(not ok, 'OneFrame component write should raise a Lua error')\n"
+        "  AssertType(err, 'string', 'OneFrame refusal error')\n"
+        "end)\n";
+
+    // Tier 2: Wave 2 Stats read/sync behavior (2 tests)
+    static const char *console_cmd_test_wave2_stats_ingame =
+        "BG3SE_AddTest(2, 'Stats.Goal23.TreasureReads', function()\n"
+        "  local tableInfo = Ext.Stats.TreasureTable.Get('Gold_Meager')\n"
+        "  AssertNotNil(tableInfo, 'Gold_Meager treasure table')\n"
+        "  AssertEquals(tableInfo.Name, 'Gold_Meager', 'treasure table name')\n"
+        "  AssertType(tableInfo.Address, 'number', 'treasure table address')\n"
+        "  AssertType(tableInfo.MinLevel, 'number', 'treasure table MinLevel')\n"
+        "  AssertType(tableInfo.MaxLevel, 'number', 'treasure table MaxLevel')\n"
+        "  AssertType(tableInfo.SubTables, 'table', 'treasure subtables')\n"
+        "  assert(#tableInfo.SubTables > 0, 'Gold_Meager should have a subtable')\n"
+        "  AssertType(tableInfo.SubTables[1].TotalCount, 'number',\n"
+        "    'treasure subtable TotalCount')\n"
+        "  local legacy = Ext.Stats.TreasureTable.GetLegacy('Gold_Meager')\n"
+        "  AssertNotNil(legacy, 'legacy Gold_Meager read')\n"
+        "  AssertEquals(legacy.Address, tableInfo.Address,\n"
+        "    'Get and GetLegacy manager entry')\n"
+        "  local category = Ext.Stats.TreasureCategory.GetLegacy('I_OBJ_GoldCoin')\n"
+        "  AssertNotNil(category, 'I_OBJ_GoldCoin treasure category')\n"
+        "  AssertEquals(category.Category, 'I_OBJ_GoldCoin',\n"
+        "    'treasure category name')\n"
+        "  AssertType(category.Address, 'number', 'treasure category address')\n"
+        "  AssertType(category.Items, 'table', 'treasure category items')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Stats.Goal23.PrototypeSyncHonesty', function()\n"
+        "  local status = Ext.Stats.Get('BURNING')\n"
+        "  AssertNotNil(status, 'BURNING StatusData fixture')\n"
+        "  AssertEquals(Ext.Stats.Sync('BURNING'), true,\n"
+        "    'status prototype sync result')\n"
+        "  AssertNotNil(Ext.Stats.GetCachedStatus('BURNING'),\n"
+        "    'status sync cached prototype')\n"
+        "  local name = 'BG3SE_Goal23_GatedPassive'\n"
+        "  local passive = Ext.Stats.Get(name) or\n"
+        "    Ext.Stats.Create(name, 'PassiveData')\n"
+        "  AssertNotNil(passive, 'temporary PassiveData stat')\n"
+        "  AssertEquals(Ext.Stats.Sync(name), false,\n"
+        "    'allocator-gated PassivePrototype sync')\n"
+        "end)\n";
+
     // Parity behavioral tests (Tier 2 — test actual behavior with loaded save)
     static const char *console_cmd_test_parity_ingame =
         "BG3SE_AddTest(2, 'Parity.Entity.HostRoundtrip', function()\n"
@@ -2336,21 +2479,28 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(r ~= nil, 'CreateHandle should return a handle')\n"
         "end)\n";
 
-    // Parity stubs part 4: Ext.Events functor/damage hooks (tier 1 existence + tier 2 fire)
+    // Parity part 4: Ext.Events functor/damage subscription lifecycles
     static const char *console_cmd_test_parity_events =
         "BG3SE_AddTest(1, 'Parity.Events.ExecuteFunctor', function()\n"
         "  AssertNotNil(Ext.Events.ExecuteFunctor, 'ExecuteFunctor event object should exist')\n"
-        "  local ok, id = pcall(Ext.Events.ExecuteFunctor.Subscribe, Ext.Events.ExecuteFunctor, function() end)\n"
-        "  assert(ok and id ~= nil, 'ExecuteFunctor subscribe should succeed')\n"
-        "  if id then Ext.Events.ExecuteFunctor:Unsubscribe(id) end\n"
+        "  local id = Ext.Events.ExecuteFunctor:Subscribe(function() end)\n"
+        "  AssertType(id, 'number', 'ExecuteFunctor subscription handle')\n"
+        "  AssertEquals(Ext.Events.ExecuteFunctor:Unsubscribe(id), true,\n"
+        "    'ExecuteFunctor unsubscribe result')\n"
         "end)\n"
-        "BG3SE_AddTest(1, 'Parity.Events.BeforeDealDamage', function()\n"
-        "  -- BeforeDealDamage not yet implemented (I10 pending)\n"
+        "BG3SE_AddTest(2, 'Parity.Events.BeforeDealDamage', function()\n"
         "  AssertNotNil(Ext.Events.BeforeDealDamage, 'BeforeDealDamage event object should exist')\n"
+        "  local id = Ext.Events.BeforeDealDamage:Subscribe(function() end)\n"
+        "  AssertType(id, 'number', 'BeforeDealDamage subscription handle')\n"
+        "  AssertEquals(Ext.Events.BeforeDealDamage:Unsubscribe(id), true,\n"
+        "    'BeforeDealDamage unsubscribe result')\n"
         "end)\n"
-        "BG3SE_AddTest(1, 'Parity.Events.DealDamage', function()\n"
-        "  -- DealDamage not yet implemented (I10 pending)\n"
+        "BG3SE_AddTest(2, 'Parity.Events.DealDamage', function()\n"
         "  AssertNotNil(Ext.Events.DealDamage, 'DealDamage event object should exist')\n"
+        "  local id = Ext.Events.DealDamage:Subscribe(function() end)\n"
+        "  AssertType(id, 'number', 'DealDamage subscription handle')\n"
+        "  AssertEquals(Ext.Events.DealDamage:Unsubscribe(id), true,\n"
+        "    'DealDamage unsubscribe result')\n"
         "end)\n";
 
     // Parity part 5: behavioral tests (Tier 1 — test actual behavior, not just presence)
@@ -2366,16 +2516,14 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Events.FunctorSubscribePair', function()\n"
         "  local handler = function() end\n"
-        "  local ok1, id1 = pcall(Ext.Events.ExecuteFunctor.Subscribe,\n"
-        "    Ext.Events.ExecuteFunctor, handler)\n"
-        "  assert(ok1 and id1 ~= nil, 'ExecuteFunctor Subscribe failed')\n"
-        "  local ok2 = pcall(Ext.Events.ExecuteFunctor.Unsubscribe,\n"
-        "    Ext.Events.ExecuteFunctor, id1)\n"
-        "  assert(ok2, 'ExecuteFunctor Unsubscribe failed')\n"
-        "  local ok3, id3 = pcall(Ext.Events.DoConsoleCommand.Subscribe,\n"
-        "    Ext.Events.DoConsoleCommand, handler)\n"
-        "  assert(ok3 and id3 ~= nil, 'DoConsoleCommand Subscribe failed')\n"
-        "  Ext.Events.DoConsoleCommand:Unsubscribe(id3)\n"
+        "  local before = Ext.Events.ExecuteFunctor:Subscribe(handler)\n"
+        "  local after = Ext.Events.AfterExecuteFunctor:Subscribe(handler)\n"
+        "  AssertType(before, 'number', 'ExecuteFunctor subscription handle')\n"
+        "  AssertType(after, 'number', 'AfterExecuteFunctor subscription handle')\n"
+        "  AssertEquals(Ext.Events.ExecuteFunctor:Unsubscribe(before), true,\n"
+        "    'ExecuteFunctor unsubscribe result')\n"
+        "  AssertEquals(Ext.Events.AfterExecuteFunctor:Unsubscribe(after), true,\n"
+        "    'AfterExecuteFunctor unsubscribe result')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Events.PriorityOncePrevent', function()\n"
         "  local called = 0\n"
@@ -2422,13 +2570,16 @@ void lua_ext_register_global_helpers(lua_State *L) {
         console_cmd_hexdump, console_cmd_types, console_cmd_pv,
         // Test suite: framework + assertions first, then test definitions, then registration
         console_cmd_test_framework, console_cmd_test_assertions,
-        console_cmd_test_core, console_cmd_test_stats, console_cmd_test_timer,
+        console_cmd_test_core, console_cmd_test_stats, console_cmd_test_wave2_stats,
+        console_cmd_test_timer,
         console_cmd_test_events, console_cmd_test_debug, console_cmd_test_types,
         console_cmd_test_misc, console_cmd_test_mcm, console_cmd_test_register,
         // In-game tests
         console_cmd_test_ingame, console_cmd_test_ingame2,
         console_cmd_test_osiris, console_cmd_test_osiris_edge,
         console_cmd_test_entity_events,
+        console_cmd_test_wave2_components,
+        console_cmd_test_wave2_stats_ingame,
         // Fail-first parity stubs (FAIL now, PASS after implementation)
         console_cmd_test_parity_entity,
         console_cmd_test_parity_level,
