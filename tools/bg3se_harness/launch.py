@@ -996,6 +996,11 @@ def launch(continue_game=False, load_save=None, extra_flags=None,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
         env=env,
+        # SteamAPI_RestartAppIfNecessary looks for steam_appid.txt in the CWD.
+        # Running from the binary's directory suppresses the exit-0 bounce +
+        # Steam relaunch — which would strip every BG3SE_* env var above and
+        # leave video-skip/splash-dismiss dormant in the adopted process.
+        cwd=str(BG3_EXEC.parent),
     )
     proc.bg3se_headless_graphics = headless_graphics
     tracker.set_direct_process(proc.pid)
