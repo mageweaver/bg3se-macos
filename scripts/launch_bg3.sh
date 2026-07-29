@@ -42,9 +42,8 @@ if [[ ! -f "$DYLIB" ]]; then
     exit 1
 fi
 
-# Clean up old logs
-rm -f /tmp/bg3se_loaded.txt
-rm -f /tmp/bg3se_macos.log
+# Session logs land here (latest.log is a per-session symlink)
+LOG_DIR="$HOME/Library/Application Support/BG3SE/logs"
 
 echo "=========================================="
 echo "BG3SE-macOS Launcher"
@@ -60,30 +59,38 @@ echo ""
 
 # Launch with DYLD injection
 echo "Launching Baldur's Gate 3 with Script Extender..."
-echo "(Check /tmp/bg3se_macos.log for detailed output)"
+echo "(Session log: $LOG_DIR/latest.log)"
 echo ""
 
 # Set the environment variable and launch
+LAUNCH_TS=$(date +%s)
 DYLD_INSERT_LIBRARIES="$DYLIB" "$BG3_EXEC" &
+GAME_PID=$!
 
-# Give it a moment to start
-sleep 3
+# Wait for the dylib to open its session log (proves injection ran)
+LOADED=""
+for _ in $(seq 1 15); do
+    sleep 1
+    if [[ -f "$LOG_DIR/latest.log" ]]; then
+        LOG_TS=$(stat -L -f %m "$LOG_DIR/latest.log" 2>/dev/null || echo 0)
+        if [[ "$LOG_TS" -ge "$LAUNCH_TS" ]]; then
+            LOADED=1
+            break
+        fi
+    fi
+done
 
-# Check if injection worked
-if [[ -f /tmp/bg3se_loaded.txt ]]; then
+if [[ -n "$LOADED" ]]; then
     echo "SUCCESS: BG3SE-macOS loaded!"
     echo ""
-    echo "=== Injection Log ==="
-    cat /tmp/bg3se_loaded.txt
-    echo ""
-    echo "=== Full Log ==="
-    cat /tmp/bg3se_macos.log 2>/dev/null || echo "(No detailed log yet)"
+    echo "=== Session Log (first lines) ==="
+    head -20 "$LOG_DIR/latest.log"
 else
-    echo "WARNING: Injection marker not found."
+    echo "WARNING: No fresh session log after 15s."
     echo "The game may still be starting, or injection failed."
-    echo "Check /tmp/bg3se_macos.log for details."
+    echo "Check: tail -f \"$LOG_DIR/latest.log\""
 fi
 
 echo ""
-echo "Game is running in background (PID: $!)"
+echo "Game is running in background (PID: $GAME_PID)"
 echo "Press Ctrl+C to continue (game will keep running)"

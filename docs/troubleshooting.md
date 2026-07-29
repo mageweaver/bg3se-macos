@@ -36,6 +36,25 @@ mkdir build && cd build
 cmake .. && cmake --build .
 ```
 
+### "fatal error: 'tuple' file not found"
+
+CommandLineTools-only systems sometimes resolve the wrong SDK sysroot, so the
+C++ standard headers the Metal/simd headers include are never found. Current
+main auto-detects the SDK in `CMakeLists.txt` (via `xcrun --show-sdk-path`
+with a CommandLineTools fallback) — pull, wipe `build/`, and reconfigure:
+```bash
+git pull
+rm -rf build
+mkdir build && cd build
+cmake .. && cmake --build .
+```
+If auto-detection still misses, pass the sysroot explicitly:
+```bash
+cmake -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" ..
+```
+Installing full Xcode (then `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`)
+also resolves it.
+
 ## Injection Not Working
 
 **Symptoms:** Game launches but mods don't load, no SE output in logs.
@@ -123,6 +142,27 @@ cmake .. && cmake --build .
    file build/lib/libbg3se.dylib
    # Should show: Mach-O universal binary with 2 architectures: [x86_64] [arm64]
    ```
+
+### "BG3 requires arm64e" is a misdiagnosis
+
+AI assistants sometimes conclude that injection fails because the dylib is
+`arm64` while BG3 "requires `arm64e`". That is wrong: `arm64e` is reserved for
+Apple system binaries — third-party apps like BG3 ship plain `arm64`, and a
+dylib built `arm64` + `x86_64` is exactly correct. Verify yourself:
+```bash
+file "$HOME/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/Baldur's Gate 3"
+# Shows arm64 (and x86_64), never arm64e
+```
+When injection genuinely fails on Apple Silicon, the real causes are usually:
+
+1. **Missing submodules** — `git submodule update --init --recursive`, then clean rebuild
+2. **Stale build cache** — `rm -rf build` and reconfigure (see above)
+3. **Code signature invalidated** after patching the game binary with
+   `insert_dylib` — re-sign it:
+   ```bash
+   codesign --force --deep --sign - "$HOME/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app"
+   ```
+4. **Steam launch options** not pointing at the wrapper script with `%command%` appended
 
 ## Console Not Connecting
 
