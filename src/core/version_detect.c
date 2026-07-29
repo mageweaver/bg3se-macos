@@ -27,10 +27,15 @@
 // regardless of whether the game has initialized. These are static globals
 // in BSS/DATA — readable even if the pointer value inside is NULL.
 // If vm_read succeeds on all 3, the binary layout matches our addresses.
+// Values re-derived via nm for game build 4.1.1.7209685 (2026-07-28
+// migration) — they MUST move in lockstep with BG3_KNOWN_VERSION and the
+// per-subsystem offsets (entity_system.c, prototype_managers.c). The
+// harness offset audit (tests/harness/test_offset_audit.py) validates the
+// same symbols against the installed binary.
 static const uintptr_t g_sentinel_ghidra_addrs[] = {
-    0x10898e8b8,  // esv::EocServer::m_ptr (server singleton global)
-    0x10898c968,  // ecl::EocClient::m_ptr (client singleton global)
-    0x1089bac80,  // SpellPrototypeManager::m_ptr
+    0x1089968b8,  // esv::EocServer::m_ptr (server singleton global)
+    0x108994968,  // ecl::EocClient::m_ptr (client singleton global)
+    0x1089c2c80,  // eoc::SpellPrototypeManager::m_ptr
 };
 #define NUM_SENTINELS (sizeof(g_sentinel_ghidra_addrs) / sizeof(g_sentinel_ghidra_addrs[0]))
 

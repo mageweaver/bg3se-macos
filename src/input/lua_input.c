@@ -6,6 +6,7 @@
 
 #include "input.h"
 #include "../core/logging.h"
+#include "../lua/lua_gate.h"
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -34,12 +35,19 @@ static lua_State *s_hotkey_lua_state = NULL;
 static void lua_hotkey_callback(void *userData) {
     int idx = (int)(intptr_t)userData;
     if (idx < 0 || idx >= MAX_LUA_HOTKEYS) return;
-    if (!s_lua_hotkeys[idx].active) return;
     if (!s_hotkey_lua_state) return;
 
+    // May fire from the input hook thread - serialize Lua access (lua_gate.h).
+    // Resolve state and slot only under the gate: shutdown clears
+    // s_hotkey_lua_state while holding it, so a waiter blocked here must
+    // re-check instead of using a captured (possibly freed) state.
+    lua_gate_lock();
     lua_State *L = s_hotkey_lua_state;
+    if (!L || !s_lua_hotkeys[idx].active) {
+        lua_gate_unlock();
+        return;
+    }
     int ref = s_lua_hotkeys[idx].callback_ref;
-
     lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
     if (lua_isfunction(L, -1)) {
         if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
@@ -50,6 +58,16 @@ static void lua_hotkey_callback(void *userData) {
     } else {
         lua_pop(L, 1);
     }
+    lua_gate_unlock();
+}
+
+/**
+ * Clear the hotkey Lua state. Call while holding the Lua gate, before
+ * lua_close(), so a blocked lua_hotkey_callback re-resolves to NULL instead
+ * of entering the freed state.
+ */
+void lua_input_clear_state(void) {
+    s_hotkey_lua_state = NULL;
 }
 
 // ============================================================================

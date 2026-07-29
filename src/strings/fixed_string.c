@@ -239,13 +239,15 @@ static bool discover_arm64_offsets(void *gst);
 #define GHIDRA_BASE_ADDRESS           0x100000000ULL
 
 // GlobalStringTable pointer discovered via Ghidra analysis of ls::gst::Get()
-// Ghidra address 0x108aeccd8 → offset 0x8aeccd8 from module base
+// Re-derived 2026-07-28 for game build 4.1.1.7209685 by decoding the
+// ADRP+LDR pair at ls::gst::Get (0x1064a9ddc): adrp 0x108af4000 + 0xcd8.
+// (was 0x108aeccd8 for build 4.1.1.6995620)
 // See ghidra/offsets/GLOBALSTRINGTABLE.md for details
-#define OFFSET_GLOBAL_STRING_TABLE    0x108aeccd8ULL
+#define OFFSET_GLOBAL_STRING_TABLE    0x108af4cd8ULL
 
-// Known RPGStats offset (verified working) - GlobalStringTable is likely nearby
-// This is the full Ghidra address (0x1089c5730), not just the offset
-#define OFFSET_RPGSTATS               0x1089c5730ULL
+// Known RPGStats offset - GlobalStringTable is likely nearby
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x1089c5730)
+#define OFFSET_RPGSTATS               0x1089cd730ULL
 
 // GlobalStringTable size: 11 SubTables * 0x1200 + MainTable = ~0xC600+ bytes
 // Search range around RPGStats
@@ -1398,7 +1400,9 @@ void fixed_string_dump_subtable_info(int subtable_idx) {
 typedef void (*FixedStringCreate_t)(uint32_t *out_fs_index, const char *str, int len);
 
 // Ghidra address for ls::FixedString::Create
-#define GHIDRA_FIXEDSTRING_CREATE 0x1064b9ebcULL
+// ls::FixedString::Create(char const*, int) — re-derived 2026-07-28 via nm
+// for game build 4.1.1.7209685 (was 0x1064b9ebc)
+#define GHIDRA_FIXEDSTRING_CREATE 0x1064a8a74ULL
 
 static FixedStringCreate_t g_FixedStringCreate = NULL;
 static bool g_InternInitialized = false;

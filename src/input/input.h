@@ -200,6 +200,12 @@ void input_set_lua_state(lua_State *L);
  */
 void lua_input_register(lua_State *L, int ext_table_index);
 
+/**
+ * Clear the hotkey callback Lua state. Call while holding the Lua gate,
+ * before lua_close() (see lua_gate.h).
+ */
+void lua_input_clear_state(void);
+
 // ============================================================================
 // macOS Virtual Key Codes (common keys)
 // ============================================================================

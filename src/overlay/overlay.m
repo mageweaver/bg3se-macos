@@ -316,6 +316,11 @@ static NSColor* colorForLogLevel(const char* text) {
 @property (nonatomic, strong) NSView *entitiesView;
 // Input area container (for hiding on non-console tabs)
 @property (nonatomic, strong) NSView *inputArea;
+// Output coalescing (appendOutput: may be called in bursts from any thread)
+// Ordered stream of pending console output: NSString lines plus NSNull
+// clear sentinels (see clearOutput) — drained in order by flushPendingOutput.
+@property (nonatomic, strong) NSMutableArray *pendingLines;
+@property (nonatomic, assign) BOOL flushScheduled;
 @end
 
 @implementation BG3SEConsoleView
@@ -404,6 +409,9 @@ static NSColor* colorForLogLevel(const char* text) {
     _scrollView.drawsBackground = NO;
 
     _outputView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, w - PADDING * 2 - 15, contentHeight)];
+    // Force TextKit 1: TextKit 2's synchronizeTextLayoutManagers SIGBUSes on
+    // rapid append+scroll bursts (2026-07-28 crash, PID 2556, tier-2 output).
+    (void)_outputView.layoutManager;
     _outputView.backgroundColor = [NSColor clearColor];
     _outputView.drawsBackground = NO;
     _outputView.textColor = TEXT_COLOR;
@@ -648,25 +656,82 @@ static NSColor* colorForLogLevel(const char* text) {
 }
 
 - (void)appendOutput:(NSString *)text {
+    // Coalesce bursts (test runs emit hundreds of lines) into one batched
+    // append + one scroll per main-queue drain. One queued block per line,
+    // each forcing a whole-document relayout via scrollToEndOfDocument:,
+    // crashed TextKit under load (2026-07-28, SIGBUS in appendOutput block).
+    @synchronized (self) {
+        if (!self.pendingLines) {
+            self.pendingLines = [NSMutableArray array];
+        }
+        [self.pendingLines addObject:text];
+        if (self.flushScheduled) {
+            return;
+        }
+        self.flushScheduled = YES;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Determine color based on log level patterns
-        NSColor *textColor = colorForLogLevel([text UTF8String]);
-
-        NSAttributedString *attrStr = [[NSAttributedString alloc]
-            initWithString:[text stringByAppendingString:@"\n"]
-            attributes:@{
-                NSForegroundColorAttributeName: textColor,
-                NSFontAttributeName: [NSFont fontWithName:@"Menlo" size:FONT_SIZE]
-            }];
-
-        [[self.outputView textStorage] appendAttributedString:attrStr];
-        [self.outputView scrollToEndOfDocument:nil];
+        [self flushPendingOutput];
     });
 }
 
+- (void)flushPendingOutput {
+    NSArray *lines;
+    @synchronized (self) {
+        lines = self.pendingLines;
+        self.pendingLines = nil;
+        self.flushScheduled = NO;
+    }
+    if (lines.count == 0) {
+        return;
+    }
+
+    NSFont *font = [NSFont fontWithName:@"Menlo" size:FONT_SIZE];
+    NSMutableAttributedString *batch = [[NSMutableAttributedString alloc] init];
+    NSTextStorage *storage = [self.outputView textStorage];
+    for (id line in lines) {
+        if (line == [NSNull null]) {
+            // Clear sentinel: wipe everything flushed so far AND everything
+            // batched before it in this drain. Lines after it survive.
+            [storage deleteCharactersInRange:NSMakeRange(0, storage.length)];
+            batch = [[NSMutableAttributedString alloc] init];
+            continue;
+        }
+        NSColor *textColor = colorForLogLevel([line UTF8String]);
+        [batch appendAttributedString:[[NSAttributedString alloc]
+            initWithString:[line stringByAppendingString:@"\n"]
+            attributes:@{
+                NSForegroundColorAttributeName: textColor,
+                NSFontAttributeName: font
+            }]];
+    }
+
+    [storage appendAttributedString:batch];
+
+    // Bound the backlog so layout cost can't grow without limit
+    if (storage.length > 500000) {
+        [storage deleteCharactersInRange:NSMakeRange(0, storage.length - 400000)];
+    }
+
+    [self.outputView scrollRangeToVisible:NSMakeRange(storage.length, 0)];
+}
+
 - (void)clearOutput {
+    // Linearize the wipe with appendOutput by sending it through the same
+    // ordered pending stream: replacing the queue with a single clear
+    // sentinel drops every pre-clear line, and any append that lands after
+    // this block sits behind the sentinel, so a shared scheduled flush can
+    // never erase post-clear text (or replay pre-clear text). One
+    // synchronization domain, one main-queue drain — no cross-block races.
+    @synchronized (self) {
+        self.pendingLines = [NSMutableArray arrayWithObject:[NSNull null]];
+        if (self.flushScheduled) {
+            return;
+        }
+        self.flushScheduled = YES;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self.outputView setString:@""];
+        [self flushPendingOutput];
     });
 }
 

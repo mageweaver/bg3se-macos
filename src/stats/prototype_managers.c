@@ -27,35 +27,40 @@
 // Singleton pointer locations (double-pointer pattern: *g_pManager gives Manager*)
 // These are global addresses where the manager pointer is stored
 
-// PassivePrototypeManager* at 0x108aeccd8 (discovered via ADRP+LDR in GetPassivePrototype)
+// Addresses below re-derived 2026-07-28 via nm for game build 4.1.1.7209685
+// (previous values were from 4.1.1.6995620 and went stale after the game
+// update — most singletons shifted +0x8000, but shifts are NOT uniform).
+
+// PassivePrototypeManager*: UNVERIFIED for 4.1.1.7209685 — the old value came
+// from ADRP+LDR in GetPassivePrototype (no nm symbol exists); needs a Ghidra
+// re-derivation pass before trusting reads through it.
 #define OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR 0x108aeccd8ULL
 
-// BoostPrototypeManager::m_ptr at 0x108991528 (symbol table, not exported)
-#define OFFSET_BOOST_PROTOTYPE_MANAGER_PTR 0x108991528ULL
+// eoc::BoostPrototypeManager::m_ptr (nm, local symbol)
+#define OFFSET_BOOST_PROTOTYPE_MANAGER_PTR 0x108999528ULL
 
-// InterruptPrototypeManager pointer - need to find via GetPrototype function
-// GetPrototype at 0x101b9686c - analyze to find singleton
-// From EvaluateInterrupt ADRP patterns: 0x108aecce0, 0x108aecd70
-#define OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR 0x108aecce0ULL
+// eoc::InterruptPrototypeManager::m_ptr (nm, local symbol — the old value
+// 0x108aecce0 was an EvaluateInterrupt ADRP guess, not the m_ptr symbol)
+#define OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR 0x1089ba8f0ULL
 
-// SpellPrototypeManager::m_ptr at 0x1089bac80 (discovered via GetSpellPrototype decompilation)
-// GetSpellPrototype at 0x10346e740: adrp x8,0x1089ba000; ldr x20,[x8, #0xc80] = 0x1089bac80
-#define OFFSET_SPELL_PROTOTYPE_MANAGER_PTR 0x1089bac80ULL
+// eoc::SpellPrototypeManager::m_ptr (nm, local symbol)
+#define OFFSET_SPELL_PROTOTYPE_MANAGER_PTR 0x1089c2c80ULL
 
-// StatusPrototypeManager::m_ptr at 0x1089bdb30 (discovered via Ghidra symbol search)
-// Symbol: __ZN3eoc22StatusPrototypeManager5m_ptrE at 0x1089bdb30
-#define OFFSET_STATUS_PROTOTYPE_MANAGER_PTR 0x1089bdb30ULL
+// eoc::StatusPrototypeManager::m_ptr (nm, local symbol)
+#define OFFSET_STATUS_PROTOTYPE_MANAGER_PTR 0x1089c5b30ULL
 
 // Additional globals from EvaluateInterrupt (may be related)
+// UNVERIFIED for 4.1.1.7209685 — no nm symbol; needs Ghidra re-derivation.
 #define OFFSET_MEMORY_MANAGER 0x108aefa98ULL  // Memory manager (appears in multiple functions)
 
 // ============================================================================
 // Prototype Init Function Offsets (Dec 12, 2025)
 // ============================================================================
 
-// SpellPrototype::Init at 0x101f72754 (populates prototype from stats)
+// eoc::SpellPrototype::Init(ls::FixedString const&) — populates prototype
+// from stats. Re-derived via nm for 4.1.1.7209685 (was 0x101f72754).
 // Signature: void SpellPrototype::Init(SpellPrototype* this, uint32_t spell_name_fs)
-#define OFFSET_SPELL_PROTOTYPE_INIT 0x101f72754ULL
+#define OFFSET_SPELL_PROTOTYPE_INIT 0x101f56cb4ULL
 
 // RefMap offsets in SpellPrototypeManager (from GetSpellPrototype decompilation)
 // Manager structure uses open-addressed hash table with separate arrays:

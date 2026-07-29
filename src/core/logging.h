@@ -191,6 +191,12 @@ bool log_get_color_enabled(void);
 
 /**
  * Register a callback to receive log messages.
+ *
+ * Callbacks are invoked OUTSIDE the logging mutex: log_write_v snapshots the
+ * matching (callback, userdata) pairs under the mutex and calls them after
+ * releasing it. This prevents lock-order inversion (a callback may take the
+ * Lua gate), but it makes unregistration ASYNCHRONOUS — see below.
+ *
  * @param callback   Function to call for each log message
  * @param userdata   User context passed to callback
  * @param min_level  Only forward messages >= this level
@@ -202,6 +208,19 @@ int log_register_callback(LogCallback callback, void* userdata,
 
 /**
  * Unregister a previously registered callback.
+ *
+ * LIFETIME CONTRACT: unregistration is asynchronous. A concurrent logger may
+ * have already snapshotted this entry and can still invoke the callback
+ * (with its userdata) AFTER this function returns. Callers must therefore:
+ *   - keep the callback code and userdata valid until all in-flight log
+ *     writes have drained, and
+ *   - make the callback itself tolerate post-unregister invocation, e.g. by
+ *     re-checking shared state under a lock the unregistering thread holds
+ *     (the Lua log-event callback holds the Lua gate across unregister and
+ *     nulls its state, so a late snapshot invocation observes NULL and
+ *     returns — see events_shutdown_log_callback()).
+ * Freeing userdata immediately after this call is NOT safe.
+ *
  * @param callback_id ID returned from log_register_callback
  */
 void log_unregister_callback(int callback_id);

@@ -18,6 +18,7 @@
 #include "functor_types.h"
 #include "../core/logging.h"
 #include "../lua/lua_events.h"
+#include "../lua/lua_gate.h"
 #include "../entity/entity_storage.h"
 
 #include <dobby.h>
@@ -69,14 +70,24 @@ static inline int has_functor_subscribers(void) {
 
 static void fire_execute_functor_event(StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
     if (!g_LuaState) return;
-    events_fire_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
-    g_EventCount++;
+    // Hooked game execution thread entering the shared Lua state — serialize
+    // and re-resolve under the gate (see lua_gate.h).
+    lua_gate_lock();
+    if (g_LuaState) {
+        events_fire_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
+        g_EventCount++;
+    }
+    lua_gate_unlock();
 }
 
 static void fire_after_execute_functor_event(StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
     if (!g_LuaState) return;
-    events_fire_after_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
-    g_EventCount++;
+    lua_gate_lock();
+    if (g_LuaState) {
+        events_fire_after_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
+        g_EventCount++;
+    }
+    lua_gate_unlock();
 }
 
 // =============================================================================

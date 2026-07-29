@@ -38,6 +38,7 @@ set(BG3SE_IMGUI_SOURCES
 # BG3SE Lua IMGUI bindings
 set(BG3SE_LUA_SOURCES
     ${BG3SE_ROOT}/src/lua/lua_imgui.c
+    ${BG3SE_ROOT}/src/lua/lua_gate.c
 )
 
 # Lua Library

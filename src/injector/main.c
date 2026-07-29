@@ -63,6 +63,7 @@ extern "C" {
 
 // Lua modules
 #include "lua_ext.h"
+#include "lua_gate.h"
 #include "lua_context.h"
 #include "lua_json.h"
 #include "lua_osiris.h"
@@ -2229,10 +2230,22 @@ static void init_lua(void) {
                               100 * NSEC_PER_MSEC,
                               10 * NSEC_PER_MSEC);
     dispatch_source_set_event_handler(s_console_poll_timer, ^{
-        static _Atomic int polling = 0;
-        if (L && !atomic_exchange(&polling, 1)) {
-            console_poll(L);
-            atomic_store(&polling, 0);
+        // trylock, not lock: if the game thread is mid-Lua, skip this poll
+        // and retry on the next 100ms tick instead of stacking GCD threads.
+        // Count consecutive misses so sustained starvation (e.g. at the menu,
+        // where fake_Event's blocking poll never runs) is diagnosable.
+        static int poll_misses = 0;
+        if (L && lua_gate_trylock()) {
+            poll_misses = 0;
+            if (L) {
+                console_poll(L);
+            }
+            lua_gate_unlock();
+        } else if (L) {
+            if (++poll_misses == 50) {  // ~5s of continuous contention
+                LOG_CORE_WARN("Console poll starved: 50 consecutive gate misses (~5s)");
+                poll_misses = 0;
+            }
         }
     });
     dispatch_resume(s_console_poll_timer);
@@ -2247,11 +2260,20 @@ static void shutdown_lua(void) {
         dispatch_source_cancel(s_console_poll_timer);
         s_console_poll_timer = NULL;
     }
+    lua_gate_lock();
     if (L) {
         LOG_LUA_INFO("Shutting down Lua runtime...");
 
         // Shutdown input system before closing Lua
         input_shutdown();
+
+        // Clear every published Lua state pointer while holding the gate, so
+        // native callbacks blocked on the lock re-resolve to NULL instead of
+        // entering the freed state (see lua_gate.h).
+        lua_input_clear_state();
+        lua_imgui_set_lua_state(NULL);
+        events_shutdown_log_callback();
+        functor_hooks_shutdown();
 
         // Clear custom Osiris functions before closing Lua state
         lua_osiris_reset_custom_functions(L);
@@ -2259,6 +2281,7 @@ static void shutdown_lua(void) {
         lua_close(L);
         L = NULL;
     }
+    lua_gate_unlock();
 }
 
 // ============================================================================
@@ -2468,14 +2491,17 @@ static void fake_InitGame(void *thisPtr) {
         osi_func_enumerate();
     }
 
-    // Notify Lua that Osiris is initialized
+    // Notify Lua that Osiris is initialized.
+    // Engine hook thread entering the shared Lua state — serialize against
+    // the console timer, render, and input threads (see lua_gate.h).
+    lua_gate_lock();
     if (L) {
         luaL_dostring(L, "Ext.Print('Osiris initialized!')");
 
         // NOTE: Do NOT call game_state_on_session_loading() here.
-        // By the time InitGame fires, fake_Load has already set state to Running.
-        // Resetting to LoadSession here corrupted the state machine and broke
-        // deferred net init (Issue #65).
+        // By the time InitGame fires, fake_Load has already requested
+        // deferred init. Resetting to LoadSession here corrupted the state
+        // machine and broke deferred net init (Issue #65).
 
         // Load mod scripts after Osiris is initialized (only once per game launch)
         if (!mod_scripts_loaded) {
@@ -2498,6 +2524,7 @@ static void fake_InitGame(void *thisPtr) {
             deferred_session_init_tick();
         }
     }
+    lua_gate_unlock();
 }
 
 /**
@@ -2510,12 +2537,9 @@ static int fake_Load(void *thisPtr, void *smartBuf) {
     load_call_count++;
     LOG_OSIRIS_DEBUG(">>> COsiris::Load called! (count: %d, this: %p, buf: %p)", load_call_count, thisPtr, smartBuf);
 
-    // Notify game state tracker that we're loading (fires GameStateChanged: Running -> LoadSession)
-    if (L) {
-        game_state_on_session_loading(L);
-    }
-
-    // Call original and preserve return value
+    // Call original and preserve return value.
+    // The gate is deliberately NOT held across orig_Load — only the Lua
+    // sections before/after are serialized (see lua_gate.h).
     int result = 0;
     if (orig_Load) {
         result = ((int (*)(void*, void*))orig_Load)(thisPtr, smartBuf);
@@ -2523,8 +2547,13 @@ static int fake_Load(void *thisPtr, void *smartBuf) {
 
     LOG_OSIRIS_DEBUG(">>> COsiris::Load returned: %d", result);
 
-    // Notify Lua that a save was loaded
+    // Notify Lua that a save was loaded.
+    // GameStateChanged (Running -> LoadSession) fires only after a
+    // successful load, so a failed orig_Load cannot strand the tracker in
+    // LoadSession with no deferred init armed.
+    lua_gate_lock();
     if (L && result) {
+        game_state_on_session_loading(L);
         luaL_dostring(L, "Ext.Print('Story/save data loaded!')");
 
         // Load mod scripts after save is loaded (if not already loaded)
@@ -2543,6 +2572,7 @@ static int fake_Load(void *thisPtr, void *smartBuf) {
         // blocking the timing-sensitive window after COsiris::Load (Issue #65).
         request_deferred_session_init();
     }
+    lua_gate_unlock();
 
     return result;
 }
@@ -2789,6 +2819,13 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
     (void)arity;  // Currently unused - listener uses its own requested arity
     if (!L || !eventName) return;
 
+    lua_gate_lock();
+    // Re-check under the gate: shutdown_lua may have closed the state while
+    // this thread was blocked on the lock.
+    if (!L) {
+        lua_gate_unlock();
+        return;
+    }
     int listener_count = lua_osiris_get_listener_count();
     for (int i = 0; i < listener_count; i++) {
         OsirisListener *listener = lua_osiris_get_listener(i);
@@ -2876,6 +2913,7 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
             events_fire_turn_ended_from_osiris(L, characterGuid);
         }
     }
+    lua_gate_unlock();
 }
 
 /**
@@ -2888,6 +2926,11 @@ static void fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
 
     // Poll for console commands and run tick systems
     if (L) {
+        lua_gate_lock();
+        if (!L) {  // re-check: shutdown may have closed the state while we blocked
+            lua_gate_unlock();
+            goto after_tick;
+        }
         console_poll(L);
         input_poll(L);
         lua_imgui_set_lua_state(L);  // Set Lua state for IMGUI event callbacks
@@ -2931,7 +2974,9 @@ static void fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
         if (net_hooks_deferred_tick()) {
             LOG_NET_INFO("Network hooks initialized via deferred tick");
         }
+        lua_gate_unlock();
     }
+after_tick:
 
     // Capture COsiris pointer if we haven't already
     if (!g_COsiris && thisPtr) {
@@ -3176,10 +3221,13 @@ static void install_hooks(void) {
     static int no_hooks = -1;
     if (no_hooks < 0) no_hooks = (getenv("BG3SE_NO_HOOKS") != NULL);
     if (no_hooks) {
-        LOG_HOOKS_INFO("BG3SE_NO_HOOKS=1: ALL Dobby hooks SKIPPED. "
-                       "Lua runtime is active but Osiris/Event interception disabled.");
+        LOG_HOOKS_INFO("BG3SE_NO_HOOKS=1: skipping ALL code patches — Osiris hooks, "
+                       "StaticData hooks, and VideoSkip. Lua runtime stays active; "
+                       "subsystems init in read-only mode.");
         hooks_installed = 1;  // Prevent re-entry
-        // Still initialize subsystems (entity, stats, etc.) for diagnostics
+        // Still initialize subsystems (entity, stats, etc.) for diagnostics.
+        // init_subsystems checks no_hooks again to skip the code-patching
+        // initializers (StaticData, VideoSkip) — see the gates below.
         goto init_subsystems;
     }
 
@@ -3369,9 +3417,17 @@ init_subsystems:
                         LOG_STATS_INFO("Prototype managers initialized (singletons resolve at runtime)");
                     }
 
-                    // Initialize static data manager (for Ext.StaticData)
-                    staticdata_manager_init(binary_base);
-                    LOG_CORE_INFO("StaticData manager initialized (managers captured via hooks)");
+                    // Initialize static data manager (for Ext.StaticData).
+                    // Installs six Dobby CODE patches (Feat + five Get<T>), so it
+                    // must honor BG3SE_NO_HOOKS: a stale offset here once patched
+                    // the middle of gui::HotbarSystem::Update and crashed every
+                    // session (docs/bugs/codex-debugger-nohooks-2026-07-28.md).
+                    if (!no_hooks) {
+                        staticdata_manager_init(binary_base);
+                        LOG_CORE_INFO("StaticData manager initialized (managers captured via hooks)");
+                    } else {
+                        LOG_CORE_INFO("StaticData manager SKIPPED (BG3SE_NO_HOOKS: installs code patches)");
+                    }
 
                     // Initialize template manager (for Ext.Template)
                     template_manager_init(binary_base);
@@ -3400,23 +3456,34 @@ init_subsystems:
                     localization_init(binary_base);
                     LOG_CORE_INFO("Localization system initialized");
 
-                    // Initialize video skip hook (suppresses Bink intro videos)
-                    video_skip_init(binary_base);
+                    // Initialize video skip hook (suppresses Bink intro videos).
+                    // Patches BinkManager::LoadVideo, so it honors BG3SE_NO_HOOKS.
+                    if (!no_hooks) {
+                        video_skip_init(binary_base);
+                    } else {
+                        LOG_CORE_INFO("VideoSkip SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
+                    }
 
                     // Initialize functor hooks (ExecuteFunctor/AfterExecuteFunctor events)
-                    // IMPORTANT: Functor hooks use Dobby to patch CODE at specific addresses.
-                    // Unlike data reads (which sentinel probes validate), code patching is
-                    // unsafe on version mismatch — even a 1-byte shift corrupts instructions.
-                    // Only enable on exact version match.
-                    if (version_detect_matches()) {
+                    // IMPORTANT: Functor hooks use Dobby to patch CODE at stripped-local
+                    // addresses that no audit can validate against nm, so they gate on
+                    // FUNCTOR_ADDRS_VERIFIED_BUILD — the build their addresses were
+                    // actually derived from — NOT on BG3_KNOWN_VERSION. Even a 1-byte
+                    // shift corrupts instructions. Never under BG3SE_NO_HOOKS, which
+                    // promises zero code patches.
+                    const char *detected_ver = version_detect_get_version();
+                    if (!no_hooks && detected_ver &&
+                        strcmp(detected_ver, FUNCTOR_ADDRS_VERIFIED_BUILD) == 0) {
                         if (functor_hooks_init(L)) {
                             LOG_HOOKS_INFO("Functor hooks initialized");
                         } else {
                             LOG_HOOKS_WARN("Functor hooks initialization failed (events won't fire)");
                         }
                     } else {
-                        LOG_HOOKS_INFO("Functor hooks SKIPPED (version mismatch — "
-                                       "code patching unsafe, data reads OK via sentinel probes)");
+                        LOG_HOOKS_INFO("Functor hooks SKIPPED (addresses verified for build %s, "
+                                       "detected %s — code patching unsafe until re-derived)",
+                                       FUNCTOR_ADDRS_VERIFIED_BUILD,
+                                       detected_ver ? detected_ver : "unknown");
                     }
                 } // end version_detect_addresses_safe() gate
                 found = true;
@@ -3506,6 +3573,72 @@ static void image_added_callback(const struct mach_header *mh, intptr_t slide) {
 }
 
 /**
+ * Identity snapshot for the console !identity handshake. Lets a test client
+ * verify it is talking to the intended process AND that the session is
+ * actually initialized, instead of trusting whichever process most recently
+ * bound /tmp/bg3se.sock (2026-07-28: tier-2 silently ran against a fresh
+ * menu process after a crash, producing 24 bogus failures).
+ */
+/**
+ * Escape a string for embedding inside a JSON string literal.
+ * Handles backslash, double quote, and control characters; truncates
+ * safely if the destination is too small.
+ */
+static void json_escape_into(char *dst, size_t dst_size, const char *src) {
+    size_t o = 0;
+    for (const unsigned char *p = (const unsigned char *)src; *p; p++) {
+        char esc[8];
+        size_t len;
+        if (*p == '"' || *p == '\\') {
+            esc[0] = '\\'; esc[1] = (char)*p; len = 2;
+        } else if (*p < 0x20) {
+            len = (size_t)snprintf(esc, sizeof(esc), "\\u%04x", *p);
+        } else {
+            esc[0] = (char)*p; len = 1;
+        }
+        if (o + len + 1 > dst_size) break;  // keep room for NUL
+        memcpy(dst + o, esc, len);
+        o += len;
+    }
+    dst[o] = '\0';
+}
+
+void bg3se_get_identity_json(char *buf, size_t size) {
+    const char *init_state =
+        (s_session_init_state == SESSION_INIT_COMPLETE) ? "complete" :
+        (s_session_init_state == SESSION_INIT_PENDING)  ? "pending"  : "idle";
+    Dl_info dl = {0};
+    dladdr((void *)bg3se_get_identity_json, &dl);
+    char image_esc[512];
+    json_escape_into(image_esc, sizeof(image_esc),
+                     dl.dli_fname ? dl.dli_fname : "unknown");
+    int written = snprintf(buf, size,
+             "{\"pid\":%d,\"version\":\"%s\",\"game_state\":\"%s\","
+             "\"session_init\":\"%s\",\"stats_ready\":%s,\"image\":\"%s\"}",
+             getpid(), BG3SE_VERSION,
+             game_state_get_name(game_state_get_current()),
+             init_state,
+             stats_manager_ready() ? "true" : "false",
+             image_esc);
+    if (written < 0 || (size_t)written >= size) {
+        // Truncated output would be malformed JSON — emit a minimal valid
+        // object instead so clients can still parse pid + an error marker.
+        snprintf(buf, size, "{\"pid\":%d,\"error\":\"identity_truncated\"}",
+                 getpid());
+    }
+}
+
+// Set when a second copy of this dylib is loaded into the process; the
+// duplicate image must never run init or cleanup.
+static int s_duplicate_image = 0;
+
+// Set only after this image wins the duplicate election AND begins
+// initialization. The destructor is inert unless this is set — a
+// BG3SE_DISABLE'd image or an election loser never initialized anything,
+// so it must never fire events, remove hooks, or tear down subsystems.
+static int s_image_active = 0;
+
+/**
  * Main constructor - runs when dylib is loaded
  */
 __attribute__((constructor))
@@ -3514,6 +3647,47 @@ static void bg3se_init(void) {
     // Useful for diagnosing whether the crash is from our init or mere dylib presence.
     // Truthy check: "1", "true", "yes" disable. "0" or "" do NOT disable.
     { const char *d = getenv("BG3SE_DISABLE"); if (d && d[0] && d[0] != '0') return; }
+
+    // Duplicate-image guard: the insert_dylib patch and DYLD_INSERT_LIBRARIES
+    // can BOTH load a physical copy of this dylib (observed 2026-07-28,
+    // PID 2556: build-tree + app-bundle images, two Lua states, two exception
+    // handler threads). Statics are per-image, so elect exactly one image via
+    // the process-global environment; dyld runs constructors serially, so
+    // this is race-free. A fork+exec child inherits the var with the
+    // parent's PID, which never matches its own fresh PID, so the marker
+    // self-invalidates in children. Known limitation: exec() WITHOUT fork
+    // preserves both PID and environment, so a same-PID re-exec that
+    // reloads this dylib would wrongly suppress its only image — no BG3SE
+    // load path does that today.
+    {
+        char pid_str[16];
+        snprintf(pid_str, sizeof(pid_str), "%d", getpid());
+        const char *loaded = getenv("BG3SE_LOADED_PID");
+        if (loaded && strcmp(loaded, pid_str) == 0) {
+            Dl_info dl = {0};
+            dladdr((void *)bg3se_init, &dl);
+            const char *first = getenv("BG3SE_LOADED_IMAGE");
+            fprintf(stderr, "[BG3SE] duplicate dylib image %s IGNORED (active image: %s)\n",
+                    dl.dli_fname ? dl.dli_fname : "?", first ? first : "?");
+            s_duplicate_image = 1;
+            return;
+        }
+        if (setenv("BG3SE_LOADED_PID", pid_str, 1) != 0) {
+            // Election marker could not be written: a later duplicate image
+            // would not be suppressed. Proceed (single-image loads are the
+            // norm), but leave a trace for diagnosis.
+            fprintf(stderr, "[BG3SE] WARNING: setenv(BG3SE_LOADED_PID) failed — "
+                    "duplicate-image election disabled\n");
+        }
+        Dl_info dl = {0};
+        if (dladdr((void *)bg3se_init, &dl) && dl.dli_fname) {
+            setenv("BG3SE_LOADED_IMAGE", dl.dli_fname, 1);
+        }
+    }
+
+    // This image won the election and is about to initialize subsystems;
+    // only now does the destructor have anything to clean up.
+    s_image_active = 1;
 
     // Initialize logging
     log_init();
@@ -3610,13 +3784,21 @@ static void bg3se_init(void) {
  */
 __attribute__((destructor))
 static void bg3se_cleanup(void) {
+    // Inert unless this image actually initialized: covers duplicate-election
+    // losers AND the BG3SE_DISABLE kill switch (whose contract is zero side
+    // effects — including at unload).
+    if (!s_image_active) return;
+
     LOG_CORE_INFO("=== %s shutting down ===", BG3SE_NAME);
 
     // Fire Shutdown event before cleanup (if Lua is still running)
-    // This allows mods to perform cleanup tasks (save state, close resources)
+    // This allows mods to perform cleanup tasks (save state, close resources).
+    // Serialized like every other native-to-Lua entry (see lua_gate.h).
+    lua_gate_lock();
     if (L) {
         events_fire(L, EVENT_SHUTDOWN);
     }
+    lua_gate_unlock();
 
     LOG_HOOKS_INFO("Final hook call counts:");
     LOG_OSIRIS_DEBUG("  COsiris::InitGame: %d calls", initGame_call_count);

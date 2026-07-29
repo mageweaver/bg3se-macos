@@ -54,7 +54,7 @@ def _patch_paths(monkeypatch, tmp_path):
     return settings_path, restore_path
 
 
-def test_prepare_inserts_missing_headless_entries_and_restore_removes_them(monkeypatch, tmp_path):
+def test_prepare_inserts_only_width_height_and_restore_removes_them(monkeypatch, tmp_path):
     settings_path, restore_path = _patch_paths(monkeypatch, tmp_path)
     _write_settings(settings_path, {"ScreenWidth": 1920, "ScreenHeight": 1080})
 
@@ -64,9 +64,9 @@ def test_prepare_inserts_missing_headless_entries_and_restore_removes_them(monke
     assert restore_path.exists()
 
     values = _entry_values(settings_path)
-    assert values["Fullscreen"] == "0"
-    assert values["FakeFullscreenEnabled"] == "0"
-    assert values["FakeFullscreen"] == "0"
+    assert "Fullscreen" not in values
+    assert "FakeFullscreenEnabled" not in values
+    assert "FakeFullscreen" not in values
     assert values["ScreenWidth"] == "1280"
     assert values["ScreenHeight"] == "720"
 
@@ -82,33 +82,13 @@ def test_prepare_inserts_missing_headless_entries_and_restore_removes_them(monke
     assert values["ScreenHeight"] == "1080"
 
 
-def test_restore_preserves_existing_entry_attribute_state(monkeypatch, tmp_path):
-    settings_path, _restore_path = _patch_paths(monkeypatch, tmp_path)
-    _write_settings(settings_path, {"Fullscreen": 1, "ScreenWidth": 2560, "ScreenHeight": 1440})
-    attrs = _entry_attrs(settings_path, "Fullscreen")
-    attrs["Value"]["type"] = "uint8"
-    attrs["Value"]["value"] = "1"
-    attrs["Type"]["type"] = "uint8"
-    attrs["Type"]["value"] = "7"
-    tree = ET.parse(settings_path)
-    for node in tree.getroot().iter("node"):
-        node_attrs = {attr.get("id"): attr for attr in node.findall("attribute")}
-        if node_attrs.get("MapKey") is not None and node_attrs["MapKey"].get("value") == "Fullscreen":
-            node_attrs["Value"].set("type", "uint8")
-            node_attrs["Type"].set("type", "uint8")
-            node_attrs["Type"].set("value", "7")
-    tree.write(settings_path, xml_declaration=True, encoding="unicode")
-
-    assert launch.prepare_headless_graphics()["success"] is True
-    assert _entry_attrs(settings_path, "Fullscreen")["Value"]["type"] == "int32"
-
-    restored = launch.restore_headless_graphics(reason="test")
-    assert restored["success"] is True
-    restored_attrs = _entry_attrs(settings_path, "Fullscreen")
-    assert restored_attrs["Value"]["type"] == "uint8"
-    assert restored_attrs["Value"]["value"] == "1"
-    assert restored_attrs["Type"]["type"] == "uint8"
-    assert restored_attrs["Type"]["value"] == "7"
+def test_headless_transient_entries_has_no_display_mode_keys():
+    entries = launch.HEADLESS_TRANSIENT_GRAPHICS_ENTRIES
+    assert "Fullscreen" not in entries
+    assert "FakeFullscreenEnabled" not in entries
+    assert "FakeFullscreen" not in entries
+    assert entries["ScreenWidth"] == 1280
+    assert entries["ScreenHeight"] == 720
 
 
 def test_second_prepare_does_not_overwrite_existing_restore_snapshot(monkeypatch, tmp_path):

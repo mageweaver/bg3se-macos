@@ -24,7 +24,8 @@ src/
 │   ├── global_switches.c/h   # Global configuration switches
 │   ├── video_skip.c/h        # Intro video skip (UserDefaults + graphicSettings)
 │   └── focus_hack.c/h        # BaseApp focus force (0x142 flag bypass for Noesis input)
-├── hooks/          # Legacy hook stubs (actual hooks in main.c)
+├── hooks/          # ARM64 safe hooking + legacy stubs
+│   └── arm64_hook.c/h     # Skip-and-redirect hooks, MAP_JIT trampolines
 ├── imgui/          # Dear ImGui overlay system
 │   ├── imgui_metal_backend.mm  # Metal rendering, coord conversion
 │   ├── imgui_input_hooks.mm    # NSView method swizzling
@@ -37,7 +38,9 @@ src/
 │   └── level_manager.c/h   # Singleton access, VMT-based physics dispatch
 ├── audio/          # WWise sound engine access
 │   └── audio_manager.c/h   # SoundManager singleton, audio control, PlayExternalSound (STDString ABI)
-├── lua/            # Lua API modules (lua_ext, lua_json, lua_osiris, lua_stats, lua_events, lua_logging, lua_level, lua_audio)
+├── lua/            # Lua API modules + thread gate
+│   ├── lua_gate.c/h        # Recursive mutex serializing all Lua entry points
+│   └── lua_ext, lua_json, lua_osiris, lua_stats, lua_events, lua_logging, lua_level, lua_audio
 ├── mod/            # Mod detection and loading
 ├── osiris/         # Osiris types, functions, handle encoding, pattern scanning
 ├── pak/            # LSPK v18 PAK file reading
@@ -56,6 +59,8 @@ src/
 - `src/stats/stats_manager.c` - RPGStats global access, stat property resolution
 - `src/game/game_state.c` - Game state tracking, state change callbacks
 - `src/game/focus_hack.c` - BaseApp focus force (0x142 bypass for Noesis input gate)
+- `src/lua/lua_gate.c/h` - Recursive pthread mutex serializing all `lua_State` access across threads (see Lua Thread Safety below)
+- `src/hooks/arm64_hook.c/h` - ARM64 skip-and-redirect inline hooks with MAP_JIT trampoline allocation
 - `ghidra/offsets/` - Modular offset documentation
 
 ## Modular Design Pattern
@@ -86,19 +91,43 @@ void module_init(void) { ... }
 
 ## Console Poll Timer (GCD)
 
-The socket console (`/tmp/bg3se.sock`) is polled by a GCD dispatch timer at 100ms intervals, independent of Osiris events. Without this, the socket only responded during gameplay (when `fake_Event()` fired Osiris hooks). The timer uses an atomic flag to prevent concurrent Lua access between the GCD queue and the game thread.
-
-```
-GCD Timer (100ms, QOS_USER_INTERACTIVE)
-    │
-    └── atomic_exchange(&polling, 1)
-            │
-            ├── console_poll(L)  →  socket_poll_clients + file_console_poll
-            │
-            └── atomic_store(&polling, 0)
-```
+The socket console (`/tmp/bg3se.sock`) is polled by a GCD dispatch timer at 100ms intervals, independent of Osiris events. Without this, the socket only responded during gameplay (when `fake_Event()` fired Osiris hooks). The timer acquires the Lua gate via `lua_gate_trylock()` — if another thread holds the gate, the tick is skipped (retry next 100ms). Fifty consecutive misses (~5s) log a starvation warning.
 
 Cleanup: timer cancelled in `shutdown_lua()` before Lua state destruction.
+
+## Lua Thread Safety (lua_gate)
+
+The Lua VM is single-threaded, but multiple code paths enter it from different threads:
+
+| Thread | Entry points | Gate strategy |
+|--------|--------------|---------------|
+| Game / ServerWorker | `fake_Event` tick block, `dispatch_event_to_lua`, `fake_InitGame`, `fake_Load` | `lua_gate_lock()` |
+| GCD console timer | `console_poll` (100ms) | `lua_gate_trylock()` — skip on contention |
+| Metal render thread | `lua_imgui_fire_event`, `lua_imgui_cleanup_refs` | `lua_gate_lock()` |
+| Input hook thread | `lua_hotkey_callback` | `lua_gate_lock()` |
+| Network callbacks | `callback_registry_invoke` | `lua_gate_lock()` |
+| Hooked game execution | functor event dispatch (`functor_hooks.c`) | `lua_gate_lock()` |
+| Any logging thread | `log_event_callback` (Ext.Events Log) | `lua_gate_lock()` |
+| Dylib teardown | Shutdown event, `shutdown_lua` | `lua_gate_lock()` |
+
+**Any new code path that calls into the shared `lua_State` MUST acquire the gate**, and MUST resolve its `lua_State` pointer *under* the gate (shutdown clears the published pointers while holding it, so a blocked waiter re-resolves to NULL instead of entering a freed state). The mutex is recursive (same-thread re-entry is safe for nested dispatch). Implementation: `src/lua/lua_gate.c/h` (pthread_mutex_t with PTHREAD_MUTEX_RECURSIVE, pthread_once init).
+
+**Lock order:** Lua gate → logging mutex, never the reverse. The logging system snapshots callbacks under `g_config.mutex` and invokes them only after releasing it (`src/core/logging.c`), so log-to-Lua dispatch can take the gate safely.
+
+History: before lua_gate (v0.37.1), the GCD timer used a bare atomic flag that only prevented self-re-entry, not cross-thread races. The race was latent and surfaced under high Osiris event rates (2026-07-28 crash, PID 97193).
+
+## MAP_JIT Trampolines (ARM64)
+
+`arm64_alloc_near()` (`src/hooks/arm64_hook.c`) allocates trampoline pages with `MAP_JIT`. On Apple Silicon, MAP_JIT pages are execute-protected by default; writing requires bracketing with:
+
+```c
+pthread_jit_write_protect_np(0);  // enable writes (per-thread)
+// ... write trampoline instructions ...
+pthread_jit_write_protect_np(1);  // re-protect
+sys_icache_invalidate(tramp, size);
+```
+
+Without the write gate, the trampoline build faults with `KERN_PROTECTION_FAILURE`. This is normally masked because `arm64_alloc_near` usually lands within ±128MB (near branch); the far-trampoline fallback (absolute branch) exercises the write path and faults under unlucky ASLR slides (2026-07-28 crash, PID 83926).
 
 ## Platform Notes
 - Game binary is ARM64 on Apple Silicon, Rosetta for Intel

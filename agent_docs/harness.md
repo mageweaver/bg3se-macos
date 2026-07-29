@@ -18,7 +18,14 @@ PYTHONPATH=tools python3 -m bg3se_harness <command> [args]
 - `test [filter] [--tier 2]` — run Tier 1 or Tier 2 Lua tests
 
 ### Headless Mode
-`--headless` forces windowed 1280x720, hides via System Events after socket connects (~3.3s). Original graphicSettings.lsx restored automatically. Socket responds at main menu (GCD poll timer, independent of Osiris events).
+`--headless` applies a transient 1280x720 size via graphicSettings.lsx and hides the window via System Events after socket connects (~3.3s); the transient keys are restored automatically. **Display mode is the user's in-game choice, stored as `FakeFullscreenEnabled` in graphicSettings.lsx** (absent = borderless fake-fullscreen; `0` = windowed — set once via Options → Video → Display Mode → Windowed, verified 2026-07-28). The harness verifies the key at preflight but never writes it, and restores must be per-key so they can't clobber it. Socket responds at main menu (GCD poll timer, independent of Osiris events).
+
+### Session Driver (`scripts/session_driver.sh`)
+Stall-detecting wrapper that drives BG3 from launch through a running session. Each game state has a stall budget; on timeout it captures diagnostics (screenshot + SE log + game state) into a JSONL file and attempts bounded recovery. Verdicts: `SESSION_RUNNING` (0), `GAME_DIED` (1), `STUCK` (2), `REPLACED` (3, PID changed mid-drive), `PREFLIGHT_FAILED` (4, Steam/memory/windowed gate), `AMBIGUOUS_ATTACH` (5, zero or multiple candidate processes). Note: BSD `find -newermt` rejects `@epoch` syntax silently — use a human-readable timestamp.
+
+### Steam Environment
+- **`steam_appid.txt`** (1086940) next to the game binary suppresses `SteamAPI_RestartAppIfNecessary`. Without Steam running, direct-launched sessions self-exit after ~90-150s (DRM grace) with a clean `proc_exit` and no crash report.
+- With Steam running but no `steam_appid.txt`, direct launch exits 0 at ~1.3s and Steam relaunches the game ~10s later (bounce) — the relaunched PID differs and rebinds `/tmp/bg3se.sock`; verify with `!identity` before trusting the socket.
 
 ### Game Inspection (requires running game + socket)
 - `run "<lua>"` / `eval script.lua` / `watch script.lua` — Lua execution

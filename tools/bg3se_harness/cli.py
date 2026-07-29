@@ -121,6 +121,7 @@ def _launch_until_socket(
     auto_dismiss=True,
     retries=0,
     retry_delay=3.0,
+    allow_memory_pressure=False,
 ):
     attempts = []
     max_attempts = retries + 1
@@ -131,27 +132,39 @@ def _launch_until_socket(
                 f"Launching BG3... attempt {attempt}/{max_attempts}",
                 file=sys.stderr,
             )
-        proc = launch_mod.launch(
+        session = launch_mod.launch(
             continue_game=continue_game,
             load_save=load_save,
             extra_flags=extra_flags,
             skip_videos=skip_videos,
             auto_dismiss=auto_dismiss,
             headless=headless,
+            allow_memory_pressure=allow_memory_pressure,
         )
+
+        if session.direct_process is None:
+            health = {
+                "socket_connected": False,
+                "stage": session.tracker.phase,
+                "pid": session.pid,
+                "attempt": attempt,
+            }
+            attempts.append(health)
+            return session, health, attempts
 
         print("Waiting for SE socket...", file=sys.stderr)
         health = launch_mod.wait_for_socket(
             timeout=timeout,
             dismiss_splash=True,
-            process=proc,
+            process=session.direct_process,
+            tracker=session.tracker,
         )
-        health["pid"] = proc.pid
+        health["pid"] = session.pid
         health["attempt"] = attempt
         attempts.append(health)
 
         if health.get("socket_connected"):
-            return proc, health, attempts
+            return session, health, attempts
 
         retryable = launch_mod.should_retry_boot(health)
         if attempt < max_attempts and retryable:
@@ -172,9 +185,9 @@ def _launch_until_socket(
                 time.sleep(retry_delay)
             continue
 
-        return proc, health, attempts
+        return session, health, attempts
 
-    return proc, health, attempts
+    return session, health, attempts
 
 
 def _attach_headless_failure(health, *, reason):
@@ -336,20 +349,31 @@ def cmd_launch(args):
     retries = _boot_retry_count(args, headless)
     auto_dismiss = getattr(args, "auto_dismiss", True)
 
+    allow_memory_pressure = getattr(args, "allow_memory_pressure", False)
+
     if background:
         print("Launching BG3...", file=sys.stderr)
-        proc = launch_mod.launch(
+        session = launch_mod.launch(
             continue_game=continue_game,
             load_save=load_save,
             extra_flags=extra_flags,
             skip_videos=skip_videos,
             auto_dismiss=auto_dismiss,
             headless=headless,
+            allow_memory_pressure=allow_memory_pressure,
         )
+        if session.direct_process is None:
+            result = {
+                "launched": False,
+                "stage": session.tracker.phase,
+                "pid": session.pid,
+            }
+            print(json.dumps(result, indent=2))
+            return 1
         import subprocess as _sp
         _sp.Popen(
             [sys.executable, "-m", "bg3se_harness._monitor",
-             str(proc.pid), str(timeout), "1" if headless else "0",
+             str(session.pid), str(timeout), "1" if headless else "0",
              "1" if skip_videos else "0", "1" if auto_dismiss else "0"],
             stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
             start_new_session=True,
@@ -357,7 +381,8 @@ def cmd_launch(args):
         from .config import MONITOR_LOG
         result = {
             "launched": True,
-            "pid": proc.pid,
+            "pid": session.pid,
+            "launch_id": session.launch_id,
             "background": True,
             "health_file": str(launch_mod.HEALTH_FILE),
             "monitor_log": str(MONITOR_LOG),
@@ -369,7 +394,7 @@ def cmd_launch(args):
         print(json.dumps(result, indent=2))
         return 0
 
-    proc, health, attempts = _launch_until_socket(
+    session, health, attempts = _launch_until_socket(
         continue_game=continue_game,
         load_save=load_save,
         extra_flags=extra_flags,
@@ -379,6 +404,7 @@ def cmd_launch(args):
         auto_dismiss=auto_dismiss,
         retries=retries,
         retry_delay=_retry_delay(args),
+        allow_memory_pressure=allow_memory_pressure,
     )
 
     health["patch"] = pr
@@ -456,8 +482,9 @@ def cmd_test(args):
     if timeout is None:
         timeout = launch_mod.default_timeout(continue_game, load_save)
     retries = _boot_retry_count(args, headless)
+    allow_memory_pressure = getattr(args, "allow_memory_pressure", False)
 
-    proc, health, attempts = _launch_until_socket(
+    session, health, attempts = _launch_until_socket(
         continue_game=continue_game,
         load_save=load_save,
         extra_flags=extra_flags,
@@ -466,6 +493,7 @@ def cmd_test(args):
         timeout=timeout,
         retries=retries,
         retry_delay=_retry_delay(args),
+        allow_memory_pressure=allow_memory_pressure,
     )
     if not health.get("socket_connected"):
         health["stage"] = health.get("stage", "health")
@@ -500,7 +528,7 @@ def cmd_test(args):
     )
     output = {k: v for k, v in result.items() if k != "raw_output"}
     output["launch"] = {
-        "pid": proc.pid,
+        "pid": session.pid,
         "continue_game": continue_game,
         "socket_elapsed_ms": health.get("elapsed_ms"),
         "boot_retries": retries,
@@ -671,6 +699,8 @@ def main():
     p_launch.add_argument("--headless", action="store_true", help="Hide BG3 window after socket connects")
     p_launch.add_argument("--background", action="store_true",
                           help="Return immediately after launch; monitor socket in background")
+    p_launch.add_argument("--allow-memory-pressure", action="store_true",
+                          help="Override critical memory pressure check and launch anyway")
     _add_launch_flags(p_launch)
 
     # test
@@ -685,6 +715,8 @@ def main():
     p_test.add_argument("--no-continue", dest="continue_game", action="store_false",
                          help="Don't auto-continue (stop at main menu)")
     p_test.add_argument("--headless", action="store_true", help="Hide BG3 window after socket connects")
+    p_test.add_argument("--allow-memory-pressure", action="store_true",
+                        help="Override critical memory pressure check and launch anyway")
     _add_launch_flags(p_test)
 
     # run
@@ -943,7 +975,7 @@ def main():
     p_pv.add_argument("namespace", help="Namespace to verify (e.g. Stats, Entity, IMGUI)")
 
     # doctor
-    sub.add_parser("doctor", help="Verify paths, permissions, SE status, and prerequisites")
+    p_doctor = sub.add_parser("doctor", help="Verify paths, permissions, SE status, and prerequisites")
 
     # save
     p_save = sub.add_parser("save", help="Save game management for deterministic testing")

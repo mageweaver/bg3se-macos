@@ -6,33 +6,500 @@ import re
 import signal
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import time
+import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from .config import (
     BG3_EXEC, GRAPHIC_SETTINGS_PATH, HEALTH_TIMEOUT, HEALTH_TIMEOUT_CONTINUE,
-    HARNESS_CONFIG_DIR, HEALTH_FILE, PID_FILE, PROJECT_ROOT, SOCKET_PATH,
+    HARNESS_CONFIG_DIR, HEALTH_FILE, PID_FILE,
+    PROJECT_ROOT, SOCKET_PATH,
 )
 from .flags import build_flag_args
 
 
 HEADLESS_GRAPHICS_RESTORE_PATH = HARNESS_CONFIG_DIR / "graphic_settings_headless_restore.json"
-HEADLESS_GRAPHICS_ENTRIES = {
-    "Fullscreen": 0,
-    "FakeFullscreenEnabled": 0,
-    "FakeFullscreen": 0,
+HEADLESS_TRANSIENT_GRAPHICS_ENTRIES = {
     "ScreenWidth": 1280,
     "ScreenHeight": 720,
 }
+HEADLESS_GRAPHICS_ENTRIES = HEADLESS_TRANSIENT_GRAPHICS_ENTRIES
+
+STEAM_BOUNCE_MAX_INITIAL_LIFETIME_S = 5
+STEAM_RELAUNCH_GRACE_S = 20
+STEAM_MAX_ADOPTIONS_PER_LAUNCH = 1
+
+# <sys/un.h>: SOL_LOCAL is 0; Python's socket module does not export it.
+SOL_LOCAL = 0
+LOCAL_PEERPID = 0x002
+
+
+def get_process_executable(pid):
+    """Return the canonical executable path for a PID, or None."""
+    try:
+        r = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True, text=True, timeout=5,
+        )
+        path = r.stdout.strip()
+        return path if path else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def get_process_start_time(pid):
+    """Return the process start time as a string, or None."""
+    try:
+        r = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            capture_output=True, text=True, timeout=5,
+        )
+        lstart = r.stdout.strip()
+        return lstart if lstart else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def get_process_identity(pid):
+    """Return (executable, start_time) pair for a PID."""
+    return get_process_executable(pid), get_process_start_time(pid)
+
+
+def find_bg3_processes():
+    """Return list of (pid, executable) for all BG3 processes."""
+    results = []
+    try:
+        r = subprocess.run(
+            ["pgrep", "-f", "Baldur's Gate 3"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in r.stdout.strip().splitlines():
+            line = line.strip()
+            if line.isdigit():
+                pid = int(line)
+                exe = get_process_executable(pid)
+                results.append((pid, exe))
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return results
+
+
+def steam_readiness():
+    """Check Steam IPC readiness. Returns dict with 'status' key.
+
+    Status values: ready, starting, absent, unknown.
+    """
+    result = {"status": "unknown"}
+
+    steam_running = False
+    try:
+        r = subprocess.run(
+            ["pgrep", "-x", "steam_osx"],
+            capture_output=True, text=True, timeout=5,
+        )
+        steam_running = r.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return result
+
+    if not steam_running:
+        result["status"] = "absent"
+        result["steam_process"] = False
+        return result
+
+    result["steam_process"] = True
+
+    ipc_ready = False
+    try:
+        uid = os.getuid()
+        r = subprocess.run(
+            ["launchctl", "print", f"gui/{uid}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        ipc_ready = "com.valvesoftware.steam.ipctool" in r.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        result["status"] = "starting"
+        return result
+
+    if ipc_ready:
+        result["status"] = "ready"
+        result["ipc_registered"] = True
+    else:
+        result["status"] = "starting"
+        result["ipc_registered"] = False
+
+    return result
+
+
+def memory_pressure_check():
+    """Check system memory pressure. Returns dict with classification.
+
+    Classification: pass (>=20%), warning (10-19%), critical (<10%),
+    unavailable (command failed/timeout/unparseable).
+    """
+    result = {
+        "classification": "unavailable",
+        "free_percent": None,
+        "raw_output_available": False,
+    }
+
+    try:
+        r = subprocess.run(
+            ["/usr/bin/memory_pressure", "-Q"],
+            capture_output=True, text=True, timeout=3,
+        )
+        result["raw_output_available"] = True
+    except FileNotFoundError:
+        result["error"] = "memory_pressure command not found"
+        return result
+    except subprocess.TimeoutExpired:
+        result["error"] = "memory_pressure command timed out"
+        return result
+    except OSError as exc:
+        result["error"] = str(exc)
+        return result
+
+    match = re.search(
+        r"System-wide memory free percentage:\s*(\d+)%",
+        r.stdout,
+    )
+    if not match:
+        result["error"] = "could not parse free percentage"
+        return result
+
+    pct = int(match.group(1))
+    result["free_percent"] = pct
+
+    if pct >= 20:
+        result["classification"] = "pass"
+    elif pct >= 10:
+        result["classification"] = "warning"
+    else:
+        result["classification"] = "critical"
+
+    return result
+
+
+def verify_socket_peer(sock, expected_pid):
+    """Verify the Unix socket peer PID matches expected_pid.
+
+    Uses macOS LOCAL_PEERPID getsockopt. Returns (ok, peer_pid).
+    ok is True only on a confirmed match; getsockopt failures yield
+    (False, None) so that callers treat unavailable credentials as
+    unverified rather than silently passing.
+    """
+    try:
+        buf = sock.getsockopt(SOL_LOCAL, LOCAL_PEERPID, 4)
+        peer_pid = struct.unpack("i", buf)[0]
+        return peer_pid == expected_pid, peer_pid
+    except (OSError, struct.error):
+        return False, None
+
+
+def parse_identity_json(raw_response):
+    """Extract and parse the !identity JSON from a socket response.
+
+    The response may contain log noise, ANSI escapes, or other output
+    before the JSON object. We find the first '{' and try to parse from
+    there, falling back to scanning each line.
+
+    Returns the parsed dict on success, or None.
+    """
+    text = re.sub(rb'\033\[[0-9;]*m', b'', raw_response).decode(
+        "utf-8", errors="replace").strip()
+    if not text:
+        return None
+
+    brace = text.find("{")
+    if brace >= 0:
+        candidate = text[brace:]
+        last_brace = candidate.rfind("}")
+        if last_brace >= 0:
+            try:
+                return _json.loads(candidate[: last_brace + 1])
+            except _json.JSONDecodeError:
+                pass
+
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                return _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+    return None
+
+
+def check_windowed_mode():
+    """Check that graphicSettings.lsx has FakeFullscreenEnabled=0 (Windowed).
+
+    On macOS BG3, FakeFullscreenEnabled absent means borderless fake-fullscreen
+    (the default). FakeFullscreenEnabled=0 means the user set Display Mode to
+    Windowed in-game. The harness requires Windowed mode for --headless launches
+    because fullscreen BG3 creates its own macOS Space that System Events cannot
+    reliably escape.
+
+    Returns dict with 'windowed' bool and diagnostic details.
+    """
+    result = {
+        "windowed": False,
+        "settings_exists": False,
+        "key_present": False,
+        "value": None,
+    }
+
+    if not GRAPHIC_SETTINGS_PATH.exists():
+        result["error"] = "graphicSettings.lsx not found"
+        return result
+    result["settings_exists"] = True
+
+    tree, config_children = _load_graphic_settings_tree()
+    if tree is None or config_children is None:
+        result["error"] = "could not parse graphicSettings.lsx"
+        return result
+
+    existing = _index_graphic_settings(config_children)
+    entry = existing.get("FakeFullscreenEnabled")
+    if entry is None:
+        result["error"] = (
+            "FakeFullscreenEnabled key not found in graphicSettings.lsx "
+            "(borderless fake-fullscreen is the default)"
+        )
+        return result
+    result["key_present"] = True
+
+    value_attr = _find_config_attribute(entry, "Value")
+    if value_attr is None:
+        result["error"] = "FakeFullscreenEnabled entry has no Value attribute"
+        return result
+
+    raw_value = value_attr.get("value")
+    result["value"] = raw_value
+
+    if raw_value != "0":
+        result["error"] = (
+            f"FakeFullscreenEnabled={raw_value} (expected 0 for Windowed mode)"
+        )
+        return result
+
+    result["windowed"] = True
+    return result
+
+
+class ProcessTracker:
+    """Track a BG3 launch attempt through the Steam bounce lifecycle."""
+
+    def __init__(self, *, launch_id=None, expected_executable=None,
+                 requested_args=None, steam_preflight=None):
+        self.launch_id = launch_id or str(uuid.uuid4())
+        self.expected_executable = expected_executable or str(BG3_EXEC)
+        self.requested_args = requested_args or []
+        self.steam_preflight = steam_preflight or "unknown"
+        self.phase = "preflight"
+        self.current_pid = None
+        self.current_identity = None
+        self.lineage = []
+        self.adoptions = 0
+        self.created_wall_time = time.time()
+        self.created_monotonic = time.monotonic()
+        self.cleanup_complete = False
+        self.window_contained = False
+        self._record_path = PID_FILE
+
+    def set_direct_process(self, pid):
+        self.current_pid = pid
+        exe, start = get_process_identity(pid)
+        self.current_identity = {
+            "start_time": start,
+            "executable": exe,
+        }
+        self.lineage.append({
+            "pid": pid,
+            "role": "direct",
+            "observed_exitcode": None,
+        })
+        self.phase = "direct_running"
+        self._write_record()
+
+    def record_direct_exit(self, exitcode):
+        if self.lineage:
+            self.lineage[-1]["observed_exitcode"] = exitcode
+        direct_lifetime = time.monotonic() - self.created_monotonic
+        qualifying = (
+            self.steam_preflight == "ready"
+            and direct_lifetime <= STEAM_BOUNCE_MAX_INITIAL_LIFETIME_S
+            and self.adoptions < STEAM_MAX_ADOPTIONS_PER_LAUNCH
+        )
+        if exitcode == 0 and qualifying:
+            self.phase = "waiting_for_steam_relaunch"
+            self._write_record()
+            return True
+        self.phase = "process_exited"
+        self._write_record()
+        return False
+
+    def try_adopt(self, pid):
+        if self.adoptions >= STEAM_MAX_ADOPTIONS_PER_LAUNCH:
+            return False
+
+        exe, start = get_process_identity(pid)
+        if not exe:
+            return False
+        if exe != self.expected_executable:
+            return False
+
+        adopted_at = time.monotonic() - self.created_monotonic
+        if adopted_at > STEAM_RELAUNCH_GRACE_S:
+            return False
+
+        self.current_pid = pid
+        self.current_identity = {
+            "start_time": start,
+            "executable": exe,
+        }
+        self.lineage.append({
+            "pid": pid,
+            "role": "steam_relaunch",
+            "adopted_at_s": round(adopted_at, 1),
+        })
+        self.adoptions += 1
+        self.phase = "adopted_running"
+        self.window_contained = False
+        self._write_record()
+        return True
+
+    def set_socket_ready(self):
+        self.phase = "socket_ready"
+        self._write_record()
+
+    def set_failed(self, failure_code):
+        self.phase = failure_code
+        self._write_record()
+
+    def is_process_alive(self):
+        if self.current_pid is None:
+            return False
+        try:
+            os.kill(self.current_pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
+    def to_dict(self):
+        return {
+            "schema_version": 2,
+            "launch_id": self.launch_id,
+            "phase": self.phase,
+            "created_wall_time": self.created_wall_time,
+            "created_monotonic": self.created_monotonic,
+            "requested_args": self.requested_args,
+            "expected_executable": self.expected_executable,
+            "steam": {"preflight": self.steam_preflight},
+            "pid": self.current_pid,
+            "identity": self.current_identity,
+            "lineage": self.lineage,
+            "window_contained": self.window_contained,
+            "cleanup_complete": self.cleanup_complete,
+        }
+
+    def _write_record(self):
+        try:
+            data = _json.dumps(self.to_dict())
+            tmp = self._record_path.with_suffix(".tmp")
+            with open(tmp, "w") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(str(tmp), str(self._record_path))
+        except OSError as exc:
+            # Degrade gracefully (from_record returns None downstream) but
+            # leave a trace — an invisible write failure is undebuggable.
+            print(f"warning: launch record write failed: {exc}", file=sys.stderr)
+
+    @classmethod
+    def from_record(cls, path=None):
+        path = path or PID_FILE
+        try:
+            data = _json.loads(path.read_text())
+        except (FileNotFoundError, _json.JSONDecodeError):
+            return None
+        if data.get("schema_version") != 2:
+            return None
+        tracker = cls(
+            launch_id=data.get("launch_id"),
+            expected_executable=data.get("expected_executable"),
+            requested_args=data.get("requested_args"),
+            steam_preflight=data.get("steam", {}).get("preflight"),
+        )
+        tracker.phase = data.get("phase", "unknown")
+        tracker.current_pid = data.get("pid")
+        tracker.current_identity = data.get("identity")
+        tracker.lineage = data.get("lineage", [])
+        tracker.adoptions = sum(
+            1 for entry in tracker.lineage if entry.get("role") == "steam_relaunch"
+        )
+        tracker.created_wall_time = data.get("created_wall_time", 0)
+        tracker.created_monotonic = data.get("created_monotonic", 0)
+        tracker.window_contained = data.get("window_contained", False)
+        tracker.cleanup_complete = data.get("cleanup_complete", False)
+        tracker._record_path = path
+        return tracker
+
+
+class LaunchSession:
+    """Facade for a launch attempt. Returned by launch()."""
+
+    def __init__(self, tracker, direct_process):
+        self.tracker = tracker
+        self.direct_process = direct_process
+
+    @property
+    def pid(self):
+        return self.tracker.current_pid
+
+    @property
+    def launch_id(self):
+        return self.tracker.launch_id
+
+    def poll(self):
+        if self.tracker.is_process_alive():
+            return None
+        return getattr(self.direct_process, "returncode", -1)
+
+    @property
+    def returncode(self):
+        return getattr(self.direct_process, "returncode", None)
 
 
 def _read_pid_file():
-    """Read harness-owned PID from file. Returns int or None."""
+    """Read harness-owned PID from file. Returns int or None.
+
+    For schema_version 2 records, validates that the stored executable
+    and start time match the live process before returning the PID.
+    This prevents SIGTERM being sent to a different process that reused
+    the PID.
+    """
     try:
         data = _json.loads(PID_FILE.read_text())
+        if data.get("schema_version") == 2:
+            pid = data.get("pid")
+            if not pid or not _pid_is_bg3(pid):
+                return None
+            stored_identity = data.get("identity") or {}
+            stored_exe = stored_identity.get("executable")
+            stored_start = stored_identity.get("start_time")
+            if stored_exe or stored_start:
+                live_exe, live_start = get_process_identity(pid)
+                if stored_exe and live_exe and live_exe != stored_exe:
+                    return None
+                if stored_start and live_start and live_start != stored_start:
+                    return None
+            return pid
         pid = data.get("pid")
         if pid and _pid_is_bg3(pid):
             return pid
@@ -321,19 +788,20 @@ def _upsert_graphic_settings(entries: dict[str, int]) -> None:
 
 
 def prepare_headless_graphics():
-    """Temporarily force BG3 graphics settings to normal windowed mode."""
+    """Temporarily force BG3 graphics settings to 1280x720 windowed size."""
+    entries = HEADLESS_TRANSIENT_GRAPHICS_ENTRIES
     result = {
         "success": False,
         "path": str(GRAPHIC_SETTINGS_PATH),
         "restore_path": str(HEADLESS_GRAPHICS_RESTORE_PATH),
-        "entries": HEADLESS_GRAPHICS_ENTRIES,
+        "entries": entries,
         "snapshot_created": False,
     }
 
     try:
         HARNESS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         if not HEADLESS_GRAPHICS_RESTORE_PATH.exists():
-            snapshot = _snapshot_graphic_settings(HEADLESS_GRAPHICS_ENTRIES.keys())
+            snapshot = _snapshot_graphic_settings(entries.keys())
             if snapshot is None:
                 result["error"] = f"could not snapshot {GRAPHIC_SETTINGS_PATH}"
                 return result
@@ -342,10 +810,10 @@ def prepare_headless_graphics():
             )
             result["snapshot_created"] = True
 
-        write_result = _write_int_graphic_settings(HEADLESS_GRAPHICS_ENTRIES)
+        write_result = _write_int_graphic_settings(entries)
         result.update(write_result)
         result["restore_path"] = str(HEADLESS_GRAPHICS_RESTORE_PATH)
-        result["entries"] = HEADLESS_GRAPHICS_ENTRIES
+        result["entries"] = entries
         return result
     except (OSError, ET.ParseError) as exc:
         result["error"] = str(exc)
@@ -353,7 +821,14 @@ def prepare_headless_graphics():
 
 
 def restore_headless_graphics(reason=""):
-    """Restore graphics settings saved by prepare_headless_graphics()."""
+    """Restore graphics settings saved by prepare_headless_graphics().
+
+    Only restores the keys that HEADLESS_TRANSIENT_GRAPHICS_ENTRIES would
+    have changed (ScreenWidth, ScreenHeight). If the snapshot file contains
+    keys outside that set (e.g. from a stale pre-update snapshot that included
+    Fullscreen or FakeFullscreenEnabled), the snapshot is treated as untrusted,
+    deleted, and a noop is returned with a warning.
+    """
     result = {
         "success": True,
         "path": str(GRAPHIC_SETTINGS_PATH),
@@ -370,6 +845,31 @@ def restore_headless_graphics(reason=""):
 
     try:
         snapshot = _json.loads(HEADLESS_GRAPHICS_RESTORE_PATH.read_text())
+    except (_json.JSONDecodeError, OSError) as exc:
+        result["success"] = False
+        result["error"] = str(exc)
+        return result
+
+    allowed_keys = set(HEADLESS_TRANSIENT_GRAPHICS_ENTRIES.keys())
+    snapshot_keys = set(snapshot.get("entries", {}).keys())
+    extra_keys = snapshot_keys - allowed_keys
+    if extra_keys:
+        print(
+            f"[harness] WARNING: stale headless restore snapshot contains "
+            f"untrusted keys {sorted(extra_keys)}; deleting snapshot and "
+            f"skipping restore to protect user's display-mode settings.",
+            file=sys.stderr,
+        )
+        try:
+            HEADLESS_GRAPHICS_RESTORE_PATH.unlink()
+        except OSError:
+            pass
+        result["noop"] = True
+        result["stale_snapshot_deleted"] = True
+        result["extra_keys"] = sorted(extra_keys)
+        return result
+
+    try:
         restore_result = _restore_graphic_settings_snapshot(snapshot)
         result.update(restore_result)
         result["restore_path"] = str(HEADLESS_GRAPHICS_RESTORE_PATH)
@@ -377,20 +877,80 @@ def restore_headless_graphics(reason=""):
         if restore_result.get("success"):
             HEADLESS_GRAPHICS_RESTORE_PATH.unlink()
         return result
-    except (_json.JSONDecodeError, OSError, ET.ParseError) as exc:
+    except (OSError, ET.ParseError) as exc:
         result["success"] = False
         result["error"] = str(exc)
         return result
 
 
 def launch(continue_game=False, load_save=None, extra_flags=None,
-           skip_videos=True, auto_dismiss=True, headless=False):
-    kill_existing(force_all=True)
+           skip_videos=True, auto_dismiss=True, headless=False,
+           allow_memory_pressure=False):
+    existing = find_bg3_processes()
+    owned_pid = _read_pid_file()
+    if owned_pid:
+        try:
+            os.kill(owned_pid, signal.SIGTERM)
+            time.sleep(1)
+        except ProcessLookupError:
+            pass
+        _clear_pid_file()
+    elif existing:
+        print(
+            f"BG3 launch refused: unowned BG3 process(es) already running "
+            f"(pids={[p[0] for p in existing]}). Quit them or use "
+            f"'quit --force', then rerun.",
+            file=sys.stderr,
+        )
+        tracker = ProcessTracker(steam_preflight="unknown")
+        tracker.set_failed("unowned_process_running")
+        return LaunchSession(tracker, None)
+
+    steam = steam_readiness()
+    if steam["status"] not in ("ready",):
+        msg = (
+            "BG3 launch refused: Steam IPC is not ready. "
+            "Direct Steam-less BG3 sessions cleanly self-exit after "
+            "roughly 90-151 seconds. Open Steam, wait until the "
+            "Library is ready, then rerun the harness."
+        )
+        print(msg, file=sys.stderr)
+        tracker = ProcessTracker(steam_preflight=steam["status"])
+        tracker.set_failed("steam_not_ready")
+        return LaunchSession(tracker, None)
+
+    mem = memory_pressure_check()
+    if mem["classification"] == "critical" and not allow_memory_pressure:
+        print(
+            f"BG3 launch refused: memory_pressure_critical "
+            f"(free={mem.get('free_percent')}%). "
+            f"Use --allow-memory-pressure to override.",
+            file=sys.stderr,
+        )
+        tracker = ProcessTracker(steam_preflight=steam["status"])
+        tracker.set_failed("memory_pressure_critical")
+        return LaunchSession(tracker, None)
+
     clean_socket()
     ensure_no_launcher()
     headless_graphics = None
 
     if headless:
+        wm = check_windowed_mode()
+        if not wm.get("windowed"):
+            msg = (
+                "BG3 launch refused: headless mode requires Windowed display "
+                "mode (FakeFullscreenEnabled=0 in graphicSettings.lsx). "
+                "Set Display Mode to Windowed in BG3 Options > Video, then "
+                "rerun."
+            )
+            if wm.get("error"):
+                msg += f" ({wm['error']})"
+            print(msg, file=sys.stderr)
+            tracker = ProcessTracker(steam_preflight=steam["status"])
+            tracker.set_failed("window_mode_unverified")
+            return LaunchSession(tracker, None)
+
         headless_graphics = prepare_headless_graphics()
         if not headless_graphics.get("success"):
             print(
@@ -402,14 +962,17 @@ def launch(continue_game=False, load_save=None, extra_flags=None,
         ensure_skip_videos()
 
     cmd = ["arch", "-arm64", str(BG3_EXEC)]
+    game_args = []
 
     if continue_game:
-        cmd.append("-continueGame")
+        game_args.append("-continueGame")
     elif load_save:
-        cmd.extend(["-loadSaveGame", load_save])
+        game_args.extend(["-loadSaveGame", load_save])
 
     if extra_flags:
-        cmd.extend(build_flag_args(extra_flags))
+        game_args.extend(build_flag_args(extra_flags))
+
+    cmd.extend(game_args)
 
     env = os.environ.copy()
     if skip_videos:
@@ -418,6 +981,12 @@ def launch(continue_game=False, load_save=None, extra_flags=None,
         env["BG3SE_AUTO_DISMISS_SPLASH"] = "1"
     if headless:
         env["BG3SE_MUTE_AUDIO"] = "1"
+
+    tracker = ProcessTracker(
+        expected_executable=str(BG3_EXEC),
+        requested_args=game_args,
+        steam_preflight=steam["status"],
+    )
 
     print(f"[harness] phase: process_launching", file=sys.stderr)
     proc = subprocess.Popen(
@@ -429,7 +998,7 @@ def launch(continue_game=False, load_save=None, extra_flags=None,
         env=env,
     )
     proc.bg3se_headless_graphics = headless_graphics
-    _write_pid_file(proc.pid)
+    tracker.set_direct_process(proc.pid)
     flags_desc = " ".join(cmd[3:]) if len(cmd) > 3 else "(no extra flags)"
     print(f"[harness] phase: process_launched (pid {proc.pid}) [{flags_desc}]",
           file=sys.stderr)
@@ -441,7 +1010,8 @@ def launch(continue_game=False, load_save=None, extra_flags=None,
         print("[harness] headless-after-boot: BG3 visible during boot, will hide after socket ready",
               file=sys.stderr)
 
-    return proc
+    session = LaunchSession(tracker, proc)
+    return session
 
 
 def default_timeout(continue_game=False, load_save=None):
@@ -497,7 +1067,8 @@ def _watchdog_target_for_attempt(attempt):
     return _WATCHDOG_CLICK_SEQUENCE[index]
 
 
-def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
+def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None,
+                    tracker=None):
     """Wait for the SE socket to respond to Lua commands.
 
     When dismiss_splash is True, periodically sends Escape+Space via
@@ -509,6 +1080,7 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
 
     If process is provided, polls process.poll() each iteration and
     returns early with stage="process_exited" if BG3 dies during boot.
+    If tracker is provided, uses it for Steam bounce lifecycle.
 
     The returned dict includes a "phases" list of {t, phase} dicts
     recording each stage transition with elapsed time in seconds.
@@ -544,14 +1116,66 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
 
     _phase("waiting_for_socket", f"timeout={timeout}s")
 
+    bounce_grace_added = False
+
     while (time.monotonic() - start) < timeout:
         if process is not None and process.poll() is not None:
+            exitcode = process.returncode
+            if tracker and not bounce_grace_added:
+                is_bounce = tracker.record_direct_exit(exitcode)
+                if is_bounce:
+                    _phase("bootstrap_exit_candidate",
+                           f"code={exitcode}, waiting for Steam relaunch")
+                    bounce_grace_added = True
+                    timeout = max(timeout, (time.monotonic() - start) + STEAM_RELAUNCH_GRACE_S)
+                    process = None
+                    time.sleep(interval)
+                    continue
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            _phase("process_exited", f"code={process.returncode}, {elapsed_ms}ms")
+            _phase("process_exited", f"code={exitcode}, {elapsed_ms}ms")
             return {
                 "socket_connected": False,
                 "stage": "process_exited",
-                "exitcode": process.returncode,
+                "exitcode": exitcode,
+                "elapsed_ms": elapsed_ms,
+                "phases": phases,
+                "diagnostics": _collect_boot_diagnostics(),
+            }
+
+        if tracker and tracker.phase == "waiting_for_steam_relaunch":
+            candidates = find_bg3_processes()
+            candidates = [
+                (pid, exe) for pid, exe in candidates
+                if pid != (tracker.lineage[0]["pid"] if tracker.lineage else None)
+            ]
+            if len(candidates) == 1:
+                new_pid, new_exe = candidates[0]
+                if tracker.try_adopt(new_pid):
+                    _phase("steam_adopted", f"pid={new_pid}")
+                    process = None
+            elif len(candidates) > 1:
+                elapsed_ms = int((time.monotonic() - start) * 1000)
+                _phase("ambiguous_relaunch",
+                       f"{len(candidates)} candidates")
+                tracker.set_failed("ambiguous_relaunch")
+                return {
+                    "socket_connected": False,
+                    "stage": "ambiguous_relaunch",
+                    "elapsed_ms": elapsed_ms,
+                    "phases": phases,
+                    "diagnostics": _collect_boot_diagnostics(),
+                }
+
+        if tracker and tracker.phase == "waiting_for_steam_relaunch":
+            time.sleep(interval)
+            continue
+
+        if tracker and tracker.phase in ("adopted_running",) and not tracker.is_process_alive():
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            _phase("process_exited", f"adopted pid died, {elapsed_ms}ms")
+            return {
+                "socket_connected": False,
+                "stage": "process_exited",
                 "elapsed_ms": elapsed_ms,
                 "phases": phases,
                 "diagnostics": _collect_boot_diagnostics(),
@@ -567,7 +1191,7 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
                 log_file_detected = True
                 _phase("dylib_loaded")
 
-        bg3_pid = process.pid if process else None
+        bg3_pid = tracker.current_pid if tracker else (process.pid if process else None)
 
         if socket_ever_connected:
             stalled_for = elapsed - (socket_listening_at or elapsed)
@@ -650,7 +1274,7 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
             except socket.timeout:
                 pass
 
-            sock.sendall(b"Ext.GetVersion()\n")
+            sock.sendall(b"!identity\n")
             time.sleep(0.5)
 
             response = b""
@@ -663,20 +1287,65 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
             except socket.timeout:
                 pass
 
+            peer_ok, peer_pid = False, None
+            if tracker and tracker.current_pid is not None:
+                peer_ok, peer_pid = verify_socket_peer(sock, tracker.current_pid)
+            else:
+                peer_ok = True
             sock.close()
 
             if response:
+                identity = parse_identity_json(response)
+                identity_pid = identity.get("pid") if identity else None
+
+                if tracker and tracker.current_pid is not None:
+                    if identity and identity_pid is not None:
+                        if identity_pid != tracker.current_pid:
+                            elapsed_ms = int((time.monotonic() - start) * 1000)
+                            _phase("identity_pid_mismatch",
+                                   f"expected={tracker.current_pid} identity={identity_pid}")
+                            tracker.set_failed("identity_pid_mismatch")
+                            return {
+                                "socket_connected": False,
+                                "stage": "identity_pid_mismatch",
+                                "elapsed_ms": elapsed_ms,
+                                "expected_pid": tracker.current_pid,
+                                "identity_pid": identity_pid,
+                                "phases": phases,
+                            }
+                    elif not peer_ok:
+                        elapsed_ms = int((time.monotonic() - start) * 1000)
+                        _phase("socket_peer_unverified",
+                               f"expected={tracker.current_pid} peer={peer_pid} identity=unavailable")
+                        tracker.set_failed("socket_peer_unverified")
+                        return {
+                            "socket_connected": False,
+                            "stage": "socket_peer_unverified",
+                            "elapsed_ms": elapsed_ms,
+                            "expected_pid": tracker.current_pid,
+                            "peer_pid": peer_pid,
+                            "phases": phases,
+                        }
+
                 text = re.sub(rb'\033\[[0-9;]*m', b'', response).decode(
                     "utf-8", errors="replace").strip()
                 elapsed_ms = int((time.monotonic() - start) * 1000)
                 _phase("socket_responded", f"{elapsed_ms}ms")
-                return {
+                if tracker:
+                    tracker.set_socket_ready()
+                result = {
                     "socket_connected": True,
                     "se_version": text if text else "connected",
                     "elapsed_ms": elapsed_ms,
                     "dismiss_attempts": dismiss_count,
                     "phases": phases,
                 }
+                if identity:
+                    result["identity"] = identity
+                    result["identity_pid"] = identity_pid
+                if peer_pid is not None:
+                    result["peer_pid"] = peer_pid
+                return result
 
         except (ConnectionRefusedError, FileNotFoundError, OSError):
             pass
@@ -684,10 +1353,14 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
         time.sleep(interval)
 
     elapsed_ms = int((time.monotonic() - start) * 1000)
-    _phase("timeout", f"{elapsed_ms}ms")
+    stage = "timeout"
+    if tracker and tracker.phase == "waiting_for_steam_relaunch":
+        stage = "steam_relaunch_timeout"
+        tracker.set_failed("steam_relaunch_timeout")
+    _phase(stage, f"{elapsed_ms}ms")
     return {
         "socket_connected": False,
-        "stage": "timeout",
+        "stage": stage,
         "elapsed_ms": elapsed_ms,
         "dismiss_attempts": dismiss_count,
         "phases": phases,

@@ -13,7 +13,117 @@ Each entry includes:
 
 ---
 
-## [v0.37.1+headless] - 2026-05-16 — Headless CLI mode working + mod-state preflight
+## [v0.38.0] - 2026-07-28 — Thread-safe Lua core + launch-lifecycle hardening
+
+**Category:** Stability + harness infrastructure | **Parity:** ~94.7%
+
+Three crash classes found and fixed in one night of live soaking, then the whole
+native-to-Lua boundary was serialized behind a single recursive gate. The harness
+gained a process-identity layer: it now proves *which* BG3 process it is talking to
+(and whether that process has a loaded session) before trusting a single test result —
+closing the failure mode where a replacement process rebound the console socket and
+24 tier-2 "failures" were really a menu process with no save loaded.
+
+### Fixed
+- **Lua cross-thread race (crash)** — Four threads entered the shared `lua_State`
+  unsynchronized (ServerWorker dispatch, GCD console timer, Metal render callbacks,
+  input hotkeys). New `src/lua/lua_gate.c/h` recursive mutex serializes every
+  native-to-Lua entry: `fake_Event`/`fake_InitGame`/`fake_Load`, Osiris dispatch,
+  console poll (trylock — skip on contention), ImGui events + native ref cleanup,
+  hotkeys, network callbacks, functor events, log-event dispatch, and the Shutdown
+  event. All entry points resolve their `lua_State` *under* the gate; `shutdown_lua`
+  clears every published state pointer while holding it, so blocked waiters can
+  never enter a freed VM.
+- **Logging lock inversion** — `log_write_v` now snapshots callbacks under the
+  logging mutex and invokes them after release, establishing one global lock order
+  (Lua gate → logging mutex) and eliminating an ABBA deadlock plus a self-deadlock
+  when a Lua Log handler logs.
+- **MAP_JIT trampoline fault (crash)** — `arm64_hook_at_offset` wrote trampolines
+  without `pthread_jit_write_protect_np(0)`; masked by near-branch allocation until
+  an unlucky ASLR slide forced the far-trampoline fallback. Write gate now brackets
+  the build, re-protected before `sys_icache_invalidate`.
+- **Overlay console SIGBUS (crash)** — TextKit 2 relayout storm under tier-2 output
+  flood. Console view forces TextKit 1, coalesces lines into one batched append per
+  main-queue drain, caps storage at 500KB; `clearOutput` is linearized into the same
+  ordered pending stream as appends (clear sentinel), so pre-clear text cannot replay
+  and post-clear text cannot be erased by a shared scheduled flush.
+- **Version contract coherence** — the 2026-07-28 address migration left
+  `BG3_KNOWN_VERSION` and the three layout sentinels at their pre-migration values,
+  so the exact-version gate rejected the very build the addresses were derived for.
+  All three now move in lockstep with the per-subsystem offsets, and the eleven
+  functor-hook code patches (stripped locals, un-auditable by `nm`) gate on their own
+  `FUNCTOR_ADDRS_VERIFIED_BUILD` constant — a global version bump can never silently
+  enable unverified code patches. `ResourceManager::m_ptr` and
+  `ResourceContainer::GetResource` were also stale from the same migration and are
+  now re-derived and covered by the offset audit.
+- **`BG3SE_DISABLE` destructor side effects** — a disabled image ran the full
+  cleanup path at unload (events, hook removal, ImGui teardown) despite never
+  initializing. The destructor is now inert unless this image won the duplicate
+  election *and* began initialization, restoring the kill switch's zero-side-effects
+  contract.
+- **ImGui callback ref resolved under the gate** — `lua_imgui_fire_event` captured
+  the registry ref before acquiring the Lua gate; gated Lua code could unref and
+  reuse the slot while the render thread blocked, invoking the wrong function. Both
+  the state and the ref now resolve under the gate.
+- **Windowed-mode ground truth** — display mode lives in `graphicSettings.lsx` as
+  `FakeFullscreenEnabled` (absent = borderless, `0` = windowed), written only by the
+  in-game Options → Video menu. The harness no longer injects display-mode keys and
+  restores are per-key (ScreenWidth/Height only), so automation can never revert the
+  user's windowed choice or seize the screen with a fullscreen relaunch.
+
+### Added
+- **`!identity` console handshake** — JSON with pid, version, game state,
+  session-init state, stats readiness, and dylib image path (JSON-escaped, with a
+  truncation-safe fallback). The harness `wait_for_socket()` now *enforces* it:
+  the identity PID must match the tracked process, with `LOCAL_PEERPID` as a
+  secondary check whose errors count as unverified rather than a pass. Any BG3SE
+  instance rebinding `/tmp/bg3se.sock` is now rejected instead of silently trusted.
+- **Duplicate-dylib guard** — the insert_dylib patch and `DYLD_INSERT_LIBRARIES`
+  could both load a copy of the dylib into one process (two Lua states, two
+  exception handlers, observed live). The constructor now elects exactly one image
+  per process via the environment; the second logs itself and fully disables.
+- **Launch-attempt lifecycle (`ProcessTracker`/`LaunchSession`)** — the harness
+  tracks a launch as an identity (exact executable + process start time) with PID
+  lineage, adopting the Steam-relaunched successor exactly once within a bounded
+  grace window. Adoption fails closed on a missing executable, requires the exact
+  expected path, and rejects candidates outside the relaunch window; stale PID files
+  are re-validated against live process identity before any SIGTERM, so PID reuse
+  can never terminate an unrelated process. Ambiguous candidates are a hard
+  failure, never `pgrep | head -1`.
+- **Preflight gates** — launches now refuse early with actionable errors: Steam IPC
+  not ready (Steam-less sessions self-exit at ~90-150s via DRM grace), critical
+  memory pressure (<10% free blocks; jetsam storms kill ReportCrash and Steam),
+  unowned BG3 instance already running, or windowed mode unverified for `--headless`.
+  `doctor` gained severity levels and four new checks.
+- **Session driver rework** (`scripts/session_driver.sh`) — consumes the harness
+  launch record, verifies PID + start time each poll, tolerates the Steam bounce in
+  a settling phase, validates arguments, and adds `PREFLIGHT_FAILED` (4) and
+  `AMBIGUOUS_ATTACH` (5) verdicts.
+- **64 new offline tests** — launch-lifecycle state machine, Steam bounce adoption,
+  identity handshake parsing, peer verification (fail-closed), memory thresholds,
+  monitor restore-exactly-once, windowed-mode checks, headless launch gate, and a
+  functor-gate guard in the offset audit. Offline gate now 41 C + 144 pytest.
+
+### Technical
+- **Breaking:** `doctor` now exits 1 only on failed *critical* checks (severity
+  levels critical/warning/info); scripts relying on exit 0 = "every check passed"
+  must inspect the JSON instead.
+- Console poll timer logs a starvation warning after 50 consecutive gate misses (~5s).
+- Functor hook installation now honors `BG3SE_NO_HOOKS` and gates on
+  `FUNCTOR_ADDRS_VERIFIED_BUILD` (the build its stripped-local addresses were
+  derived from) instead of the global version match.
+- `log_unregister_callback` lifetime contract documented: unregistration is
+  asynchronous relative to in-flight snapshotted invocations; callers must keep
+  callback state valid until drained (the Lua log callback does this via the gate).
+- `--allow-memory-pressure` is now an actual CLI flag on `launch` and `test`
+  (previously only advertised by the refusal message).
+- Steam-relaunch timeout now lands the tracker in the `steam_relaunch_timeout`
+  terminal phase; the detached monitor treats an unknowable exit status as a
+  potential bounce (bounded + identity-checked) instead of a generic death.
+- `GameStateChanged → LoadSession` fires only after a successful `COsiris::Load`,
+  so a failed load can no longer strand the state tracker.
+- Graphics restore in the detached monitor is exactly-once and never fires on the
+  Steam bootstrap exit (the race that previously flashed the user to fullscreen).
 
 **Category:** Headless automation + console infrastructure | **Parity:** ~94%
 

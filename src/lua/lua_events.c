@@ -10,6 +10,7 @@
  */
 
 #include "lua_events.h"
+#include "lua_gate.h"
 #include "../core/logging.h"
 #include "../mod/mod_loader.h"
 #include "../entity/component_registry.h"
@@ -1842,7 +1843,16 @@ static void log_event_callback(LogLevel level, LogModule module,
     const char *level_str = log_level_name(level);
     const char *module_str = log_module_name(module);
 
-    events_fire_log(g_log_callback_L, level_str, module_str, message);
+    // Any logging thread can land here. The logging system invokes callbacks
+    // with g_config.mutex released, so taking the Lua gate here is
+    // deadlock-free; re-resolve the state under the gate because shutdown
+    // clears it while holding the same gate.
+    lua_gate_lock();
+    lua_State *L = g_log_callback_L;
+    if (L) {
+        events_fire_log(L, level_str, module_str, message);
+    }
+    lua_gate_unlock();
 }
 
 /**
@@ -1867,6 +1877,19 @@ void events_init_log_callback(lua_State *L) {
         log_set_output_flags(flags | LOG_OUTPUT_CALLBACK);
         LOG_LUA_INFO("Log event callback registered (id=%d)", g_log_callback_id);
     }
+}
+
+/**
+ * Tear down the Log event callback before the Lua state closes.
+ * Must be called while holding the Lua gate (shutdown_lua does), so no
+ * logging thread can be mid-dispatch into the dying state.
+ */
+void events_shutdown_log_callback(void) {
+    if (g_log_callback_id >= 0) {
+        log_unregister_callback(g_log_callback_id);
+        g_log_callback_id = -1;
+    }
+    g_log_callback_L = NULL;
 }
 
 // ============================================================================

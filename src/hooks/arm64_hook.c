@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <sys/mman.h>
 #include <mach/mach.h>
 #include <libkern/OSCacheControl.h>
@@ -317,7 +318,14 @@ ARM64HookHandle* arm64_hook_at_offset(void* target, int skip_bytes, void* replac
         return NULL;
     }
 
-    // Build trampoline
+    // Build trampoline. The page is MAP_JIT: on Apple Silicon it is
+    // execute-protected until this thread flips the JIT write gate, and
+    // writing without the flip faults (KERN_PROTECTION_FAILURE at the
+    // trampoline base — 2026-07-28 crash in install_feat_getfeats_safe_hook
+    // when an unlucky ASLR slide forced the far-trampoline fallback).
+#if defined(__APPLE__) && defined(__arm64__)
+    pthread_jit_write_protect_np(0);
+#endif
     uint32_t* tramp = (uint32_t*)handle->trampoline;
     int tramp_idx = 0;
 
@@ -341,6 +349,10 @@ ARM64HookHandle* arm64_hook_at_offset(void* target, int skip_bytes, void* replac
         arm64_encode_absolute_branch(&tramp[tramp_idx], continue_addr);
         tramp_idx += 4;
     }
+
+#if defined(__APPLE__) && defined(__arm64__)
+    pthread_jit_write_protect_np(1);
+#endif
 
     // Flush trampoline cache
     sys_icache_invalidate(handle->trampoline, tramp_idx * 4);

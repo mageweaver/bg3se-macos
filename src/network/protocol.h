@@ -69,8 +69,10 @@
 // At runtime, apply ASLR: runtime = ghidra - 0x100000000 + binary_base
 // ============================================================================
 
-/** NetMessageFactory::GetMessage (GetFreeMessage) — 524 callers confirmed. */
-#define ADDR_GETMESSAGE 0x1063d5998ULL
+/** net::MessageFactory::GetFreeMessage(int) — 524 callers confirmed.
+ *  Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (previous value
+ *  0x1063d5998 was from build 4.1.1.6995620 and patched a wrong address). */
+#define ADDR_GETMESSAGE 0x1063c4550ULL
 
 // ============================================================================
 // GameServer Peer Array Offsets (Phase 4H)

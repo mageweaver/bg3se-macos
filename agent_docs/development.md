@@ -153,19 +153,20 @@ echo '!help' > ~/Library/Application\ Support/BG3SE/commands.txt
 | `!status` | Show BG3SE status (socket, clients, commands) |
 | `!typeids` | Show TypeId resolution status |
 | `!probe_osidef [N]` | Hex dump OsiFunctionDef layout for N functions (default 5) |
-| `!test [filter]` | Run Tier 1 regression tests (93 tests, always works). Optional filter: `!test Stats`, `!test Parity` |
-| `!test_ingame [filter]` | Run Tier 2 tests (54 tests, needs loaded save). Tests Entity, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity |
+| `!test [filter]` | Run Tier 1 regression tests (109 tests, always works). Optional filter: `!test Stats`, `!test Parity` |
+| `!test_ingame [filter]` | Run Tier 2 tests (67 tests, needs loaded save). Tests Entity, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity |
+| `!identity` | JSON identity/readiness handshake: pid, version, game_state, session_init, stats_ready, dylib image. Verify before trusting live test results |
 
-### Test Suite (229 tests)
+### Test Suite (361 tests)
 
-Four tiers, 229 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
+Four tiers, 361 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
 
 | Tier | Command | Tests | Requires |
 |------|---------|-------|----------|
 | 0 | `./build/bin/bg3se_test_tier0` | 41 | None (CI-safe) |
-| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 41 | Python 3.12 (CI-safe) |
-| 1 | `!test` | 93 | Console only (no save needed) |
-| 2 | `!test_ingame` | 54 | Loaded save game |
+| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 144 | Python 3.12 (CI-safe) |
+| 1 | `!test` | 109 | Console only (no save needed) |
+| 2 | `!test_ingame` | 67 | Loaded save game |
 
 **Categories (Tier 1):** Stats (12), Entity (8), Events (7), Timer (6), Types (5), Vars (3), MCM (4), Utils (4), Debug (5), Ext.Mod (5), Ext.Level (2), Ext.Audio (2), Ext.Net (4), Context (3), StaticData (6), Template (3), Resource (3), Console (1), Localization (1), IMGUI (1), **Parity (8)**
 
@@ -253,6 +254,14 @@ Ext.Debug.ClassifyPointer(addr) -- Returns { type, readable, preview? }
 - Cache: `/Users/tomdimino/Library/Application Support/BG3SE/`
 - Use `log_message()` for consistent logging
 - Osiris events logged with `[Osiris]` prefix
+
+### Debugging Gotchas (macOS)
+
+- **`log` is a zsh builtin.** Use `/usr/bin/log show` explicitly; bare `log` silently does nothing useful.
+- **Missing .ips proves nothing.** If `ReportCrash` was jetsam-killed (common under memory pressure — 100 JETSAM_MEMORY_IDLE_EXIT kills in 6 min observed), no crash report is written. Pair crash reports to sessions by PID + `procLaunch` timestamp, never by filename adjacency.
+- **Steam-less sessions self-exit.** Without Steam running, BG3 exits cleanly via `proc_exit` after ~90-150s (Steamworks DRM grace timeout) — no crash report. `steam_appid.txt` (1086940) next to the game binary suppresses `SteamAPI_RestartAppIfNecessary` (the ~1.3s exit-0 bounce + Steam relaunch when Steam IS running).
+- **Windowed mode lives in `graphicSettings.lsx` as `FakeFullscreenEnabled`.** Key absent = borderless fake-fullscreen (default); `FakeFullscreenEnabled=0` = windowed. The game writes it only when the user changes Options → Video → Display Mode in-game (verified 2026-07-28: the file went 16→17 MapKeys on switching to Windowed; `config.lsf` was untouched). The harness verifies this key but never writes it — and any settings restore must preserve it, or it silently reverts the user to fullscreen.
+- **Verify socket identity before trusting live tests.** Any BG3SE instance rebinds `/tmp/bg3se.sock`; a replacement process (crash relaunch, Steam bounce) silently receives commands meant for the old one. Run `!identity` and check pid + `session_init:"complete"` first.
 
 ## Adding New APIs
 

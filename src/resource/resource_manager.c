@@ -16,10 +16,10 @@
 // ============================================================================
 
 // ls::ResourceManager::m_ptr global singleton
-// Discovered from InitEngine disassembly:
-//   105d197e4: adrp x25, 0x108a8f000
-//   105d197e8: ldr  x28, [x25, #0x70]
-#define OFFSET_RESOURCEMANAGER_PTR  0x08a8f070
+// Originally discovered from InitEngine disassembly (Dec 21, 2025).
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x08a8f070).
+// Audited by tests/harness/test_offset_audit.py.
+#define OFFSET_RESOURCEMANAGER_PTR  0x08a97070
 
 // ResourceBank offsets within ResourceManager
 #define RESOURCEMANAGER_BANK0_OFFSET  0x28  // Primary bank
@@ -28,7 +28,9 @@
 // ResourceContainer::GetResource function
 // Takes: (ResourceContainer* this, ResourceBankType type, FixedString* id)
 // Returns: Resource* or NULL
-#define OFFSET_GETRESOURCE_FUNC  0x060cc608
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x060cc608).
+// Audited by tests/harness/test_offset_audit.py.
+#define OFFSET_GETRESOURCE_FUNC  0x060bc020
 
 // ResourceContainer structure offsets
 #define RESOURCECONTAINER_BANKS_OFFSET  0x08  // Array of banks indexed by type

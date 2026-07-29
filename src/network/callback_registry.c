@@ -9,6 +9,7 @@
 
 #include "callback_registry.h"
 #include "../core/logging.h"
+#include "../lua/lua_gate.h"
 #include "../lua/lua_json.h"
 #include <lauxlib.h>
 #include <string.h>
@@ -258,11 +259,15 @@ bool callback_registry_invoke(lua_State *L, uint64_t request_id,
         return false;
     }
 
+    // May be reached from network receive paths - serialize Lua access (lua_gate.h)
+    lua_gate_lock();
+
     // Retrieve pushes the callback function onto stack and returns the actual state used
     lua_State *actual_L = L;
     if (!callback_registry_retrieve(L, request_id, &actual_L)) {
         LOG_NET_DEBUG("No callback found for request_id=%llu",
                      (unsigned long long)request_id);
+        lua_gate_unlock();
         return false;
     }
 
@@ -301,11 +306,13 @@ bool callback_registry_invoke(lua_State *L, uint64_t request_id,
                      (unsigned long long)request_id,
                      err ? err : "unknown error");
         lua_pop(L, 1);  // Pop error message
+        lua_gate_unlock();
         return false;
     }
 
     LOG_NET_DEBUG("Invoked callback for request_id=%llu successfully",
                  (unsigned long long)request_id);
 
+    lua_gate_unlock();
     return true;
 }

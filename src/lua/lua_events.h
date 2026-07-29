@@ -322,6 +322,12 @@ bool events_fire_log(lua_State *L, const char *level, const char *module, const 
  */
 void events_init_log_callback(lua_State *L);
 
+/**
+ * Unregister the log callback and clear its Lua state pointer.
+ * Call while holding the Lua gate, before lua_close().
+ */
+void events_shutdown_log_callback(void);
+
 // ============================================================================
 // Mod Health API (for crash attribution and !mod_diag)
 // ============================================================================

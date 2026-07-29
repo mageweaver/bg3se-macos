@@ -90,13 +90,15 @@ static int g_TypeIdRetryCount = 0;
 // esv::EocServer::m_ptr - Static member holding the EoCServer singleton pointer
 // Discovered via Ghidra analysis of symbol __ZN3esv9EocServer5m_ptrE
 // This is a global pointer in __DATA that we can read directly without hooks
-#define OFFSET_EOCSERVER_SINGLETON_PTR 0x10898e8b8
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x10898e8b8)
+#define OFFSET_EOCSERVER_SINGLETON_PTR 0x1089968b8
 
 // ecl::EocClient::m_ptr - Static member holding the EoCClient singleton pointer
 // Discovered via Ghidra analysis of gui::DataContextProvider::CreateDataContextClass
 // Address: 0x10898c000 + 0x968 = 0x10898c968
 // See ghidra/offsets/ENTITY_SYSTEM.md for discovery details
-#define OFFSET_EOCCLIENT_SINGLETON_PTR 0x10898c968
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x10898c968)
+#define OFFSET_EOCCLIENT_SINGLETON_PTR 0x108994968
 
 // Offset of EntityWorld* within EoCClient struct
 // Windows BG3SE: EntityWorld at +0x1D0, PermissionsManager at +0x1D8
@@ -105,10 +107,12 @@ static int g_TypeIdRetryCount = 0;
 
 // eoc::CombatHelpers::LEGACY_IsInCombat(EntityHandle, EntityWorld&)
 // Note: Hooking this causes crashes during save load - DO NOT USE
-#define OFFSET_LEGACY_IS_IN_COMBAT 0x10124f92c
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x10124f92c)
+#define OFFSET_LEGACY_IS_IN_COMBAT 0x101233e8c
 
 // eoc::CombatHelpers::LEGACY_GetCombatFromGuid(Guid&, EntityWorld&)
-#define OFFSET_LEGACY_GET_COMBAT_FROM_GUID 0x101250074
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x101250074)
+#define OFFSET_LEGACY_GET_COMBAT_FROM_GUID 0x1012345d4
 
 // ecs::legacy::Helper::TryGetSingleton<ls::uuid::ToHandleMappingComponent>(EntityWorld&)
 // This function returns the singleton containing GUID->EntityHandle mappings

@@ -8,6 +8,33 @@ from types import SimpleNamespace
 import pytest
 
 from bg3se_harness import cli
+from bg3se_harness.launch import LaunchSession, ProcessTracker
+
+
+def _make_session(pid=123, phase="direct_running"):
+    tracker = ProcessTracker.__new__(ProcessTracker)
+    tracker.launch_id = "test-id"
+    tracker.expected_executable = "/fake/bg3"
+    tracker.requested_args = []
+    tracker.steam_preflight = "ready"
+    tracker.phase = phase
+    tracker.current_pid = pid
+    tracker.current_identity = None
+    tracker.lineage = [{"pid": pid, "role": "direct", "observed_exitcode": None}]
+    tracker.adoptions = 0
+    tracker.created_wall_time = 0
+    tracker.created_monotonic = 0
+    tracker.cleanup_complete = False
+    tracker.window_contained = False
+    tracker._record_path = None
+
+    def noop_write(self):
+        pass
+    tracker._write_record = lambda: None
+
+    proc = SimpleNamespace(pid=pid, returncode=None, bg3se_headless_graphics=None)
+    proc.poll = lambda: None
+    return LaunchSession(tracker, proc)
 
 
 def _stub_build_deploy(monkeypatch):
@@ -31,7 +58,7 @@ def test_cmd_launch_headless_hides_after_socket(monkeypatch, capsys):
     _stub_patch(monkeypatch)
     monkeypatch.setattr(
         cli.launch_mod, "launch",
-        lambda **k: (calls.append(("launch", k)) or SimpleNamespace(pid=123, poll=lambda: None)),
+        lambda **k: (calls.append(("launch", k)) or _make_session(pid=123)),
     )
     monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
     monkeypatch.setattr(
@@ -69,7 +96,7 @@ def test_cmd_launch_headless_does_not_hide_on_socket_failure(monkeypatch, capsys
     _stub_patch(monkeypatch)
     monkeypatch.setattr(
         cli.launch_mod, "launch",
-        lambda **k: SimpleNamespace(pid=123, poll=lambda: None),
+        lambda **k: _make_session(pid=123),
     )
     monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
     monkeypatch.setattr(
@@ -107,7 +134,7 @@ def test_cmd_launch_background_returns_without_foreground_wait(monkeypatch, caps
     _stub_patch(monkeypatch)
     monkeypatch.setattr(
         cli.launch_mod, "launch",
-        lambda **k: calls.append(("launch", k)) or SimpleNamespace(pid=123),
+        lambda **k: calls.append(("launch", k)) or _make_session(pid=123),
     )
     monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
     monkeypatch.setattr(
@@ -142,7 +169,7 @@ def test_cmd_test_headless_passes_headless_and_restores_after_hide(monkeypatch, 
     _stub_patch(monkeypatch)
     monkeypatch.setattr(
         cli.launch_mod, "launch",
-        lambda **k: (calls.append(("launch", k)) or SimpleNamespace(pid=55, poll=lambda: None)),
+        lambda **k: (calls.append(("launch", k)) or _make_session(pid=55)),
     )
     monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
     monkeypatch.setattr(
@@ -188,7 +215,7 @@ def test_cmd_test_headless_retries_retryable_boot_failure(monkeypatch, capsys):
         cli.launch_mod, "launch",
         lambda **k: (
             calls.append(("launch", k))
-            or SimpleNamespace(pid=pids.pop(0), poll=lambda: None)
+            or _make_session(pid=pids.pop(0))
         ),
     )
     monkeypatch.setattr(
@@ -260,9 +287,14 @@ def test_cmd_build_fails_non_universal_binary(monkeypatch, capsys):
 def test_cmd_test_process_exit_is_reported(monkeypatch, capsys):
     _stub_build_deploy(monkeypatch)
     _stub_patch(monkeypatch)
+
+    session = _make_session(pid=55)
+    session.direct_process.poll = lambda: 9
+    session.direct_process.returncode = 9
+
     monkeypatch.setattr(
         cli.launch_mod, "launch",
-        lambda **k: SimpleNamespace(pid=55, poll=lambda: 9, returncode=9),
+        lambda **k: session,
     )
     monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
     monkeypatch.setattr(
@@ -283,3 +315,62 @@ def test_cmd_test_process_exit_is_reported(monkeypatch, capsys):
     )
     rc = cli.cmd_test(args)
     assert rc == 1
+
+
+# -- --allow-memory-pressure flag -------------------------------------------
+
+
+def test_allow_memory_pressure_flag_parsed_for_launch():
+    """The --allow-memory-pressure flag is accepted by the launch parser."""
+    from bg3se_harness.cli import main
+    import argparse
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command")
+    p = sub.add_parser("launch")
+    p.add_argument("--allow-memory-pressure", action="store_true")
+    args = parser.parse_args(["launch", "--allow-memory-pressure"])
+    assert args.allow_memory_pressure is True
+
+
+def test_allow_memory_pressure_flag_parsed_for_test():
+    """The --allow-memory-pressure flag is accepted by the test parser."""
+    import argparse
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command")
+    p = sub.add_parser("test")
+    p.add_argument("--allow-memory-pressure", action="store_true")
+    args = parser.parse_args(["test", "--allow-memory-pressure"])
+    assert args.allow_memory_pressure is True
+
+
+def test_cmd_launch_passes_allow_memory_pressure(monkeypatch, capsys):
+    """allow_memory_pressure is forwarded from CLI args to launch()."""
+    captured_kwargs = []
+
+    _stub_build_deploy(monkeypatch)
+    _stub_patch(monkeypatch)
+    monkeypatch.setattr(
+        cli.launch_mod, "launch",
+        lambda **k: (captured_kwargs.append(k) or _make_session(pid=123)),
+    )
+    monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
+    monkeypatch.setattr(
+        cli.launch_mod, "wait_for_socket",
+        lambda **k: {"socket_connected": True, "elapsed_ms": 500},
+    )
+    monkeypatch.setattr(cli.launch_mod, "hide_window", lambda: {"success": True})
+    monkeypatch.setattr(
+        cli.launch_mod, "restore_headless_graphics",
+        lambda **k: {"success": True},
+    )
+
+    args = argparse.Namespace(
+        headless=True, timeout=1, continue_game=False, save=None,
+        background=False, allow_memory_pressure=True,
+        skip_videos=True, storylog=False, stats=False, json_mode=False,
+        osi_debug=False, syslog=False, modded=False, controller=False,
+        ecb_checker=False, module=None, detail_level=None, log_path=None,
+        flags=None,
+    )
+    cli.cmd_launch(args)
+    assert captured_kwargs[0]["allow_memory_pressure"] is True

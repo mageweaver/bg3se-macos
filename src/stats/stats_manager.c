@@ -104,7 +104,10 @@ static bool safe_write_i32(void *addr, int32_t value) {
 
 // Ghidra offset (for fallback if dlsym fails)
 #define GHIDRA_BASE_ADDRESS 0x100000000ULL
-#define OFFSET_RPGSTATS_M_PTR 0x1089c5730ULL
+// RPGStats::m_ptr — re-derived 2026-07-28 via nm for game build
+// 4.1.1.7209685 (was 0x1089c5730; the +0x8000 bss shift after the game
+// update made Ext.Stats return nil for every stat).
+#define OFFSET_RPGSTATS_M_PTR 0x1089cd730ULL
 
 // ============================================================================
 // Structure Offsets (from Windows BG3SE + ARM64 alignment)

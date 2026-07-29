@@ -613,13 +613,19 @@ void log_write_v(LogLevel level, LogModule module,
         fflush(stdout);
     }
 
-    // Forward to callbacks
+    // Snapshot matching callbacks under the mutex, but invoke them only after
+    // releasing it. Callbacks may take the Lua gate; invoking them while
+    // holding g_config.mutex inverts the lock order against gated Lua code
+    // that logs (Lua gate -> logging mutex), and a callback that logs again
+    // would self-deadlock on this non-recursive mutex.
+    LogCallbackEntry cb_snapshot[LOG_MAX_CALLBACKS];
+    int cb_count = 0;
     if (g_config.output_flags & LOG_OUTPUT_CALLBACK) {
         for (int i = 0; i < LOG_MAX_CALLBACKS; i++) {
             LogCallbackEntry* cb = &g_config.callbacks[i];
             if (cb->active && level >= cb->min_level) {
                 if (cb->module_mask == 0 || (cb->module_mask & (1 << module))) {
-                    cb->callback(level, module, message, cb->userdata);
+                    cb_snapshot[cb_count++] = *cb;
                 }
             }
         }
@@ -631,6 +637,10 @@ void log_write_v(LogLevel level, LogModule module,
     DebugLogCallback debug_cb = g_debug_callback;
 
     pthread_mutex_unlock(&g_config.mutex);
+
+    for (int i = 0; i < cb_count; i++) {
+        cb_snapshot[i].callback(level, module, message, cb_snapshot[i].userdata);
+    }
 
     // Fire debug callback outside of lock
     if (debug_cb && level >= LOG_LEVEL_ERROR) {

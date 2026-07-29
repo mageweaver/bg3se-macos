@@ -29,6 +29,9 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <sys/socket.h>
+
+// Defined in src/injector/main.c — identity snapshot for !identity
+extern void bg3se_get_identity_json(char *buf, size_t size);
 #include <sys/un.h>
 #include <sys/select.h>
 #include <lauxlib.h>
@@ -409,6 +412,7 @@ static int dispatch_console_command(lua_State *L, const char *line, int client_s
         console_printf("  !help - Show this help");
         console_printf("  !events - Show event handler counts");
         console_printf("  !status - Show BG3SE status");
+        console_printf("  !identity - JSON identity/readiness (pid, session_init, stats_ready)");
         console_printf("  !typeids - Show TypeId resolution status");
         console_printf("  !probe_osidef [N] - Dump OsiFunctionDef layout for N functions (default 5)");
         console_printf("  !osi_info <name> - Probe Osiris function cache + pointer chain for <name>");
@@ -426,6 +430,17 @@ static int dispatch_console_command(lua_State *L, const char *line, int client_s
             const char *name = events_get_name(e);
             console_printf("  %s: %d handler(s)", name, count);
         }
+        return 1;
+    }
+
+    // Built-in !identity command — machine-readable identity/readiness
+    // handshake. Test clients MUST verify pid + session_init before running
+    // live tiers: a replacement BG3 process can rebind /tmp/bg3se.sock and
+    // silently receive commands meant for the previous instance.
+    if (strcmp(cmd_name, "identity") == 0) {
+        char json[1024];  // headroom for long dylib image paths (truncation would emit malformed JSON)
+        bg3se_get_identity_json(json, sizeof(json));
+        console_printf("%s", json);
         return 1;
     }
 

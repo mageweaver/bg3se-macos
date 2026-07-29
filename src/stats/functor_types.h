@@ -370,6 +370,16 @@ typedef struct {
 // Function Addresses (ARM64 macOS)
 // =============================================================================
 
+// The game build these eleven CODE-patch addresses were derived from.
+// These functions are stripped locals (no nm symbols), so the harness offset
+// audit cannot validate them and the 2026-07-28 address migration could NOT
+// re-derive them. main.c therefore gates functor hook install on an exact
+// match against THIS constant, independent of BG3_KNOWN_VERSION — bumping
+// the global version must never silently enable these patches. To re-enable
+// on a new build: re-derive every address below via Ghidra, then update this
+// constant to match.
+#define FUNCTOR_ADDRS_VERIFIED_BUILD "4.1.1.6995620"
+
 // Main dispatcher
 #define ADDR_EXECUTE_STATS_FUNCTOR             0x105783a38
 

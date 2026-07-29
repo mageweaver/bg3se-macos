@@ -19,6 +19,7 @@
  */
 
 #include "lua_imgui.h"
+#include "lua_gate.h"
 #include "imgui_metal_backend.h"
 #include "imgui_objects.h"
 #include "logging.h"
@@ -2322,7 +2323,22 @@ lua_State *lua_imgui_get_lua_state(void) {
 
 void lua_imgui_fire_event(ImguiHandle handle, ImguiEventType event, ...) {
     if (!s_imgui_lua_state) {
+        // Optimistic fast-path only — re-checked under the gate below.
         LOG_IMGUI_DEBUG("No Lua state set, skipping event fire");
+        return;
+    }
+
+    // Render thread entering the shared Lua state - serialize against the
+    // game thread and console (see lua_gate.h). BOTH the state and the
+    // callback ref must be resolved under the gate: shutdown clears
+    // s_imgui_lua_state while holding it, and gated Lua code can unregister
+    // the callback, luaL_unref() the registry slot, and reuse the numeric
+    // ref while a render callback is blocked here — a pre-gate ref capture
+    // would then invoke the wrong function.
+    lua_gate_lock();
+    lua_State *L = s_imgui_lua_state;
+    if (!L) {
+        lua_gate_unlock();
         return;
     }
 
@@ -2330,16 +2346,16 @@ void lua_imgui_fire_event(ImguiHandle handle, ImguiEventType event, ...) {
     int callback_ref = imgui_object_get_event(handle, event);
     if (callback_ref == -1 || callback_ref == LUA_NOREF || callback_ref == LUA_REFNIL) {
         // No callback registered for this event
+        lua_gate_unlock();
         return;
     }
-
-    lua_State *L = s_imgui_lua_state;
 
     // Get the callback function from registry
     lua_rawgeti(L, LUA_REGISTRYINDEX, callback_ref);
     if (!lua_isfunction(L, -1)) {
         LOG_IMGUI_WARN("Event callback is not a function (ref=%d)", callback_ref);
         lua_pop(L, 1);
+        lua_gate_unlock();
         return;
     }
 
@@ -2388,6 +2404,7 @@ void lua_imgui_fire_event(ImguiHandle handle, ImguiEventType event, ...) {
     } else {
         LOG_IMGUI_DEBUG("Fired %s event for handle 0x%llx", event_name, (unsigned long long)handle);
     }
+    lua_gate_unlock();
 }
 
 void lua_imgui_cleanup_refs(ImguiHandle handle) {
@@ -2395,12 +2412,20 @@ void lua_imgui_cleanup_refs(ImguiHandle handle) {
         return;
     }
 
-    ImguiObject *obj = imgui_object_get(handle);
-    if (!obj) {
+    // Reached both from Lua (already gate-admitted; the gate is recursive)
+    // and from native ImGui teardown, which must serialize + revalidate.
+    lua_gate_lock();
+    lua_State *L = s_imgui_lua_state;
+    if (!L) {
+        lua_gate_unlock();
         return;
     }
 
-    lua_State *L = s_imgui_lua_state;
+    ImguiObject *obj = imgui_object_get(handle);
+    if (!obj) {
+        lua_gate_unlock();
+        return;
+    }
 
     // Release all event callback references
     for (int i = 0; i < IMGUI_EVENT_COUNT; i++) {
@@ -2418,5 +2443,6 @@ void lua_imgui_cleanup_refs(ImguiHandle handle) {
         obj->user_data_ref = -1;
     }
 
+    lua_gate_unlock();
     LOG_IMGUI_DEBUG("Cleaned up Lua refs for handle 0x%llx", (unsigned long long)handle);
 }

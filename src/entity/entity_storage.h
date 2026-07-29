@@ -25,8 +25,9 @@ extern "C" {
 // ASLR base for Ghidra addresses
 #define GHIDRA_BASE_ADDRESS             0x100000000ULL
 
-// EntityStorageContainer::TryGet function address (Ghidra)
-#define ADDR_STORAGE_CONTAINER_TRYGET   0x10636b27cULL
+// ecs::EntityStorageContainer::TryGet(ls::ID<ecs::EntityHandleTraits>)
+// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x10636b27c)
+#define ADDR_STORAGE_CONTAINER_TRYGET   0x10635ac94ULL
 
 // EntityWorld offsets
 #define ENTITYWORLD_STORAGE_OFFSET      0x2d0   // EntityStorageContainer*

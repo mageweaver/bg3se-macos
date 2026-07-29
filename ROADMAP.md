@@ -2,7 +2,7 @@
 
 This document tracks the development roadmap for scope-corrected 100% parity with Windows BG3SE (Norbyte's Script Extender): 100% of the supported macOS surface.
 
-## Current Status: v0.37.1
+## Current Status: v0.38.0
 
 **Overall Feature Parity: approximately 94.7%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix))
 
@@ -1549,6 +1549,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.38.0 | 2026-07-28 | **Thread-safe Lua core + launch-lifecycle hardening** — `lua_gate` recursive mutex serializes every native-to-Lua entry (fixes ServerWorker/console crash); MAP_JIT trampoline write gate; overlay TextKit SIGBUS fix; `!identity` handshake + duplicate-dylib guard; harness `ProcessTracker` with Steam-bounce adoption, `LOCAL_PEERPID` socket verification, Steam/memory preflights; windowed mode verified via `FakeFullscreenEnabled` in graphicSettings.lsx. 361 tests (41 C + 144 pytest + 109 Tier 1 + 67 Tier 2) |
 | v0.37.1 | 2026-05-16 | **Headless CLI mode working** — GCD console poll timer (100ms, independent of Osiris events) fixes socket at main menu. Focus hack module reintegrated (BaseApp+0x142 force-focus). `launch --headless` achieves socket_connected in ~3.3s (windowed 1280x720, hidden via System Events). 229 tests (41 C + 41 pytest + 93 Tier 1 + 54 Tier 2). Known: `-continueGame` triggers pre-existing gui::HotbarSystem::Update crash |
 | v0.36.50+harness | 2026-04-23 | **bg3se-harness CLI debut** — 36-command Python CLI for BG3. 7 new commands (Nexus changelog/versions/updated, wiki spell/item/verify/clear-cache), auto-skip intro videos (3-layer: UserDefaults + graphicSettings.lsx + CGEvent), CGEvent splash dismissal, tolerant version sort, path-aware 403 classifier, SHA-1-keyed wiki cache. One of the first CLIs purpose-built for a AAA RPG |
 | v0.36.50 | 2026-04-02 | **Qedeshot Knesset Swarm** - 23 commits, ~93%→~94% parity. 6 Sweep functions (Physics), PlayExternalSound re-enabled (STDString), 6 Ext.Types functions, Ext.Localization.CreateHandle, Ext.Math.Fract, generic Osi.DB_* accessor, Entity CreateComponent/RemoveComponent/GetEntityType/GetSalt/GetIndex/GetNetId, ExecuteFunctor Dobby hook, 8+ polling events, version detection sentinel probes (Issue #78), osiris_call_by_id unsafe fallback removed |

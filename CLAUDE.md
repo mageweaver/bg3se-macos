@@ -2,7 +2,7 @@
 
 macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-corrected 100% parity across the supported macOS surface.
 
-**Version:** v0.37.1 | **Parity:** approximately 94.7% from the ROADMAP.md matrix | **Target:** 100% of the supported macOS surface
+**Version:** v0.38.0 | **Parity:** approximately 94.7% from the ROADMAP.md matrix | **Target:** 100% of the supported macOS surface
 
 ## Stack
 
@@ -19,6 +19,8 @@ macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-correct
 - `src/osiris/` - Osiris types, function cache, handle encoding, pattern scanning
 - `src/stats/` - RPGStats system + prototype managers
 - `src/entity/` - Entity Component System (GUID lookup, components)
+- `src/lua/lua_gate.c/h` - Recursive mutex serializing all Lua VM entry points (thread safety)
+- `src/hooks/arm64_hook.c/h` - ARM64 inline hooks with MAP_JIT trampolines
 - `ghidra/offsets/` - Reverse-engineered offsets documentation
 
 ## Modding Toolkit (37 Commands)
@@ -199,7 +201,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (93 tests, always works). Use `!test_ingame` for Tier 2 tests (54 tests, needs loaded save). Use `Debug.*` helpers for memory probing. 82 offline tests (41 C + 41 pytest) run via CI.
+Use `!test` to run Tier 1 regression tests (109 tests, always works). Use `!test_ingame` for Tier 2 tests (67 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 185 offline tests (41 C + 144 pytest) run via CI.
 
 ## Reverse Engineering
 
@@ -210,19 +212,21 @@ For RE sessions, adopt the **Meridian** persona (see `agent_docs/meridian-person
 
 ## Key Offsets (Ghidra-verified)
 
+**Build 4.1.1.7209685 (current).** Offsets were migrated 2026-07-28; prior values (build 6995620) are invalid. Every hardcoded address is validated by `tests/harness/test_offset_audit.py` against `nm` on the installed binary.
+
 | Offset | Purpose |
 |--------|---------|
 | `0x348` | RPGSTATS_OFFSET_FIXEDSTRINGS |
-| `0x10124f92c` | LEGACY_IsInCombat (EntityWorld capture) |
-| `0x10898e8b8` | esv::EocServer::m_ptr (server singleton) |
-| `0x10898c968` | ecl::EocClient::m_ptr (client singleton) |
-| `0x1089bac80` | SpellPrototypeManager::m_ptr |
-| `0x1089bdb30` | StatusPrototypeManager::m_ptr |
-| `0x108aeccd8` | PassivePrototypeManager |
-| `0x108aecce0` | InterruptPrototypeManager |
-| `0x108991528` | BoostPrototypeManager |
-| `0x108a8f070` | ResourceManager::m_ptr |
-| `0x101f72754` | SpellPrototype::Init (populates from stats) |
+| `0x101233e8c` | LEGACY_IsInCombat (EntityWorld capture) |
+| `0x1089968b8` | esv::EocServer::m_ptr (server singleton) |
+| `0x108994968` | ecl::EocClient::m_ptr (client singleton) |
+| `0x1089c2c80` | SpellPrototypeManager::m_ptr |
+| `0x1089c5b30` | StatusPrototypeManager::m_ptr |
+| `0x108aeccd8` | PassivePrototypeManager (no nm symbol — unverified for 7209685) |
+| `0x1089ba8f0` | InterruptPrototypeManager::m_ptr |
+| `0x108999528` | BoostPrototypeManager::m_ptr |
+| `0x108a97070` | ResourceManager::m_ptr |
+| `0x101f56cb4` | SpellPrototype::Init (populates from stats) |
 
 ## BG3 CLI Flags (Discovered via RE)
 

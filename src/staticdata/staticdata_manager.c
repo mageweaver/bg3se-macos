@@ -20,19 +20,26 @@
 // ============================================================================
 
 // Function addresses (relative to base)
-#define OFFSET_FEAT_GETFEATS          0x01b752b4  // FeatManager::GetFeats
-#define OFFSET_GETALLFEATS            0x0120b3e8  // GetAllFeats (for context capture)
+// Re-derived 2026-07-28 via `nm` local symbols for game build 4.1.1.7209685.
+// The previous values (build 4.1.1.6995620) were stale after a game update:
+// OFFSET_GET_CLASS landed mid-function inside gui::HotbarSystem::Update and
+// the resulting Dobby trampoline crashed every session ~30s after save load
+// (docs/bugs/codex-debugger-nohooks-2026-07-28.md). Code offsets MUST be
+// re-verified against nm on every game update; the data sentinels in
+// version_detect do not validate them.
+#define OFFSET_FEAT_GETFEATS          0x01b59814  // eoc::FeatManager::GetFeats() const
+#define OFFSET_GETALLFEATS            0x011ef948  // eoc::character_creation::GetAllFeats
 
 // ImmutableDataHeadmaster m_State pointer address (for TypeContext traversal)
-#define OFFSET_MSTATE_PTR             0x083c4a68  // PTR_m_State - pointer to m_State
+#define OFFSET_MSTATE_PTR             0x08947ba0  // ls::TypeContext<ls::ImmutableDataHeadmaster>::m_State
 
-// Get<T> function addresses (for real manager capture - Dec 22, 2025)
+// Get<T> function addresses (for real manager capture)
 // These functions return the real manager pointers from ImmutableDataHeadmaster
-#define OFFSET_GET_BACKGROUND         0x02994834  // Get<eoc::BackgroundManager>
-#define OFFSET_GET_ORIGIN             0x0341c42c  // Get<eoc::OriginManager>
-#define OFFSET_GET_CLASS              0x0262f184  // Get<eoc::ClassDescriptions>
-#define OFFSET_GET_PROGRESSION        0x03697f0c  // Get<eoc::ProgressionManager>
-#define OFFSET_GET_ACTIONRESOURCE     0x011a4494  // Get<eoc::ActionResourceTypes>
+#define OFFSET_GET_BACKGROUND         0x0297a068  // Get<eoc::BackgroundManager>
+#define OFFSET_GET_ORIGIN             0x03401c84  // Get<eoc::OriginManager>
+#define OFFSET_GET_CLASS              0x02614874  // Get<eoc::ClassDescriptions>
+#define OFFSET_GET_PROGRESSION        0x0367d764  // Get<eoc::ProgressionManager>
+#define OFFSET_GET_ACTIONRESOURCE     0x011889f4  // Get<eoc::ActionResourceTypes>
 
 // FeatManager structure offsets
 //

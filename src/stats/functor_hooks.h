@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <lua.h>
 
+#include "functor_types.h"  // FUNCTOR_ADDRS_VERIFIED_BUILD (install gate in main.c)
+
 /**
  * Initialize the functor hook system.
  * Must be called after Dobby is ready and game module is loaded.
