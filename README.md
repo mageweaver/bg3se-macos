@@ -102,7 +102,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 
 ## Status
 
-**Version:** v0.38.0 | **Feature Parity:** approximately 94.7%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix)
+**Version:** v0.39.0 | **Feature Parity:** approximately 94.7%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix)
 
 | Feature | Status |
 |---------|--------|

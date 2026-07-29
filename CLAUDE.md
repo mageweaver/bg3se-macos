@@ -2,7 +2,7 @@
 
 macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-corrected 100% parity across the supported macOS surface.
 
-**Version:** v0.38.0 | **Parity:** approximately 94.7% from the ROADMAP.md matrix | **Target:** 100% of the supported macOS surface
+**Version:** v0.39.0 | **Parity:** approximately 94.7% from the ROADMAP.md matrix | **Target:** 100% of the supported macOS surface
 
 ## Stack
 
