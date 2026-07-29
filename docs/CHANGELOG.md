@@ -13,6 +13,47 @@ Each entry includes:
 
 ---
 
+## [v0.38.1] - 2026-07-29 — Community issue triage: mod detection + game-path discovery
+
+**Category:** Compatibility fixes | **Parity:** ~94.7% | **Issues:** #87, #81, #90, #86, #84, #82, #88
+
+Every open community issue triaged against v0.38.0 and answered on GitHub; the four
+with live defects are fixed here. Credit to Rminnl (#87) for the PAK-filename
+fallback that seeded the mod-detection fix.
+
+### Fixed
+- **SE mod detection: display name vs PAK directory (#87, #81)** — Detection built
+  every lookup path from the modsettings.lsx display name, so mods whose internal
+  PAK directory differs (MCM: "Mod Configuration Menu" vs `Mods/BG3MCM/`) were
+  invisible. `mod_pak_find_se_dir()` now tries the display name, then the PAK
+  filename stem; a third detection phase enumerates every PAK's
+  `Mods/*/ScriptExtender/Config.json` and picks up mods matching neither (Trials
+  of Tav), plus multi-mod PAKs. The resolved directory (`mod_get_se_dir`) drives
+  bootstrap loading, and `get_mod_table_name()` reads Config.json out of the PAK
+  so PAK-only mods get their real `Mods.<ModTable>` namespace.
+- **Game-path discovery (#90, #86)** — The game path was hardcoded to the default
+  Steam library in the launch script, deploy hook, harness config, and the dylib's
+  version detection. All four now resolve identically: `BG3SE_GAME_PATH` env
+  override → default library → every library in `steamapps/libraryfolders.vdf`
+  (external drives). Shared shell resolver: `scripts/find_bg3.sh`. A missing game
+  is now a deploy warning, not a build failure.
+- **launch_bg3.sh injection marker (#84)** — The script checked
+  `/tmp/bg3se_loaded.txt`, which the dylib never wrote, so successful injections
+  warned as failures. It now verifies the real session log
+  (`~/Library/Application Support/BG3SE/logs/latest.log`) against the launch
+  timestamp. The dead `SENTINEL_PATH` constant is gone from the harness config.
+
+### Added
+- `src/mod/mod_paths.c/h` — dependency-free SE directory-name resolution helpers
+- 14 Tier-0 tests (`tests/tier0/test_mod_paths.c`) covering stem derivation and
+  PAK-entry matching; 10 pytest cases (`tests/harness/test_game_path.py`) covering
+  vdf parsing and override precedence — offline suite now 209 (55 C + 154 pytest),
+  385 total
+- `docs/troubleshooting.md` — "'tuple' file not found" SDK entry (#88) and the
+  arm64e-misdiagnosis correction with real injection failure causes (#82)
+
+---
+
 ## [v0.38.0] - 2026-07-28 — Thread-safe Lua core + launch-lifecycle hardening
 
 **Category:** Stability + harness infrastructure | **Parity:** ~94.7%

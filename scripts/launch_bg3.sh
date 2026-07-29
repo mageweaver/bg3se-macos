@@ -8,13 +8,17 @@
 
 set -e
 
-# Configuration
-BG3_APP="/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app"
-BG3_EXEC="${BG3_APP}/Contents/MacOS/Baldur's Gate 3"
-
-# Find the dylib
+# Find the game (BG3SE_GAME_PATH override, then Steam libraries)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/find_bg3.sh"
+
+BG3_APP="$(find_bg3_app)" || {
+    echo "Error: Baldur's Gate 3 not found in any Steam library."
+    echo "Set BG3SE_GAME_PATH to the game's .app bundle (or its parent directory)."
+    exit 1
+}
+BG3_EXEC="${BG3_APP}/Contents/MacOS/Baldur's Gate 3"
 
 # Check for dylib in order of preference
 if [[ -n "$1" ]]; then

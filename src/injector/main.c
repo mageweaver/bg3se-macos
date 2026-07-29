@@ -551,6 +551,17 @@ static char *get_mod_table_name(const char *mod_name) {
         }
     }
 
+    // Try 3: Config.json inside the mod's PAK (PAK-only mods like MCM)
+    char *pak_config = mod_pak_get_config_json(mod_name);
+    if (pak_config) {
+        mod_table = extract_mod_table(pak_config);
+        free(pak_config);
+        if (mod_table) {
+            LOG_LUA_INFO("Found ModTable '%s' for mod %s (from PAK)", mod_table, mod_name);
+            return mod_table;
+        }
+    }
+
     // Fallback: Use mod_name as ModTable
     mod_table = strdup(mod_name);
     LOG_LUA_INFO("Using mod name '%s' as ModTable (Config.json not found or no ModTable)", mod_name);
@@ -2006,10 +2017,13 @@ static void load_mod_scripts(lua_State *L) {
     lua_context_set(LUA_CONTEXT_SERVER);
 
     for (int i = 0; i < se_count; i++) {
-        const char *mod_name = mod_get_se_name(i);
+        // Every Mods/<dir>/... path is built from the resolved internal
+        // directory name, which can differ from the modsettings display name
+        const char *mod_dir = mod_get_se_dir(i);
+        if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
 
-        // Get ModTable name from Config.json (or fallback to mod_name)
-        char *mod_table = get_mod_table_name(mod_name);
+        // Get ModTable name from Config.json (or fallback to mod_dir)
+        char *mod_table = get_mod_table_name(mod_dir);
         if (mod_table) {
             // Set up Mods.<ModTable> namespace before loading scripts
             setup_mod_namespace(L, mod_table);
@@ -2017,8 +2031,9 @@ static void load_mod_scripts(lua_State *L) {
         }
 
         // Load server bootstrap in SERVER context
-        if (load_mod_bootstrap(L, mod_name, "Server") > 0) {
-            LOG_LUA_INFO("Loaded BootstrapServer.lua for: %s (context=Server)", mod_name);
+        if (load_mod_bootstrap(L, mod_dir, "Server") > 0) {
+            LOG_LUA_INFO("Loaded BootstrapServer.lua for: %s (context=Server)",
+                         mod_get_se_name(i));
         }
     }
 
@@ -2027,11 +2042,13 @@ static void load_mod_scripts(lua_State *L) {
     lua_context_set(LUA_CONTEXT_CLIENT);
 
     for (int i = 0; i < se_count; i++) {
-        const char *mod_name = mod_get_se_name(i);
+        const char *mod_dir = mod_get_se_dir(i);
+        if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
 
         // Load client bootstrap in CLIENT context
-        if (load_mod_bootstrap(L, mod_name, "Client") > 0) {
-            LOG_LUA_INFO("Loaded BootstrapClient.lua for: %s (context=Client)", mod_name);
+        if (load_mod_bootstrap(L, mod_dir, "Client") > 0) {
+            LOG_LUA_INFO("Loaded BootstrapClient.lua for: %s (context=Client)",
+                         mod_get_se_name(i));
         }
     }
 

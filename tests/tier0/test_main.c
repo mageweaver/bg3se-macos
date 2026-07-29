@@ -13,6 +13,7 @@ void register_safe_memory_tests(void);
 void register_pattern_scan_tests(void);
 void register_osiris_handle_tests(void);
 void register_entity_events_tests(void);
+void register_mod_paths_tests(void);
 
 int main(void) {
     printf("=== BG3SE Tier 0 Unit Tests ===\n\n");
@@ -21,6 +22,7 @@ int main(void) {
     register_pattern_scan_tests();
     register_osiris_handle_tests();
     register_entity_events_tests();
+    register_mod_paths_tests();
 
     printf("\n=== Results: %d/%d passed, %d failed ===\n",
            g_passed, g_passed + g_failed, g_failed);

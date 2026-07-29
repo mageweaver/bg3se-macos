@@ -5,6 +5,7 @@
  */
 
 #include "mod_loader.h"
+#include "mod_paths.h"
 #include "logging.h"
 #include "pak_reader.h"
 
@@ -24,8 +25,12 @@
 static char detected_mods[MAX_MODS][MAX_MOD_NAME_LEN];
 static int detected_mod_count = 0;
 
-// Detected SE mods (mods with ScriptExtender/Config.json containing "Lua")
+// Detected SE mods (mods with ScriptExtender/Config.json containing "Lua").
+// se_mods holds the modsettings.lsx display name; se_mod_dirs holds the
+// resolved internal PAK directory name, which is what every Mods/<dir>/...
+// path must be built from — the two frequently differ (#87, #81).
 static char se_mods[MAX_MODS][MAX_MOD_NAME_LEN];
+static char se_mod_dirs[MAX_MODS][MAX_MOD_NAME_LEN];
 static int se_mod_count = 0;
 
 // Current mod context (for Ext.Require)
@@ -70,9 +75,15 @@ static int file_contains_string(const char *filepath, const char *search_str) {
 
 /**
  * Check if a mod has ScriptExtender support.
+ * On success writes the mod's resolved internal directory name to dir_out
+ * (equal to mod_name except when a PAK resolves via its filename stem).
  */
-static int check_mod_has_script_extender(const char *mod_name) {
+static int check_mod_has_script_extender(const char *mod_name,
+                                         char *dir_out, size_t dir_size) {
     char config_path[MAX_PATH_LEN];
+
+    // Default resolution: directory named after the mod
+    snprintf(dir_out, dir_size, "%s", mod_name);
 
     // Location 1: Extracted mod in /tmp/<ModName>_extracted/
     snprintf(config_path, sizeof(config_path),
@@ -122,8 +133,9 @@ static int check_mod_has_script_extender(const char *mod_name) {
                     char pak_path[MAX_PATH_LEN];
                     snprintf(pak_path, sizeof(pak_path), "%s/%s", mods_dir, entry->d_name);
 
-                    if (mod_pak_has_script_extender(pak_path, mod_name)) {
-                        LOG_MOD_INFO("Found SE mod %s in PAK: %s", mod_name, pak_path);
+                    if (mod_pak_find_se_dir(pak_path, mod_name, dir_out, dir_size)) {
+                        LOG_MOD_INFO("Found SE mod %s in PAK: %s (dir: %s)",
+                                     mod_name, pak_path, dir_out);
                         closedir(dir);
                         return 1;
                     }
@@ -140,32 +152,85 @@ static int check_mod_has_script_extender(const char *mod_name) {
 // PAK File Helpers
 // ============================================================================
 
-int mod_pak_has_script_extender(const char *pak_path, const char *mod_name) {
-    PakFile *pak = pak_open(pak_path);
-    if (!pak) return 0;
-
-    // Build path to Config.json
-    char config_path[512];
-    snprintf(config_path, sizeof(config_path),
-             "Mods/%s/ScriptExtender/Config.json", mod_name);
-
-    int entry_idx = pak_find_entry(pak, config_path);
-    if (entry_idx < 0) {
-        pak_close(pak);
-        return 0;
-    }
-
-    // Read and check for "Lua"
+/**
+ * Read a PAK entry and check it declares the "Lua" feature flag.
+ */
+static int pak_entry_has_lua(PakFile *pak, int entry_idx) {
     size_t size;
     char *content = pak_read_file(pak, entry_idx, &size);
-    pak_close(pak);
-
     if (!content) return 0;
 
     int has_lua = (strstr(content, "\"Lua\"") != NULL);
     free(content);
-
     return has_lua;
+}
+
+int mod_pak_find_se_dir(const char *pak_path, const char *mod_name,
+                        char *dir_out, size_t dir_size) {
+    PakFile *pak = pak_open(pak_path);
+    if (!pak) return 0;
+
+    // Candidate 1: the modsettings.lsx display name.
+    // Candidate 2: the PAK filename stem — the internal directory frequently
+    // matches the file, not the display name (#87: "Mod Configuration Menu"
+    // in modsettings vs Mods/BG3MCM/ inside BG3MCM.pak).
+    char pak_stem[MAX_MOD_NAME_LEN];
+    const char *candidates[2] = { mod_name, NULL };
+    if (mod_se_dir_from_pak_name(pak_path, pak_stem, sizeof(pak_stem)) &&
+        strcmp(pak_stem, mod_name) != 0) {
+        candidates[1] = pak_stem;
+    }
+
+    for (int c = 0; c < 2; c++) {
+        if (!candidates[c]) continue;
+
+        char config_path[512];
+        snprintf(config_path, sizeof(config_path),
+                 "Mods/%s/ScriptExtender/Config.json", candidates[c]);
+
+        int entry_idx = pak_find_entry(pak, config_path);
+        if (entry_idx >= 0 && pak_entry_has_lua(pak, entry_idx)) {
+            if (dir_out && dir_size) {
+                snprintf(dir_out, dir_size, "%s", candidates[c]);
+            }
+            if (c > 0) {
+                LOG_MOD_INFO("SE dir for '%s' resolved via PAK filename: %s",
+                             mod_name, candidates[c]);
+            }
+            pak_close(pak);
+            return 1;
+        }
+    }
+
+    pak_close(pak);
+    return 0;
+}
+
+int mod_pak_has_script_extender(const char *pak_path, const char *mod_name) {
+    return mod_pak_find_se_dir(pak_path, mod_name, NULL, 0);
+}
+
+char *mod_pak_get_config_json(const char *dir_name) {
+    char pak_path[MAX_PATH_LEN];
+    if (!mod_find_pak(dir_name, pak_path, sizeof(pak_path))) return NULL;
+
+    PakFile *pak = pak_open(pak_path);
+    if (!pak) return NULL;
+
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path),
+             "Mods/%s/ScriptExtender/Config.json", dir_name);
+
+    int entry_idx = pak_find_entry(pak, config_path);
+    if (entry_idx < 0) {
+        pak_close(pak);
+        return NULL;
+    }
+
+    size_t size;
+    char *content = pak_read_file(pak, entry_idx, &size);
+    pak_close(pak);
+    return content;
 }
 
 int mod_find_pak(const char *mod_name, char *pak_path_out, size_t pak_path_size) {
@@ -249,6 +314,7 @@ void mod_detect_enabled(void) {
     // Reset detected mods
     detected_mod_count = 0;
     se_mod_count = 0;
+    memset(se_mod_dirs, 0, sizeof(se_mod_dirs));
 
     // Build path to modsettings.lsx
     const char *home = getenv("HOME");
@@ -331,10 +397,13 @@ void mod_detect_enabled(void) {
         // Skip base game
         if (strcmp(detected_mods[i], "GustavX") == 0) continue;
 
-        if (check_mod_has_script_extender(detected_mods[i])) {
+        char mod_dir[MAX_MOD_NAME_LEN];
+        if (check_mod_has_script_extender(detected_mods[i], mod_dir, sizeof(mod_dir))) {
             if (se_mod_count < MAX_MODS) {
                 strncpy(se_mods[se_mod_count], detected_mods[i], MAX_MOD_NAME_LEN - 1);
                 se_mods[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';
+                strncpy(se_mod_dirs[se_mod_count], mod_dir, MAX_MOD_NAME_LEN - 1);
+                se_mod_dirs[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';
                 se_mod_count++;
                 LOG_MOD_INFO("  [SE] %s", detected_mods[i]);
             }
@@ -362,10 +431,13 @@ void mod_detect_enabled(void) {
                 // Skip . and ..
                 if (entry->d_name[0] == '.') continue;
 
-                // Check if already in SE mods list
+                // Check if already in SE mods list — compare the resolved dir
+                // too, or a Phase 1 entry detected under its display name
+                // would be re-added here under its directory name
                 int already_added = 0;
                 for (int i = 0; i < se_mod_count; i++) {
-                    if (strcmp(se_mods[i], entry->d_name) == 0) {
+                    if (strcmp(se_mods[i], entry->d_name) == 0 ||
+                        strcmp(se_mod_dirs[i], entry->d_name) == 0) {
                         already_added = 1;
                         break;
                     }
@@ -382,6 +454,8 @@ void mod_detect_enabled(void) {
                     if (se_mod_count < MAX_MODS) {
                         strncpy(se_mods[se_mod_count], entry->d_name, MAX_MOD_NAME_LEN - 1);
                         se_mods[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';
+                        strncpy(se_mod_dirs[se_mod_count], entry->d_name, MAX_MOD_NAME_LEN - 1);
+                        se_mod_dirs[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';
                         se_mod_count++;
                         LOG_MOD_INFO("  [SE] %s (from Mods folder)", entry->d_name);
                     }
@@ -393,6 +467,64 @@ void mod_detect_enabled(void) {
         }
     }
     LOG_MOD_INFO("=========================================");
+
+    // Phase 3: enumerate every PAK's Mods/<dir>/ScriptExtender/Config.json and
+    // add any SE dir not attributed above. Catches mods whose internal
+    // directory matches neither the display name nor the PAK filename (#81),
+    // and PAKs bundling multiple SE mods.
+    LOG_MOD_INFO("=== Scanning PAKs for Unattributed SE Mods ===");
+    if (home) {
+        char mods_dir[MAX_PATH_LEN];
+        snprintf(mods_dir, sizeof(mods_dir),
+                 "%s/Documents/Larian Studios/Baldur's Gate 3/Mods", home);
+
+        DIR *dir = opendir(mods_dir);
+        if (dir) {
+            struct dirent *entry;
+            while ((entry = readdir(dir)) != NULL && se_mod_count < MAX_MODS) {
+                size_t name_len = strlen(entry->d_name);
+                if (name_len <= 4 ||
+                    strcasecmp(entry->d_name + name_len - 4, ".pak") != 0) {
+                    continue;
+                }
+
+                char pak_path[MAX_PATH_LEN];
+                snprintf(pak_path, sizeof(pak_path), "%s/%s", mods_dir, entry->d_name);
+
+                PakFile *pak = pak_open(pak_path);
+                if (!pak) continue;
+
+                for (uint32_t i = 0; i < pak->num_files && se_mod_count < MAX_MODS; i++) {
+                    char se_dir[MAX_MOD_NAME_LEN];
+                    if (!mod_entry_se_config_dir(pak->entries[i].name,
+                                                 se_dir, sizeof(se_dir))) {
+                        continue;
+                    }
+
+                    int already_added = 0;
+                    for (int j = 0; j < se_mod_count; j++) {
+                        if (strcmp(se_mod_dirs[j], se_dir) == 0) {
+                            already_added = 1;
+                            break;
+                        }
+                    }
+                    if (already_added) continue;
+
+                    if (!pak_entry_has_lua(pak, (int)i)) continue;
+
+                    strncpy(se_mods[se_mod_count], se_dir, MAX_MOD_NAME_LEN - 1);
+                    se_mods[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';
+                    strncpy(se_mod_dirs[se_mod_count], se_dir, MAX_MOD_NAME_LEN - 1);
+                    se_mod_dirs[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';
+                    se_mod_count++;
+                    LOG_MOD_INFO("  [SE] %s (from PAK %s)", se_dir, entry->d_name);
+                }
+                pak_close(pak);
+            }
+            closedir(dir);
+        }
+    }
+    LOG_MOD_INFO("==============================================");
 }
 
 int mod_get_detected_count(void) {
@@ -411,6 +543,11 @@ int mod_get_se_count(void) {
 const char *mod_get_se_name(int index) {
     if (index < 0 || index >= se_mod_count) return NULL;
     return se_mods[index];
+}
+
+const char *mod_get_se_dir(int index) {
+    if (index < 0 || index >= se_mod_count) return NULL;
+    return se_mod_dirs[index];
 }
 
 // ============================================================================

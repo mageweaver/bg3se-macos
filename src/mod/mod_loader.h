@@ -55,6 +55,14 @@ int mod_get_se_count(void);
  */
 const char *mod_get_se_name(int index);
 
+/**
+ * Get an SE mod's resolved internal directory name by index — the <dir> in
+ * Mods/<dir>/ScriptExtender/... paths. Differs from mod_get_se_name() when
+ * the modsettings.lsx display name doesn't match the PAK's directory.
+ * @return Directory name, or NULL if index out of range
+ */
+const char *mod_get_se_dir(int index);
+
 // ============================================================================
 // PAK File Helpers
 // ============================================================================
@@ -63,6 +71,20 @@ const char *mod_get_se_name(int index);
  * Check if a PAK file contains ScriptExtender/Config.json with "Lua" feature.
  */
 int mod_pak_has_script_extender(const char *pak_path, const char *mod_name);
+
+/**
+ * Like mod_pak_has_script_extender, but resolves the mod's internal directory
+ * name: tries Mods/<mod_name>/ first, then Mods/<pak filename stem>/.
+ * @return 1 if found (dir_out written when non-NULL), 0 otherwise
+ */
+int mod_pak_find_se_dir(const char *pak_path, const char *mod_name,
+                        char *dir_out, size_t dir_size);
+
+/**
+ * Read Mods/<dir_name>/ScriptExtender/Config.json out of the mod's PAK.
+ * @return malloc'd NUL-terminated content (caller frees), or NULL
+ */
+char *mod_pak_get_config_json(const char *dir_name);
 
 /**
  * Find the PAK file containing a mod in the Mods folder.

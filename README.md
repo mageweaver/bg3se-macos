@@ -137,7 +137,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 41 C (Tier 0) + 41 pytest (Tier H) + 93 `!test` (Tier 1) + 54 `!test_ingame` (Tier 2) = **229 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 154 pytest (Tier H) + 109 `!test` (Tier 1) + 67 `!test_ingame` (Tier 2) = **385 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).

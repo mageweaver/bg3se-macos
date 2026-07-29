@@ -105,35 +105,106 @@ static bool plist_extract_string(const char *plist_path, const char *key,
 // ============================================================================
 
 /**
- * Find the BG3 app bundle path via Steam's common install location.
+ * Check that bundle_path is a real app bundle (has Contents/Info.plist).
+ */
+static bool bundle_exists(const char *bundle_path) {
+    char plist_check[1280];
+    snprintf(plist_check, sizeof(plist_check), "%s/Contents/Info.plist", bundle_path);
+    FILE *f = fopen(plist_check, "r");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+/**
+ * Try both bundle spellings under a "Baldurs Gate 3" directory.
+ * Note: the Steam folder omits the apostrophe, the .app bundle usually
+ * keeps it ("Baldur's Gate 3.app").
+ */
+static bool try_bundle_in_dir(const char *dir, char *out, size_t out_size) {
+    static const char *app_names[] = { "Baldur's Gate 3.app", "Baldurs Gate 3.app" };
+    for (size_t i = 0; i < sizeof(app_names) / sizeof(app_names[0]); i++) {
+        snprintf(out, out_size, "%s/%s", dir, app_names[i]);
+        if (bundle_exists(out)) return true;
+    }
+    return false;
+}
+
+/**
+ * Find the BG3 app bundle path (#90, #86). Resolution order:
+ *   1. BG3SE_GAME_PATH env override (the bundle, or a directory containing it)
+ *   2. The default Steam library
+ *   3. Every additional library in steamapps/libraryfolders.vdf
  */
 static const char *find_bg3_app_path(void) {
     static char path[1024] = {0};
     if (path[0]) return path;
 
-    // Standard Steam install location
+    const char *env = getenv("BG3SE_GAME_PATH");
+    if (env && env[0]) {
+        size_t env_len = strlen(env);
+        if (env_len > 4 && strcmp(env + env_len - 4, ".app") == 0) {
+            if (bundle_exists(env)) {
+                snprintf(path, sizeof(path), "%s", env);
+                return path;
+            }
+        } else if (try_bundle_in_dir(env, path, sizeof(path))) {
+            return path;
+        }
+        LOG_CORE_WARN("BG3SE_GAME_PATH set but no BG3 bundle found there: %s", env);
+    }
+
     const char *home = getenv("HOME");
     if (!home) return NULL;
 
-    // Note: Steam folder is "Baldurs Gate 3" (no apostrophe)
-    // but the .app bundle is "Baldur's Gate 3.app" (with apostrophe)
-    snprintf(path, sizeof(path),
+    char dir[1024];
+    snprintf(dir, sizeof(dir),
              "%s/Library/Application Support/Steam/steamapps/common/"
-             "Baldurs Gate 3/Baldur's Gate 3.app", home);
+             "Baldurs Gate 3", home);
+    if (try_bundle_in_dir(dir, path, sizeof(path))) return path;
 
-    // Check if Info.plist exists (more reliable than fopen on .app directory)
-    char plist_check[1280];
-    snprintf(plist_check, sizeof(plist_check), "%s/Contents/Info.plist", path);
-    FILE *f = fopen(plist_check, "r");
-    if (f) { fclose(f); return path; }
+    // Additional Steam libraries (external drives): scan libraryfolders.vdf
+    // for "path" values — a flat token scan is enough for this format.
+    char vdf_path[1024];
+    snprintf(vdf_path, sizeof(vdf_path),
+             "%s/Library/Application Support/Steam/steamapps/libraryfolders.vdf",
+             home);
+    FILE *vf = fopen(vdf_path, "r");
+    if (vf) {
+        fseek(vf, 0, SEEK_END);
+        long vdf_size = ftell(vf);
+        fseek(vf, 0, SEEK_SET);
 
-    // Fallback: try without apostrophe
-    snprintf(path, sizeof(path),
-             "%s/Library/Application Support/Steam/steamapps/common/"
-             "Baldurs Gate 3/Baldurs Gate 3.app", home);
-    snprintf(plist_check, sizeof(plist_check), "%s/Contents/Info.plist", path);
-    f = fopen(plist_check, "r");
-    if (f) { fclose(f); return path; }
+        if (vdf_size > 0 && vdf_size < 256 * 1024) {
+            char *buf = (char *)malloc((size_t)vdf_size + 1);
+            if (buf) {
+                fread(buf, 1, (size_t)vdf_size, vf);
+                buf[vdf_size] = '\0';
+
+                const char *p = buf;
+                while ((p = strstr(p, "\"path\"")) != NULL) {
+                    p += strlen("\"path\"");
+                    while (*p && *p != '"') p++;
+                    if (*p != '"') break;
+                    p++;
+                    const char *end = strchr(p, '"');
+                    if (!end) break;
+
+                    snprintf(dir, sizeof(dir),
+                             "%.*s/steamapps/common/Baldurs Gate 3",
+                             (int)(end - p), p);
+                    if (try_bundle_in_dir(dir, path, sizeof(path))) {
+                        free(buf);
+                        fclose(vf);
+                        return path;
+                    }
+                    p = end + 1;
+                }
+                free(buf);
+            }
+        }
+        fclose(vf);
+    }
 
     path[0] = '\0';
     return NULL;

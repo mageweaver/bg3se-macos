@@ -162,6 +162,7 @@ add_library(bg3se SHARED
     src/lua/lua_debug.c
     src/lua/lua_logging.c
     src/mod/mod_loader.c
+    src/mod/mod_paths.c
     src/osiris/pattern_scan.c
     src/osiris/osiris_functions.c
     src/osiris/custom_functions.c
@@ -349,15 +350,18 @@ if(BUILD_TESTS)
         tests/tier0/test_pattern_scan.c
         tests/tier0/test_osiris_handles.c
         tests/tier0/test_entity_events.c
+        tests/tier0/test_mod_paths.c
         tests/tier0/stub_logging.c
         src/core/safe_memory.c
         src/osiris/pattern_scan.c
+        src/mod/mod_paths.c
     )
     target_include_directories(bg3se_test_tier0 PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/tier0
         ${CMAKE_SOURCE_DIR}/src/core
         ${CMAKE_SOURCE_DIR}/src/osiris
         ${CMAKE_SOURCE_DIR}/src/entity
+        ${CMAKE_SOURCE_DIR}/src/mod
     )
     target_link_libraries(bg3se_test_tier0 PRIVATE "-framework Foundation")
     set_target_properties(bg3se_test_tier0 PROPERTIES
