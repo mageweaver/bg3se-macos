@@ -11,6 +11,7 @@
 #include "../core/logging.h"
 #include "../lifetime/lifetime.h"
 
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -40,6 +41,9 @@ static ComponentLayoutDef g_Layouts[MAX_COMPONENT_LAYOUTS];
 static int g_LayoutCount = 0;
 static bool g_Initialized = false;
 
+static bool component_property_register_layout_internal(
+    const ComponentLayoutDef *layout, bool generated);
+
 // ============================================================================
 // Initialization
 // ============================================================================
@@ -67,7 +71,7 @@ bool component_property_init(void) {
         // Skip if already registered (from g_AllComponentLayouts)
         if (component_property_get_layout(layout->componentName)) continue;
 
-        if (component_property_register_layout(layout)) {
+        if (component_property_register_layout_internal(layout, true)) {
             generated_count++;
         }
     }
@@ -82,7 +86,8 @@ bool component_property_init(void) {
 // Layout Registration & Lookup
 // ============================================================================
 
-bool component_property_register_layout(const ComponentLayoutDef *layout) {
+static bool component_property_register_layout_internal(
+    const ComponentLayoutDef *layout, bool generated) {
     if (!layout || !layout->componentName) return false;
     if (g_LayoutCount >= MAX_COMPONENT_LAYOUTS) {
         LOG_ENTITY_DEBUG("Component layout registry full");
@@ -91,11 +96,16 @@ bool component_property_register_layout(const ComponentLayoutDef *layout) {
 
     // Copy layout
     g_Layouts[g_LayoutCount] = *layout;
+    g_Layouts[g_LayoutCount].generated = generated;
     g_LayoutCount++;
 
     LOG_ENTITY_DEBUG("Registered component layout: %s (%s) with %d properties",
                    layout->componentName, layout->shortName, layout->propertyCount);
     return true;
+}
+
+bool component_property_register_layout(const ComponentLayoutDef *layout) {
+    return component_property_register_layout_internal(layout, false);
 }
 
 const ComponentLayoutDef *component_property_get_layout(const char *componentName) {
@@ -415,20 +425,210 @@ int component_property_read(lua_State *L, void *componentPtr,
 }
 
 // ============================================================================
-// Property Writing (Stub)
+// Property Writing
 // ============================================================================
+
+static size_t component_property_field_size(const ComponentPropertyDef *prop) {
+    if (!prop) return 0;
+
+    switch (prop->type) {
+        case FIELD_TYPE_UINT8:
+        case FIELD_TYPE_BOOL:
+            return sizeof(uint8_t);
+
+        case FIELD_TYPE_INT32:
+        case FIELD_TYPE_FLOAT:
+        case FIELD_TYPE_FIXEDSTRING:
+            return sizeof(uint32_t);
+
+        case FIELD_TYPE_INT32_ARRAY:
+            if (prop->arraySize == 0) return 0;
+            return (size_t)prop->arraySize * sizeof(int32_t);
+
+        default:
+            return 0;
+    }
+}
+
+static bool component_property_is_pointer_typed(const ComponentPropertyDef *prop) {
+    /*
+     * Dynamic Array<T> embeds a game-owned buffer pointer.  Replacing any part
+     * of that header would be a pointer write and arrays of structs additionally
+     * require ownership/lifetime operations that this layer cannot provide.
+     */
+    return prop && prop->type == FIELD_TYPE_DYNAMIC_ARRAY;
+}
+
+static bool component_property_bounds_valid(const ComponentLayoutDef *layout,
+                                            const ComponentPropertyDef *prop,
+                                            size_t fieldSize) {
+    if (layout->generated && layout->componentSize == 0) {
+        LOG_ENTITY_DEBUG(
+            "Refusing component write: generated layout %s has unknown size",
+            layout->componentName);
+        return false;
+    }
+
+    if (layout->componentSize != 0
+        && ((size_t)prop->offset > layout->componentSize
+            || fieldSize > (size_t)layout->componentSize - prop->offset)) {
+        LOG_ENTITY_DEBUG(
+            "Refusing component write: %s.%s range [0x%x, 0x%zx) exceeds layout size 0x%x%s",
+            layout->componentName, prop->name, prop->offset,
+            (size_t)prop->offset + fieldSize, layout->componentSize,
+            layout->generated ? " (generated)" : "");
+        return false;
+    }
+
+    return true;
+}
 
 bool component_property_write(lua_State *L, void *componentPtr,
                               const ComponentLayoutDef *layout,
                               const char *propertyName, int valueIndex) {
-    (void)L;
-    (void)componentPtr;
-    (void)layout;
-    (void)propertyName;
-    (void)valueIndex;
+    if (!L || !componentPtr || !layout || !layout->componentName || !propertyName) {
+        LOG_ENTITY_DEBUG(
+            "Refusing component write: invalid arguments (L=%p component=%p layout=%p property=%s)",
+            (void *)L, componentPtr, (const void *)layout,
+            propertyName ? propertyName : "<null>");
+        return false;
+    }
 
-    LOG_ENTITY_DEBUG("Component property writes not yet implemented");
-    return false;
+    const ComponentPropertyDef *prop = find_property(layout, propertyName);
+    if (!prop) {
+        LOG_ENTITY_DEBUG("Refusing component write: unknown property %s.%s",
+                         layout->componentName, propertyName);
+        return false;
+    }
+
+    if (strstr(layout->componentName, "OneFrame") != NULL
+        || strstr(layout->componentName, "Request") != NULL) {
+        LOG_ENTITY_DEBUG("Refusing component write: transient component %s is blacklisted",
+                         layout->componentName);
+        return false;
+    }
+
+    if (prop->type == FIELD_TYPE_FIXEDSTRING) {
+        LOG_ENTITY_DEBUG(
+            "Refusing component write: %s.%s is FixedString and GST interning is unavailable",
+            layout->componentName, propertyName);
+        return false;
+    }
+
+    if (component_property_is_pointer_typed(prop)) {
+        LOG_ENTITY_DEBUG("Refusing component write: %s.%s is pointer-typed",
+                         layout->componentName, propertyName);
+        return false;
+    }
+
+    size_t fieldSize = component_property_field_size(prop);
+    if (fieldSize == 0) {
+        LOG_ENTITY_DEBUG("Refusing component write: unsupported field type %d for %s.%s",
+                         prop->type, layout->componentName, propertyName);
+        return false;
+    }
+
+    if (!component_property_bounds_valid(layout, prop, fieldSize)) {
+        return false;
+    }
+
+    if (prop->readOnly) {
+        LOG_ENTITY_DEBUG("Refusing component write: %s.%s is read-only",
+                         layout->componentName, propertyName);
+        return false;
+    }
+
+    uintptr_t componentAddress = (uintptr_t)componentPtr;
+    if (componentAddress > UINTPTR_MAX - prop->offset) {
+        LOG_ENTITY_DEBUG("Refusing component write: address overflow for %s.%s",
+                         layout->componentName, propertyName);
+        return false;
+    }
+
+    mach_vm_address_t address =
+        (mach_vm_address_t)(componentAddress + prop->offset);
+    bool wrote = false;
+
+    switch (prop->type) {
+        case FIELD_TYPE_INT32: {
+            lua_Integer raw = luaL_checkinteger(L, valueIndex);
+            if (raw < INT32_MIN || raw > INT32_MAX) {
+                luaL_error(L, "Value for %s.%s is outside int32 range",
+                           layout->componentName, propertyName);
+                return false;
+            }
+            int32_t value = (int32_t)raw;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_UINT8: {
+            lua_Integer raw = luaL_checkinteger(L, valueIndex);
+            if (raw < 0 || raw > UINT8_MAX) {
+                luaL_error(L, "Value for %s.%s is outside uint8 range",
+                           layout->componentName, propertyName);
+                return false;
+            }
+            uint8_t value = (uint8_t)raw;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_BOOL: {
+            luaL_checktype(L, valueIndex, LUA_TBOOLEAN);
+            uint8_t value = lua_toboolean(L, valueIndex) ? 1 : 0;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_FLOAT: {
+            float value = (float)luaL_checknumber(L, valueIndex);
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_INT32_ARRAY: {
+            int absoluteIndex = lua_absindex(L, valueIndex);
+            luaL_checktype(L, absoluteIndex, LUA_TTABLE);
+            size_t suppliedSize = lua_rawlen(L, absoluteIndex);
+            if (suppliedSize != prop->arraySize) {
+                luaL_error(L, "Value for %s.%s must contain exactly %u elements",
+                           layout->componentName, propertyName, prop->arraySize);
+                return false;
+            }
+
+            int32_t values[UINT8_MAX];
+            for (uint8_t i = 0; i < prop->arraySize; i++) {
+                lua_rawgeti(L, absoluteIndex, (lua_Integer)i + 1);
+                lua_Integer raw = luaL_checkinteger(L, -1);
+                if (raw < INT32_MIN || raw > INT32_MAX) {
+                    luaL_error(L, "Element %u for %s.%s is outside int32 range",
+                               (unsigned)i + 1, layout->componentName, propertyName);
+                    return false;
+                }
+                values[i] = (int32_t)raw;
+                lua_pop(L, 1);
+            }
+
+            wrote = safe_memory_write(address, values, fieldSize);
+            break;
+        }
+
+        default:
+            /* component_property_field_size() rejects every other type. */
+            break;
+    }
+
+    if (!wrote) {
+        LOG_ENTITY_DEBUG("Component write failed safely: %s.%s at %p (%zu bytes)",
+                         layout->componentName, propertyName, (void *)(uintptr_t)address,
+                         fieldSize);
+        return false;
+    }
+
+    LOG_ENTITY_DEBUG("Component write succeeded: %s.%s (%zu bytes)",
+                     layout->componentName, propertyName, fieldSize);
+    return true;
 }
 
 // ============================================================================
@@ -480,16 +680,19 @@ static int component_proxy_newindex(lua_State *L) {
     }
     const char *key = luaL_checkstring(L, 2);
 
-    const ComponentPropertyDef *prop = find_property(proxy->layout, key);
-    if (!prop) {
-        return luaL_error(L, "Unknown property: %s", key);
-    }
-    if (prop->readOnly) {
-        return luaL_error(L, "Property %s is read-only", key);
+    /*
+     * Norbyte's Windows LightObjectProxyMetatable::NewIndex translates every
+     * non-Success property-map result into luaL_error (including read-only and
+     * unsupported types).  Keep the same UX: never silently ignore a refused
+     * game-memory write.
+     */
+    if (!component_property_write(
+            L, proxy->componentPtr, proxy->layout, key, 3)) {
+        return luaL_error(L, "Cannot set component property %s.%s",
+                          proxy->layout->componentName, key);
     }
 
-    // Property writes not yet implemented
-    return luaL_error(L, "Component property writes not yet implemented");
+    return 0;
 }
 
 static int component_proxy_tostring(lua_State *L) {

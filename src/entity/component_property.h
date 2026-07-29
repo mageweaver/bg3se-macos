@@ -84,6 +84,7 @@ typedef struct {
     uint16_t componentSize;                 // Total struct size (for bounds checking)
     const ComponentPropertyDef *properties;
     int propertyCount;
+    bool generated;                         // Unverified generated-property layout
 } ComponentLayoutDef;
 
 // ============================================================================
@@ -160,12 +161,13 @@ int component_property_read_def(lua_State *L, void *componentPtr,
                                 const ComponentPropertyDef *prop);
 
 // ============================================================================
-// Property Writing (Future)
+// Property Writing
 // ============================================================================
 
 /**
  * Write a property value from Lua stack to component data.
- * Currently not implemented - returns false.
+ * Returns false when the property is missing, unsafe, read-only, unsupported,
+ * out of bounds, or the safe-memory write fails.
  */
 bool component_property_write(lua_State *L, void *componentPtr,
                               const ComponentLayoutDef *layout,
