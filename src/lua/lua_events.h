@@ -241,6 +241,32 @@ void events_fire_execute_functor(lua_State *L, int ctxType, void *functors, void
 void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors, void *context);
 
 /**
+ * Fire BeforeDealDamage or DealDamage from ProcessDealDamageFunctors.
+ *
+ * The hook exposes the verified entity ID, scalar event index, and opaque
+ * pointers for every const-reference context argument. Layout-dependent fields
+ * (Hit, Attack, Position, DamageEffectFlags, Ability, SpellAttackType) are nil;
+ * their corresponding *Ptr fields preserve access for diagnostics without
+ * pretending their layouts are verified.
+ */
+void events_fire_damage(
+    lua_State *L,
+    BG3SEEventType event,
+    void *worldView,
+    void *functor,
+    uint64_t entity,
+    const void *position,
+    const void *spellState,
+    const void *damageEffectFlags,
+    const void *ability,
+    const void *spellAttackType,
+    const void *dependency1,
+    const void *dependency2,
+    int eventIndex,
+    void *interruptEvents
+);
+
+/**
  * Fire the TurnStarted event from Osiris callback with character GUID.
  * Handlers receive {CharacterGuid = string} table.
  *

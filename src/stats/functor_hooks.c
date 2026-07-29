@@ -44,6 +44,7 @@ static ExecuteFunctorsProc g_OrigNearbyAttacking = NULL;
 static ExecuteFunctorsProc g_OrigEquip = NULL;
 static ExecuteFunctorsProc g_OrigSource = NULL;
 static ExecuteInterruptFunctorsProc g_OrigInterrupt = NULL;
+static ProcessDealDamageFunctorsProc g_OrigProcessDealDamage = NULL;
 
 // =============================================================================
 // Helper: Get runtime address from Ghidra offset
@@ -55,7 +56,7 @@ extern void* entity_get_binary_base(void);
 static uintptr_t get_runtime_addr(uintptr_t ghidra_addr) {
     void* base = entity_get_binary_base();
     if (!base) return 0;
-    // Remap the hardcoded 6995620 address to the running version (0 = no verified
+    // Remap the hardcoded address to the running version (0 = no verified
     // address -> caller skips the hook instead of hooking a stale function).
     uint64_t remapped = offset_table_remap_fn(ghidra_addr);
     if (!remapped) return 0;
@@ -73,7 +74,12 @@ static inline int has_functor_subscribers(void) {
            events_get_handler_count(EVENT_AFTER_EXECUTE_FUNCTOR);
 }
 
-static void fire_execute_functor_event(StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
+static inline int has_damage_subscribers(void) {
+    return events_get_handler_count(EVENT_BEFORE_DEAL_DAMAGE) +
+           events_get_handler_count(EVENT_DEAL_DAMAGE);
+}
+
+static void fire_execute_functor_event(const StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
     if (!g_LuaState) return;
     // Hooked game execution thread entering the shared Lua state — serialize
     // and re-resolve under the gate (see lua_gate.h).
@@ -85,11 +91,38 @@ static void fire_execute_functor_event(StatsFunctorList* functors, void* context
     lua_gate_unlock();
 }
 
-static void fire_after_execute_functor_event(StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
+static void fire_after_execute_functor_event(const StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
     if (!g_LuaState) return;
     lua_gate_lock();
     if (g_LuaState) {
         events_fire_after_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
+        g_EventCount++;
+    }
+    lua_gate_unlock();
+}
+
+static void fire_damage_event(
+    BG3SEEventType event,
+    void* worldView,
+    const StatsFunctorBase* functor,
+    uint64_t entityHandle,
+    const void* position,
+    const void* spellState,
+    const void* damageEffectFlags,
+    const void* ability,
+    const void* spellAttackType,
+    const void* dependency1,
+    const void* dependency2,
+    int eventIndex,
+    void* interruptEvents
+) {
+    if (!g_LuaState) return;
+    lua_gate_lock();
+    if (g_LuaState) {
+        events_fire_damage(
+            g_LuaState, event, worldView, (void*)functor, entityHandle,
+            position, spellState, damageEffectFlags, ability, spellAttackType,
+            dependency1, dependency2, eventIndex, interruptEvents);
         g_EventCount++;
     }
     lua_gate_unlock();
@@ -102,95 +135,145 @@ static void fire_after_execute_functor_event(StatsFunctorList* functors, void* c
 // Lua overhead.
 // =============================================================================
 
-static void hook_ExecuteFunctors_AttackTarget(void* self, StatsFunctorList* functors, AttackTargetContextData* ctx) {
+static void hook_ExecuteFunctors_AttackTarget(const StatsFunctorList* functors, AttackTargetContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigAttackTarget) g_OrigAttackTarget(self, functors, ctx);
+        if (g_OrigAttackTarget) g_OrigAttackTarget(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_TARGET);
-    if (g_OrigAttackTarget) g_OrigAttackTarget(self, functors, ctx);
+    if (g_OrigAttackTarget) g_OrigAttackTarget(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_TARGET);
 }
 
-static void hook_ExecuteFunctors_AttackPosition(void* self, StatsFunctorList* functors, AttackPositionContextData* ctx) {
+static void hook_ExecuteFunctors_AttackPosition(const StatsFunctorList* functors, AttackPositionContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigAttackPosition) g_OrigAttackPosition(self, functors, ctx);
+        if (g_OrigAttackPosition) g_OrigAttackPosition(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_POSITION);
-    if (g_OrigAttackPosition) g_OrigAttackPosition(self, functors, ctx);
+    if (g_OrigAttackPosition) g_OrigAttackPosition(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_POSITION);
 }
 
-static void hook_ExecuteFunctors_Move(void* self, StatsFunctorList* functors, MoveContextData* ctx) {
+static void hook_ExecuteFunctors_Move(const StatsFunctorList* functors, MoveContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigMove) g_OrigMove(self, functors, ctx);
+        if (g_OrigMove) g_OrigMove(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_MOVE);
-    if (g_OrigMove) g_OrigMove(self, functors, ctx);
+    if (g_OrigMove) g_OrigMove(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_MOVE);
 }
 
-static void hook_ExecuteFunctors_Target(void* self, StatsFunctorList* functors, TargetContextData* ctx) {
+static void hook_ExecuteFunctors_Target(const StatsFunctorList* functors, TargetContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigTarget) g_OrigTarget(self, functors, ctx);
+        if (g_OrigTarget) g_OrigTarget(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_TARGET);
-    if (g_OrigTarget) g_OrigTarget(self, functors, ctx);
+    if (g_OrigTarget) g_OrigTarget(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_TARGET);
 }
 
-static void hook_ExecuteFunctors_NearbyAttacked(void* self, StatsFunctorList* functors, NearbyAttackedContextData* ctx) {
+static void hook_ExecuteFunctors_NearbyAttacked(const StatsFunctorList* functors, NearbyAttackedContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(self, functors, ctx);
+        if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKED);
-    if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(self, functors, ctx);
+    if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKED);
 }
 
-static void hook_ExecuteFunctors_NearbyAttacking(void* self, StatsFunctorList* functors, NearbyAttackingContextData* ctx) {
+static void hook_ExecuteFunctors_NearbyAttacking(const StatsFunctorList* functors, NearbyAttackingContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(self, functors, ctx);
+        if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKING);
-    if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(self, functors, ctx);
+    if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKING);
 }
 
-static void hook_ExecuteFunctors_Equip(void* self, StatsFunctorList* functors, EquipContextData* ctx) {
+static void hook_ExecuteFunctors_Equip(const StatsFunctorList* functors, EquipContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigEquip) g_OrigEquip(self, functors, ctx);
+        if (g_OrigEquip) g_OrigEquip(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_EQUIP);
-    if (g_OrigEquip) g_OrigEquip(self, functors, ctx);
+    if (g_OrigEquip) g_OrigEquip(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_EQUIP);
 }
 
-static void hook_ExecuteFunctors_Source(void* self, StatsFunctorList* functors, SourceContextData* ctx) {
+static void hook_ExecuteFunctors_Source(const StatsFunctorList* functors, SourceContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigSource) g_OrigSource(self, functors, ctx);
+        if (g_OrigSource) g_OrigSource(functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_SOURCE);
-    if (g_OrigSource) g_OrigSource(self, functors, ctx);
+    if (g_OrigSource) g_OrigSource(functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_SOURCE);
 }
 
-static void hook_ExecuteFunctors_Interrupt(HitResult* hit, void* entityWorld, StatsFunctorList* functors, InterruptContextData* ctx) {
-    // Interrupt handler has 4 parameters (HitResult first) unlike other handlers
+static void hook_ExecuteFunctors_Interrupt(
+    EntityWorld* entityWorld,
+    const StatsFunctorList* functors,
+    InterruptContextData* ctx
+) {
     if (!has_functor_subscribers()) {
-        if (g_OrigInterrupt) g_OrigInterrupt(hit, entityWorld, functors, ctx);
+        if (g_OrigInterrupt) g_OrigInterrupt(entityWorld, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_INTERRUPT);
-    if (g_OrigInterrupt) g_OrigInterrupt(hit, entityWorld, functors, ctx);
+    if (g_OrigInterrupt) g_OrigInterrupt(entityWorld, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_INTERRUPT);
+}
+
+static void hook_ProcessDealDamageFunctors(
+    void* worldView,
+    const StatsFunctorBase* functor,
+    const uint64_t* entityHandle,
+    const void* position,
+    const void* spellState,
+    const void* damageEffectFlags,
+    const void* ability,
+    const void* spellAttackType,
+    const void* dependency1,
+    const void* dependency2,
+    int eventIndex,
+    void* interruptEvents
+) {
+    if (!has_damage_subscribers()) {
+        if (g_OrigProcessDealDamage) {
+            g_OrigProcessDealDamage(
+                worldView, functor, entityHandle, position, spellState,
+                damageEffectFlags, ability, spellAttackType, dependency1,
+                dependency2, eventIndex, interruptEvents);
+        }
+        return;
+    }
+
+    uint64_t entity = entityHandle ? *entityHandle : 0;
+    if (events_get_handler_count(EVENT_BEFORE_DEAL_DAMAGE) > 0) {
+        fire_damage_event(
+            EVENT_BEFORE_DEAL_DAMAGE, worldView, functor, entity, position,
+            spellState, damageEffectFlags, ability, spellAttackType, dependency1,
+            dependency2, eventIndex, interruptEvents);
+    }
+
+    if (g_OrigProcessDealDamage) {
+        g_OrigProcessDealDamage(
+            worldView, functor, entityHandle, position, spellState,
+            damageEffectFlags, ability, spellAttackType, dependency1,
+            dependency2, eventIndex, interruptEvents);
+    }
+
+    if (events_get_handler_count(EVENT_DEAL_DAMAGE) > 0) {
+        fire_damage_event(
+            EVENT_DEAL_DAMAGE, worldView, functor, entity, position, spellState,
+            damageEffectFlags, ability, spellAttackType, dependency1,
+            dependency2, eventIndex, interruptEvents);
+    }
 }
 
 // =============================================================================
@@ -289,8 +372,20 @@ bool functor_hooks_init(lua_State* L) {
         LOG_HOOKS_ERROR("  Failed to hook Interrupt @ 0x%llx", (unsigned long long)addr);
     }
 
+    // Install ProcessDealDamageFunctors hook
+    addr = get_runtime_addr(ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS);
+    if (addr && DobbyHook((void*)addr, (void*)hook_ProcessDealDamageFunctors,
+                          (void**)&g_OrigProcessDealDamage) == 0) {
+        LOG_HOOKS_DEBUG("  ProcessDealDamageFunctors hook @ 0x%llx",
+                        (unsigned long long)addr);
+        success_count++;
+    } else {
+        LOG_HOOKS_ERROR("  Failed to hook ProcessDealDamageFunctors @ 0x%llx",
+                        (unsigned long long)addr);
+    }
+
     g_HooksInstalled = (success_count > 0);
-    LOG_HOOKS_INFO("Functor hooks: %d/9 installed", success_count);
+    LOG_HOOKS_INFO("Functor hooks: %d/10 installed", success_count);
 
     return g_HooksInstalled;
 }
@@ -310,6 +405,7 @@ void functor_hooks_shutdown(void) {
     g_OrigEquip = NULL;
     g_OrigSource = NULL;
     g_OrigInterrupt = NULL;
+    g_OrigProcessDealDamage = NULL;
 
     g_HooksInstalled = false;
     g_LuaState = NULL;

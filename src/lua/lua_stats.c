@@ -1088,15 +1088,20 @@ static int lua_stats_prepare_functor_params(lua_State *L) {
     return 1;
 }
 
-// Ext.Stats.ExecuteFunctors(functorContext) -> nil
-// Calls the game's original functor execution code for the given context.
-// Currently a stub since we need a real Functors* to pass (from stat object).
+// Ext.Stats.ExecuteFunctors(functors, functorContext) -> nil
+// Honest stub: the 7209685 overloads can execute a StatsFunctorList*, but this
+// binding has no StatsFunctorList/StatsFunctorBase userdata or verified list
+// constructor to supply argument 1. The recovered ExecuteStatsFunctor dispatcher
+// does not close that gap: it accepts one StatsFunctorBase plus a functor ID and
+// only AttackTargetContextData&, so routing arbitrary prepared contexts through
+// it would be ABI-incorrect. Do not accept raw Lua integers as engine pointers.
 static int lua_stats_execute_functors(lua_State *L) {
     if (!functor_hooks_is_active()) {
         return luaL_error(L, "Functor hooks not installed (game must be in a session)");
     }
 
-    // Check if we got a FunctorContext userdata
+    // Retain the legacy one-argument validation until real functor userdata
+    // exists; this prevents the stub from implying that raw pointers are valid.
     LuaFunctorContext *ctx_ud = (LuaFunctorContext *)luaL_testudata(L, 1, FUNCTOR_CONTEXT_METATABLE);
     if (!ctx_ud) {
         return luaL_error(L, "Expected FunctorContext userdata as argument 1");
@@ -1107,9 +1112,10 @@ static int lua_stats_execute_functors(lua_State *L) {
         return luaL_error(L, "No original proc for context type %d", (int)ctx_ud->type);
     }
 
-    // For a real implementation, we'd need a StatsFunctorList* from a stat object.
-    // For now, log that this requires stat object integration.
-    LOG_STATS_DEBUG("ExecuteFunctors: context type %d ready, but needs Functors* from stat object (TODO)", (int)ctx_ud->type);
+    LOG_STATS_DEBUG(
+        "ExecuteFunctors: context type %d ready, but no bound "
+        "StatsFunctorList/StatsFunctorBase object is available",
+        (int)ctx_ud->type);
     return 0;
 }
 

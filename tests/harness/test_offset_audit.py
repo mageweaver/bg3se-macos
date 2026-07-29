@@ -94,6 +94,40 @@ AUDITED_OFFSETS = [
      "ls::TranslatedStringRepository::AddTranslatedString", True),
     ("src/audio/audio_manager.c", "OFFSET_STDSTRING_CTOR",
      "ls::STDString::STDString(char const*)", True),
+    # Functor targets are LOCAL text symbols. nm_symbols intentionally invokes
+    # plain `nm` (without -g/-U) so these entries participate in the same audit.
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_STATS_FUNCTOR",
+     "ExecuteStatsFunctor(eoc::StatsFunctorBase const*, unsigned long, "
+     "esv::functor::AttackTargetContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::AttackTargetContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_ATTACK_POSITION",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::AttackPositionContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_MOVE",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::MoveContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_TARGET",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::TargetContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKED",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::NearbyAttackedContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKING",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::NearbyAttackingContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_EQUIP",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::EquipContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_SOURCE",
+     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
+     "esv::functor::SourceContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_INTERRUPT",
+     "ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, "
+     "esv::functor::InterruptContextData&)", False),
+    ("src/stats/functor_types.h", "ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS",
+     "ProcessDealDamageFunctors(ecs::WorldView<", False),
 ]
 
 # Expected symbol per 7209685-row field in offset_table.c.
@@ -406,16 +440,19 @@ def test_functor_gate_is_independent():
         not in main_c, "functor install re-coupled to global version match"
 
 
-def test_interrupt_remap_stays_disabled_until_wrapper_exists():
-    """The 7209685 Interrupt ExecuteStatsFunctors has a different signature
-    (leading ecs::EntityWorld&). Its remap column must stay 0 until a
-    dedicated wrapper for the new ABI lands in functor_hooks.c."""
+def test_interrupt_remap_uses_entity_world_wrapper():
+    """The enabled 7209685 Interrupt target must retain its leading
+    ecs::EntityWorld& wrapper parameter."""
     rows = _parse_remap_rows()
     interrupt = [new for old, new in rows if old == 0x1057965E4]
     assert interrupt, "Interrupt row (0x1057965e4) missing from g_fn_remap"
-    if interrupt[0] != 0:
-        wrappers = (REPO_ROOT / "src/stats/functor_hooks.c").read_text()
-        assert "EntityWorld" in wrappers, (
-            "Interrupt remap target enabled but functor_hooks.c has no "
-            "EntityWorld-aware wrapper — the hook would be ABI-mismatched"
-        )
+    assert interrupt[0] == 0x105786548, (
+        "Interrupt remap must target the nm-verified 7209685 overload")
+    wrappers = (REPO_ROOT / "src/stats/functor_hooks.c").read_text()
+    assert re.search(
+        r"hook_ExecuteFunctors_Interrupt\s*\(\s*EntityWorld\s*\*",
+        wrappers,
+    ), (
+        "Interrupt remap target enabled but functor_hooks.c has no "
+        "EntityWorld-aware wrapper — the hook would be ABI-mismatched"
+    )

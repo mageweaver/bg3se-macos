@@ -186,17 +186,16 @@ static const FnRemap g_fn_remap[] = {
     { 0x10578fba8, 0x10577fb0c },  //   <NearbyAttacking>
     { 0x105790a28, 0x10578098c },  //   <Equip>
     { 0x105792a90, 0x1057829f4 },  //   <Source>
-    { 0x1057965e4, 0 },            //   <Interrupt> — 7209685 variant (0x105786548) gained a
-                                   //   leading ecs::EntityWorld& param (nm-verified); the old
-                                   //   wrapper ABI does not fit. 0 until a new wrapper exists.
+    { 0x1057965e4, 0x105786548 },  //   <Interrupt> (7209685: leading ecs::EntityWorld&)
+    { 0x10538f374, 0x10537e8b4 },  // (anonymous)::ProcessDealDamageFunctors
     { 0x106534d54, 0x10652390c },  // ls::TranslatedStringRepository::TryGet
     { 0x106535148, 0x106523d00 },  // ls::TranslatedStringRepository::Get
     { 0x106532590, 0x106521148 },  // ls::TranslatedStringRepository::AddTranslatedString
     { 0x1063d5998, 0x1063c4550 },  // net::MessageFactory::GetFreeMessage
     { 0x10651fb60, 0x10650e718 },  // ls::STDString::STDString(char const*)  (audio PlayExternalSound)
     // NOTE: the functor rows above are additionally gated by
-    // FUNCTOR_ADDRS_VERIFIED_BUILD in functor_types.h — hooks stay off on
-    // 7209685 until each signature is ABI-verified (see functor_hooks.c).
+    // FUNCTOR_ADDRS_VERIFIED_BUILD in functor_types.h. Symbol resolution proves
+    // addresses, while that exact-build gate protects the wrapper ABIs.
     // bik::BinkManager::LoadVideo (0x10390b6cc) is unchanged across versions.
     // GetComponent<T> template addresses are intentionally NOT in this table:
     // that path is dead on macOS (templates inlined) — remap returns 0 on

@@ -370,59 +370,75 @@ typedef struct {
 // Function Addresses (ARM64 macOS)
 // =============================================================================
 
-// The game build these eleven CODE-patch addresses were derived from.
-// These functions are stripped locals (no nm symbols), so the harness offset
-// audit cannot validate them and the 2026-07-28 address migration could NOT
-// re-derive them. main.c therefore gates functor hook install on an exact
-// match against THIS constant, independent of BG3_KNOWN_VERSION — bumping
-// the global version must never silently enable these patches. To re-enable
-// on a new build: re-derive every address below via Ghidra, then update this
-// constant to match.
-#define FUNCTOR_ADDRS_VERIFIED_BUILD "4.1.1.6995620"
+// The game build these eleven addresses and their wrapper ABIs were verified
+// against. The functions are nm-visible LOCAL symbols (plain `nm`, without
+// `-g`), but symbol resolution only proves the address, not the ABI. main.c
+// therefore gates hook installation on an exact match against this constant,
+// independent of BG3_KNOWN_VERSION. Unknown builds remain fail-closed.
+#define FUNCTOR_ADDRS_VERIFIED_BUILD "4.1.1.7209685"
 
 // Main dispatcher
-#define ADDR_EXECUTE_STATS_FUNCTOR             0x105783a38
+#define ADDR_EXECUTE_STATS_FUNCTOR             0x10577399c
 
 // Context-specific handlers
-#define ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET    0x105787918
-#define ADDR_EXECUTE_FUNCTORS_ATTACK_POSITION  0x105787c6c
-#define ADDR_EXECUTE_FUNCTORS_MOVE             0x10578975c
-#define ADDR_EXECUTE_FUNCTORS_TARGET           0x10578a918
-#define ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKED  0x10578e4d8
-#define ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKING 0x10578fba8
-#define ADDR_EXECUTE_FUNCTORS_EQUIP            0x105790a28
-#define ADDR_EXECUTE_FUNCTORS_SOURCE           0x105792a90
-#define ADDR_EXECUTE_FUNCTORS_INTERRUPT        0x1057965e4
+#define ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET    0x10577787c
+#define ADDR_EXECUTE_FUNCTORS_ATTACK_POSITION  0x105777bd0
+#define ADDR_EXECUTE_FUNCTORS_MOVE             0x1057796c0
+#define ADDR_EXECUTE_FUNCTORS_TARGET           0x10577a87c
+#define ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKED  0x10577e43c
+#define ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKING 0x10577fb0c
+#define ADDR_EXECUTE_FUNCTORS_EQUIP            0x10578098c
+#define ADDR_EXECUTE_FUNCTORS_SOURCE           0x1057829f4
+#define ADDR_EXECUTE_FUNCTORS_INTERRUPT        0x105786548
 
 // Damage processing
-#define ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS      0x10538f374
+#define ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS      0x10537e8b4
 
 // =============================================================================
 // Function Type Definitions
 // =============================================================================
 
-// Context handler signature (most handlers)
+typedef struct EntityWorld EntityWorld;
+
+// The eight non-Interrupt overloads are free functions on 7209685:
+// (StatsFunctorList const*, <ContextData>&).
 typedef void (*ExecuteFunctorsProc)(
-    void*              self,        // functor instance or WorldView
-    StatsFunctorList*  functors,
-    void*              context      // Context-specific type
+    const StatsFunctorList* functors,
+    void*                   context
 );
 
-// Interrupt handler has different signature (4 parameters, HitResult first)
-// Windows BG3SE: void ExecuteInterruptFunctorProc(HitResult* hit, ecs::EntityWorld* world,
-//                                                  Functors* self, InterruptContextData* params);
+// Interrupt is also a free function, with EntityWorld& leading:
+// (ecs::EntityWorld&, StatsFunctorList const*, InterruptContextData&).
 typedef void (*ExecuteInterruptFunctorsProc)(
-    HitResult*             hit,          // Hit result being processed
-    void*                  entityWorld,  // ecs::EntityWorld*
-    StatsFunctorList*      functors,     // Functors object
-    InterruptContextData*  context       // Context with source/target/observer
+    EntityWorld*            entityWorld,
+    const StatsFunctorList* functors,
+    InterruptContextData*   context
 );
 
-// Main dispatcher signature
+// Main dispatcher: the third C argument is an AttackTargetContextData&.
 typedef void (*ExecuteStatsFunctorProc)(
-    StatsFunctorBase*  functor,
-    uint64_t           functorId,
-    void*              context
+    const StatsFunctorBase*  functor,
+    uint64_t                 functorId,
+    AttackTargetContextData* context
+);
+
+// (anonymous namespace)::ProcessDealDamageFunctors. All C++ const-reference
+// parameters are pointers at the C ABI boundary. Only `eventIndex` is passed
+// by value. Opaque context arguments must not be dereferenced without a
+// separately verified layout.
+typedef void (*ProcessDealDamageFunctorsProc)(
+    void*                   worldView,
+    const StatsFunctorBase* functor,
+    const uint64_t*         entityHandle,
+    const void*             position,
+    const void*             spellState,
+    const void*             damageEffectFlags,
+    const void*             ability,
+    const void*             spellAttackType,
+    const void*             dependency1,
+    const void*             dependency2,
+    int                     eventIndex,
+    void*                   interruptEvents
 );
 
 #endif // FUNCTOR_TYPES_H

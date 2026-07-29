@@ -4165,11 +4165,10 @@ init_subsystems:
                     }
 
                     // Initialize functor hooks (ExecuteFunctor/AfterExecuteFunctor events)
-                    // IMPORTANT: Functor hooks use Dobby to patch CODE at stripped-local
-                    // addresses that no audit can validate against nm, so they gate on
-                    // FUNCTOR_ADDRS_VERIFIED_BUILD — the build their addresses were
-                    // actually derived from — NOT on BG3_KNOWN_VERSION. Even a 1-byte
-                    // shift corrupts instructions. Never under BG3SE_NO_HOOKS, which
+                    // IMPORTANT: Functor hooks use Dobby to patch CODE at nm-visible
+                    // local symbols. nm proves the addresses but not the wrapper ABIs,
+                    // so install gates on FUNCTOR_ADDRS_VERIFIED_BUILD — NOT on
+                    // BG3_KNOWN_VERSION. Never install under BG3SE_NO_HOOKS, which
                     // promises zero code patches.
                     const char *detected_ver = version_detect_get_version();
                     if (!no_hooks && detected_ver &&

@@ -162,8 +162,12 @@
       "name": "ExecuteFunctors<Interrupt>",
       "baseline": "0x1057965e4",
       "symbol": "esv::functor::ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, esv::functor::InterruptContextData&)",
-      "abi_changed": true,
-      "_note": "the 6995620 variant had NO EntityWorld& param -- the existing wrapper ABI does not fit. Emit 0 in the remap column until functor_hooks.c grows an EntityWorld-aware wrapper."
+      "_note": "7209685 has a leading ecs::EntityWorld&; functor_hooks.c has a dedicated three-parameter wrapper. Re-verify ABI before enabling any future version."
+    },
+    {
+      "name": "ProcessDealDamageFunctors",
+      "baseline": "0x10538f374",
+      "symbol": "(anonymous namespace)::ProcessDealDamageFunctors(ecs::WorldView<eoc::repose::StateComponent const, ls::PhysicsComponent const, ls::TransformComponent const, ls::uuid::Component const>&, eoc::StatsFunctorBase const&, ls::ID<ecs::EntityHandleTraits> const&, ls::Optional<Vector3f> const&, eoc::spell_cast::StateComponent const&, ls::EnumFlags<eoc::EDamageEffectFlag> const&, EAbility const&, ESpellAttackType const&, eoc::interrupt::Dependency const&, eoc::interrupt::Dependency const&, int, ls::DynamicArray<eoc::interrupt::InterruptEvent, ls::TaggedAllocator<int>>&)"
     },
     {
       "name": "TranslatedStringRepository::TryGet",

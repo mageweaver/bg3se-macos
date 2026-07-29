@@ -1619,6 +1619,119 @@ void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors
     }
 }
 
+static void set_pointer_field(lua_State *L, const char *field, const void *ptr) {
+    if (ptr) {
+        lua_pushinteger(L, (lua_Integer)(uintptr_t)ptr);
+    } else {
+        lua_pushnil(L);
+    }
+    lua_setfield(L, -2, field);
+}
+
+static void set_nil_field(lua_State *L, const char *field) {
+    lua_pushnil(L);
+    lua_setfield(L, -2, field);
+}
+
+void events_fire_damage(
+    lua_State *L,
+    BG3SEEventType event,
+    void *worldView,
+    void *functor,
+    uint64_t entity,
+    const void *position,
+    const void *spellState,
+    const void *damageEffectFlags,
+    const void *ability,
+    const void *spellAttackType,
+    const void *dependency1,
+    const void *dependency2,
+    int eventIndex,
+    void *interruptEvents
+) {
+    if (!L || (event != EVENT_BEFORE_DEAL_DAMAGE && event != EVENT_DEAL_DAMAGE)) {
+        return;
+    }
+
+    int count = g_handler_counts[event];
+    if (count == 0) return;
+
+    LOG_EVENTS_DEBUG(
+        "Firing %s (functor=%p, entity=0x%llx, %d handlers)",
+        g_event_names[event], functor, (unsigned long long)entity, count);
+
+    g_dispatch_depth[event]++;
+
+    for (int i = 0; i < g_handler_counts[event]; i++) {
+        EventHandler *h = &g_handlers[event][i];
+        if (h->callback_ref == LUA_NOREF || h->callback_ref == LUA_REFNIL) {
+            continue;
+        }
+
+        ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
+        if (mh && mh->soft_disabled) continue;
+
+        mod_set_current(h->mod_name, NULL, NULL);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
+        if (!lua_isfunction(L, -1)) {
+            lua_pop(L, 1);
+            mod_set_current(NULL, NULL, NULL);
+            continue;
+        }
+
+        lua_newtable(L);
+        set_pointer_field(L, "FunctorPtr", functor);
+        lua_pushinteger(L, (lua_Integer)entity);
+        lua_setfield(L, -2, "Entity");
+        set_pointer_field(L, "WorldViewPtr", worldView);
+        set_pointer_field(L, "PositionOptionalPtr", position);
+        set_pointer_field(L, "SpellStatePtr", spellState);
+        set_pointer_field(L, "DamageEffectFlagsPtr", damageEffectFlags);
+        set_pointer_field(L, "AbilityPtr", ability);
+        set_pointer_field(L, "SpellAttackTypePtr", spellAttackType);
+        set_pointer_field(L, "Dependency1Ptr", dependency1);
+        set_pointer_field(L, "Dependency2Ptr", dependency2);
+        lua_pushinteger(L, eventIndex);
+        lua_setfield(L, -2, "InterruptEventIndex");
+        set_pointer_field(L, "InterruptEventsPtr", interruptEvents);
+
+        // ProcessDealDamageFunctors does not receive the Windows ApplyDamage
+        // payload. Leave those semantic fields explicitly nil until their
+        // layouts and provenance are independently verified.
+        set_nil_field(L, "Functor");
+        set_nil_field(L, "Hit");
+        set_nil_field(L, "Attack");
+        set_nil_field(L, "Position");
+        set_nil_field(L, "DamageEffectFlags");
+        set_nil_field(L, "Ability");
+        set_nil_field(L, "SpellAttackType");
+        set_nil_field(L, "Result");
+
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+            const char *err = lua_tostring(L, -1);
+            LOG_EVENTS_ERROR(
+                "%s handler error (id=%llu, mod=%s): %s",
+                g_event_names[event], h->handler_id, h->mod_name,
+                err ? err : "unknown");
+            mod_health_record_error(h->mod_name, err);
+            lua_pop(L, 1);
+        } else {
+            mod_health_record_success(h->mod_name);
+        }
+
+        mod_set_current(NULL, NULL, NULL);
+        if (h->once && g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
+            g_deferred_unsubs[g_deferred_unsub_count++] =
+                (DeferredUnsubscribe){event, h->handler_id};
+        }
+    }
+
+    g_dispatch_depth[event]--;
+    if (g_dispatch_depth[event] == 0) {
+        process_deferred_unsubscribes(L, event);
+    }
+}
+
 // ============================================================================
 // NetModMessage Event (Issue #6)
 // ============================================================================
