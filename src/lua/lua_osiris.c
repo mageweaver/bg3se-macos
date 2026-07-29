@@ -76,7 +76,10 @@ int lua_ext_osiris_registerlistener(lua_State *L) {
     LOG_LUA_DEBUG("Registered Osiris listener: %s (arity=%d, timing=%s)",
                 event, arity, timing);
 
-    return 0;
+    // Return the 1-based listener index as a subscription handle so callers
+    // can hold on to their registration (tier-2 Parity.Osi.ListenerBeforeAfter).
+    lua_pushinteger(L, osiris_listener_count);
+    return 1;
 }
 
 // ============================================================================

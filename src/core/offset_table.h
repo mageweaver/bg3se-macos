@@ -44,6 +44,11 @@ typedef struct {
                                         // NOT covered by component_data_shift: this
                                         // __common slot moved -0x24000 between 6995620
                                         // and 7209685, breaking the uniform-shift rule.
+    uintptr_t osiris_interface_ptr;     // osi::OsirisInterface global instance slot.
+                                        // No nm symbol — verified per-version by
+                                        // disassembling OsirisQuery's ADRP+LDR pair
+                                        // (see ghidra/offsets/OSIRIS_DATABASES.md).
+                                        // Used by osi_read_param_defs (main.c).
 
     /* ------------------------------------------------------------------ */
     /* Function offsets                                                    */

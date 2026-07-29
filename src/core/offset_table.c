@@ -47,6 +47,9 @@ static const VersionOffsets g_offset_table[] = {
         .staticdata_mstate_ptr   = 0x083c4a68,  // ImmutableDataHeadmaster::m_State
         .gst_ptr                 = 0x08aeccd8,  // ls::gGlobalStringTable
         .global_switches_ptr     = 0x08b18f30,  // EoCGlobalSwitches* (May 2026 RE: VMGameData init)
+        .osiris_interface_ptr    = 0,           // osi::OsirisInterface instance — never verified
+                                                // on this vintage (0 = param-defs reader disabled;
+                                                // osi_dynamic_call falls back to legacy guessing)
 
         /* Function offsets */
         .fn_feat_getfeats        = 0x01b752b4,  // FeatManager::GetFeats
@@ -114,6 +117,12 @@ static const VersionOffsets g_offset_table[] = {
                                                 // -0x24000). Verified 2026-07-29: 916 disasm refs
                                                 // across 593 fns incl. App::CreateGlobalSwitches()
                                                 // and BaseApp::CreateGlobalSwitches().
+        .osiris_interface_ptr    = 0x08a86128,  // osi::OsirisInterface instance slot. No nm symbol;
+                                                // verified 2026-07-29 by otool disasm of
+                                                // osi::OsirisInterface::OsirisQuery @ 0x105c093b0:
+                                                //   adrp x8, 0x108a86000 ; ldr x25, [x8, #0x128]
+                                                // (matches PR #93's live-verified chain; see
+                                                // ghidra/offsets/OSIRIS_DATABASES.md)
 
         /* Function offsets (__TEXT) — resolved by nm symbol lookup on the
          * 7209685 binary; non-uniform shift, see note above. */

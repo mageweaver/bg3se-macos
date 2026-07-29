@@ -124,6 +124,8 @@ TABLE_FIELD_SYMBOLS = {
     "fn_storage_tryget":       "ecs::EntityStorageContainer::TryGet",
     "fn_spell_proto_init":     "eoc::SpellPrototype::Init",
     "component_data_shift":    None,  # delta, not an address
+    "osiris_interface_ptr":    None,  # no symbol — disasm-audited, see
+                                      # test_osiris_interface_slot_matches_disasm
 }
 
 MSTATE_GOT_SYMBOL = "__ZN2ls11TypeContextINS_23ImmutableDataHeadmasterEE7m_StateE"
@@ -319,6 +321,57 @@ def test_mstate_got_slot():
         f"staticdata_mstate_ptr {va:#x} maps to the wrong symbol: {line} — "
         f"expected {MSTATE_GOT_SYMBOL}. The StaticData traversal would walk "
         f"garbage."
+    )
+
+
+OSIRIS_QUERY_MANGLED = "__ZN3osi15OsirisInterface11OsirisQueryEjP16COsiArgumentDesc"
+
+
+def test_osiris_interface_slot_matches_disasm():
+    """osiris_interface_ptr (the osi::OsirisInterface global instance slot,
+    used by osi_read_param_defs in main.c) has no nm symbol. Its authoritative
+    reference is OsirisQuery's own load of the global — the first
+    ``adrp xN, <page>`` / ``ldr xM, [xN, #off]`` pair in the function prologue
+    after the stack-guard load. Disassemble it and require the computed target
+    to equal the table value (2026-07-29 on 7209685: adrp 0x108a86000 +
+    ldr #0x128 -> 0x108a86128)."""
+    if not BG3_EXEC.exists():
+        pytest.skip("BG3 binary not installed")
+    if not shutil.which("otool"):
+        pytest.skip("otool unavailable")
+
+    row = _parse_table_row("4.1.1.7209685")
+    expected = row["osiris_interface_ptr"] + IMAGE_BASE
+    out = subprocess.run(
+        ["otool", "-arch", "arm64", "-tV", "-p", OSIRIS_QUERY_MANGLED,
+         str(BG3_EXEC)],
+        capture_output=True, text=True, timeout=600,
+    )
+    if out.returncode != 0:
+        pytest.skip(f"otool failed: {out.stderr[:200]}")
+    lines = out.stdout.splitlines()[:40]
+    assert any(OSIRIS_QUERY_MANGLED in ln for ln in lines), (
+        "osi::OsirisInterface::OsirisQuery symbol not found — signature "
+        "changed in a game update; re-derive the instance slot"
+    )
+    targets = []
+    page = None
+    page_reg = None
+    for ln in lines:
+        m = re.search(r"adrp\s+(x\d+),\s+\S+\s+;\s+0x([0-9a-f]+)", ln)
+        if m:
+            page_reg, page = m.group(1), int(m.group(2), 16)
+            continue
+        m = re.search(r"ldr\s+x\d+,\s+\[(x\d+)(?:,\s+#0x([0-9a-f]+))?\]", ln)
+        if m and page is not None and m.group(1) == page_reg:
+            off = int(m.group(2), 16) if m.group(2) else 0
+            targets.append(page + off)
+            page = page_reg = None
+    assert expected in targets, (
+        f"osiris_interface_ptr {expected:#x} not among OsirisQuery's "
+        f"adrp+ldr targets {[hex(t) for t in targets]} — the instance slot "
+        f"moved in a game update; osi_read_param_defs would read garbage. "
+        f"Re-derive from the disasm and update offset_table.c."
     )
 
 
