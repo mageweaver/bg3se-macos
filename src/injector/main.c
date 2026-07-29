@@ -407,36 +407,57 @@ static lua_State *L = NULL;
 static dispatch_source_t s_console_poll_timer = NULL;
 
 // Module loading state
-#define MAX_LOADED_MODULES 256
-static char loaded_modules[MAX_LOADED_MODULES][MAX_PATH_LEN];
-static int loaded_module_count = 0;
 static char mods_base_path[MAX_PATH_LEN] = "";
 
 // ============================================================================
 // Module Loading Helpers
 // ============================================================================
 
-/**
- * Check if a module has already been loaded
- */
-static int is_module_loaded(const char *full_path) {
-    for (int i = 0; i < loaded_module_count; i++) {
-        if (strcmp(loaded_modules[i], full_path) == 0) {
-            return 1;
-        }
+// Ext.Require caches each module's RETURN VALUE (like Lua's require /
+// package.loaded) so repeated requires of the same file return the same value.
+// A registry table keyed by full module path holds the results.
+#define BG3SE_MODULE_CACHE_KEY "BG3SE_ModuleCache"
+
+// Push the module cache table onto the stack (creating it on first use).
+static void push_module_cache(lua_State *L) {
+    lua_getfield(L, LUA_REGISTRYINDEX, BG3SE_MODULE_CACHE_KEY);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, BG3SE_MODULE_CACHE_KEY);
     }
-    return 0;
 }
 
-/**
- * Mark a module as loaded
- */
-static void mark_module_loaded(const char *full_path) {
-    if (loaded_module_count < MAX_LOADED_MODULES) {
-        strncpy(loaded_modules[loaded_module_count], full_path, MAX_PATH_LEN - 1);
-        loaded_modules[loaded_module_count][MAX_PATH_LEN - 1] = '\0';
-        loaded_module_count++;
+// If `key` is cached, leave its value on top of the stack and return 1;
+// otherwise leave the stack unchanged and return 0.
+static int require_cache_hit(lua_State *L, const char *key) {
+    push_module_cache(L);              // [.., cache]
+    lua_getfield(L, -1, key);          // [.., cache, val]
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 2);                 // [..]
+        return 0;
     }
+    lua_remove(L, -2);                 // [.., val]
+    return 1;
+}
+
+// After a successful load (module return values sit above the single `path`
+// arg at stack index 1), normalize to one value at index 2 — using boolean
+// true when the module returned nothing/nil, matching Lua require — cache it
+// under `key`, and leave exactly that value on top for return. Returns 1.
+static int require_finish(lua_State *L, const char *key) {
+    if (lua_gettop(L) < 2 || lua_isnil(L, 2)) {
+        lua_settop(L, 1);
+        lua_pushboolean(L, 1);         // [path, true]
+    } else {
+        lua_settop(L, 2);              // [path, val]
+    }
+    push_module_cache(L);              // [path, val, cache]
+    lua_pushvalue(L, 2);               // [path, val, cache, val]
+    lua_setfield(L, -2, key);          // cache[key] = val ; [path, val, cache]
+    lua_pop(L, 1);                     // [path, val]
+    return 1;
 }
 
 /**
@@ -575,9 +596,14 @@ static char *get_mod_table_name(const char *mod_name) {
 /**
  * Set up Mods.<ModTable> namespace in Lua
  * Creates the global 'Mods' table if it doesn't exist
- * Creates the Mods.<mod_table> subtable
+ * Creates the Mods.<mod_table> subtable, pre-seeded with ModuleUUID.
+ *
+ * The ModuleUUID field is required: MCM installs a __newindex metamethod on the
+ * global Mods table and, when a mod's table is inserted, reads value.ModuleUUID
+ * to inject its per-mod API (Mods[x].MCM etc.). It must be present *before* the
+ * table is assigned into Mods, so set it on the new table first.
  */
-static void setup_mod_namespace(lua_State *L, const char *mod_table) {
+static void setup_mod_namespace(lua_State *L, const char *mod_table, const char *uuid) {
     // Get or create global 'Mods' table
     lua_getglobal(L, "Mods");
     if (lua_isnil(L, -1)) {
@@ -588,13 +614,95 @@ static void setup_mod_namespace(lua_State *L, const char *mod_table) {
         LOG_LUA_INFO("Created global 'Mods' table");
     }
 
-    // Now Mods table is on stack
-    // Create Mods.<mod_table> = {}
-    lua_newtable(L);
-    lua_setfield(L, -2, mod_table);
-    lua_pop(L, 1);  // Pop Mods table
+    // Now Mods table is on stack. Build Mods.<mod_table> = { ModuleUUID = uuid }
+    lua_newtable(L);                       // [Mods, modtbl]
+    if (uuid && uuid[0]) {
+        lua_pushstring(L, uuid);           // [Mods, modtbl, uuid]
+        lua_setfield(L, -2, "ModuleUUID"); // modtbl.ModuleUUID = uuid ; [Mods, modtbl]
+    }
+    lua_setfield(L, -2, mod_table);        // Mods[mod_table] = modtbl (MCM sees ModuleUUID)
+    lua_pop(L, 1);                         // Pop Mods table
 
     LOG_LUA_INFO("Created namespace Mods.%s", mod_table);
+}
+
+// ============================================================================
+// Per-mod Lua environment (_ENV)
+// ----------------------------------------------------------------------------
+// Windows BG3SE runs each mod's Lua chunks with _ENV = Mods.<ModTable>: reads of
+// undefined globals fall back to the real _G (Ext, Osi, string, ...), while
+// writes to new globals stay mod-local (they land in Mods.<ModTable>). Mods like
+// MCM depend on this: they publish their API via `modTable.MCM = ...` and then
+// reference it as a bare global `MCM` from closures. Without a per-mod _ENV those
+// bare references resolve against the shared _G and are nil, which aborts MCM's
+// client init (InitService.lua) and leaves an empty config window.
+//
+// g_mod_env_ref holds a registry ref to the current mod's environment table
+// (== Mods.<ModTable>, given an { __index = _G } metatable). It is installed onto
+// each freshly loaded mod chunk via mod_env_apply() before the chunk runs.
+static int g_mod_env_ref = LUA_NOREF;
+
+// Make Mods.<mod_table> the active per-mod _ENV for subsequently loaded chunks.
+// Ensures the table exists, carries an { __index = _G } metatable, and has its
+// ModuleUUID seeded mod-locally. Pass mod_table == NULL to clear.
+static void mod_env_set(lua_State *L, const char *mod_table, const char *uuid) {
+    if (g_mod_env_ref != LUA_NOREF) {
+        luaL_unref(L, LUA_REGISTRYINDEX, g_mod_env_ref);
+        g_mod_env_ref = LUA_NOREF;
+    }
+    if (!mod_table || !mod_table[0]) return;
+
+    lua_getglobal(L, "Mods");                 // [Mods]
+    if (!lua_istable(L, -1)) { lua_pop(L, 1); return; }
+
+    lua_getfield(L, -1, mod_table);           // [Mods, E]
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);                        // [Mods]
+        lua_newtable(L);                      // [Mods, E]
+        lua_pushvalue(L, -1);                 // [Mods, E, E]
+        lua_setfield(L, -3, mod_table);       // Mods[mod_table] = E ; [Mods, E]
+    }
+
+    // Seed ModuleUUID mod-locally so runtime reads resolve to the right mod.
+    if (uuid && uuid[0]) {
+        lua_pushstring(L, uuid);
+        lua_setfield(L, -2, "ModuleUUID");
+    }
+
+    // Ensure { __index = _G } metatable (reads fall back to real globals).
+    if (lua_getmetatable(L, -1)) {
+        lua_pop(L, 1);                        // already has one; leave it
+    } else {
+        lua_newtable(L);                      // [Mods, E, mt]
+        lua_pushglobaltable(L);               // [Mods, E, mt, _G]
+        lua_setfield(L, -2, "__index");       // mt.__index = _G
+        lua_setmetatable(L, -2);              // setmetatable(E, mt) ; [Mods, E]
+    }
+
+    // Make _G inside this mod refer to the mod's own environment (Windows parity).
+    // Mods commonly define bare globals (Foo = {}) — which land in this env table E —
+    // and then read them back via `_G["Foo"]`. Without this, `_G` resolves to the
+    // REAL global table (where the mod's writes never went), so `_G[name]` returns
+    // nil. That silently breaks library mods like CommunityLibrary (its Import() does
+    // `_G[val]`), which cascades into every mod that depends on them (e.g.
+    // SubclassCompatibilityFramework -> CLUtils nil -> modded class level-up broken).
+    // Verified live: with E._G = E, CommunityLibrary.Import() returns its tables.
+    lua_pushvalue(L, -1);                     // [Mods, E, E]
+    lua_setfield(L, -2, "_G");                // E._G = E ; [Mods, E]
+
+    lua_pushvalue(L, -1);                     // [Mods, E, E]
+    g_mod_env_ref = luaL_ref(L, LUA_REGISTRYINDEX);  // pops E ; [Mods, E]
+    lua_pop(L, 2);                            // [] pop E, Mods
+}
+
+// Install the active per-mod _ENV (if any) on the chunk currently on top of the
+// stack. Lua 5.4: _ENV is upvalue #1 of a main chunk.
+static void mod_env_apply(lua_State *L) {
+    if (g_mod_env_ref == LUA_NOREF) return;
+    lua_rawgeti(L, LUA_REGISTRYINDEX, g_mod_env_ref);  // [func, E]
+    if (lua_setupvalue(L, -2, 1) == NULL) {
+        lua_pop(L, 1);  // chunk had no _ENV upvalue; discard E
+    }
 }
 
 /**
@@ -631,6 +739,9 @@ static int try_load_lua_file(lua_State *L, const char *full_path) {
         return 0;
     }
 
+    // Install the per-mod _ENV (Mods.<ModTable>) before running the chunk.
+    mod_env_apply(L);
+
     // Execute the loaded chunk
     if (lua_pcall(L, 0, LUA_MULTRET, 0) != LUA_OK) {
         LOG_LUA_INFO("Error executing %s: %s", full_path, lua_tostring(L, -1));
@@ -642,40 +753,27 @@ static int try_load_lua_file(lua_State *L, const char *full_path) {
 }
 
 /**
- * Ext.Require(path) - Load and execute a Lua module
- * Paths are relative to the current mod's ScriptExtender/Lua/ folder
- * Modules are cached - subsequent calls return cached results
- * Supports loading from both filesystem (extracted mods) and PAK files
+ * Core module resolver. `path` is a mod-relative path ending in .lua (e.g.
+ * "Lib/reactivex/util.lua"). Loads/executes from the current mod's filesystem
+ * base or PAK, caches by path, and leaves the module's value (or nil) on the
+ * stack. Returns 1.
  */
-static int lua_ext_require(lua_State *L) {
-    const char *path = luaL_checkstring(L, 1);
-    LOG_LUA_INFO("Ext.Require('%s')", path);
-
+static int require_resolve(lua_State *L, const char *path) {
     const char *lua_base = mod_get_current_lua_base();
     const char *pak_path = mod_get_current_pak_path();
     const char *mod_name = mod_get_current_name();
 
     // Try filesystem first (for extracted mods)
     if (lua_base && strlen(lua_base) > 0) {
-        // Build full path using the base path from where bootstrap was loaded
         char full_path[MAX_PATH_LEN];
         snprintf(full_path, sizeof(full_path), "%s/%s", lua_base, path);
 
-        // Check if already loaded
-        if (is_module_loaded(full_path)) {
-            LOG_LUA_INFO("Module already loaded: %s", path);
-            lua_pushnil(L);
+        if (require_cache_hit(L, full_path)) {
             return 1;
         }
-
-        // Try to load from the tracked base path
         if (try_load_lua_file(L, full_path)) {
-            mark_module_loaded(full_path);
             LOG_LUA_INFO("Loaded module from: %s", full_path);
-            if (lua_gettop(L) == 0) {
-                lua_pushnil(L);
-            }
-            return 1;
+            return require_finish(L, full_path);
         }
     }
 
@@ -685,38 +783,63 @@ static int lua_ext_require(lua_State *L) {
         snprintf(pak_lua_path, sizeof(pak_lua_path),
                  "Mods/%s/ScriptExtender/Lua/%s", mod_name, path);
 
-        // Check if already loaded (use PAK path as key)
         char cache_key[MAX_PATH_LEN];
         snprintf(cache_key, sizeof(cache_key), "pak:%s:%s", pak_path, pak_lua_path);
 
-        if (is_module_loaded(cache_key)) {
-            LOG_LUA_INFO("Module already loaded from PAK: %s", path);
-            lua_pushnil(L);
+        if (require_cache_hit(L, cache_key)) {
             return 1;
         }
-
         if (mod_load_lua_from_pak(L, pak_path, pak_lua_path)) {
-            mark_module_loaded(cache_key);
             LOG_LUA_INFO("Loaded module from PAK: %s", pak_lua_path);
-            if (lua_gettop(L) == 0) {
-                lua_pushnil(L);
-            }
-            return 1;
+            return require_finish(L, cache_key);
         }
     }
 
-    // Module not found
     LOG_LUA_WARN(" Module not found: %s", path);
-    if (lua_base && strlen(lua_base) > 0) {
-        LOG_LUA_INFO("  Tried filesystem: %s/%s", lua_base, path);
-    }
-    if (pak_path && strlen(pak_path) > 0) {
-        LOG_LUA_INFO("  Tried PAK: %s (Mods/%s/ScriptExtender/Lua/%s)",
-                    pak_path, mod_name, path);
-    }
-
     lua_pushnil(L);
     return 1;
+}
+
+/**
+ * Ext.Require(path) - Load and execute a Lua module.
+ * Paths are relative to the current mod's ScriptExtender/Lua/ folder and
+ * already include the .lua suffix. Results are cached per module path.
+ */
+static int lua_ext_require(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    LOG_LUA_INFO("Ext.Require('%s')", path);
+    return require_resolve(L, path);
+}
+
+/**
+ * Global require(name) - many SE mods (MCM, CommunityLibrary) load modules with
+ * bare require() rather than Ext.Require. Accepts Lua module names ("a.b.c") or
+ * slash paths ("a/b/c"), with or without a .lua suffix, resolved like
+ * Ext.Require against the current mod.
+ */
+static int lua_require(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    char rel[MAX_PATH_LEN];
+    size_t n = strlen(name);
+    int has_lua = (n >= 4 && strcmp(name + n - 4, ".lua") == 0);
+
+    if (has_lua) {
+        snprintf(rel, sizeof(rel), "%s", name);
+    } else if (strchr(name, '/') != NULL) {
+        // Already a slash path (MCM style): just add the extension.
+        snprintf(rel, sizeof(rel), "%s.lua", name);
+    } else {
+        // Lua module name: convert dot separators to slashes, then add .lua.
+        snprintf(rel, sizeof(rel), "%s", name);
+        for (char *p = rel; *p; p++) {
+            if (*p == '.') *p = '/';
+        }
+        size_t rl = strlen(rel);
+        snprintf(rel + rl, sizeof(rel) - rl, ".lua");
+    }
+
+    LOG_LUA_INFO("require('%s') -> %s", name, rel);
+    return require_resolve(L, rel);
 }
 
 // ============================================================================
@@ -750,9 +873,11 @@ static int lua_ext_register_net_listener(lua_State *L) {
 // ============================================================================
 
 static int lua_ext_utils_get_game_state(lua_State *L) {
-    int state = events_get_current_game_state();
-    const char *name = game_state_get_name((ServerGameState)state);
-    lua_pushstring(L, name);
+    // Return the Ext.Enums.ClientGameState EnumValue userdata (matching
+    // GameStateChanged's ToState) so mods can compare GetGameState() against
+    // Ext.Enums.ClientGameState.X with ==. MCM's IsMainMenu / open-on-start
+    // checks rely on this; a bare string never equals the EnumValue.
+    events_push_client_gamestate(L, events_get_current_game_state());
     return 1;
 }
 
@@ -939,6 +1064,18 @@ static void register_ext_api(lua_State *L) {
         "    end,\n"
         "  }\n"
         "  Ext.ModEvents = setmetatable({}, mt)\n"
+        "end\n"
+    );
+
+    // Ext.RegisterModEvent(mod, event) — Windows BG3SE API used by MCM and others
+    // to declare a cross-mod event before Subscribe/Throw. The port's ModEvents
+    // metatable creates events lazily on access, so registration just needs to
+    // touch the entry (and must exist as a function so callers don't hit nil).
+    luaL_dostring(L,
+        "Ext.RegisterModEvent = function(mod, event)\n"
+        "  if mod == nil or event == nil then return end\n"
+        "  local bucket = Ext.ModEvents[mod]\n"
+        "  if bucket then local _ = bucket[event] end\n"
         "end\n"
     );
 
@@ -2187,7 +2324,13 @@ static void register_global_functions(lua_State *L) {
     lua_pushcfunction(L, lua_global_dump);
     lua_setglobal(L, "_D");
 
-    LOG_LUA_INFO("Global debug functions registered (_P, _D)");
+    // Override the stock Lua require with a mod-aware loader so mods that use
+    // bare require("Some/Module") (MCM, CommunityLibrary) resolve against the
+    // current mod's Script Extender Lua folder.
+    lua_pushcfunction(L, lua_require);
+    lua_setglobal(L, "require");
+
+    LOG_LUA_INFO("Global functions registered (_P, _D, require)");
 }
 
 /**
@@ -2306,6 +2449,9 @@ static void load_mod_scripts(lua_State *L) {
 
     LOG_LUA_INFO("Loading %d detected SE mod(s)...", se_count);
 
+    // Route mod chunks loaded from PAK through the per-mod _ENV installer too.
+    mod_loader_set_chunk_env_hook(mod_env_apply);
+
     // Phase 1: Load all server bootstraps (in SERVER context)
     LOG_LUA_INFO("=== Loading Server Bootstraps ===");
     lua_context_set(LUA_CONTEXT_SERVER);
@@ -2315,14 +2461,23 @@ static void load_mod_scripts(lua_State *L) {
         // directory name, which can differ from the modsettings display name
         const char *mod_dir = mod_get_se_dir(i);
         if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
+        const char *mod_uuid = mod_get_se_uuid(i);
 
         // Get ModTable name from Config.json (or fallback to mod_dir)
         char *mod_table = get_mod_table_name(mod_dir);
         if (mod_table) {
-            // Set up Mods.<ModTable> namespace before loading scripts
-            setup_mod_namespace(L, mod_table);
+            // Set up Mods.<ModTable> namespace (seeded with ModuleUUID) before scripts
+            setup_mod_namespace(L, mod_table, mod_uuid);
+            // Make Mods.<ModTable> the active _ENV for this mod's chunks.
+            mod_env_set(L, mod_table, mod_uuid);
             free(mod_table);
         }
+
+        // Set the ModuleUUID global to this mod's UUID before running its
+        // bootstrap. Mods read ModuleUUID at bootstrap time (RegisterModVariable,
+        // Ext.Mod.GetMod(ModuleUUID), etc.); a nil value breaks those calls.
+        lua_pushstring(L, (mod_uuid && mod_uuid[0]) ? mod_uuid : "");
+        lua_setglobal(L, "ModuleUUID");
 
         // Load server bootstrap in SERVER context
         if (load_mod_bootstrap(L, mod_dir, "Server") > 0) {
@@ -2338,6 +2493,19 @@ static void load_mod_scripts(lua_State *L) {
     for (int i = 0; i < se_count; i++) {
         const char *mod_dir = mod_get_se_dir(i);
         if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
+        const char *mod_uuid = mod_get_se_uuid(i);
+
+        // Re-activate this mod's per-mod _ENV for the client phase (the server
+        // phase left the ref pointing at the last-loaded mod).
+        char *mod_table = get_mod_table_name(mod_dir);
+        if (mod_table) {
+            mod_env_set(L, mod_table, mod_uuid);
+            free(mod_table);
+        }
+
+        // Set ModuleUUID for this mod before its client bootstrap runs.
+        lua_pushstring(L, (mod_uuid && mod_uuid[0]) ? mod_uuid : "");
+        lua_setglobal(L, "ModuleUUID");
 
         // Load client bootstrap in CLIENT context
         if (load_mod_bootstrap(L, mod_dir, "Client") > 0) {
@@ -2549,7 +2717,12 @@ static void init_lua(void) {
         if (L && lua_gate_trylock()) {
             poll_misses = 0;
             if (L) {
+                // Run console commands in SERVER context so Osiris queries/DB
+                // reads match server-side game state (matches how mods run).
+                LuaContext prev = lua_context_get();
+                lua_context_set(LUA_CONTEXT_SERVER);
                 console_poll(L);
+                lua_context_set(prev);
             }
             lua_gate_unlock();
         } else if (L) {
