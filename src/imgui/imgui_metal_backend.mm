@@ -154,17 +154,26 @@ static void remove_layer_hook(void) {
 // ============================================================================
 
 // True if any Lua/mod-created window is currently visible.
+// The pool lock (recursive) must be held across the whole iteration:
+// imgui_get_all_windows returns the pool's realloc-able array, and the main
+// thread growing it while the render/input thread iterates is a use-after-
+// free. Trylock keeps the render and input threads non-blocking — on
+// contention we report "no window" for one poll, which only delays input
+// capture by a frame.
 static bool imgui_metal_has_visible_window(void) {
+    if (!imgui_objects_trylock()) return false;
+    bool found = false;
     int n = 0;
     ImguiHandle *w = imgui_get_all_windows(&n);
-    if (!w) return false;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; w && i < n; i++) {
         ImguiObject *o = imgui_object_get(w[i]);
         if (o && o->type == IMGUI_OBJ_WINDOW && o->styled.visible) {
-            return true;
+            found = true;
+            break;
         }
     }
-    return false;
+    imgui_objects_unlock();
+    return found;
 }
 
 // Feed gate: ImGui has something on screen that should receive input — the F11
@@ -1091,6 +1100,8 @@ static void render_window(ImguiObject *win) {
 // ============================================================================
 
 void imgui_metal_render_all_windows(void) {
+    // Hold the pool lock across iteration — see imgui_metal_has_visible_window.
+    imgui_objects_lock();
     int window_count = 0;
     ImguiHandle *windows = imgui_get_all_windows(&window_count);
 
@@ -1100,6 +1111,7 @@ void imgui_metal_render_all_windows(void) {
             render_window(win);
         }
     }
+    imgui_objects_unlock();
 }
 
 // ============================================================================

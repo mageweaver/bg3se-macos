@@ -129,7 +129,12 @@ static void *hook_GetMessage(void *factory, uint32_t message_id) {
         LOG_NET_WARN("GetMessage(%u): pool exhausted, returning NULL", message_id);
         return NULL;
     }
-    return s_orig_GetMessage(factory, message_id);
+    // Snapshot: net_hooks_remove() NULLs s_orig_GetMessage while unhooking,
+    // and a game thread may be in flight here. NULL after unhook means the
+    // original prologue is already restored, so returning NULL (no message)
+    // is the safe degenerate answer for the single tick this can race.
+    GetMessage_t orig = s_orig_GetMessage;
+    return orig ? orig(factory, message_id) : NULL;
 }
 
 // ============================================================================
