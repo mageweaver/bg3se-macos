@@ -16,7 +16,7 @@ There are two kinds of address, and only one kind changes per patch:
 
 | Kind | Example | Changes per patch? | How to find |
 |------|---------|--------------------|-------------|
-| **Absolute address** | `SpellPrototype::Init` entry point; `RPGStats::m_ptr` slot | **Yes** | `nm` by symbol, or a uniform `__DATA` shift |
+| **Absolute address** | `SpellPrototype::Init` entry point; `RPGStats::m_ptr` slot | **Yes** | `nm` by symbol (plain `nm` sees local symbols too); `otool -Iv` for `__got` slots; disassembly scan for the rare anonymous slot |
 | **Struct field offset** | EocServer → EntityWorld is at `+0x288` | No (until a class is restructured) | One‑time Ghidra/runtime; carried forward |
 
 `tools/offset_manifest.json` lists every address in both categories with its
@@ -31,9 +31,10 @@ python3 tools/port_offsets.py resolve
 # 2. Print copy-pasteable C for src/core/offset_table.c:
 python3 tools/port_offsets.py resolve --emit
 
-# 3. Paste the generated struct entry into g_offset_table[] and the remap
-#    rows into g_fn_remap_<yourversion>[] (add that array + a branch in
-#    offset_table_remap_fn for the new version string), then:
+# 3. Paste the generated struct entry into g_offset_table[]. The remap
+#    table g_fn_remap is a fixed two-column {6995620, 7209685} table: a
+#    third version needs a new column (and a matching branch in
+#    offset_table_remap_fn), not new rows. Then:
 cd build && cmake --build .
 
 # 4. Launch, load a save, and run the regression suite:
@@ -59,9 +60,21 @@ reproduces hand-done work before you trust it on a new version.
 
 The resolver classifies every item:
 
-- `[INFO] __DATA shift derived ...` — the uniform shift for non-exported globals
-  (e.g. `RPGStats::m_ptr`), computed from the `data_shift_anchor`. Sanity-check it
+- `[INFO] component_data_shift ...` — the signed delta from the 7209685-vintage
+  compiled-in TypeId constants to your version, computed from the
+  `data_shift_anchor`. It is applied ONLY to the TypeId-global family (proven
+  uniform); every data singleton resolves by its own symbol. Sanity-check it
   looks like a small, plausible delta.
+- `[WARN] ... MANUAL — anonymous slot` — a global with no symbol at all (e.g.
+  `global_switches_ptr`, an anonymous `__common` slot). It does NOT follow the
+  uniform shift (it moved -0x24000 between 6995620 and 7209685 while its
+  neighbors moved +0x8000): re-derive it by disassembly (ADRP+LDR reference
+  scan; it is the hot slot written by `App::CreateGlobalSwitches`).
+- `[WARN] ... ABI CHANGED` — the symbol resolved, but its signature no longer
+  matches the C wrapper that calls it (e.g. the 7209685 Interrupt
+  `ExecuteStatsFunctors` gained a leading `ecs::EntityWorld&`). The tool emits
+  0 for it; write a new wrapper before enabling. **Address validity is not ABI
+  validity — always diff the demangled signature against the wrapper.**
 - `[WARN] ... AMBIGUOUS` — the symbol matched more than one address (e.g. const
   vs non-const overload). The tool takes the lowest; **make the manifest `symbol`
   more specific** (full signature) so it's unique, then re-run.
@@ -101,7 +114,10 @@ so future ports resolve it automatically:
 - A called game function → `remap_functions` (or `offset_table_functions` if it
   has a dedicated `VersionOffsets` field). Give the exact demangled `symbol` and
   its current-version `baseline` address.
-- A non-exported singleton pointer → `data_singletons` with its `baseline` offset.
+- A singleton pointer global → `data_singletons` with `method: "symbol"` and its
+  demangled `symbol` (plain `nm` resolves local symbols too). Use
+  `method: "got"` for `__DATA_CONST,__got` slots and `method: "disasm"` (with a
+  `note` describing the derivation) only when there is truly no symbol.
 - A field offset inside an object → `struct_offsets`.
 
 Find the exact symbol string with:
@@ -115,9 +131,12 @@ normalized during matching).
 
 ## How the remap table works (background)
 
-Many subsystems hold a hardcoded *baseline* (6995620) game-function address and
-call it as a function pointer. `offset_table_remap_fn(addr)` (in `offset_table.c`)
-returns the correct address for the running version, or **0 if it isn't in the
-remap table — in which case the caller skips that feature instead of jumping to a
+Several subsystems hold a hardcoded game-function address (mixed vintages:
+some 6995620, some 7209685) and call it as a function pointer.
+`offset_table_remap_fn(addr)` (in `offset_table.c`) matches the address against
+EITHER column of the two-column `g_fn_remap` table and returns the running
+version's column. It is fail-closed: an unknown version, or an address not in
+the table, returns **0 — the caller skips that feature instead of jumping to a
 stale address and crashing.** So even an un-ported function degrades gracefully.
-The tool generates the `g_fn_remap_<version>[]` rows for you.
+The tool generates the column values for you; entries flagged `abi_changed` in
+the manifest emit 0 until a matching wrapper exists.

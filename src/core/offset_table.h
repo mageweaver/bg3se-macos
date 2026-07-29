@@ -40,6 +40,10 @@ typedef struct {
     uintptr_t level_cache_mgr_ptr;      // Level::s_CacheTemplateManager
     uintptr_t staticdata_mstate_ptr;    // ImmutableDataHeadmaster::m_State
     uintptr_t gst_ptr;                  // ls::gGlobalStringTable (FixedString pool)
+    uintptr_t global_switches_ptr;      // EoCGlobalSwitches* slot (double pointer).
+                                        // NOT covered by component_data_shift: this
+                                        // __common slot moved -0x24000 between 6995620
+                                        // and 7209685, breaking the uniform-shift rule.
 
     /* ------------------------------------------------------------------ */
     /* Function offsets                                                    */
@@ -63,11 +67,14 @@ typedef struct {
     uintptr_t fn_try_get_uuid_mapping;  // ecs::legacy::Helper::TryGetSingleton<uuid::ToHandleMappingComponent>
     uintptr_t fn_storage_tryget;        // ecs::EntityStorageContainer::TryGet(EntityHandle)
     uintptr_t fn_spell_proto_init;      // eoc::SpellPrototype::Init(FixedString const&)
-    uintptr_t component_data_shift;     // uniform delta added to component TypeId data addresses
-                                        // (also applied to the prototype-manager singleton
-                                        //  pointers in prototype_managers.c)
-                                        // (0 for the baseline version; nonzero when the
-                                        //  __DATA segment shifted, e.g. +0x8000 for 7209685)
+    intptr_t component_data_shift;      // signed delta added to compiled-in __DATA Ghidra
+                                        // addresses (TypeIds, prototype-manager singletons,
+                                        // TranslatedStringRepository::m_ptr) to reach THIS
+                                        // version. NOT applied to global_switches_ptr —
+                                        // that slot has its own per-version field above.
+                                        // Convention: all compiled-in __DATA constants are
+                                        // 4.1.1.7209685-vintage (nm-audited), so the
+                                        // 7209685 row is 0 and 6995620 is -0x8000.
 } VersionOffsets;
 
 /**
@@ -103,14 +110,14 @@ void *offset_table_resolve(uintptr_t offset);
 void *offset_table_fn(uintptr_t offset);
 
 /**
- * Remap a hardcoded 6995620 game-function Ghidra address to the correct address
- * for the running version. Returns the input unchanged on the baseline/unknown
- * version; the verified equivalent on a shifted version; or 0 if the function is
- * not in the remap table for a shifted version (caller should then disable that
- * feature rather than call a stale address). Input/output are full Ghidra
- * addresses (>= 0x100000000).
+ * Remap a hardcoded game-function Ghidra address (either 6995620 or 7209685
+ * vintage — the table matches both columns) to the correct address for the
+ * running version. Fail-closed: returns 0 when the version is unknown, when
+ * the version has no remap column, or when the address is not in the table —
+ * the caller must then disable that feature rather than call a stale address.
+ * Input/output are full Ghidra addresses (>= 0x100000000).
  */
-uint64_t offset_table_remap_fn(uint64_t ghidra_addr_6995620);
+uint64_t offset_table_remap_fn(uint64_t ghidra_addr);
 
 #ifdef __cplusplus
 }

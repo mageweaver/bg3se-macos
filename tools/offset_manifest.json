@@ -7,22 +7,40 @@
     "",
     "Resolution methods:",
     "  symbol      -> nm the demangled `symbol`; the address IS the result.",
-    "  data_shift  -> not exported; result = (baseline_ghidra + data_shift), where",
+    "                 Plain `nm` (no -gU) also lists LOCAL symbols -- nearly every",
+    "                 'not exported' global is in fact nm-resolvable this way.",
+    "  got         -> the address is a __DATA_CONST,__got SLOT (contents = the",
+    "                 symbol's address). nm cannot see it; resolve via",
+    "                 `otool -arch arm64 -Iv` and match the slot mapped to `symbol`.",
+    "  disasm      -> anonymous slot with no symbol at all (e.g. __common bss).",
+    "                 Must be re-derived by disassembly (ADRP+LDR reference scan);",
+    "                 the tool flags it MANUAL. Do NOT assume it follows data_shift:",
+    "                 global_switches_ptr moved -0x24000 between 6995620 and 7209685",
+    "                 while its neighbors moved +0x8000.",
+    "  data_shift  -> LAST RESORT: result = (baseline_ghidra + data_shift), where",
     "                 data_shift is derived once from `data_shift_anchor` below.",
+    "                 Only sound for TypeId globals proven to shift uniformly.",
     "  constant    -> a __TEXT/data address that does NOT change between versions",
     "                 (verify it still resolves to the same symbol; warn if not).",
     "  struct_offset -> a field offset WITHIN an object. Stable across minor patches.",
     "                 Carried as-is; only changes if Larian restructures the class",
     "                 (then it needs Ghidra/runtime re-discovery -- the tool flags it).",
-    "All `baseline` values are full Ghidra addresses for 4.1.1.6995620 (the verified base)."
+    "VINTAGE: `baseline` values on remap_functions are 4.1.1.6995620 (remap column 0).",
+    "The COMPILED-IN constants in the C sources are 4.1.1.7209685 vintage, and",
+    "component_data_shift is the signed delta FROM 7209685 TO the target version,",
+    "so the anchor baseline below is the 7209685 address.",
+    "ABI WARNING: symbol resolution proves an address, never a signature. Diff the",
+    "demangled signature against the wrapper in the C code before enabling a hook",
+    "(the 7209685 Interrupt ExecuteStatsFunctors gained a leading ecs::EntityWorld&)."
   ],
 
   "baseline_version": "4.1.1.6995620",
+  "constants_vintage": "4.1.1.7209685",
 
   "data_shift_anchor": {
-    "_note": "Derives the uniform __DATA shift = nm(symbol) - baseline. For 7209685 this is +0x8000. Pick an exported global whose 6995620 address is known.",
+    "_note": "Derives component_data_shift = nm(symbol) - baseline, the signed delta from the 7209685-vintage compiled-in TypeId constants to the target version. 0 on 7209685 itself; -0x8000 on 6995620.",
     "symbol": "ls::TypeId<eoc::FeatManager, ls::ImmutableDataHeadmaster>::m_TypeIndex",
-    "baseline": "0x1088efd00"
+    "baseline": "0x1088f7d00"
   },
 
   "offset_table_functions": [
@@ -52,7 +70,7 @@
     {"name": "ExecuteFunctors<NearbyAttacking>","baseline": "0x10578fba8","symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::NearbyAttackingContextData&)"},
     {"name": "ExecuteFunctors<Equip>",     "baseline": "0x105790a28", "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::EquipContextData&)"},
     {"name": "ExecuteFunctors<Source>",    "baseline": "0x105792a90", "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::SourceContextData&)"},
-    {"name": "ExecuteFunctors<Interrupt>", "baseline": "0x1057965e4", "symbol": "esv::functor::ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, esv::functor::InterruptContextData&)"},
+    {"name": "ExecuteFunctors<Interrupt>", "baseline": "0x1057965e4", "symbol": "esv::functor::ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, esv::functor::InterruptContextData&)", "abi_changed": true, "_note": "the 6995620 variant had NO EntityWorld& param -- the existing wrapper ABI does not fit. Emit 0 in the remap column until functor_hooks.c grows an EntityWorld-aware wrapper."},
     {"name": "TranslatedStringRepository::TryGet","baseline": "0x106534d54","symbol": "ls::TranslatedStringRepository::TryGet(ls::RuntimeStringHandle const&, ls::identity::EIdentity, ls::identity::EIdentity) const"},
     {"name": "TranslatedStringRepository::Get","baseline": "0x106535148","symbol": "ls::TranslatedStringRepository::Get(ls::RuntimeStringHandle const&, ls::identity::EIdentity, ls::identity::EIdentity) const"},
     {"name": "TranslatedStringRepository::AddTranslatedString","baseline": "0x106532590","symbol": "ls::TranslatedStringRepository::AddTranslatedString(ls::RuntimeStringHandle, ls::_StringView<char>, ls::TranslatedMapRepo<ls::RuntimeStringNoVersionHashOps>*, ls::EnumFlags<ls::EAddFlags>)"},
@@ -64,23 +82,24 @@
     {"name": "BinkManager::LoadVideo", "baseline": "0x10390b6cc", "symbol": "bik::BinkManager::LoadVideo(ls::Path const&)", "_note": "unchanged 6995620 -> 7209685; verify it still maps to this symbol"}
   ],
 
-  "_data_singletons_note": "baseline = offset from binary base (the value stored in offset_table.c, i.e. Ghidra addr - 0x100000000). result = baseline + data_shift.",
+  "_data_singletons_note": "baseline = offset from binary base for 4.1.1.6995620 (cross-check only). Primary resolution is per-entry `method`; data_shift is never assumed for these (global_switches_ptr proved the shift non-uniform).",
   "data_singletons": [
-    {"field": "eocserver_ptr",           "baseline": "0x0898e8b8", "method": "data_shift", "note": "esv::EocServer::m_ptr (not exported)"},
-    {"field": "eocclient_ptr",           "baseline": "0x0898c968", "method": "data_shift", "note": "ecl::EocClient::m_ptr (not exported)"},
-    {"field": "spell_proto_mgr_ptr",     "baseline": "0x089bac80", "method": "data_shift", "note": "SpellPrototypeManager::m_ptr (not exported)"},
-    {"field": "rpgstats_ptr",            "baseline": "0x089c5730", "method": "data_shift", "note": "RPGStats::m_ptr (not exported)"},
-    {"field": "resource_mgr_ptr",        "baseline": "0x08a8f070", "method": "data_shift", "note": "ResourceManager::m_ptr (not exported)"},
-    {"field": "level_mgr_ptr",           "baseline": "0x08a3be40", "method": "data_shift", "note": "LevelManager::m_ptr (not exported)"},
-    {"field": "global_template_mgr_ptr", "baseline": "0x08a88508", "method": "data_shift", "note": "ls::GlobalTemplateManager::m_ptr (not exported)"},
-    {"field": "cache_template_mgr_ptr",  "baseline": "0x08a309a8", "method": "data_shift", "note": "CacheTemplateManager::m_ptr (not exported)"},
-    {"field": "level_cache_mgr_ptr",     "baseline": "0x08a735d8", "method": "data_shift", "note": "Level::s_CacheTemplateManager (not exported)"},
-    {"field": "staticdata_mstate_ptr",   "baseline": "0x083c4a68", "method": "data_shift", "note": "PTR to ImmutableDataHeadmaster TypeContext m_State (not exported)"},
-    {"field": "gst_ptr",                 "baseline": "0x08aeccd8", "method": "data_shift", "note": "ls::gGlobalStringTable subtable base ptr (verify via ls::gst::Get disasm)"}
+    {"field": "eocserver_ptr",           "baseline": "0x0898e8b8", "method": "symbol", "symbol": "esv::EocServer::m_ptr"},
+    {"field": "eocclient_ptr",           "baseline": "0x0898c968", "method": "symbol", "symbol": "ecl::EocClient::m_ptr"},
+    {"field": "spell_proto_mgr_ptr",     "baseline": "0x089bac80", "method": "symbol", "symbol": "eoc::SpellPrototypeManager::m_ptr"},
+    {"field": "rpgstats_ptr",            "baseline": "0x089c5730", "method": "symbol", "symbol": "RPGStats::m_ptr"},
+    {"field": "resource_mgr_ptr",        "baseline": "0x08a8f070", "method": "symbol", "symbol": "ls::ResourceManager::m_ptr"},
+    {"field": "level_mgr_ptr",           "baseline": "0x08a3be40", "method": "symbol", "symbol": "esv::LevelManager::m_ptr"},
+    {"field": "global_template_mgr_ptr", "baseline": "0x08a88508", "method": "symbol", "symbol": "ls::GlobalTemplateManager::m_ptr"},
+    {"field": "cache_template_mgr_ptr",  "baseline": "0x08a309a8", "method": "symbol", "symbol": "esv::CacheTemplateManager::m_ptr"},
+    {"field": "level_cache_mgr_ptr",     "baseline": "0x08a735d8", "method": "symbol", "symbol": "esv::Level::s_CacheTemplateManager"},
+    {"field": "staticdata_mstate_ptr",   "baseline": "0x083c4a68", "method": "got",    "symbol": "ls::TypeContext<ls::ImmutableDataHeadmaster>::m_State", "note": "resolve the __got SLOT mapped to this symbol (otool -Iv); the code dereferences the slot once"},
+    {"field": "gst_ptr",                 "baseline": "0x08aeccd8", "method": "symbol", "symbol": "ls::gst::s_Instance"},
+    {"field": "global_switches_ptr",     "baseline": "0x08b18f30", "method": "disasm", "note": "EoCGlobalSwitches* double-pointer slot; anonymous __common, no symbol. Re-derive via ADRP+LDR scan (hot slot, ~900 refs; written by App::CreateGlobalSwitches). 7209685 = 0x08af4f30 (moved -0x24000, NOT +0x8000). Runtime read-back guard in global_switches.c."}
   ],
 
   "exported_data": [
-    {"name": "TranslatedStringRepository::m_ptr", "baseline": "0x108aed088", "symbol": "ls::TranslatedStringRepository::m_ptr", "consumer": "localization.c LOCA_REPO_OFFSET", "_note": "exported 'b' symbol; also equals data_shift result -- good cross-check"}
+    {"name": "TranslatedStringRepository::m_ptr", "baseline": "0x108aed088", "symbol": "ls::TranslatedStringRepository::m_ptr", "consumer": "localization.c LOCA_REPO_OFFSET (7209685-vintage constant, adjusted at runtime by component_data_shift)", "_note": "nm 'b' symbol; baseline is the 6995620 VA (cross-check only)"}
   ],
 
   "struct_offsets": [

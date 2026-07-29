@@ -68,8 +68,10 @@ typedef struct {
     };
 } LSSTDString;
 
-// Game's ls::STDString(const char*) constructor (Ghidra: 0x10651fb60)
-#define OFFSET_STDSTRING_CTOR  0x0651fb60ULL
+// Game's ls::STDString(const char*) constructor.
+// 4.1.1.7209685 vintage, nm-verified (0x10650e718 t ls::STDString::STDString(char const*)).
+// Passed through offset_table_remap_fn() (either-vintage match, fail-closed).
+#define OFFSET_STDSTRING_CTOR  0x0650e718ULL
 typedef void (*STDStringCtorFn)(LSSTDString *this_, const char *str);
 
 static void ls_stdstring_init(LSSTDString *out, const char *str, STDStringCtorFn ctor) {

@@ -465,18 +465,23 @@ static void *read_eocserver_from_global(void) {
     }
 
     // Calculate runtime address of esv::EocServer::m_ptr.
-    // Prefer the per-version offset table (eocserver_ptr); fall back to the
-    // hardcoded 6995620 address only if the version is unknown. Using the stale
-    // hardcoded value on a shifted version reads the wrong slot -> garbage
-    // EoCServer -> garbage EntityWorld -> crash inside the ECS query.
+    // Prefer the per-version offset table (eocserver_ptr). The hardcoded define
+    // is allowed only when the binary is the exact build it was audited against
+    // (version_detect_matches()); on any other version reading a stale slot
+    // yields a garbage EoCServer -> garbage EntityWorld -> crash inside the ECS
+    // query, so we fail closed instead.
     uintptr_t ghidra_base = GHIDRA_BASE_ADDRESS;
     uintptr_t actual_base = (uintptr_t)g_MainBinaryBase;
     uintptr_t global_addr;
     const VersionOffsets *off = offset_table_get();
     if (off && off->eocserver_ptr) {
         global_addr = actual_base + off->eocserver_ptr;
-    } else {
+    } else if (version_detect_matches()) {
         global_addr = OFFSET_EOCSERVER_SINGLETON_PTR - ghidra_base + actual_base;
+    } else {
+        LOG_ENTITY_DEBUG("No verified EocServer slot for this game version — "
+                         "entity capture via global disabled (fail closed)");
+        return NULL;
     }
 
     LOG_ENTITY_DEBUG("Reading EoCServer from global at 0x%llx", (unsigned long long)global_addr);

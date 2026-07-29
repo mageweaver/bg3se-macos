@@ -176,14 +176,15 @@ static SpellPrototypeInit_fn g_SpellPrototypeInit = NULL;
 // ============================================================================
 
 // Resolve a __DATA Ghidra address (prototype-manager singleton pointer) to a
-// runtime address, applying the per-version __DATA shift (e.g. +0x8000 for
-// 7209685). All callers of this helper are __DATA globals; the Init *function*
+// runtime address. The compiled-in constants are 4.1.1.7209685-vintage
+// (nm-derived); component_data_shift is the signed delta from that vintage to
+// the running version (0 on 7209685, -0x8000 on 6995620). The Init *function*
 // (a __TEXT address with a different per-version shift) is resolved separately
 // via the offset table.
 static void* ghidra_to_runtime(uint64_t ghidra_addr) {
     if (!g_MainBinaryBase) return NULL;
     const VersionOffsets *off = offset_table_get();
-    uintptr_t shift = off ? off->component_data_shift : 0;
+    intptr_t shift = off ? off->component_data_shift : 0;
     return (void*)((uintptr_t)g_MainBinaryBase + (ghidra_addr - GHIDRA_BASE_ADDRESS) + shift);
 }
 
