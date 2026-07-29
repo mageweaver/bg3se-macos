@@ -20,6 +20,7 @@
 #include "localization.h"
 #include "logging.h"
 #include "fixed_string.h"
+#include "../core/offset_table.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -31,14 +32,17 @@
 // Offset Constants (macOS ARM64)
 // ============================================================================
 
-// TranslatedStringRepository::m_ptr offset from main binary base
-#define LOCA_REPO_OFFSET  0x8aed088
+// ls::TranslatedStringRepository::m_ptr offset from main binary base.
+// 4.1.1.7209685 vintage, nm-verified (0x108af5088 b TranslatedStringRepository::m_ptr).
+// Older versions are reached via VersionOffsets.component_data_shift.
+#define LOCA_REPO_OFFSET  0x8af5088
 
-// Function offsets (from Ghidra analysis, Dec 2025)
-// These are absolute Ghidra addresses - need to subtract base
-#define LOCA_TRYGET_OFFSET          0x6534d54   // TryGet function
-#define LOCA_FIXEDSTRING_CREATE     0x64b9ebc   // ls::FixedString::Create(char*, int)
-#define LOCA_ADDTRANSLATEDSTRING    0x6532590   // AddTranslatedString(handle, value)
+// Function offsets — 4.1.1.7209685 vintage, nm-verified. Passed through
+// offset_table_remap_fn(), which matches either vintage column and fails
+// closed (NULL fn) on unknown versions.
+#define LOCA_TRYGET_OFFSET          0x652390c   // ls::TranslatedStringRepository::TryGet
+#define LOCA_FIXEDSTRING_CREATE     0x64a8a74   // ls::FixedString::Create(char*, int)
+#define LOCA_ADDTRANSLATEDSTRING    0x6521148   // AddTranslatedString(handle, value)
 
 // TranslatedStringRepository structure offsets (to be verified)
 // These are estimated from Windows x64 - may need ARM64 adjustment
@@ -133,13 +137,27 @@ void localization_init(void *main_binary_base) {
 
     s_loca.binary_base = main_binary_base;
 
-    // Calculate address of ls::TranslatedStringRepository::m_ptr
-    s_loca.repo_ptr_addr = (void**)((uintptr_t)main_binary_base + LOCA_REPO_OFFSET);
+    // The repository m_ptr is a __DATA global (7209685-vintage constant) ->
+    // apply the signed per-version data shift. No table row -> fail closed.
+    const VersionOffsets *vo = offset_table_get();
+    if (!vo) {
+        LOG_CORE_INFO("LOCA: No offset-table row for this game version — localization disabled");
+        s_loca.initialized = true;  // don't retry; ready() stays false (repo_ptr_addr NULL)
+        return;
+    }
+    intptr_t data_shift = vo->component_data_shift;
+    s_loca.repo_ptr_addr = (void**)((uintptr_t)main_binary_base + LOCA_REPO_OFFSET + data_shift);
 
-    // Calculate function addresses
-    s_loca.fs_create = (FixedStringCreateFn)((uintptr_t)main_binary_base + LOCA_FIXEDSTRING_CREATE);
-    s_loca.tryget_fn = (void*)((uintptr_t)main_binary_base + LOCA_TRYGET_OFFSET);
-    s_loca.add_string_fn = (AddTranslatedStringFn)((uintptr_t)main_binary_base + LOCA_ADDTRANSLATEDSTRING);
+    // The functions are __TEXT -> remap each hardcoded address (either vintage).
+    // If a function has no verified address for this version, leave it NULL so
+    // the caller skips it instead of jumping to a stale address.
+    #define LOCA_FN(off) ({ \
+        uint64_t _a = offset_table_remap_fn(0x100000000ULL + (off)); \
+        _a ? (void*)((uintptr_t)main_binary_base + (_a - 0x100000000ULL)) : NULL; })
+    s_loca.fs_create     = (FixedStringCreateFn)LOCA_FN(LOCA_FIXEDSTRING_CREATE);
+    s_loca.tryget_fn     = LOCA_FN(LOCA_TRYGET_OFFSET);
+    s_loca.add_string_fn = (AddTranslatedStringFn)LOCA_FN(LOCA_ADDTRANSLATEDSTRING);
+    #undef LOCA_FN
 
     LOG_CORE_INFO("LOCA: Initialized - repo_ptr at %p", (void*)s_loca.repo_ptr_addr);
     LOG_CORE_DEBUG("LOCA: FixedString::Create at %p", (void*)s_loca.fs_create);

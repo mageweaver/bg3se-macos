@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <zlib.h>
 #include "lz4/lz4.h"
 
@@ -160,6 +161,21 @@ char *pak_read_file(PakFile *pak, int entry_idx, size_t *out_size) {
     PakEntry *entry = &pak->entries[entry_idx];
     FILE *f = (FILE *)pak->file;
 
+    // Entry offsets/sizes come straight from the archive: validate against the
+    // real file size before allocating, so a malformed or truncated PAK can't
+    // request a multi-gigabyte buffer or read past EOF. 256 MB comfortably
+    // covers any legitimate single Script Extender payload.
+    const uint64_t PAK_MAX_ENTRY_SIZE = 256ull * 1024 * 1024;
+    struct stat st;
+    if (fstat(fileno(f), &st) != 0) return NULL;
+    uint64_t file_size = (uint64_t)st.st_size;
+    if (entry->disk_size == 0 || entry->disk_size > PAK_MAX_ENTRY_SIZE ||
+        entry->uncompressed_size > PAK_MAX_ENTRY_SIZE ||
+        entry->offset > file_size ||
+        (uint64_t)entry->disk_size > file_size - entry->offset) {
+        return NULL;
+    }
+
     // Seek to file data
     fseek(f, entry->offset, SEEK_SET);
 
@@ -175,12 +191,17 @@ char *pak_read_file(PakFile *pak, int entry_idx, size_t *out_size) {
     char *content = NULL;
 
     if (entry->compression == PAK_COMPRESSION_NONE) {
-        // Uncompressed
-        content = (char *)malloc(entry->uncompressed_size + 1);
+        // Uncompressed: the on-disk bytes ARE the file. For stored entries the
+        // uncompressed_size field is frequently 0 (disk_size is authoritative),
+        // so using uncompressed_size here returned an empty buffer — which made
+        // e.g. Mod Configuration Menu's uncompressed Config.json read as "" and
+        // its whole Script Extender payload fail to load. Use disk_size.
+        size_t n = entry->disk_size;
+        content = (char *)malloc(n + 1);
         if (content) {
-            memcpy(content, disk_data, entry->uncompressed_size);
-            content[entry->uncompressed_size] = '\0';
-            if (out_size) *out_size = entry->uncompressed_size;
+            memcpy(content, disk_data, n);
+            content[n] = '\0';
+            if (out_size) *out_size = n;
         }
     } else if (entry->compression == PAK_COMPRESSION_ZLIB) {
         // zlib

@@ -13,6 +13,45 @@ Each entry includes:
 
 ---
 
+## [Unreleased] — Community PR integration: offset-table architecture + Osiris DB access + mod runtime
+
+**Category:** Community contributions | **Branch:** `integration/community-prs` | **Issues:** PR #91, PR #93
+
+Integration of the two community pull requests, reconciled with the current
+codebase rather than merged verbatim (both predated the v0.38.x mod-detection
+and game-path work). Credit: **@mikowals** (PR #91 — per-version offset table,
+build 7209685 support, `tools/port_offsets.py`) and **@marcus-sa** (PR #93 —
+Osiris database RE + Facts reader, per-mod `_ENV` sandbox, module cache,
+GameStateChanged EnumValues, Ext.IO VFS semantics).
+
+### Added
+- **Per-version offset table** (`src/core/offset_table.c/h`) — every
+  game-version-dependent address lives in one audited table; unknown versions
+  fail closed. `tools/port_offsets.py` semi-automates migration to new builds
+  (PR #91, mikowals).
+- **Osi.DB_* real database reads** — name-index walk of `COsiFunctionMan`
+  discovers Osiris databases (invisible to the id-probe); `Osi.DB_X:Get(...)`
+  walks the CReteDBase Facts list directly with typed filters, Windows-style
+  (PR #93, marcus-sa; RE documented in `ghidra/offsets/OSIRIS_DATABASES.md`).
+- **Signature-typed Osi dispatch** — parameter types/directions read from the
+  game's OsirisInterface function defs (offset-table gated); pure test queries
+  return integer 0/1, out-param queries return values or nil (Windows parity).
+- **Per-mod `_ENV` sandbox** — mod chunks execute inside `Mods.<ModTable>`
+  with `__index = _G` fallback and mod-local `_G`/`ModuleUUID`; registry-backed
+  module cache; bare `require()` resolves mod-relative then falls through to
+  stock Lua require (PR #93, marcus-sa).
+- **GameStateChanged EnumValues** — `ClientGameState`/`ServerGameState`
+  registered in `Ext.Enums`; event states and `Ext.Utils.GetGameState()` return
+  EnumValue userdata comparable with `==` (MCM's init gate).
+
+### Fixed
+- Hardening pass from a four-agent review (two Codex, two Claude) over the
+  integration: CTuple small-object storage, stale-registry re-walk on save
+  load, param-def validation, engine-string safe reads, Ext.IO path
+  containment, PAK entry bounds validation, per-mod loader state clearing.
+
+---
+
 ## [v0.38.1] - 2026-07-29 — Community issue triage: mod detection + game-path discovery
 
 **Category:** Compatibility fixes | **Parity:** ~94.7% | **Issues:** #87, #81, #90, #86, #84, #82, #88

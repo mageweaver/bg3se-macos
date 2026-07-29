@@ -415,6 +415,9 @@ static int dispatch_console_command(lua_State *L, const char *line, int client_s
         console_printf("  !identity - JSON identity/readiness (pid, session_init, stats_ready)");
         console_printf("  !typeids - Show TypeId resolution status");
         console_printf("  !probe_osidef [N] - Dump OsiFunctionDef layout for N functions (default 5)");
+        console_printf("  !splash_done - Stop the focusless splash auto-dismisser");
+        console_printf("  !click <xf> <yf> - In-process click at view fraction (no cursor move)");
+        console_printf("  !key <code> - In-process key press (mac virtual keycode)");
         console_printf("  !osi_info <name> - Probe Osiris function cache + pointer chain for <name>");
         for (int i = 0; i < s_command_count; i++) {
             console_printf("  !%s", s_commands[i].name);
@@ -460,6 +463,53 @@ static int dispatch_console_command(lua_State *L, const char *line, int client_s
     // Built-in !typeids command
     if (strcmp(cmd_name, "typeids") == 0) {
         component_typeid_dump_to_console();
+        return 1;
+    }
+
+    // Built-in !splash_done — stop the focusless splash auto-dismisser.
+    // Sent by the harness watchdog the moment OCR sees the main menu, so the
+    // repeating Escape/Space/click loop cannot fight menu/modal interaction.
+    if (strcmp(cmd_name, "splash_done") == 0) {
+        focusless_input_mark_socket_ready();
+        console_printf("splash auto-dismiss stopped");
+        return 1;
+    }
+
+    // Built-in !click <xf> <yf> — in-process synthetic click at a fraction of
+    // the LSMTLView bounds (top-left origin). No physical cursor movement and
+    // no focus required; works while the window is hidden or off-screen.
+    if (strcmp(cmd_name, "click") == 0) {
+        char *xs = strtok(NULL, " \t");
+        char *ys = strtok(NULL, " \t");
+        if (!xs || !ys) {
+            console_printf("Usage: !click <x_fraction> <y_fraction>  (0.0-1.0, top-left origin)");
+            return 1;
+        }
+        double xf = atof(xs);
+        double yf = atof(ys);
+        if (xf < 0.0 || xf > 1.0 || yf < 0.0 || yf > 1.0) {
+            console_printf("!click: fractions must be within 0.0-1.0");
+            return 1;
+        }
+        bool ok = focusless_input_post_mouse_click(xf, yf);
+        console_printf("click %s at (%.3f, %.3f)", ok ? "posted" : "failed", xf, yf);
+        return 1;
+    }
+
+    // Built-in !key <keycode> — in-process key press (macOS virtual keycode).
+    if (strcmp(cmd_name, "key") == 0) {
+        char *ks = strtok(NULL, " \t");
+        if (!ks || !ks[0]) {
+            console_printf("Usage: !key <mac_virtual_keycode>  (e.g. 36=Return, 49=Space, 53=Escape)");
+            return 1;
+        }
+        int code = atoi(ks);
+        if (code < 0 || code > 0xFF) {
+            console_printf("!key: keycode must be 0-255");
+            return 1;
+        }
+        bool ok = focusless_input_post_key_press((uint16_t)code, 0);
+        console_printf("key %d %s", code, ok ? "posted" : "failed");
         return 1;
     }
 
@@ -665,7 +715,11 @@ static void socket_process_client(lua_State *L, int slot) {
             if (*client_len > 0) {
                 client_buf[*client_len] = '\0';
                 process_line(L, client_buf, slot);
-                focusless_input_mark_socket_ready();
+                // NOTE: do NOT mark the splash auto-dismisser done here — the
+                // harness polls !identity over this socket DURING boot, which
+                // used to cancel the dismisser after 0 attempts and strand the
+                // game on "Press any key". The dismisser now stops itself on
+                // game-state advance (focusless_input.m).
                 socket_send_prompt(slot);
                 *client_len = 0;
             }

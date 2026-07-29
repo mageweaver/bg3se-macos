@@ -678,7 +678,11 @@ static NSColor* colorForLogLevel(const char* text) {
 - (void)flushPendingOutput {
     NSArray *lines;
     @synchronized (self) {
-        lines = self.pendingLines;
+        // This file compiles WITHOUT ARC: the strong-property setter releases
+        // the array when we nil it below, so the raw local must retain first
+        // or it dangles (PAC crash in objc_msgSend at boot log volume,
+        // flushPendingOutput+108, 2026-07-29 .ips).
+        lines = [[self.pendingLines retain] autorelease];
         self.pendingLines = nil;
         self.flushScheduled = NO;
     }

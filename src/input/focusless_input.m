@@ -19,6 +19,7 @@
 
 #include "focusless_input.h"
 #include "../core/logging.h"
+#include "../game/game_state.h"
 #include "../imgui/imgui_metal_backend.h"
 
 static bool s_initialized = false;
@@ -141,15 +142,31 @@ static bool try_direct_view_mouse_click(double x_fraction, double y_fraction_top
     NSWindow *win = [view window];
     NSInteger winNum = win ? [win windowNumber] : 0;
     NSRect bounds = [view bounds];
-    CGFloat x = NSMinX(bounds) + NSWidth(bounds) * x_fraction;
-    CGFloat y = NSMinY(bounds) + NSHeight(bounds) * (1.0 - y_fraction_top_origin);
-    NSPoint location = NSMakePoint(x, y);
+    CGFloat vx = NSMinX(bounds) + NSWidth(bounds) * x_fraction;
+    CGFloat vy = [view isFlipped]
+        ? NSMinY(bounds) + NSHeight(bounds) * y_fraction_top_origin
+        : NSMinY(bounds) + NSHeight(bounds) * (1.0 - y_fraction_top_origin);
+    // NSEvent locations are window-base coordinates. BG3's mouseDown: input
+    // record carries no coordinates at all — Noesis hit-tests against the
+    // engine cursor state established by the preceding mouseMoved:, so the
+    // moved event must land exactly where the click should.
+    NSPoint location = [view convertPoint:NSMakePoint(vx, vy) toView:nil];
     NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+
+    NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+                                       location:location
+                                  modifierFlags:0
+                                      timestamp:now
+                                   windowNumber:winNum
+                                        context:nil
+                                    eventNumber:0
+                                     clickCount:0
+                                       pressure:0.0];
 
     NSEvent *down = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
                                        location:location
                                   modifierFlags:0
-                                      timestamp:now
+                                      timestamp:now + 0.02
                                    windowNumber:winNum
                                         context:nil
                                     eventNumber:0
@@ -166,9 +183,9 @@ static bool try_direct_view_mouse_click(double x_fraction, double y_fraction_top
                                    clickCount:1
                                      pressure:0.0];
 
-    LOG_CORE_DEBUG("[FocuslessInput] Calling [LSMTLView mouseDown:] x=%.1f y=%.1f xf=%.3f yf=%.3f inputMgr=%p win=%ld",
-                  x, y, x_fraction, y_fraction_top_origin, inputMgr, (long)winNum);
-    [view mouseMoved:down];
+    LOG_CORE_DEBUG("[FocuslessInput] Calling [LSMTLView mouseDown:] winloc=(%.1f, %.1f) xf=%.3f yf=%.3f inputMgr=%p win=%ld",
+                  location.x, location.y, x_fraction, y_fraction_top_origin, inputMgr, (long)winNum);
+    [view mouseMoved:move];
     [view mouseDown:down];
     [view mouseUp:up];
     return true;
@@ -225,9 +242,18 @@ void focusless_input_start_splash_autodismiss(double duration, double interval) 
                               interval_ns, interval_ns / 10);
 
     dispatch_source_set_event_handler(s_splash_timer, ^{
-        if (s_socket_ready || s_dismiss_count >= s_max_dismiss) {
+        // Stop once the game has actually advanced past the splash (a session
+        // is loading or running) — NOT on socket traffic: the harness polls
+        // !identity during boot, which previously cancelled us at 0 attempts.
+        ServerGameState gs = game_state_get_current();
+        bool past_splash = (gs >= SERVER_STATE_LOAD_LEVEL &&
+                            gs <= SERVER_STATE_RUNNING);
+        if (s_socket_ready || past_splash || s_dismiss_count >= s_max_dismiss) {
             LOG_CORE_INFO("[FocuslessInput] Splash timer stopped (%s, %d attempts)",
-                          s_socket_ready ? "socket ready" : "max reached", s_dismiss_count);
+                          s_socket_ready ? "explicit stop"
+                                         : past_splash ? "game state advanced"
+                                                       : "max reached",
+                          s_dismiss_count);
             dispatch_source_cancel(s_splash_timer);
             s_splash_timer = NULL;
             return;

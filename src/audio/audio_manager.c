@@ -15,6 +15,7 @@
 #include "audio_manager.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
+#include "../core/offset_table.h"
 #include "../strings/fixed_string.h"
 #include <stdlib.h>
 #include <string.h>
@@ -24,8 +25,9 @@
 // Constants and Offsets
 // ============================================================================
 
-// ResourceManager::m_ptr (shared with resource_manager.c)
-#define OFFSET_RESOURCEMANAGER_PTR   0x08a8f070
+// ResourceManager::m_ptr — sourced from offset_table at runtime
+// Fallback value kept for reference: 0x08a8f070 (4.1.1.6995620)
+#define OFFSET_RESOURCEMANAGER_PTR_FALLBACK  0x08a8f070
 
 // SoundManager offset within ResourceManager (needs runtime discovery)
 // Placeholder - probe ResourceManager struct to find actual offset
@@ -66,8 +68,10 @@ typedef struct {
     };
 } LSSTDString;
 
-// Game's ls::STDString(const char*) constructor (Ghidra: 0x10651fb60)
-#define OFFSET_STDSTRING_CTOR  0x0651fb60ULL
+// Game's ls::STDString(const char*) constructor.
+// 4.1.1.7209685 vintage, nm-verified (0x10650e718 t ls::STDString::STDString(char const*)).
+// Passed through offset_table_remap_fn() (either-vintage match, fail-closed).
+#define OFFSET_STDSTRING_CTOR  0x0650e718ULL
 typedef void (*STDStringCtorFn)(LSSTDString *this_, const char *str);
 
 static void ls_stdstring_init(LSSTDString *out, const char *str, STDStringCtorFn ctor) {
@@ -116,15 +120,24 @@ bool audio_manager_init(void *main_binary_base) {
     }
 
     g_audio.main_binary_base = main_binary_base;
-    g_audio.resource_manager_ptr = (void **)((uintptr_t)main_binary_base + OFFSET_RESOURCEMANAGER_PTR);
 
-    // Resolve ls::STDString constructor for PlayExternalSound path parameter
-    g_audio.stdstring_ctor = (STDStringCtorFn)((uintptr_t)main_binary_base + OFFSET_STDSTRING_CTOR);
+    const VersionOffsets *off = offset_table_get();
+    if (off && off->resource_mgr_ptr) {
+        g_audio.resource_manager_ptr = (void **)offset_table_resolve(off->resource_mgr_ptr);
+    } else {
+        g_audio.resource_manager_ptr = (void **)((uintptr_t)main_binary_base + OFFSET_RESOURCEMANAGER_PTR_FALLBACK);
+    }
+
+    // Resolve ls::STDString constructor (remap the hardcoded 6995620 address).
+    // NULL if no verified address -> PlayExternalSound's string path is skipped.
+    uint64_t stdstr_ghidra = offset_table_remap_fn(0x100000000ULL + OFFSET_STDSTRING_CTOR);
+    g_audio.stdstring_ctor = stdstr_ghidra
+        ? (STDStringCtorFn)((uintptr_t)main_binary_base + (stdstr_ghidra - 0x100000000ULL))
+        : NULL;
 
     log_message("[Audio] Audio manager initialized");
     log_message("[Audio]   Base: %p", main_binary_base);
-    log_message("[Audio]   ResourceManager::m_ptr at offset 0x%x -> %p",
-                OFFSET_RESOURCEMANAGER_PTR, (void *)g_audio.resource_manager_ptr);
+    log_message("[Audio]   ResourceManager::m_ptr -> %p", (void *)g_audio.resource_manager_ptr);
     log_message("[Audio]   STDString ctor: %p", (void *)g_audio.stdstring_ctor);
 
     g_audio.initialized = true;
