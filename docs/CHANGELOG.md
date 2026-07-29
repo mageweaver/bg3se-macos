@@ -13,9 +13,9 @@ Each entry includes:
 
 ---
 
-## [Unreleased] — Community PR integration: offset-table architecture + Osiris DB access + mod runtime
+## [v0.39.0] - 2026-07-29 — Community PR integration: offset-table architecture + Osiris DB access + mod runtime
 
-**Category:** Community contributions | **Branch:** `integration/community-prs` | **Issues:** PR #91, PR #93
+**Category:** Community contributions | **Parity:** ~94.7% | **Issues:** PR #91, PR #93, PR #95
 
 Integration of the two community pull requests, reconciled with the current
 codebase rather than merged verbatim (both predated the v0.38.x mod-detection
@@ -43,6 +43,16 @@ GameStateChanged EnumValues, Ext.IO VFS semantics).
 - **GameStateChanged EnumValues** — `ClientGameState`/`ServerGameState`
   registered in `Ext.Enums`; event states and `Ext.Utils.GetGameState()` return
   EnumValue userdata comparable with `==` (MCM's init gate).
+- **Deferred IMGUI event queue** — widget callbacks (OnClick/OnChange/OnClose)
+  queue from the Metal render thread and drain on the main thread under the
+  Lua gate (render-thread dispatch crashed `ls::Scene::Cull`); object-pool
+  mutex; HID-level CGEvent tap so mod keybindings see normal keys (PR #93,
+  marcus-sa).
+- **Local net transport by default** — Ext.Net/NetChannel traffic routes
+  through the in-process message bus and never touches the game's
+  `net::MessageFactory` (whose unbounded pool indexing crashed on the
+  extender's message id); RakNet is opt-in via `BG3SE_NET_RAKNET=1`;
+  `Ext.Net.CreateChannel` exposed for MCM (PR #93, marcus-sa).
 
 ### Fixed
 - Hardening pass from a four-agent review (two Codex, two Claude) over the
