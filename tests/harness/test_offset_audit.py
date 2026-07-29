@@ -441,8 +441,11 @@ def test_functor_gate_is_independent():
 
 
 def test_interrupt_remap_uses_entity_world_wrapper():
-    """The enabled 7209685 Interrupt target must retain its leading
-    ecs::EntityWorld& wrapper parameter."""
+    """The enabled 7209685 Interrupt target must carry the full machine ABI:
+    hidden result_out first (esv::functor::Result output storage, invisible in
+    demangled names), then ecs::EntityWorld&. Dropping result_out shifts every
+    register and crashes in the original body (2026-07-29 SIGSEGV,
+    docs/bugs/wave2-functor-crash-analysis.md)."""
     rows = _parse_remap_rows()
     interrupt = [new for old, new in rows if old == 0x1057965E4]
     assert interrupt, "Interrupt row (0x1057965e4) missing from g_fn_remap"
@@ -450,9 +453,17 @@ def test_interrupt_remap_uses_entity_world_wrapper():
         "Interrupt remap must target the nm-verified 7209685 overload")
     wrappers = (REPO_ROOT / "src/stats/functor_hooks.c").read_text()
     assert re.search(
-        r"hook_ExecuteFunctors_Interrupt\s*\(\s*EntityWorld\s*\*",
+        r"hook_ExecuteFunctors_Interrupt\s*\(\s*void\s*\*\s*result_out\s*,"
+        r"\s*EntityWorld\s*\*",
         wrappers,
     ), (
-        "Interrupt remap target enabled but functor_hooks.c has no "
-        "EntityWorld-aware wrapper — the hook would be ABI-mismatched"
+        "Interrupt wrapper must accept (result_out, EntityWorld*, ...) — "
+        "anything else is ABI-mismatched against the 7209685 binary"
+    )
+    assert re.search(
+        r"hook_ExecuteFunctors_Target\s*\(\s*void\s*\*\s*result_out\s*,",
+        wrappers,
+    ), (
+        "Ordinary ExecuteStatsFunctors wrappers must accept the hidden "
+        "result_out leading argument (see wave2-functor-crash-analysis.md)"
     )

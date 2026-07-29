@@ -400,16 +400,24 @@ typedef struct {
 
 typedef struct EntityWorld EntityWorld;
 
-// The eight non-Interrupt overloads are free functions on 7209685:
-// (StatsFunctorList const*, <ContextData>&).
+// The eight non-Interrupt overloads are free functions on 7209685 that
+// RETURN esv::functor::Result. Demangled nm names omit return types, and at
+// this local boundary the result is materialized as a hidden leading output
+// argument in x0 (call sites do `add x0, sp, #imm` and later run
+// Result::~Result on it). Machine ABI: (result_out, functors, context) in
+// x0..x2. Dropping result_out shifts every register and crashes in the
+// original body (2026-07-29 SIGSEGV, docs/bugs/wave2-functor-crash-analysis.md).
 typedef void (*ExecuteFunctorsProc)(
+    void*                   result_out,
     const StatsFunctorList* functors,
     void*                   context
 );
 
-// Interrupt is also a free function, with EntityWorld& leading:
-// (ecs::EntityWorld&, StatsFunctorList const*, InterruptContextData&).
+// Interrupt has the same hidden result_out, then EntityWorld& leading:
+// machine ABI (result_out, EntityWorld&, StatsFunctorList const*,
+// InterruptContextData&) in x0..x3.
 typedef void (*ExecuteInterruptFunctorsProc)(
+    void*                   result_out,
     EntityWorld*            entityWorld,
     const StatsFunctorList* functors,
     InterruptContextData*   context

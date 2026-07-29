@@ -133,99 +133,105 @@ static void fire_damage_event(
 // Each hook: listener-count guard → pre-event → original → post-event.
 // If 0 subscribers for both functor events, original is called directly with no
 // Lua overhead.
+//
+// result_out is the hidden leading output argument (esv::functor::Result) that
+// the demangled symbol names do not show — it MUST be accepted and forwarded
+// or every subsequent register shifts (see functor_types.h and
+// docs/bugs/wave2-functor-crash-analysis.md). Never dereference it.
 // =============================================================================
 
-static void hook_ExecuteFunctors_AttackTarget(const StatsFunctorList* functors, AttackTargetContextData* ctx) {
+static void hook_ExecuteFunctors_AttackTarget(void* result_out, const StatsFunctorList* functors, AttackTargetContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigAttackTarget) g_OrigAttackTarget(functors, ctx);
+        if (g_OrigAttackTarget) g_OrigAttackTarget(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_TARGET);
-    if (g_OrigAttackTarget) g_OrigAttackTarget(functors, ctx);
+    if (g_OrigAttackTarget) g_OrigAttackTarget(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_TARGET);
 }
 
-static void hook_ExecuteFunctors_AttackPosition(const StatsFunctorList* functors, AttackPositionContextData* ctx) {
+static void hook_ExecuteFunctors_AttackPosition(void* result_out, const StatsFunctorList* functors, AttackPositionContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigAttackPosition) g_OrigAttackPosition(functors, ctx);
+        if (g_OrigAttackPosition) g_OrigAttackPosition(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_POSITION);
-    if (g_OrigAttackPosition) g_OrigAttackPosition(functors, ctx);
+    if (g_OrigAttackPosition) g_OrigAttackPosition(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_ATTACK_POSITION);
 }
 
-static void hook_ExecuteFunctors_Move(const StatsFunctorList* functors, MoveContextData* ctx) {
+static void hook_ExecuteFunctors_Move(void* result_out, const StatsFunctorList* functors, MoveContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigMove) g_OrigMove(functors, ctx);
+        if (g_OrigMove) g_OrigMove(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_MOVE);
-    if (g_OrigMove) g_OrigMove(functors, ctx);
+    if (g_OrigMove) g_OrigMove(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_MOVE);
 }
 
-static void hook_ExecuteFunctors_Target(const StatsFunctorList* functors, TargetContextData* ctx) {
+static void hook_ExecuteFunctors_Target(void* result_out, const StatsFunctorList* functors, TargetContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigTarget) g_OrigTarget(functors, ctx);
+        if (g_OrigTarget) g_OrigTarget(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_TARGET);
-    if (g_OrigTarget) g_OrigTarget(functors, ctx);
+    if (g_OrigTarget) g_OrigTarget(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_TARGET);
 }
 
-static void hook_ExecuteFunctors_NearbyAttacked(const StatsFunctorList* functors, NearbyAttackedContextData* ctx) {
+static void hook_ExecuteFunctors_NearbyAttacked(void* result_out, const StatsFunctorList* functors, NearbyAttackedContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(functors, ctx);
+        if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKED);
-    if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(functors, ctx);
+    if (g_OrigNearbyAttacked) g_OrigNearbyAttacked(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKED);
 }
 
-static void hook_ExecuteFunctors_NearbyAttacking(const StatsFunctorList* functors, NearbyAttackingContextData* ctx) {
+static void hook_ExecuteFunctors_NearbyAttacking(void* result_out, const StatsFunctorList* functors, NearbyAttackingContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(functors, ctx);
+        if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKING);
-    if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(functors, ctx);
+    if (g_OrigNearbyAttacking) g_OrigNearbyAttacking(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_NEARBY_ATTACKING);
 }
 
-static void hook_ExecuteFunctors_Equip(const StatsFunctorList* functors, EquipContextData* ctx) {
+static void hook_ExecuteFunctors_Equip(void* result_out, const StatsFunctorList* functors, EquipContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigEquip) g_OrigEquip(functors, ctx);
+        if (g_OrigEquip) g_OrigEquip(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_EQUIP);
-    if (g_OrigEquip) g_OrigEquip(functors, ctx);
+    if (g_OrigEquip) g_OrigEquip(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_EQUIP);
 }
 
-static void hook_ExecuteFunctors_Source(const StatsFunctorList* functors, SourceContextData* ctx) {
+static void hook_ExecuteFunctors_Source(void* result_out, const StatsFunctorList* functors, SourceContextData* ctx) {
     if (!has_functor_subscribers()) {
-        if (g_OrigSource) g_OrigSource(functors, ctx);
+        if (g_OrigSource) g_OrigSource(result_out, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_SOURCE);
-    if (g_OrigSource) g_OrigSource(functors, ctx);
+    if (g_OrigSource) g_OrigSource(result_out, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_SOURCE);
 }
 
 static void hook_ExecuteFunctors_Interrupt(
+    void* result_out,
     EntityWorld* entityWorld,
     const StatsFunctorList* functors,
     InterruptContextData* ctx
 ) {
     if (!has_functor_subscribers()) {
-        if (g_OrigInterrupt) g_OrigInterrupt(entityWorld, functors, ctx);
+        if (g_OrigInterrupt) g_OrigInterrupt(result_out, entityWorld, functors, ctx);
         return;
     }
     fire_execute_functor_event(functors, ctx, FUNCTOR_CTX_INTERRUPT);
-    if (g_OrigInterrupt) g_OrigInterrupt(entityWorld, functors, ctx);
+    if (g_OrigInterrupt) g_OrigInterrupt(result_out, entityWorld, functors, ctx);
     fire_after_execute_functor_event(functors, ctx, FUNCTOR_CTX_INTERRUPT);
 }
 
