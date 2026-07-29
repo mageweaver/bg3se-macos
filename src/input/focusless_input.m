@@ -19,6 +19,7 @@
 
 #include "focusless_input.h"
 #include "../core/logging.h"
+#include "../game/game_state.h"
 #include "../imgui/imgui_metal_backend.h"
 
 static bool s_initialized = false;
@@ -225,9 +226,18 @@ void focusless_input_start_splash_autodismiss(double duration, double interval) 
                               interval_ns, interval_ns / 10);
 
     dispatch_source_set_event_handler(s_splash_timer, ^{
-        if (s_socket_ready || s_dismiss_count >= s_max_dismiss) {
+        // Stop once the game has actually advanced past the splash (a session
+        // is loading or running) — NOT on socket traffic: the harness polls
+        // !identity during boot, which previously cancelled us at 0 attempts.
+        ServerGameState gs = game_state_get_current();
+        bool past_splash = (gs >= SERVER_STATE_LOAD_LEVEL &&
+                            gs <= SERVER_STATE_RUNNING);
+        if (s_socket_ready || past_splash || s_dismiss_count >= s_max_dismiss) {
             LOG_CORE_INFO("[FocuslessInput] Splash timer stopped (%s, %d attempts)",
-                          s_socket_ready ? "socket ready" : "max reached", s_dismiss_count);
+                          s_socket_ready ? "explicit stop"
+                                         : past_splash ? "game state advanced"
+                                                       : "max reached",
+                          s_dismiss_count);
             dispatch_source_cancel(s_splash_timer);
             s_splash_timer = NULL;
             return;

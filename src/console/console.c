@@ -16,7 +16,6 @@
 #include "../lifetime/lifetime.h"
 #include "../entity/component_typeid.h"
 #include "../osiris/osiris_functions.h"
-#include "../input/focusless_input.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -665,7 +664,11 @@ static void socket_process_client(lua_State *L, int slot) {
             if (*client_len > 0) {
                 client_buf[*client_len] = '\0';
                 process_line(L, client_buf, slot);
-                focusless_input_mark_socket_ready();
+                // NOTE: do NOT mark the splash auto-dismisser done here — the
+                // harness polls !identity over this socket DURING boot, which
+                // used to cancel the dismisser after 0 attempts and strand the
+                // game on "Press any key". The dismisser now stops itself on
+                // game-state advance (focusless_input.m).
                 socket_send_prompt(slot);
                 *client_len = 0;
             }
