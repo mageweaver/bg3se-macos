@@ -157,14 +157,35 @@ static char *io_load_from_pak(const char *path, size_t *out_size) {
     return content;  // already NUL-terminated by pak_read_file
 }
 
+// Reject paths that would escape the Script Extender data dir: absolute
+// paths and any ".." component. Windows BG3SE confines Ext.IO writes to the
+// UserProfile Script Extender root the same way.
+static int io_path_is_contained(const char *path) {
+    if (!path || !path[0] || path[0] == '/') return 0;
+    const char *p = path;
+    while (*p) {
+        if (p[0] == '.' && p[1] == '.' &&
+            (p[2] == '/' || p[2] == '\0') &&
+            (p == path || p[-1] == '/')) {
+            return 0;
+        }
+        p++;
+    }
+    return 1;
+}
+
 int lua_ext_io_loadfile(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     LOG_LUA_INFO("Ext.IO.LoadFile('%s')", path);
 
-    FILE *f = fopen(path, "r");
-    if (!f && path[0] != '/') {
-        // Relative VFS path: try the Script Extender data dir (user-saved data
-        // like MCM's settings.json lives here — see io_se_data_base).
+    // Relative paths resolve against the Script Extender data dir (user-saved
+    // data like MCM's settings.json lives here — see io_se_data_base), never
+    // the process CWD, and may not traverse out of it. Absolute paths are
+    // honored read-only for developer tooling.
+    FILE *f = NULL;
+    if (path[0] == '/') {
+        f = fopen(path, "r");
+    } else if (io_path_is_contained(path)) {
         char se_path[MAX_PATH_LEN];
         snprintf(se_path, sizeof(se_path), "%s/%s", io_se_data_base(), path);
         f = fopen(se_path, "r");
@@ -214,12 +235,13 @@ int lua_ext_io_savefile(lua_State *L) {
     // Windows BG3SE writes to <UserProfile>/Script Extender/<path> (PathRootType
     // ::UserProfile) and mkdir -p's the parents. Mirror that so MCM's settings /
     // profiles / open_on_start migration actually persist.
-    char full[MAX_PATH_LEN];
-    if (path[0] == '/') {
-        snprintf(full, sizeof(full), "%s", path);  // absolute: honor as-is
-    } else {
-        snprintf(full, sizeof(full), "%s/%s", io_se_data_base(), path);
+    if (!io_path_is_contained(path)) {
+        LOG_LUA_INFO("Ext.IO.SaveFile: rejecting path outside SE data dir: '%s'", path);
+        lua_pushboolean(L, 0);
+        return 1;
     }
+    char full[MAX_PATH_LEN];
+    snprintf(full, sizeof(full), "%s/%s", io_se_data_base(), path);
     io_mkdir_parents(full);
 
     FILE *f = fopen(full, "w");

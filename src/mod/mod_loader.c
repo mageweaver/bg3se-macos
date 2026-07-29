@@ -376,11 +376,13 @@ void mod_detect_enabled(void) {
     int mod_count = 0;
     char *ptr = content;
     // Key on the mod's Folder, NOT its Name. ScriptExtender files inside a pak
-    // live at Mods/<Folder>/ScriptExtender/..., and the Folder frequently differs
-    // from the display Name (e.g. "Mod Configuration Menu" -> folder "BG3MCM",
-    // "Sit This One Out 2" -> folder "Sit This One Out"). Parsing Name here caused
-    // those mods' bootstraps to never load. Folder values are also unescaped
-    // identifiers, avoiding &apos;-style HTML entities present in Names.
+    // live at Mods/<Folder>/ScriptExtender/..., and the Folder can differ from
+    // the display Name (e.g. "Sit This One Out 2" -> folder "Sit This One
+    // Out"; MCM's modsettings Folder is "Mod Configuration Menu" and only the
+    // PAK-stem/se_mod_dirs fallback resolves its real "BG3MCM" directory).
+    // Parsing Name here caused such mods' bootstraps to never load. Folder
+    // values are also unescaped identifiers, avoiding &apos;-style HTML
+    // entities present in Names.
     const char *name_marker = "attribute id=\"Folder\" type=\"LSString\" value=\"";
     size_t marker_len = strlen(name_marker);
 

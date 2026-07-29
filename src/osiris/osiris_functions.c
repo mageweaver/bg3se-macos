@@ -600,10 +600,12 @@ static int osi_func_cache_def(void *funcDef, uint32_t funcId) {
 // id-based function cache. Instead we register name -> COsiFunctionData* so the
 // Facts reader (osi_db_read_facts in main.c) can resolve them.
 
-#define MAX_DATABASES 32768
+#define MAX_DATABASES 8192
 typedef struct { char name[96]; void *def; } DbRegEntry;
 static DbRegEntry g_dbReg[MAX_DATABASES];
 static int g_dbRegCount = 0;
+
+void osi_db_clear(void) { g_dbRegCount = 0; }
 
 int osi_db_register(const char *name, void *def) {
     if (!name || !name[0] || !def) return 0;

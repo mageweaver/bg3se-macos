@@ -671,7 +671,18 @@ static void mod_env_set(lua_State *L, const char *mod_table, const char *uuid) {
 
     // Ensure { __index = _G } metatable (reads fall back to real globals).
     if (lua_getmetatable(L, -1)) {
-        lua_pop(L, 1);                        // already has one; leave it
+        // Already has one (mod-authored or from an earlier phase): respect it,
+        // but if it lacks __index entirely, install the _G fallback — without
+        // it every bare global read inside the mod would return nil.
+        lua_getfield(L, -1, "__index");       // [Mods, E, mt, __index]
+        if (lua_isnil(L, -1)) {
+            lua_pop(L, 1);                    // [Mods, E, mt]
+            lua_pushglobaltable(L);           // [Mods, E, mt, _G]
+            lua_setfield(L, -2, "__index");   // mt.__index = _G
+            lua_pop(L, 1);                    // [Mods, E]
+        } else {
+            lua_pop(L, 2);                    // [Mods, E]
+        }
     } else {
         lua_newtable(L);                      // [Mods, E, mt]
         lua_pushglobaltable(L);               // [Mods, E, mt, _G]
@@ -807,6 +818,9 @@ static int require_resolve(lua_State *L, const char *path) {
  */
 static int lua_ext_require(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
+    // require_finish assumes module returns start at index 2 — drop any extra
+    // caller arguments so they can't be cached as the module value.
+    lua_settop(L, 1);
     LOG_LUA_INFO("Ext.Require('%s')", path);
     return require_resolve(L, path);
 }
@@ -819,6 +833,7 @@ static int lua_ext_require(lua_State *L) {
  */
 static int lua_require(lua_State *L) {
     const char *name = luaL_checkstring(L, 1);
+    lua_settop(L, 1);   // see lua_ext_require: extras must not reach the cache
     char rel[MAX_PATH_LEN];
     size_t n = strlen(name);
     int has_lua = (n >= 4 && strcmp(name + n - 4, ".lua") == 0);
@@ -839,7 +854,18 @@ static int lua_require(lua_State *L) {
     }
 
     LOG_LUA_INFO("require('%s') -> %s", name, rel);
-    return require_resolve(L, rel);
+    require_resolve(L, rel);
+
+    // Mod-relative resolution missed. Fall through to the stock Lua require
+    // (kept as upvalue 1) so package.preload/searchers still work and a truly
+    // missing module raises the standard error instead of returning nil.
+    if (lua_isnil(L, -1) && lua_isfunction(L, lua_upvalueindex(1))) {
+        lua_pop(L, 1);
+        lua_pushvalue(L, lua_upvalueindex(1));
+        lua_pushvalue(L, 1);
+        lua_call(L, 1, 1);
+    }
+    return 1;
 }
 
 // ============================================================================
@@ -1310,15 +1336,17 @@ static int lua_osi_qry_startdialog_fixed(lua_State *L) {
                 int result = osiris_query_by_id(funcId, args);
                 LOG_LUA_INFO("Osi.QRY_StartDialog_Fixed('%s', '%s') -> %d (via Osiris)",
                            resource, character, result);
-                lua_pushboolean(L, result);
+                // Integer 0/1 like every other pure test query (Windows parity;
+                // generic dispatch switched in the PR #93 integration).
+                lua_pushinteger(L, result ? 1 : 0);
                 return 1;
             }
         }
     }
 
-    LOG_LUA_INFO("Osi.QRY_StartDialog_Fixed('%s', '%s') -> false (fallback)",
+    LOG_LUA_INFO("Osi.QRY_StartDialog_Fixed('%s', '%s') -> 0 (fallback)",
                 resource ? resource : "nil", character ? character : "nil");
-    lua_pushboolean(L, 0);
+    lua_pushinteger(L, 0);
     return 1;
 }
 
@@ -1449,8 +1477,10 @@ static void osi_push_typed_value(lua_State *L, mach_vm_address_t tv) {
  *   node   = *( *(factory+0x08) + (nodeId-1)*8 ); dbId = *(node+0x18);
  *   dbmgr  = *(base+0x9f5b0);  db = *( *(dbmgr+0x08) + (dbId-1)*8 ) (CReteDBase);
  *   colCount = *(db+0x40); facts list @ db+0x10 sentinel, begin=*(db+0x18),
- *   node.next @ +0x08, CTuple @ node+0x10, CTuple.values = *(CTuple+0x00),
- *   column i COsiTypedValue @ values + i*0x10.
+ *   node.next @ +0x08, CTuple @ node+0x10. CTuple is a
+ *   COsiSOOList<COsiTypedValue,8> (size @ +0x80, cap @ +0x84): values are
+ *   inline at the tuple base when cap < 9, else *(tuple+0x00) is a heap
+ *   pointer. Column i COsiTypedValue @ values + i*0x10.
  */
 static int osi_db_read_facts(lua_State *L, void *def) {
     int nfilter = lua_gettop(L) - 1;      /* filter args at stack 2..top */
@@ -1470,14 +1500,21 @@ static int osi_db_read_facts(lua_State *L, void *def) {
     uint32_t nodeId = 0;
     if (!safe_memory_read_u32((mach_vm_address_t)def + 0x20, &nodeId) || nodeId == 0) return 1;
 
-    /* def -> node via node factory vector (id-1 index; validate node id). */
-    void *fbegin = NULL, *node = NULL;
+    /* def -> node via node factory vector (id-1 index, bounds-checked against
+     * the vector end pointer at +0x10; validate node id). */
+    void *fbegin = NULL, *fend = NULL, *node = NULL;
     if (!safe_memory_read_pointer((mach_vm_address_t)factory + 0x08, &fbegin) || !fbegin) return 1;
+    safe_memory_read_pointer((mach_vm_address_t)factory + 0x10, &fend);
+    if (fend && (uintptr_t)nodeId > ((uintptr_t)fend - (uintptr_t)fbegin) / 8) {
+        LOG_OSIRIS_WARN("Osi DB: node id %u beyond factory vector", nodeId);
+        return 1;
+    }
     if (!safe_memory_read_pointer((mach_vm_address_t)fbegin + (uintptr_t)(nodeId - 1) * 8, &node) || !node) return 1;
     uint32_t nodeChk = 0;
     safe_memory_read_u32((mach_vm_address_t)node + 0x08, &nodeChk);
     if (nodeChk != nodeId) {
-        LOG_OSIRIS_DEBUG("Osi DB: node id mismatch (%u != %u)", nodeChk, nodeId);
+        LOG_OSIRIS_WARN("Osi DB: node id mismatch (%u != %u) — stale def or "
+                        "layout drift after game update", nodeChk, nodeId);
         return 1;
     }
 
@@ -1485,20 +1522,27 @@ static int osi_db_read_facts(lua_State *L, void *def) {
     if (!safe_memory_read_u32((mach_vm_address_t)node + 0x18, &dbId) || dbId == 0) return 1;
 
     /* node -> CReteDBase via databases vector (id-1 index; validate db id). */
-    void *dbegin = NULL, *db = NULL;
+    void *dbegin = NULL, *dend = NULL, *db = NULL;
     if (!safe_memory_read_pointer((mach_vm_address_t)dbmgr + 0x08, &dbegin) || !dbegin) return 1;
+    safe_memory_read_pointer((mach_vm_address_t)dbmgr + 0x10, &dend);
+    if (dend && (uintptr_t)dbId > ((uintptr_t)dend - (uintptr_t)dbegin) / 8) {
+        LOG_OSIRIS_WARN("Osi DB: db id %u beyond dbase vector", dbId);
+        return 1;
+    }
     if (!safe_memory_read_pointer((mach_vm_address_t)dbegin + (uintptr_t)(dbId - 1) * 8, &db) || !db) return 1;
     uint32_t dbChk = 0;
     safe_memory_read_u32((mach_vm_address_t)db + 0x00, &dbChk);
     if (dbChk != dbId) {
-        LOG_OSIRIS_DEBUG("Osi DB: database id mismatch (%u != %u)", dbChk, dbId);
+        LOG_OSIRIS_WARN("Osi DB: database id mismatch (%u != %u) — stale def or "
+                        "layout drift after game update", dbChk, dbId);
         return 1;
     }
 
     uint8_t colCount = 0;
     safe_memory_read_u8((mach_vm_address_t)db + 0x40, &colCount);
     if (colCount == 0 || colCount > 32) {
-        LOG_OSIRIS_DEBUG("Osi DB: implausible column count %u", colCount);
+        LOG_OSIRIS_WARN("Osi DB: implausible column count %u — layout drift "
+                        "after game update?", colCount);
         return 1;
     }
 
@@ -1511,22 +1555,41 @@ static int osi_db_read_facts(lua_State *L, void *def) {
     while (cur && (mach_vm_address_t)cur != sentinel && rowCount < 100000 && guard < 500000) {
         guard++;
 
-        void *values = NULL;   /* CTuple.values = *(node+0x10) */
-        safe_memory_read_pointer((mach_vm_address_t)cur + 0x10, &values);
+        /* CTuple (inline at node+0x10) is a COsiSOOList<COsiTypedValue,8>:
+         * size @ +0x80, cap @ +0x84; values are stored INLINE at the tuple
+         * base when cap < 9, else the tuple base holds a heap pointer. */
+        mach_vm_address_t tuple = (mach_vm_address_t)cur + 0x10;
+        uint32_t tsize = 0, tcap = 0;
+        safe_memory_read_u32(tuple + 0x80, &tsize);
+        safe_memory_read_u32(tuple + 0x84, &tcap);
+        mach_vm_address_t values = 0;
+        if (tcap >= 9) {
+            void *heap = NULL;
+            safe_memory_read_pointer(tuple, &heap);
+            values = (mach_vm_address_t)heap;
+        } else {
+            values = tuple;
+        }
 
-        int match = (values != NULL);
+        int match = (values != 0 && tsize >= colCount);
         for (int i = 0; i < nfilter && match; i++) {
             int slot = 2 + i;
             if (lua_isnil(L, slot)) continue;      /* wildcard */
             if ((uint32_t)i >= colCount) { match = 0; break; }
-            mach_vm_address_t tv = (mach_vm_address_t)values + (mach_vm_address_t)i * 0x10;
+            mach_vm_address_t tv = values + (mach_vm_address_t)i * 0x10;
             uint16_t colType = 0;
             safe_memory_read(tv + 0x08, &colType, sizeof(colType));
             if (lua_type(L, slot) == LUA_TNUMBER) {
-                int64_t want = (int64_t)lua_tointeger(L, slot), got;
-                if (colType == OSI_TYPE_INTEGER) { uint32_t v = 0; safe_memory_read_u32(tv, &v); got = (int32_t)v; }
-                else { uint64_t v = 0; safe_memory_read_u64(tv, &v); got = (int64_t)v; }
-                if (got != want) match = 0;
+                if (colType == OSI_TYPE_REAL) {
+                    uint32_t v = 0; safe_memory_read_u32(tv, &v);
+                    float f; memcpy(&f, &v, sizeof(f));
+                    if ((lua_Number)f != lua_tonumber(L, slot)) match = 0;
+                } else {
+                    int64_t want = (int64_t)lua_tointeger(L, slot), got;
+                    if (colType == OSI_TYPE_INTEGER) { uint32_t v = 0; safe_memory_read_u32(tv, &v); got = (int32_t)v; }
+                    else { uint64_t v = 0; safe_memory_read_u64(tv, &v); got = (int64_t)v; }
+                    if (got != want) match = 0;
+                }
             } else {
                 const char *want = lua_tostring(L, slot);
                 uint64_t handle = 0; char buf[256]; buf[0] = '\0';
@@ -1539,7 +1602,7 @@ static int osi_db_read_facts(lua_State *L, void *def) {
         if (match) {
             lua_newtable(L);                        /* row */
             for (uint32_t i = 0; i < colCount; i++) {
-                osi_push_typed_value(L, (mach_vm_address_t)values + (mach_vm_address_t)i * 0x10);
+                osi_push_typed_value(L, values + (mach_vm_address_t)i * 0x10);
                 lua_rawseti(L, -2, (int)i + 1);
             }
             rowCount++;
@@ -1715,15 +1778,22 @@ static int osi_value_to_lua(lua_State *L, OsiArgumentValue *val) {
             return 1;
         case OSI_TYPE_STRING:
         case OSI_TYPE_GUIDSTRING:
-        default:
+        default: {
             // STRING/GUIDSTRING and all custom GUID subtypes (CHARACTERGUID,
             // ITEMGUID, ... typeId > 5) carry a char* value from the engine.
-            if (val->stringVal) {
-                lua_pushstring(L, val->stringVal);
+            // Copy through safe_memory so a garbage pointer (type-guess
+            // mismatch, engine layout drift) yields "" instead of a SIGSEGV
+            // inside lua_pushstring's strlen.
+            char buf[512];
+            if (val->stringVal &&
+                safe_memory_read_string((mach_vm_address_t)(uintptr_t)val->stringVal,
+                                        buf, sizeof(buf))) {
+                lua_pushstring(L, buf);
             } else {
                 lua_pushstring(L, "");
             }
             return 1;
+        }
     }
 }
 
@@ -2326,8 +2396,11 @@ static void register_global_functions(lua_State *L) {
 
     // Override the stock Lua require with a mod-aware loader so mods that use
     // bare require("Some/Module") (MCM, CommunityLibrary) resolve against the
-    // current mod's Script Extender Lua folder.
-    lua_pushcfunction(L, lua_require);
+    // current mod's Script Extender Lua folder. The stock require is kept as
+    // upvalue 1 so misses fall through to package.preload/searchers and raise
+    // the standard "module not found" error instead of returning nil.
+    lua_getglobal(L, "require");
+    lua_pushcclosure(L, lua_require, 1);
     lua_setglobal(L, "require");
 
     LOG_LUA_INFO("Global functions registered (_P, _D, require)");
@@ -2479,11 +2552,15 @@ static void load_mod_scripts(lua_State *L) {
         lua_pushstring(L, (mod_uuid && mod_uuid[0]) ? mod_uuid : "");
         lua_setglobal(L, "ModuleUUID");
 
-        // Load server bootstrap in SERVER context
+        // Load server bootstrap in SERVER context. Bootstraps run with
+        // LUA_MULTRET (shared loader with require) — drop any values a
+        // top-level script happens to return so they can't pile up here.
+        int stack_base = lua_gettop(L);
         if (load_mod_bootstrap(L, mod_dir, "Server") > 0) {
             LOG_LUA_INFO("Loaded BootstrapServer.lua for: %s (context=Server)",
                          mod_get_se_name(i));
         }
+        lua_settop(L, stack_base);
     }
 
     // Phase 2: Load all client bootstraps (in CLIENT context)
@@ -2507,12 +2584,22 @@ static void load_mod_scripts(lua_State *L) {
         lua_pushstring(L, (mod_uuid && mod_uuid[0]) ? mod_uuid : "");
         lua_setglobal(L, "ModuleUUID");
 
-        // Load client bootstrap in CLIENT context
+        // Load client bootstrap in CLIENT context (stack discipline as above)
+        int stack_base = lua_gettop(L);
         if (load_mod_bootstrap(L, mod_dir, "Client") > 0) {
             LOG_LUA_INFO("Loaded BootstrapClient.lua for: %s (context=Client)",
                          mod_get_se_name(i));
         }
+        lua_settop(L, stack_base);
     }
+
+    // Clear the per-mod loader state: without this, the last-loaded mod's
+    // environment, current-mod paths, and ModuleUUID leak into everything that
+    // runs afterwards (console Ext.Require would resolve as that mod).
+    mod_env_set(L, NULL, NULL);
+    mod_set_current(NULL, NULL, NULL);
+    lua_pushnil(L);
+    lua_setglobal(L, "ModuleUUID");
 
     // Stay in CLIENT context after loading (we're on a client machine)
     LOG_MOD_INFO("=== Mod Script Loading Complete (final context=Client) ===");
@@ -3176,8 +3263,23 @@ static int osi_read_param_defs(uint32_t handle, OsiParamDef *defs, int maxDefs) 
     for (uint32_t i = 0; i < pcount && (int)i < maxDefs; i++) {
         mach_vm_address_t p = (mach_vm_address_t)params + (mach_vm_address_t)i * 0x10;
         uint32_t type = 0, dir = 0;
-        safe_memory_read_u32(p + 0x08, &type);
-        safe_memory_read_u32(p + 0x0c, &dir);
+        // Both reads must succeed and the direction must be a real Osiris
+        // direction (1=in, 2=out). A failed read leaves type=0/dir=0, which the
+        // dispatcher would treat as an OSI_TYPE_NONE input and hand to strict
+        // engine dispatch (C++ exception/SIGABRT). Fail the whole lookup
+        // instead — the caller falls back to legacy arity-based guessing.
+        if (!safe_memory_read_u32(p + 0x08, &type) ||
+            !safe_memory_read_u32(p + 0x0c, &dir) ||
+            type == 0 || (dir != 1 && dir != 2)) {
+            static int warned_once = 0;
+            if (!warned_once) {
+                warned_once = 1;
+                LOG_OSIRIS_WARN("osi_read_param_defs: invalid param def "
+                                "(type=%u dir=%u) — falling back to legacy "
+                                "dispatch for this session", type, dir);
+            }
+            return -1;
+        }
         defs[i].type = type;
         defs[i].direction = (uint8_t)dir;
     }
@@ -3668,12 +3770,19 @@ after_tick:
     // never resolve them and returns empty (breaking mods like Sit This One Out
     // whose grant loops iterate DB_PartyMembers). SavegameLoaded and
     // LevelGameplayStarted fire after story load, so walk the name index here
-    // BEFORE dispatching to Lua callbacks. One-shot flag: run once per session
-    // (not on every level transition); the walk is idempotent and read-only.
+    // BEFORE dispatching to Lua callbacks. SavegameLoaded always re-walks
+    // (loading another save rebuilds the story, leaving the registry's
+    // COsiFunctionData* pointers stale); LevelGameplayStarted only fills the
+    // registry the first time. The walk is idempotent and read-only.
     static int g_dbNamesEnumerated = 0;
-    if (!g_dbNamesEnumerated && funcName &&
-        (strcmp(funcName, "SavegameLoaded") == 0 ||
-         strcmp(funcName, "LevelGameplayStarted") == 0)) {
+    if (funcName && strcmp(funcName, "SavegameLoaded") == 0) {
+        osi_db_clear();
+        g_dbNamesEnumerated = 1;
+        LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
+                        "discover databases", funcName);
+        osi_func_enumerate_by_name();
+    } else if (!g_dbNamesEnumerated && funcName &&
+               strcmp(funcName, "LevelGameplayStarted") == 0) {
         g_dbNamesEnumerated = 1;
         LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
                         "discover databases", funcName);

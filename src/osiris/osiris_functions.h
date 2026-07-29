@@ -75,6 +75,7 @@ void osi_func_enumerate_by_name(void);
 int   osi_db_register(const char *name, void *def);
 void *osi_db_lookup(const char *name);
 int   osi_db_count(void);
+void  osi_db_clear(void);   // wipe registry (defs go stale across save reloads)
 
 // ============================================================================
 // Caching

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <zlib.h>
 #include "lz4/lz4.h"
 
@@ -159,6 +160,21 @@ char *pak_read_file(PakFile *pak, int entry_idx, size_t *out_size) {
 
     PakEntry *entry = &pak->entries[entry_idx];
     FILE *f = (FILE *)pak->file;
+
+    // Entry offsets/sizes come straight from the archive: validate against the
+    // real file size before allocating, so a malformed or truncated PAK can't
+    // request a multi-gigabyte buffer or read past EOF. 256 MB comfortably
+    // covers any legitimate single Script Extender payload.
+    const uint64_t PAK_MAX_ENTRY_SIZE = 256ull * 1024 * 1024;
+    struct stat st;
+    if (fstat(fileno(f), &st) != 0) return NULL;
+    uint64_t file_size = (uint64_t)st.st_size;
+    if (entry->disk_size == 0 || entry->disk_size > PAK_MAX_ENTRY_SIZE ||
+        entry->uncompressed_size > PAK_MAX_ENTRY_SIZE ||
+        entry->offset > file_size ||
+        (uint64_t)entry->disk_size > file_size - entry->offset) {
+        return NULL;
+    }
 
     // Seek to file data
     fseek(f, entry->offset, SEEK_SET);

@@ -536,19 +536,28 @@ static const char *server_state_to_ecl_label(int s) {
 // never equals the EnumValue. So we must hand back the same userdata. Falls back
 // to the ecl integer if the enum isn't available.
 void events_push_client_gamestate(lua_State *L, int internal_state) {
+    // Every lua_getfield target must be type-checked: this runs during event
+    // construction BEFORE the handler's lua_pcall, so an "attempt to index
+    // nil" here would hit the panic handler and abort the process.
     const char *label = server_state_to_ecl_label(internal_state);
     if (label) {
-        lua_getglobal(L, "Ext");                 // Ext
-        lua_getfield(L, -1, "Enums");            // Ext, Enums
-        lua_getfield(L, -1, "ClientGameState");  // Ext, Enums, CGS
-        lua_getfield(L, -1, label);              // Ext, Enums, CGS, val
-        if (!lua_isnil(L, -1)) {
-            lua_remove(L, -2);                   // Ext, Enums, val
-            lua_remove(L, -2);                   // Ext, val
-            lua_remove(L, -2);                   // val
-            return;
+        int base = lua_gettop(L);
+        lua_getglobal(L, "Ext");                     // Ext
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "Enums");            // Ext, Enums
+            if (lua_istable(L, -1) || lua_isuserdata(L, -1)) {
+                lua_getfield(L, -1, "ClientGameState");  // Ext, Enums, CGS
+                if (lua_istable(L, -1) || lua_isuserdata(L, -1)) {
+                    lua_getfield(L, -1, label);      // Ext, Enums, CGS, val
+                    if (!lua_isnil(L, -1)) {
+                        lua_insert(L, base + 1);     // val, Ext, Enums, CGS
+                        lua_settop(L, base + 1);     // val
+                        return;
+                    }
+                }
+            }
         }
-        lua_pop(L, 4);
+        lua_settop(L, base);
     }
     lua_pushinteger(L, server_state_to_ecl(internal_state));
 }

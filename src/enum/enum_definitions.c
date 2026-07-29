@@ -400,6 +400,78 @@ static void register_damage_flags(void) {
 }
 
 // ============================================================================
+// ClientGameState (ecl::GameState — Enumerations/Engine.inl)
+// ============================================================================
+// Required by the GameStateChanged event and Ext.Utils.GetGameState: mods
+// (MCM's IsMainMenu gate among them) compare event states against
+// Ext.Enums.ClientGameState.X with ==.
+static void register_client_game_state(void) {
+    int idx = enum_registry_add_type("ClientGameState", false);
+    if (idx < 0) return;
+
+    REG_VALUE(idx, "Unknown", 0);
+    REG_VALUE(idx, "Init", 1);
+    REG_VALUE(idx, "InitMenu", 2);
+    REG_VALUE(idx, "InitNetwork", 3);
+    REG_VALUE(idx, "InitConnection", 4);
+    REG_VALUE(idx, "Idle", 5);
+    REG_VALUE(idx, "LoadMenu", 6);
+    REG_VALUE(idx, "Menu", 7);
+    REG_VALUE(idx, "Exit", 8);
+    REG_VALUE(idx, "SwapLevel", 9);
+    REG_VALUE(idx, "LoadLevel", 10);
+    REG_VALUE(idx, "LoadModule", 11);
+    REG_VALUE(idx, "LoadSession", 12);
+    REG_VALUE(idx, "UnloadLevel", 13);
+    REG_VALUE(idx, "UnloadModule", 14);
+    REG_VALUE(idx, "UnloadSession", 15);
+    REG_VALUE(idx, "Paused", 16);
+    REG_VALUE(idx, "PrepareRunning", 17);
+    REG_VALUE(idx, "Running", 18);
+    REG_VALUE(idx, "Disconnect", 19);
+    REG_VALUE(idx, "Join", 20);
+    REG_VALUE(idx, "Save", 21);
+    REG_VALUE(idx, "StartLoading", 22);
+    REG_VALUE(idx, "StopLoading", 23);
+    REG_VALUE(idx, "StartServer", 24);
+    REG_VALUE(idx, "Movie", 25);
+    REG_VALUE(idx, "Installation", 26);
+    REG_VALUE(idx, "ModReceiving", 27);
+    REG_VALUE(idx, "Lobby", 28);
+    REG_VALUE(idx, "BuildStory", 29);
+    REG_VALUE(idx, "GeneratePsoCache", 32);
+    REG_VALUE(idx, "LoadPsoCache", 33);
+    REG_VALUE(idx, "AnalyticsSessionEnd", 34);
+}
+
+// ============================================================================
+// ServerGameState (esv::GameState — Enumerations/Engine.inl)
+// ============================================================================
+static void register_server_game_state(void) {
+    int idx = enum_registry_add_type("ServerGameState", false);
+    if (idx < 0) return;
+
+    REG_VALUE(idx, "Unknown", 0);
+    REG_VALUE(idx, "Uninitialized", 1);
+    REG_VALUE(idx, "Init", 2);
+    REG_VALUE(idx, "Idle", 3);
+    REG_VALUE(idx, "Exit", 4);
+    REG_VALUE(idx, "LoadLevel", 5);
+    REG_VALUE(idx, "LoadModule", 6);
+    REG_VALUE(idx, "LoadSession", 7);
+    REG_VALUE(idx, "UnloadLevel", 8);
+    REG_VALUE(idx, "UnloadModule", 9);
+    REG_VALUE(idx, "UnloadSession", 10);
+    REG_VALUE(idx, "Sync", 11);
+    REG_VALUE(idx, "Paused", 12);
+    REG_VALUE(idx, "Running", 13);
+    REG_VALUE(idx, "Save", 14);
+    REG_VALUE(idx, "Disconnect", 15);
+    REG_VALUE(idx, "BuildStory", 16);
+    REG_VALUE(idx, "ReloadStory", 17);
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 void enum_register_definitions(void) {
@@ -415,6 +487,8 @@ void enum_register_definitions(void) {
     register_item_slot();
     register_item_rarity();
     register_spell_type();
+    register_client_game_state();
+    register_server_game_state();
 
     // Bitfields
     register_attribute_flags();
