@@ -63,6 +63,19 @@ const char *mod_get_se_name(int index);
  */
 const char *mod_get_se_dir(int index);
 
+/**
+ * Get the UUID of a detected SE mod by index (empty string if unknown).
+ */
+const char *mod_get_se_uuid(int index);
+
+/**
+ * Hook invoked after a mod chunk is loaded (function on top of the Lua stack)
+ * but before it is executed, so the loader can install the per-mod _ENV
+ * (Mods.<ModTable>) on the chunk. See main.c mod_env_apply().
+ */
+typedef void (*mod_chunk_env_hook_t)(lua_State *L);
+void mod_loader_set_chunk_env_hook(mod_chunk_env_hook_t hook);
+
 // ============================================================================
 // PAK File Helpers
 // ============================================================================
