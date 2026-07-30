@@ -496,13 +496,13 @@ struct SpellPrototype {
 
 **Ghidra script:** `find_prototype_managers.py`, `analyze_get_spell_prototype.py`, `find_status_manager.py`
 
-**Discovered Singleton Addresses (all verified Dec 2025):**
+**Discovered Singleton Addresses (legacy Dec 2025 table; Passive/Interrupt rows corrected for build 4.1.1.7209685):**
 | Manager | Singleton Address | Discovery Method |
 |---------|------------------|------------------|
 | `SpellPrototypeManager::m_ptr` | `0x1089bac80` | GetSpellPrototype decompilation (ADRP+LDR pattern) |
 | `StatusPrototypeManager::m_ptr` | `0x1089bdb30` | Ghidra symbol search |
-| `PassivePrototypeManager*` | `0x108aeccd8` | GetPassivePrototype ADRP+LDR pattern |
-| `InterruptPrototypeManager*` | `0x108aecce0` | EvaluateInterrupt ADRP patterns |
+| `eoc::Passives::m_ptr` | `0x1089bc228` | Local BSS symbol plus 74 ADRP+LDR sites; old `PassivePrototypeManager` ADRP claim had zero current-build references |
+| `InterruptPrototypeManager::m_ptr` | `0x1089ba8f0` | Local BSS symbol |
 | `BoostPrototypeManager::m_ptr` | `0x108991528` | Symbol table (not exported via dlsym) |
 
 **Discovered Functions:**

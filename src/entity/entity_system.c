@@ -15,6 +15,7 @@
 #include "logging.h"
 #include "../core/version_detect.h"
 #include "../core/offset_table.h"
+#include "../core/safe_memory.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -105,6 +106,20 @@ static int g_TypeIdRetryCount = 0;
 // Windows BG3SE: EntityWorld at +0x1D0, PermissionsManager at +0x1D8
 // Previous 0x1B0 was wrong (overlapped with Array fields before PermissionsManager)
 #define OFFSET_ENTITYWORLD_IN_EOCCLIENT 0x1D0
+
+// Verified for 4.1.1.7209685 in
+// ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 1.
+//
+// This is an EMBEDDED DynamicArray<UniquePtr<IComponentOps>>, not a pointer
+// field: Buffer is EntityWorld+0x390, Capacity is +0x398, and Size is +0x39c.
+// AddImmediateDefaultComponent is address-point slot 5 (+0x28) because the
+// macOS Itanium vtable has two destructor entries.
+#define COMPONENT_OPS_VERIFIED_BUILD "4.1.1.7209685"
+#define ENTITYWORLD_COMPONENT_OPS_REGISTRY_OFFSET 0x390
+#define COMPONENT_OPS_REGISTRY_BUFFER_OFFSET 0x00
+#define COMPONENT_OPS_REGISTRY_CAPACITY_OFFSET 0x08
+#define COMPONENT_OPS_REGISTRY_SIZE_OFFSET 0x0c
+#define COMPONENT_OPS_ADD_IMMEDIATE_VPTR_OFFSET 0x28
 
 // eoc::CombatHelpers::LEGACY_IsInCombat(EntityHandle, EntityWorld&)
 // Note: Hooking this causes crashes during save load - DO NOT USE
@@ -1511,33 +1526,112 @@ static int lua_entity_get_net_id(lua_State *L) {
 static int s_create_component_warned = 0;
 static int s_remove_component_warned = 0;
 
-// Entity:CreateComponent(componentName) -> nil
-// Honest compatibility stub: construction requires ComponentOps and the
-// immediate command buffer, neither of which has a version-safe macOS mapping.
-static int lua_entity_create_component(lua_State *L) {
-    (void)luaL_checkudata(L, 1, "BG3Entity");
-    const char *component = luaL_checkstring(L, 2);
+typedef void (*AddImmediateDefaultComponentFn)(
+    void *component_ops, uint64_t entity_handle, int retry_count);
+
+static int create_component_fail(lua_State *L, const char *component,
+                                 const char *reason) {
     if (!s_create_component_warned) {
         log_message(
-            "[WARN] [Entity] entity:CreateComponent('%s') deferred: "
-            "ComponentOps/AddImmediateDefaultComponent is not mapped safely",
-            component);
+            "[WARN] [Entity] entity:CreateComponent('%s') refused: %s",
+            component ? component : "(null)", reason);
         s_create_component_warned = 1;
     }
-    lua_pushnil(L);
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
+// Entity:CreateComponent(componentName) -> boolean
+// Verified native path (COMPONENT_OPS_AND_PROTO_INIT.md, Dig 1):
+//   idx = ComponentTypeId & 0x7fff
+//   ops = EntityWorld.ComponentOpsRegistry[idx]
+//   ops->vptr[5](ops, EntityHandle, 0)
+static int lua_entity_create_component(lua_State *L) {
+    EntityUserdata *ud = (EntityUserdata*)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    const char *component = luaL_checkstring(L, 2);
+    const VersionOffsets *offsets = offset_table_get();
+    if (!version_detect_addresses_safe() || !offsets ||
+        strcmp(offsets->version, COMPONENT_OPS_VERIFIED_BUILD) != 0) {
+        return create_component_fail(
+            L, component,
+            "ComponentOps dispatch is verified only for game build 4.1.1.7209685");
+    }
+
+    const ComponentInfo *info = component_registry_lookup(component);
+    if (!info) {
+        return create_component_fail(L, component, "unknown component name");
+    }
+    if (!info->discovered || info->index == COMPONENT_INDEX_UNDEFINED) {
+        return create_component_fail(
+            L, component, "component TypeId is unavailable");
+    }
+    if (!g_EntityWorld) {
+        return create_component_fail(L, component, "EntityWorld is unavailable");
+    }
+
+    uint32_t index = (uint32_t)info->index & 0x7fffU;
+    mach_vm_address_t registry =
+        (mach_vm_address_t)g_EntityWorld +
+        ENTITYWORLD_COMPONENT_OPS_REGISTRY_OFFSET;
+    void *buffer = NULL;
+    int32_t size = 0;
+
+    if (!safe_memory_read_i32(
+            registry + COMPONENT_OPS_REGISTRY_SIZE_OFFSET, &size) ||
+        size <= 0 || index >= (uint32_t)size) {
+        return create_component_fail(
+            L, component, "ComponentOps registry entry is out of bounds");
+    }
+    if (!safe_memory_read_pointer(
+            registry + COMPONENT_OPS_REGISTRY_BUFFER_OFFSET, &buffer) ||
+        !buffer) {
+        return create_component_fail(
+            L, component, "ComponentOps registry buffer is unavailable");
+    }
+
+    void *ops = NULL;
+    if (!safe_memory_read_pointer(
+            (mach_vm_address_t)buffer + index * sizeof(void*), &ops) ||
+        !ops) {
+        return create_component_fail(
+            L, component, "ComponentOps registry entry is null");
+    }
+
+    void *vptr = NULL;
+    void *add_immediate = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)ops, &vptr) || !vptr ||
+        !safe_memory_read_pointer(
+            (mach_vm_address_t)vptr +
+                COMPONENT_OPS_ADD_IMMEDIATE_VPTR_OFFSET,
+            &add_immediate) ||
+        !add_immediate) {
+        return create_component_fail(
+            L, component, "ComponentOps AddImmediateDefaultComponent slot is null");
+    }
+
+    ((AddImmediateDefaultComponentFn)add_immediate)(
+        ops, (uint64_t)ud->handle, 0);
+    lua_pushboolean(L, 1);
     return 1;
 }
 
 // Entity:RemoveComponent(componentName) -> false
-// Honest compatibility stub: removal must go through ImmediateWorldCache to
-// preserve ECS bookkeeping; raw storage mutation is not safe.
+// NOT GENERICALLY UNLOCKED (COMPONENT_OPS_AND_PROTO_INIT.md, Dig 1):
+// build 4.1.1.7209685 emits 734 per-type RemoveComponent<T> instantiations
+// whose TypeIds are hard-coded. There is no verified generic entry point that
+// accepts a runtime ComponentTypeId, so arbitrary removal remains deferred.
 static int lua_entity_remove_component(lua_State *L) {
     (void)luaL_checkudata(L, 1, "BG3Entity");
     const char *component = luaL_checkstring(L, 2);
     if (!s_remove_component_warned) {
         log_message(
             "[WARN] [Entity] entity:RemoveComponent('%s') deferred: "
-            "ImmediateWorldCache::RemoveComponent is not mapped safely",
+            "build 4.1.1.7209685 has 734 type-specialized removers but no "
+            "verified runtime-TypeId entry point",
             component);
         s_remove_component_warned = 1;
     }

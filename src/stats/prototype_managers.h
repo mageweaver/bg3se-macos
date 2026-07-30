@@ -5,17 +5,18 @@
  * that are required for Ext.Stats.Sync() to make created stats usable by the game.
  *
  * Architecture:
- *   Each prototype type (Spell, Status, Passive, Interrupt, Boost) has a singleton
- *   manager that stores parsed prototypes in a HashMap<FixedString, *Prototype>.
- *   When a stat is created/modified via Ext.Stats, the corresponding prototype
- *   must be synced for the game to recognize and use it.
+ *   Prototype families use distinct native storage layouts. Spell/Status use
+ *   manager maps, eoc::Passives owns passive prototypes, and
+ *   InterruptPrototypeManager uses a hash table plus a contiguous object array.
+ *   When a stat is created/modified via Ext.Stats, the corresponding native
+ *   prototype must be synced for the game to recognize and use it.
  *
- * Discovery (Dec 2025):
- *   - PassivePrototypeManager*: 0x108aeccd8 (via ADRP+LDR in GetPassivePrototype)
+ * Build 4.1.1.7209685 verification (Jul 2026):
+ *   - eoc::Passives::m_ptr: 0x1089bc228 (nm BSS symbol, 74 ADRP+LDR sites)
  *   - BoostPrototypeManager::m_ptr: 0x108991528 (symbol table)
- *   - InterruptPrototypeManager::GetPrototype: 0x101b9686c (function address)
- *   - SpellPrototypeManager: TBD (analyze GetSpellPrototype functions)
- *   - StatusPrototypeManager: TBD (analyze GetStatusPrototype functions)
+ *   - InterruptPrototypeManager::m_ptr: 0x1089ba8f0 (nm BSS symbol)
+ *   - InterruptPrototypeManager::GetPrototype: 0x101b7adcc
+ * See ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 2.
  */
 
 #ifndef PROTOTYPE_MANAGERS_H
@@ -52,9 +53,10 @@ bool prototype_managers_ready(void);
 // ============================================================================
 
 /**
- * Get the PassivePrototypeManager singleton.
+ * Get the eoc::Passives singleton.
  *
- * @return Pointer to PassivePrototypeManager, or NULL if not found
+ * The legacy function name is retained for API compatibility.
+ * @return Pointer to eoc::Passives, or NULL if not found
  */
 void* get_passive_prototype_manager(void);
 
@@ -138,7 +140,9 @@ bool sync_spell_prototype(StatsObjectPtr obj, const char *name);
 bool sync_status_prototype(StatsObjectPtr obj, const char *name);
 
 /**
- * Sync a PassiveData stat with PassivePrototypeManager.
+ * Sync a PassiveData stat with eoc::Passives.
+ * Fails closed on build 4.1.1.7209685 until the inlined loader population
+ * path is mapped; PassivePrototype has no top-level vptr.
  *
  * @param obj Pointer to the stats::Object
  * @param name Stat entry name
@@ -148,6 +152,8 @@ bool sync_passive_prototype(StatsObjectPtr obj, const char *name);
 
 /**
  * Sync an InterruptData stat with InterruptPrototypeManager.
+ * Fails closed on build 4.1.1.7209685 until the inlined loader construction
+ * path is mapped; InterruptPrototype has no top-level vptr.
  *
  * @param obj Pointer to the stats::Object
  * @param name Stat entry name

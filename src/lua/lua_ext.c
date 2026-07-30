@@ -2512,11 +2512,15 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local e = Ext.Entity.Get(Osi.GetHostCharacter())\n"
         "  AssertNotNil(e, 'entity')\n"
         "  AssertType(e.CreateComponent, 'function', 'entity:CreateComponent')\n"
+        "  local result = e:CreateComponent('__BG3SE_InvalidComponent__')\n"
+        "  assert(result == false, 'invalid CreateComponent type must return false without a native call')\n"
         "end)\n"
         "BG3SE_AddTest(2, 'Parity.Entity.RemoveComponent', function()\n"
         "  local e = Ext.Entity.Get(Osi.GetHostCharacter())\n"
         "  AssertNotNil(e, 'entity')\n"
         "  AssertType(e.RemoveComponent, 'function', 'entity:RemoveComponent')\n"
+        "  local result = e:RemoveComponent('__BG3SE_RemoveComponentDeferred__')\n"
+        "  assert(result == false, 'deferred RemoveComponent must return false')\n"
         "end)\n";
 
     // Parity stubs part 2: Ext.Level missing functions (tier 2, need level loaded)

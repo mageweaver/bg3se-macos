@@ -73,6 +73,8 @@ AUDITED_OFFSETS = [
      "ecs::EntityStorageContainer::TryGet", False),
     ("src/stats/prototype_managers.c", "OFFSET_BOOST_PROTOTYPE_MANAGER_PTR",
      "eoc::BoostPrototypeManager::m_ptr", False),
+    ("src/stats/prototype_managers.c", "OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR",
+     "eoc::Passives::m_ptr", False),
     ("src/stats/prototype_managers.c", "OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR",
      "eoc::InterruptPrototypeManager::m_ptr", False),
     ("src/stats/prototype_managers.c", "OFFSET_SPELL_PROTOTYPE_MANAGER_PTR",

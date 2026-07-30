@@ -1,85 +1,73 @@
 {
-  "task": "Wave 3 Builder F: implement AiGrid pathfinding and tile Lua APIs",
+  "task": "Wave 3 Builder G: CreateComponent unlock and passive-singleton correction",
   "status": "done",
-  "started_at": "2026-07-30T04:38:45Z",
+  "started_at": "2026-07-30T05:23:15Z",
   "features": [
     {
-      "name": "Inspect verified layouts and repository conventions",
+      "name": "Inspect verified ComponentOps and prototype-manager evidence",
       "status": "completed",
       "files": [
-        "ghidra/offsets/AIGRID_PATHFINDING.md",
-        "src/core/safe_memory.h",
-        "src/core/offset_table.h",
-        "src/core/offset_table.c",
-        "src/level/level_manager.c",
-        "src/level/level_manager.h",
-        "src/lua/lua_level.c",
-        "src/lua/lua_ext.c",
-        "tools/offset_manifest.json",
-        "tests/harness/test_offset_audit.py"
+        "ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md",
+        "src/entity/entity_system.c",
+        "src/stats/prototype_managers.c",
+        "src/lua/lua_ext.c"
       ],
-      "completed_at": "2026-07-30T04:38:45Z"
+      "completed_at": "2026-07-30T05:23:15Z"
     },
     {
-      "name": "Add version-gated AiGrid function offsets and safe snapshot helpers",
+      "name": "Implement version-gated Entity:CreateComponent ComponentOps dispatch",
       "status": "completed",
       "files": [
-        "src/core/offset_table.h",
-        "src/core/offset_table.c",
-        "tools/offset_manifest.json",
+        "src/entity/entity_system.c"
+      ],
+      "started_at": "2026-07-30T05:23:15Z",
+      "completed_at": "2026-07-30T05:27:00Z"
+    },
+    {
+      "name": "Preserve and document Entity:RemoveComponent deferral",
+      "status": "completed",
+      "files": [
+        "src/entity/entity_system.c"
+      ],
+      "completed_at": "2026-07-30T05:27:00Z"
+    },
+    {
+      "name": "Correct passive singleton and fail-closed prototype sync claims",
+      "status": "completed",
+      "files": [
+        "CLAUDE.md",
+        "ghidra/offsets/STATS.md",
+        "src/stats/prototype_managers.c",
+        "src/stats/prototype_managers.h"
+      ],
+      "completed_at": "2026-07-30T05:27:30Z"
+    },
+    {
+      "name": "Add contract tests and Builder G report",
+      "status": "completed",
+      "files": [
+        "src/lua/lua_ext.c",
+        "tests/harness/test_component_ops_audit.py",
         "tests/harness/test_offset_audit.py",
-        "src/level/level_manager.c",
-        "src/level/level_manager.h"
+        "docs/bugs/wave3-builder-g-componentops-report.md"
       ],
-      "started_at": "2026-07-30T04:38:45Z",
-      "completed_at": "2026-07-30T05:11:45Z"
-    },
-    {
-      "name": "Implement five Ext.Level AiGrid APIs and update deferrals",
-      "status": "completed",
-      "files": [
-        "src/level/level_manager.c",
-        "src/level/level_manager.h",
-        "src/lua/lua_level.c"
-      ],
-      "completed_at": "2026-07-30T05:11:45Z"
-    },
-    {
-      "name": "Convert deferred parity tests to contract tests",
-      "status": "completed",
-      "files": [
-        "src/lua/lua_ext.c",
-        "tests/harness/test_offset_audit.py"
-      ],
-      "started_at": "2026-07-30T05:11:45Z",
-      "completed_at": "2026-07-30T05:13:10Z"
+      "completed_at": "2026-07-30T05:29:17Z"
     },
     {
       "name": "Run clean build, tier0, and harness pytest gates",
       "status": "completed",
       "files": [],
-      "started_at": "2026-07-30T05:13:10Z",
-      "completed_at": "2026-07-30T05:16:43Z"
-    },
-    {
-      "name": "Write Builder F handoff report",
-      "status": "completed",
-      "files": [
-        "docs/bugs/wave3-builder-f-aigrid-report.md"
-      ],
-      "completed_at": "2026-07-30T05:16:43Z"
+      "completed_at": "2026-07-30T05:29:17Z"
     }
   ],
   "verification": {
     "build": true,
-    "build_result": "clean universal ARM64/x86_64 build passed",
+    "build_result": "clean universal ARM64/x86_64 build passed; optional app-bundle copy sandbox-denied",
     "tier0": true,
     "tier0_result": "55/55 passed",
     "harness": true,
-    "harness_result": "204 passed",
-    "offset_resolver": true,
-    "offset_resolver_result": "all 30 fields + 18 remaps match",
+    "harness_result": "210 passed",
     "diff_check": true
   },
-  "completed_at": "2026-07-30T05:16:43Z"
+  "completed_at": "2026-07-30T05:29:17Z"
 }

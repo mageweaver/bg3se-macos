@@ -32,10 +32,11 @@
 // (previous values were from 4.1.1.6995620 and went stale after the game
 // update — most singletons shifted +0x8000, but shifts are NOT uniform).
 
-// PassivePrototypeManager*: UNVERIFIED for 4.1.1.7209685 — the old value came
-// from ADRP+LDR in GetPassivePrototype (no nm symbol exists); needs a Ghidra
-// re-derivation pass before trusting reads through it.
-#define OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR 0x108aeccd8ULL
+// eoc::Passives::m_ptr (nm, local BSS symbol; independently corroborated by
+// 74 ADRP+LDR sites). The legacy PassivePrototypeManager address claim has
+// zero references in 4.1.1.7209685 and came from stale function addresses.
+// See ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 2.
+#define OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR 0x1089bc228ULL
 
 // eoc::BoostPrototypeManager::m_ptr (nm, local symbol)
 #define OFFSET_BOOST_PROTOTYPE_MANAGER_PTR 0x108999528ULL
@@ -224,9 +225,9 @@ bool prototype_managers_init(void *main_binary_base) {
 
     // Resolve singleton pointer addresses from Ghidra offsets
 
-    // PassivePrototypeManager
+    // eoc::Passives (the accessor name is retained for API compatibility)
     g_pPassivePrototypeManagerPtr = (void**)ghidra_to_runtime(OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR);
-    LOG_STATS_DEBUG("[PrototypeManagers] PassivePrototypeManager ptr addr: %p (Ghidra: 0x%llx)",
+    LOG_STATS_DEBUG("[PrototypeManagers] eoc::Passives::m_ptr addr: %p (Ghidra: 0x%llx)",
                     (void*)g_pPassivePrototypeManagerPtr,
                     (unsigned long long)OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR);
 
@@ -796,15 +797,17 @@ bool sync_status_prototype(StatsObjectPtr obj, const char *name) {
 bool sync_passive_prototype(StatsObjectPtr obj, const char *name) {
     if (!obj || !name) return false;
 
-    // 4.1.1.7209685 has constructor/Clean/destructor symbols for
-    // PassivePrototype, but no PassivePrototype::Init symbol (checked with both
-    // `nm -gU | c++filt` and the full local symbol table). Calling or inserting
-    // a half-initialized prototype would corrupt the manager, so fail honestly.
+    // Fail closed per COMPONENT_OPS_AND_PROTO_INIT.md, Dig 2 ("Passive sync —
+    // BLOCKED"). PassivePrototype is 0x210 bytes and has NO top-level vptr:
+    // object+0 begins with data, while the nested StatsFunctorList vptr is at
+    // +0xb8. A template-VMT copy to +0 would corrupt the prototype. Native
+    // construction/Clean are known, but loader-specific field population after
+    // Clean is inlined and not callable, so an inserted object would be empty.
     static bool warned = false;
     if (!warned) {
         LOG_STATS_WARN("[PrototypeManagers] PassivePrototype sync disabled: "
-                       "PassivePrototype::Init is absent from the "
-                       "4.1.1.7209685 symbol table");
+                       "4.1.1.7209685 has no callable loader population path "
+                       "and PassivePrototype has no top-level vptr");
         warned = true;
     }
     return false;
@@ -813,16 +816,17 @@ bool sync_passive_prototype(StatsObjectPtr obj, const char *name) {
 bool sync_interrupt_prototype(StatsObjectPtr obj, const char *name) {
     if (!obj || !name) return false;
 
-    // InterruptPrototype is ~0x160+ bytes (destructor analysis: arrays at
-    // 0xC0/0xD0/0xF0/0x110/0x120), but no InterruptPrototype::Init layout has
-    // been verified for 4.1.1.7209685. Allocating/inserting a half-initialized
-    // prototype would corrupt the manager, so fail honestly (same policy as
-    // sync_passive_prototype).
+    // Fail closed per COMPONENT_OPS_AND_PROTO_INIT.md, Dig 2 ("Interrupt sync
+    // — BLOCKED"). InterruptPrototype is exactly 0x1f0 bytes and has NO
+    // top-level vptr: object+0 is its FixedString field. A template-VMT copy
+    // would corrupt that field. The manager also uses a hash table plus a
+    // contiguous array, not the generic RefMap insertion helper used above;
+    // its inlined loader construction/population path remains unmapped.
     static bool warned = false;
     if (!warned) {
         LOG_STATS_WARN("[PrototypeManagers] InterruptPrototype sync disabled: "
-                       "InterruptPrototype::Init layout is unverified for "
-                       "4.1.1.7209685");
+                       "4.1.1.7209685 has no callable construction/population "
+                       "path and InterruptPrototype has no top-level vptr");
         warned = true;
     }
     return false;
@@ -875,7 +879,7 @@ void prototype_managers_dump_status(void) {
 
     // Passive
     void *passive_mgr = get_passive_prototype_manager();
-    LOG_STATS_DEBUG("  PassivePrototypeManager:");
+    LOG_STATS_DEBUG("  eoc::Passives:");
     LOG_STATS_DEBUG("    Ptr addr: %p", (void*)g_pPassivePrototypeManagerPtr);
     LOG_STATS_DEBUG("    Instance: %p", passive_mgr);
 
@@ -907,8 +911,8 @@ void prototype_managers_dump_status(void) {
     LOG_STATS_DEBUG("Sync Requirements:");
     LOG_STATS_DEBUG("  SpellData -> SpellPrototypeManager (singleton found at 0x1089bac80)");
     LOG_STATS_DEBUG("  StatusData -> StatusPrototypeManager (singleton found at 0x1089bdb30)");
-    LOG_STATS_DEBUG("  PassiveData -> PassivePrototypeManager (singleton found at 0x108aeccd8)");
-    LOG_STATS_DEBUG("  InterruptData -> InterruptPrototypeManager (singleton found at 0x108aecce0)");
+    LOG_STATS_DEBUG("  PassiveData -> eoc::Passives (m_ptr at 0x1089bc228)");
+    LOG_STATS_DEBUG("  InterruptData -> InterruptPrototypeManager (m_ptr at 0x1089ba8f0)");
     LOG_STATS_DEBUG("  BoostData -> BoostPrototypeManager (singleton found at 0x108991528)");
     LOG_STATS_DEBUG("  Weapon/Armor/etc -> No prototype manager (direct RPGStats use)");
 }
