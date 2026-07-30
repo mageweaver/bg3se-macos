@@ -182,8 +182,13 @@ bool localization_ready(void) {
         return false;
     }
 
-    // Read the repository pointer (double-indirection like RPGStats)
-    void *repo = *s_loca.repo_ptr_addr;
+    // Read the repository pointer (double-indirection like RPGStats).
+    // safe_memory guards against a bad data_shift landing on an unmapped page.
+    void *repo = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)s_loca.repo_ptr_addr,
+                                  &repo)) {
+        return false;
+    }
     if (repo != NULL) {
         s_loca.repo = repo;
         return true;
@@ -311,8 +316,19 @@ static bool ensure_result_capacity(size_t required) {
 
 const char* localization_get(const char *handle, const char *fallback) {
     const char *fallback_value = fallback ? fallback : "";
-    if (!handle || !*handle || !localization_ready()
-        || !s_loca.fs_create || !s_loca.tryget_fn) {
+    if (!handle || !*handle) {
+        return fallback_value;
+    }
+    if (!localization_ready() || !s_loca.fs_create || !s_loca.tryget_fn) {
+        /* Distinguish subsystem-offline fallbacks (systemic, warn once) from
+         * per-handle misses below (normal, silent). */
+        static bool warned = false;
+        if (!warned) {
+            LOG_CORE_WARN(
+                "LOCA: Get falling back to defaults - localization subsystem "
+                "is not ready");
+            warned = true;
+        }
         return fallback_value;
     }
 

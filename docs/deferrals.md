@@ -59,6 +59,8 @@ walk; `esv::Character` is not a registered TypeId — use
 |---|---|---|---|---|
 | `Construct(typeName)` | warn + `nil` | The layout database describes fields but has no game allocator, constructor, or destructor for arbitrary types. | `src/lua/lua_ext.c` | Per-type constructor recovery (see the PassivePrototype ctor precedent) |
 | `GetHashSetValueAt` | warn + `nil` | No hash-set proxy exists on macOS. | same | Implement an ls::HashSet layout proxy |
+| `AddCustomFunction` | warn + `false` | Compatibility stub outside the 15-function Windows baseline; the macOS port has no property-map extension hook to attach custom methods to. | same | Property-map extension layer |
+| `AddCustomProperty` | warn + `false` | Same as AddCustomFunction. | same | Same |
 
 ## Excluded by scope decision (not deferrals)
 

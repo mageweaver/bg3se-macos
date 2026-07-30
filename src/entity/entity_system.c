@@ -1518,12 +1518,18 @@ static int lua_entity_get_index(lua_State *L) {
 // That HashMap infrastructure is not yet ported; return nil to signal unavailability
 // without crashing. Implement fully once EntityToNetId is mapped in entity_system.
 static int lua_entity_get_net_id(lua_State *L) {
+    static int warned = 0;
     luaL_checkudata(L, 1, "BG3Entity");
+    if (!warned) {
+        log_message(
+            "[WARN] [Entity] entity:GetNetId() deferred: ReplicationManager "
+            "EntityToNetId map is not yet ported; returning nil");
+        warned = 1;
+    }
     lua_pushnil(L);
     return 1;
 }
 
-static int s_create_component_warned = 0;
 static int s_remove_component_warned = 0;
 
 typedef void (*AddImmediateDefaultComponentFn)(
@@ -1531,11 +1537,25 @@ typedef void (*AddImmediateDefaultComponentFn)(
 
 static int create_component_fail(lua_State *L, const char *component,
                                  const char *reason) {
-    if (!s_create_component_warned) {
+    /* Warn once per distinct guard, not once globally, so a later failure
+     * with a different cause is not silenced by an earlier one. All reasons
+     * are string literals, so pointer identity is sufficient. */
+    static const char *logged_reasons[8];
+    static int logged_count = 0;
+    bool seen = false;
+    for (int i = 0; i < logged_count; i++) {
+        if (logged_reasons[i] == reason) {
+            seen = true;
+            break;
+        }
+    }
+    if (!seen) {
         log_message(
             "[WARN] [Entity] entity:CreateComponent('%s') refused: %s",
             component ? component : "(null)", reason);
-        s_create_component_warned = 1;
+        if (logged_count < 8) {
+            logged_reasons[logged_count++] = reason;
+        }
     }
     lua_pushboolean(L, 0);
     return 1;
@@ -1869,6 +1889,13 @@ static int lua_entity_get_all_component_names(lua_State *L) {
     bool requireMapped = lua_toboolean(L, 2);  // optional, default false
 
     if (!component_lookup_ready()) {
+        static int warned = 0;
+        if (!warned) {
+            log_message(
+                "[WARN] [Entity] GetAllComponentNames called before component "
+                "lookup is ready; returning empty table");
+            warned = 1;
+        }
         lua_newtable(L);
         return 1;
     }
@@ -1918,6 +1945,13 @@ static int lua_entity_get_all_components(lua_State *L) {
     bool warnOnMissing = lua_toboolean(L, 2);  // optional
 
     if (!component_lookup_ready() || !g_EntityWorld) {
+        static int warned = 0;
+        if (!warned) {
+            log_message(
+                "[WARN] [Entity] GetAllComponents called before component "
+                "lookup/EntityWorld is ready; returning empty table");
+            warned = 1;
+        }
         lua_newtable(L);
         return 1;
     }

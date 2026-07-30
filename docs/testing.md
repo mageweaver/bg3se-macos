@@ -51,11 +51,11 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 471 (265 offline + 206 Lua) |
+| **Total tests** | 473 (265 offline + 208 Lua) |
 | **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
 | **Tier H (pytest)** | 210 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
-| **Tier 2 (In-Game)** | 93 — Lua, require loaded save |
+| **Tier 2 (In-Game)** | 95 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
@@ -126,14 +126,14 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 1: General Tests
 
-113 tests that run without a loaded save. Test API registration and behavior, including 22 parity tests.
+113 tests that run without a loaded save. Test API registration and behavior, including 24 parity tests.
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
 | Core | 6 | Print, GetVersion, IsServer, IsClient, GetContext, RegisterConsoleCommand |
 | Json | 4 | Parse, ParseArray, Roundtrip, ParseInvalid (returns nil) |
 | Helpers | 5 | _P, _H, _D, _DS, _PE global helpers |
-| Stats | 14 | Core reads/writes plus Goal 2.3 honest surface and module load order |
+| Stats | 16 | Core reads/writes plus Goal 2.3 honest surface, module load order, and Wave 2/3 additions |
 | Timer | 8 | WaitFor, Cancel, PauseResume, MonotonicTime, MicrosecTime, GameTime, DeltaTime, Ticks |
 | Events | 5 | TickSubscribe, TickUnsubscribe, SessionLoaded, OnNextTick, SubscribeOptions |
 | Debug | 10 | ReadPtr, ReadU32, ReadI32, ReadFloat, IsValidPointer, ClassifyNull, ClassifySmallInt, Time, Timestamp, SessionAge |
@@ -145,25 +145,25 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 | Vars | 2 | Exists, ReloadPersistentVars |
 | Osi | 4 | Exists, SafeCall, MetatableExists, IndexReturnsFunction |
 | MCM | 10 | ModEventsExists, SubscribeExists, ThrowExists, UnsubscribeExists, EventRoundtrip, RegisterNetListener, NetCreateChannel, PostMessageToServer, OsirisRegisterListener, OsirisNewCall |
-| Parity | 22 | Behavioral compatibility assertions, including functor event subscription lifecycles |
+| Parity | 24 | Behavioral compatibility assertions, including functor event subscription lifecycles and Audio/Types/Math/Loca surface checks |
 
 ### Tier 2: In-Game Tests
 
-93 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
+95 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
-| Entity | 8 | Core entity access plus component write round-trip/refusal guards |
+| Entity | 10 | Core entity access plus component write round-trip/refusal guards |
 | Level | 5 | IsReady, GetCurrentLevel, GetPhysicsScene, GetAiGrid, GetHeightsAt |
 | Audio | 4 | IsReady, GetSoundObjectId, PostEvent, SetState |
 | Net | 4 | IsReady, IsHost, Version, PostMessageToServer |
 | IMGUI | 2 | IsReady, NewWindow |
 | StaticData | 2 | IsReady, GetTypes |
-| Osi Dispatch | 8 | GetHostCharacter, MetatableIndex, IsInCombat, NonexistentSafe, CacheConsistency, GetLevel, GetHitpoints, IsAlive |
-| Osi Edge Cases | 5 | WrongArgCount, WrongArgType, NilArg, TooManyArgs (regression), LongStringArg |
-| Entity Events | 5 | SubscribeExists, OnCreateExists, OnDestroyExists, SubscribeReturnsHandle, UnsubscribeWorks |
-| Stats | 2 | Goal 2.3 treasure reads and prototype sync honesty |
-| Parity | 29 | Loaded-save compatibility, including damage event subscription lifecycles |
+| Osi | 13 | Dispatch (GetHostCharacter, MetatableIndex, IsInCombat, NonexistentSafe, CacheConsistency, GetLevel, GetHitpoints, IsAlive) + edge cases (WrongArgCount, WrongArgType, NilArg, TooManyArgs, LongStringArg) |
+| EntityEvents | 5 | SubscribeExists, OnCreateExists, OnDestroyExists, SubscribeReturnsHandle, UnsubscribeWorks |
+| Stats | 3 | Goal 2.3 treasure reads and prototype sync honesty |
+| Parity | 41 | Loaded-save compatibility: damage event lifecycles, sweep/overlap dispatch, AiGrid pathfinding contracts, CreateComponent/RemoveComponent guards |
+| Wave3 | 6 | GetAllEntities walk, GetAllComponents, Serialize roundtrip, Loca update roundtrip, live path lookup dispatch, audio bank dispatch smoke |
 
 ---
 
@@ -375,11 +375,11 @@ echo '!test' | nc -U /tmp/bg3se.sock > /tmp/test_results.txt 2>&1
 === BG3SE General Tests (113 tests) ===
 
 --- Stats ---
-  PASS: Stats.Get (175ms) [16/109]
-  PASS: Stats.GetAllFiltered (4276ms) [SLOW 4276ms] [21/109]
-  FAIL: Stats.Example (0ms) - assertion failed: expected X [22/109]
+  PASS: Stats.Get (175ms) [16/113]
+  PASS: Stats.GetAllFiltered (4276ms) [SLOW 4276ms] [21/113]
+  FAIL: Stats.Example (0ms) - assertion failed: expected X [22/113]
 
-=== Results: 108/109 passed, 1 failed, 0 skipped (9443ms) ===
+=== Results: 112/113 passed, 1 failed, 0 skipped (9443ms) ===
 Failures:
   * Stats.Example: assertion failed: expected X
 SOME TESTS FAILED

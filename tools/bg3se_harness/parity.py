@@ -40,14 +40,20 @@ def _run_lua_json(c, lua_code, out_name, timeout=15.0):
         pass
     c.send_lua(lua_code + f'\nExt.IO.SaveFile("harness/{out_name}", js)')
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
         if out_path.exists():
             try:
                 with open(out_path) as f:
                     return json.load(f), None
-            except (json.JSONDecodeError, OSError):
-                pass  # partial write; retry
+            except (json.JSONDecodeError, OSError) as exc:
+                last_error = exc  # partial write; retry
         time.sleep(0.2)
+    if last_error is not None:
+        return None, (
+            f"harness/{out_name} was written but never parsed cleanly "
+            f"within {timeout}s (last error: {last_error})"
+        )
     return None, f"harness/{out_name} was not written by the game within {timeout}s"
 
 

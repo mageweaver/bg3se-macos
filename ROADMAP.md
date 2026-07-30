@@ -1116,7 +1116,7 @@ local layouts = Ext.Types.GetAllLayouts()  -- Returns array of all 534 layouts
 ```
 
 ### 7.5 Ext.Math Library
-**Status:** ⚠️ 57/59 functions (Smoothstep and IsNaN missing)
+**Status:** ✅ 59/59 functions (Smoothstep and IsNaN landed in Wave 3)
 
 From API.md (complete API surface):
 
@@ -1255,33 +1255,40 @@ Ext.Input.GetInputManager()  -- v23+
 ```
 
 ### 9.2 Physics Queries (Ext.Level)
-**Status:** ⚠️ Partial (15/21 functions)
+**Status:** ✅ 20/25 engine-backed (80%); 5 deferrals cataloged in [docs/deferrals.md](docs/deferrals.md)
 
 ```lua
--- Raycast (all 3 implemented)
-Ext.Level.RaycastClosest(origin, target, [flags])   -- ✅
-Ext.Level.RaycastAny(origin, target, [flags])        -- ✅
-Ext.Level.RaycastAll(origin, target, [flags])         -- ✅ (Qedeshot)
+-- Raycast (all 3 DEFERRED — by-value ls::Function/ls::Optional C++ params
+-- are unconstructable from C; warn-once, return nil/false)
+Ext.Level.RaycastClosest(origin, target, [flags])   -- ⛔ deferred
+Ext.Level.RaycastAny(origin, target, [flags])        -- ⛔ deferred
+Ext.Level.RaycastAll(origin, target, [flags])         -- ⛔ deferred
 
--- Sweep (6 implemented via Qedeshot swarm)
-Ext.Level.SweepSphereClosest(origin, target, radius, [flags])   -- ✅
-Ext.Level.SweepCapsuleClosest(...)                                -- ✅
-Ext.Level.SweepBoxClosest(...)                                    -- ✅
-Ext.Level.SweepSphereAll(origin, target, radius, [flags])        -- ✅
-Ext.Level.SweepCapsuleAll(...)                                    -- ✅
-Ext.Level.SweepBoxAll(...)                                        -- ✅
+-- Sweep (all 8 implemented; dispatch repaired against the audited macOS
+-- vtable, ghidra/offsets/PHYSICS_VMT_AUDIT.md)
+Ext.Level.SweepSphereClosest(src, dst, radius, ...)   -- ✅
+Ext.Level.SweepCapsuleClosest(...)                    -- ✅
+Ext.Level.SweepBoxClosest(...)                        -- ✅
+Ext.Level.SweepCylinderClosest(...)                   -- ✅ (VMT 14)
+Ext.Level.SweepSphereAll(src, dst, radius, ...)       -- ✅
+Ext.Level.SweepCapsuleAll(...)                        -- ✅
+Ext.Level.SweepBoxAll(...)                            -- ✅
+Ext.Level.SweepCylinderAll(...)                       -- ✅ (VMT 18)
 
 -- Overlap tests (implemented)
 Ext.Level.TestBox(pos, halfExtents, rotation, [flags])  -- ✅
 Ext.Level.TestSphere(pos, radius, [flags])              -- ✅
 
--- Not yet implemented
-Ext.Level.SweepCylinderClosest(...)
-Ext.Level.SweepCylinderAll(...)
-Ext.Level.GetEntitiesOnTile(...)
-Ext.Level.GetTileDebugInfo(...)
-Ext.Level.GetActivePathfindingRequests()
--- Remaining pathfinding suite
+-- AiGrid tile + pathfinding suite (implemented, Wave 3)
+Ext.Level.GetEntitiesOnTile(pos)                 -- ✅
+Ext.Level.GetPathById(pathId)                    -- ✅
+Ext.Level.ReleasePath(pathId)                    -- ✅
+Ext.Level.GetActivePathfindingRequests()         -- ✅
+Ext.Level.FindPath(pathId, [immediate])          -- ✅ (-1337 sentinel rejected)
+
+-- Still deferred (docs/deferrals.md)
+Ext.Level.GetTileDebugInfo(...)   -- ⛔ MinHeight/flag decoders unproven
+Ext.Level.BeginPathfinding(...)   -- ⛔ character path setup beyond CreatePath
 ```
 
 ### 9.3 Virtual Textures
@@ -1412,18 +1419,21 @@ Ext.Template.DumpStatus()                 -- Debug info
 Key discovery: Template GUID at +0x10 is a FixedString index, resolved via `fixed_string_resolve()`.
 
 ### 10.3 Ext.Localization API
-**Status:** ✅ Complete (Qedeshot swarm) - [Issue #39](https://github.com/tdimino/bg3se-macos/issues/39)
+**Status:** ✅ Complete — Windows baseline (2 functions) plus macOS additions - [Issue #39](https://github.com/tdimino/bg3se-macos/issues/39)
 
 ```lua
-local lang = Ext.Localization.GetLanguage()     -- ✅
-local handle = Ext.Localization.CreateHandle()   -- ✅ (Qedeshot)
+local lang = Ext.Localization.GetLanguage()                  -- ✅ (macOS addition)
+local handle = Ext.Localization.CreateHandle()               -- ✅ (Qedeshot; macOS addition)
+local text = Ext.Localization.GetTranslatedString(handle)    -- ✅ (Wave 3, live-verified)
+Ext.Localization.UpdateTranslatedString(handle, "new text")  -- ✅ (Wave 3, live-verified)
+-- Plus IsReady() and DumpInfo() diagnostics (macOS additions)
 ```
 
 ### 10.4 Ext.Audio API
-**Status:** ⚠️ Partial (13/17 functions) - [Issue #38](https://github.com/tdimino/bg3se-macos/issues/38)
+**Status:** ✅ 17/17 (100%) — bank management landed in Wave 3 via dlsym'd AK::SoundEngine exports
 
 ```lua
--- Implemented (13 functions)
+-- Implemented (17 functions)
 Ext.Audio.PostEvent(eventName, entity)       -- ✅
 Ext.Audio.Stop(soundId)                      -- ✅
 Ext.Audio.PauseAllSounds()                   -- ✅
@@ -1437,12 +1447,10 @@ Ext.Audio.LoadEvent(eventName)               -- ✅
 Ext.Audio.UnloadEvent(eventName)             -- ✅
 Ext.Audio.PlayExternalSound(path, entity)    -- ✅ (Qedeshot, STDString ABI)
 Ext.Audio.IsReady()                          -- ✅
-
--- Missing
-Ext.Audio.LoadBank(...)
-Ext.Audio.UnloadBank(...)
-Ext.Audio.PrepareBank(...)
-Ext.Audio.UnprepareBank(...)
+Ext.Audio.LoadBank(bankName)                 -- ✅ (Wave 3)
+Ext.Audio.UnloadBank(bankName)               -- ✅ (Wave 3)
+Ext.Audio.PrepareBank(bankName)              -- ✅ (Wave 3)
+Ext.Audio.UnprepareBank(bankName)            -- ✅ (Wave 3)
 ```
 
 ---
@@ -1512,7 +1520,7 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 
 | ID | Feature | Effort | Status |
 |----|---------|--------|--------|
-| C1 | Ext.Math Library | Medium | ⚠️ 57/59 (Smoothstep and IsNaN missing) |
+| C1 | Ext.Math Library | Medium | ✅ Complete — 59/59 (Smoothstep and IsNaN landed in Wave 3) |
 | C2 | Enum/Bitfield Objects | Medium | ✅ Complete (v0.26.0) |
 | C3 | Console Commands | Low | ✅ Complete |
 | C6 | Ext.Debug APIs | Low | ✅ Complete |
@@ -1525,9 +1533,9 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 |----|---------|--------|--------|-------|
 | D1 | Noesis UI (Ext.UI) | High | Excluded by decision; stub layer only | [#35](https://github.com/tdimino/bg3se-macos/issues/35) |
 | D2 | IMGUI Debug Overlay | High | ✅ Complete (v0.36.21) - All 40 widget types | [#36](https://github.com/tdimino/bg3se-macos/issues/36) |
-| D3 | Physics/Raycasting (Ext.Level) | High | ⚠️ 15/21 (71%, RaycastAll + 6 Sweep via Qedeshot); missing cylinder sweeps, tile queries/debug info, and pathfinding | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
-| D4 | Audio (Ext.Audio) | Medium | ⚠️ 13/17 (76%, PlayExternalSound re-enabled via STDString); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
-| D5 | Localization (Ext.Localization) | Low | ✅ Complete (GetLanguage + CreateHandle) | [#39](https://github.com/tdimino/bg3se-macos/issues/39) |
+| D3 | Physics/Raycasting (Ext.Level) | High | ✅ 20/25 engine-backed (80%); all 8 sweeps, tile queries, pathfinding suite; 5 deferrals (3 raycasts, GetTileDebugInfo, BeginPathfinding — docs/deferrals.md) | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
+| D4 | Audio (Ext.Audio) | Medium | ✅ Complete — 17/17 (100%); LoadBank/UnloadBank/PrepareBank/UnprepareBank via dlsym'd AK::SoundEngine exports (Wave 3) | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
+| D5 | Localization (Ext.Localization) | Low | ✅ Complete (GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString + IsReady/DumpInfo diagnostics) | [#39](https://github.com/tdimino/bg3se-macos/issues/39) |
 | D6 | Static Data (Ext.StaticData) | Medium | 🔶 Blocked by #44 | [#40](https://github.com/tdimino/bg3se-macos/issues/40) |
 | D7 | Resource/Template Management | Medium | ✅ Complete (v0.36.2) | [#41](https://github.com/tdimino/bg3se-macos/issues/41) |
 | D8 | VS Code Debugger | High | Deferred | [#42](https://github.com/tdimino/bg3se-macos/issues/42) |
@@ -1548,7 +1556,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.41.0 | 2026-07-30 | **Wave 3: Parity Closure B** — physics VMT dispatch repaired (9 wrong-by-1 indices vs the audited macOS vtable; RaycastClosest had been dispatching RemovePhysicsShape); sweep/overlap ABIs corrected, raycasts quarantined; five AiGrid pathfinding/tile APIs implemented from instruction-level RE (GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath, GetEntitiesOnTile); cylinder sweeps (VMT 14/18); Entity:CreateComponent via verified ComponentOps registry (EntityWorld+0x390, vptr slot 5); Ext.Math 59/59, Ext.Audio 17/17 (dlsym'd WWise banks), Ext.Types 13/15 (Serialize/Unserialize), Loca update round trip live-verified; refuted passive singleton replaced (eoc::Passives::m_ptr 0x1089bc228); deferral registry created (docs/deferrals.md). Live: tier 1 113/113, tier 2 93/93. 471 tests (55 C + 210 pytest + 113 Tier 1 + 93 Tier 2) |
+| v0.41.0 | 2026-07-30 | **Wave 3: Parity Closure B** — physics VMT dispatch repaired (9 wrong-by-1 indices vs the audited macOS vtable; RaycastClosest had been dispatching RemovePhysicsShape); sweep/overlap ABIs corrected, raycasts quarantined; five AiGrid pathfinding/tile APIs implemented from instruction-level RE (GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath, GetEntitiesOnTile); cylinder sweeps (VMT 14/18); Entity:CreateComponent via verified ComponentOps registry (EntityWorld+0x390, vptr slot 5); Ext.Math 59/59, Ext.Audio 17/17 (dlsym'd WWise banks), Ext.Types 13/15 (Serialize/Unserialize), Loca update round trip live-verified; refuted passive singleton replaced (eoc::Passives::m_ptr 0x1089bc228); deferral registry created (docs/deferrals.md). Live: tier 1 113/113, tier 2 93/93 at closeout. Four-lens review fix pass: SweepCylinderAll/GetEntitiesOnTile/GetActivePathfindingRequests return nil (not `{}`) when physics/AiGrid are unavailable, localization_ready hardened with safe_memory, per-reason/per-operation warn-once flags, 2 new Tier 2 tests. 473 tests (55 C + 210 pytest + 113 Tier 1 + 95 Tier 2) |
 | v0.40.0 | 2026-07-29 | **Wave 2: Parity Closure A** — component property writes real (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY, unknown-size layouts refused); ExecuteFunctor/BeforeDealDamage/DealDamage fire live (hidden `result_out` ABI fix across all 9 ExecuteStatsFunctors wrappers, verified 51/51 paired); TreasureTable/TreasureCategory reads + GetStatsLoadedMods real; spell/status prototype sync real (status VMT-copy-before-Init), passive/interrupt honestly false; functor-hook install count surfaced via `Ext.Debug.GetHookStatus`; review-pass hardening from four subagent audits. 429 tests (55 C + 191 pytest + 109 Tier 1 + 74 Tier 2) |
 | v0.39.0 | 2026-07-29 | **Community PR integration (PRs #91, #93, #95)** — per-version offset table + `port_offsets.py` (mikowals); Osiris DB Facts reader with name-index discovery, signature-typed Osi dispatch, per-mod `_ENV` sandbox + module cache + bare `require()`, GameStateChanged EnumValues, deferred IMGUI event queue, local in-process net transport (marcus-sa); four-agent review hardening; MCM vets as working. 385 tests (55 C + 154 pytest + 109 Tier 1 + 67 Tier 2) |
 | v0.38.1 | 2026-07-29 | **Community issue triage** — Folder-keyed SE mod detection with PAK-stem + Config.json-scan fallbacks (#87, #81); game-path discovery via `BG3SE_GAME_PATH` / libraryfolders.vdf (#90, #86); launch script injection sentinel (#84) |
@@ -1674,7 +1682,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | **#49 Ext.IO** | Path Overrides | ✅ **Complete** | 2 functions, pure C implementation |
-| **#47 Ext.Math** | Full Math Library | ⚠️ **57/59** | Smoothstep and IsNaN missing |
+| **#47 Ext.Math** | Full Math Library | ✅ **Complete (59/59)** | Smoothstep and IsNaN landed in Wave 3 |
 | **#50 Ext.Timer** | Persistent/Realtime | ✅ **Complete** | 20 functions, full timer system |
 | **#46 Context Docs** | API Annotations | ✅ **Complete** | Context column (B/S/C) added to all API tables |
 
@@ -1682,7 +1690,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | **#52 Components** | Coverage Expansion | **80%** | Tools ready: `extract_typeids.py` + stubs |
-| **#48 Ext.Types** | Full Reflection | ⚠️ **60%** | 9/15 functional; three stubs and three missing |
+| **#48 Ext.Types** | Full Reflection | ✅ **86.7%** | 13/15 functional; Construct and GetHashSetValueAt deferred (docs/deferrals.md) |
 | ~~#51 Ext.Events~~ | Engine Events | ✅ **DONE** | Hook game event dispatch |
 | ~~#53 Stats Functors~~ | ExecuteFunctors | ✅ **DONE** | Windows code portable |
 
@@ -1691,13 +1699,13 @@ See `agent_docs/acceleration.md` for detailed methodology |
 |-------|---------|--------------|---------------|
 | ~~#36~~ | IMGUI | ✅ DONE (v0.36.21) |
 | **#42 Debugger** | VS Code DAP | **Deferred** | Excluded from the supported macOS parity surface |
-| **#38 Audio** | WWise Audio | **45%** | WWise SDK documented |
+| **#38 Audio** | WWise Audio | ✅ **DONE (17/17)** | Bank management via dlsym'd AK::SoundEngine exports (Wave 3) |
 | ~~#7 IDE Types~~ | LuaLS Annotations | ✅ **DONE** | GenerateIdeHelpers API |
 
 **Complex Integrations (25-50% acceleration, 4+ weeks):**
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
-| **#37 Ext.Level** | Physics/Raycast | **71%** | 15 functions (RaycastAll + 6 Sweep via Qedeshot swarm) |
+| **#37 Ext.Level** | Physics/Raycast | **80%** | 20/25 engine-backed; all 8 sweeps + tile queries + pathfinding (Wave 3); 5 deferrals in docs/deferrals.md |
 | **#35 Ext.UI** | Noesis UI | **Excluded** | Compatibility stub layer only |
 
 **Completed:**
@@ -1749,7 +1757,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 | Order | Issue | Status | Why First |
 |-------|-------|--------|-----------|
 | 1 | **#49 Ext.IO** | ✅ Complete | 2 functions, pure C implementation |
-| 2 | **#47 Ext.Math** | ⚠️ 57/59 | Smoothstep and IsNaN missing |
+| 2 | **#47 Ext.Math** | ✅ Complete (59/59) | Smoothstep and IsNaN landed in Wave 3 |
 | 3 | **#50 Ext.Timer** | ✅ Complete | 20 functions, full timer system |
 | 4 | **#46 Context Docs** | ✅ Complete | Context annotations added to API docs |
 
@@ -1757,7 +1765,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 
 | Order | Issue | Acceleration | Why This Order |
 |-------|-------|--------------|----------------|
-| 5 | **#48 Ext.Types** | ⚠️ 9/15 (60%) | Three stubs and three missing |
+| 5 | **#48 Ext.Types** | ✅ 13/15 (86.7%) | Serialize/Unserialize real (Wave 3); Construct and GetHashSetValueAt deferred (docs/deferrals.md) |
 | 6 | ~~#51 Ext.Events~~ | ✅ Complete | Unlocks stat functors |
 | 7 | **#52 Components** | 80% | Accelerated workflow exists |
 | 8 | ~~#53 Stats Functors~~ | ✅ Complete | Needs #51 events |
@@ -1767,7 +1775,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 | Order | Issue | Acceleration | Why This Order |
 |-------|-------|--------------|----------------|
 | 9 | ~~#36 Ext.IMGUI~~ | ✅ Complete | All 40 widget types (v0.36.21) |
-| 10 | **#38 Ext.Audio** | 76% | 13/17; PlayExternalSound re-enabled (STDString ABI); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank |
+| 10 | **#38 Ext.Audio** | ✅ 100% | 17/17; bank management via dlsym'd AK::SoundEngine exports (Wave 3) |
 | 11 | **#42 Debugger** | Deferred | Excluded from the supported macOS parity surface |
 | 12 | ~~#7 IDE Types~~ | ✅ Complete | GenerateIdeHelpers API |
 
@@ -1775,18 +1783,18 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 
 | Order | Issue | Acceleration | Why Last |
 |-------|-------|--------------|----------|
-| 13 | **#37 Ext.Level** | 71% | 15/21 (RaycastAll + 6 Sweep); missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and pathfinding |
+| 13 | **#37 Ext.Level** | 80% | 20/25 engine-backed; all 8 sweeps + GetEntitiesOnTile + pathfinding suite (Wave 3); 5 deferrals in docs/deferrals.md |
 | 14 | **#35 Ext.UI** | Excluded | Compatibility stub layer only |
 | 15 | ~~#6 Ext.Net~~ | ⚠️ Phase 1 DONE | Phase 2-3 pending |
 
 **Quick-win status (as of v0.36.15):**
 1. ✅ **#49 Ext.IO** - 4 functions: LoadFile, SaveFile, AddPathOverride, GetPathOverride
-2. ⚠️ **#47 Ext.Math** - 57/59 functions; Smoothstep and IsNaN missing
+2. ✅ **#47 Ext.Math** - 59/59 functions; Smoothstep and IsNaN landed in Wave 3
 3. ✅ **#50 Ext.Timer** - 20 functions: core timers, time utilities, persistent timers
 4. ✅ **#46 Context Docs** - Context annotations (B/S/C) added to all API tables
 
 **Phase 2 core-expansion status (as of v0.36.16):**
-5. ⚠️ **#48 Ext.Types** - 9/15 functional (60%); Serialize/Unserialize/Construct are stubs, and GetValueType/GetHashSetValueAt/GetFunctionLocation are missing
+5. ✅ **#48 Ext.Types** - 13/15 functional (86.7%); Serialize/Unserialize real via component proxies (Wave 3); Construct and GetHashSetValueAt deferred (docs/deferrals.md)
 6. ✅ **#51 Ext.Events** - 32 engine events with priority/once/prevent patterns
 7. ✅ **#53 Stats Functors** - ExecuteFunctor/AfterExecuteFunctor for damage/heal hooks
 

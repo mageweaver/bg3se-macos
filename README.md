@@ -137,11 +137,11 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 55 C (Tier 0) + 210 pytest (Tier H) + 113 `!test` (Tier 1) + 93 `!test_ingame` (Tier 2) = **471 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 210 pytest (Tier H) + 113 `!test` (Tier 1) + 95 `!test_ingame` (Tier 2) = **473 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
-[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (Init layouts unverified for build 7209685, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
-[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:1134-1136`). `entity:Replicate()` is a no-op. Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
+[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`; evidence in `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
+[^entity-stubs]: EnableTracing, DisableTracing, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c`); `entity:Replicate()` is a no-op. GetAllEntities, GetAllEntitiesWithComponent, and GetAllComponents are real server-world archetype walks (Wave 3). `entity:CreateComponent` dispatches through the verified ComponentOps registry; `entity:RemoveComponent` returns false (734 per-type templates, no generic entry point — `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
 
 See [ROADMAP.md](ROADMAP.md) for detailed progress.
 

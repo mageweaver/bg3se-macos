@@ -294,6 +294,17 @@ typedef void (*WwiseStopFn)(void *this_, uint64_t sound_object);
 typedef void (*WwisePauseAllFn)(void *this_);
 typedef void (*WwiseResumeAllFn)(void *this_);
 
+/* Each expansion gets its own static flag, so every failure site warns once
+ * independently instead of returning false with no trace. */
+#define AUDIO_WARN_ONCE(...) \
+    do { \
+        static bool warned_once_ = false; \
+        if (!warned_once_) { \
+            log_message(__VA_ARGS__); \
+            warned_once_ = true; \
+        } \
+    } while (0)
+
 bool audio_post_event(uint64_t sound_object_id, const char *event_name) {
     if (!event_name) return false;
 
@@ -316,10 +327,16 @@ bool audio_post_event(uint64_t sound_object_id, const char *event_name) {
 
 bool audio_stop(uint64_t sound_object_id) {
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] Stop refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_STOP);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] Stop refused: VMT entry not found");
+        return false;
+    }
 
     WwiseStopFn stop = (WwiseStopFn)func;
     stop(sm, sound_object_id);
@@ -328,10 +345,16 @@ bool audio_stop(uint64_t sound_object_id) {
 
 bool audio_pause_all(void) {
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] PauseAllSounds refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_PAUSE_ALL);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] PauseAllSounds refused: VMT entry not found");
+        return false;
+    }
 
     WwisePauseAllFn pause = (WwisePauseAllFn)func;
     pause(sm);
@@ -340,10 +363,16 @@ bool audio_pause_all(void) {
 
 bool audio_resume_all(void) {
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] ResumeAllSounds refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_RESUME_ALL);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] ResumeAllSounds refused: VMT entry not found");
+        return false;
+    }
 
     WwiseResumeAllFn resume = (WwiseResumeAllFn)func;
     resume(sm);
@@ -362,10 +391,16 @@ bool audio_set_switch(uint64_t sound_object_id, const char *switch_group, const 
     if (!switch_group || !state) return false;
 
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] SetSwitch refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_SET_SWITCH);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] SetSwitch refused: VMT entry not found");
+        return false;
+    }
 
     WwiseSetSwitchFn set_switch = (WwiseSetSwitchFn)func;
     set_switch(sm, sound_object_id, switch_group, state);
@@ -376,10 +411,16 @@ bool audio_set_state(const char *state_group, const char *state) {
     if (!state_group || !state) return false;
 
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] SetState refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_SET_STATE);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] SetState refused: VMT entry not found");
+        return false;
+    }
 
     WwiseSetStateFn set_state = (WwiseSetStateFn)func;
     set_state(sm, state_group, state);
@@ -399,10 +440,16 @@ bool audio_set_rtpc(uint64_t sound_object_id, const char *name, float value) {
     if (!name) return false;
 
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] SetRTPC refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_SET_RTPC);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] SetRTPC refused: VMT entry not found");
+        return false;
+    }
 
     WwiseSetRtpcFn set = (WwiseSetRtpcFn)func;
     set(sm, sound_object_id, name, value);
@@ -413,10 +460,16 @@ float audio_get_rtpc(uint64_t sound_object_id, const char *name) {
     if (!name) return 0.0f;
 
     void *sm = get_sound_manager();
-    if (!sm) return 0.0f;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] GetRTPC returning 0: SoundManager not available");
+        return 0.0f;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_GET_RTPC);
-    if (!func) return 0.0f;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] GetRTPC returning 0: VMT entry not found");
+        return 0.0f;
+    }
 
     WwiseGetRtpcFn get = (WwiseGetRtpcFn)func;
     return get(sm, sound_object_id, name);
@@ -426,10 +479,16 @@ bool audio_reset_rtpc(uint64_t sound_object_id, const char *name) {
     if (!name) return false;
 
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] ResetRTPC refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_RESET_RTPC);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] ResetRTPC refused: VMT entry not found");
+        return false;
+    }
 
     WwiseResetRtpcFn reset = (WwiseResetRtpcFn)func;
     reset(sm, sound_object_id, name);
@@ -447,10 +506,16 @@ bool audio_load_event(const char *event_name) {
     if (!event_name) return false;
 
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] LoadEvent refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_LOAD_EVENT);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] LoadEvent refused: VMT entry not found");
+        return false;
+    }
 
     WwiseLoadEventFn load = (WwiseLoadEventFn)func;
     load(sm, event_name);
@@ -461,10 +526,16 @@ bool audio_unload_event(const char *event_name) {
     if (!event_name) return false;
 
     void *sm = get_sound_manager();
-    if (!sm) return false;
+    if (!sm) {
+        AUDIO_WARN_ONCE("[Audio] UnloadEvent refused: SoundManager not available");
+        return false;
+    }
 
     void *func = read_vmt_entry(sm, WWISE_VMT_UNLOAD_EVENT);
-    if (!func) return false;
+    if (!func) {
+        AUDIO_WARN_ONCE("[Audio] UnloadEvent refused: VMT entry not found");
+        return false;
+    }
 
     WwiseUnloadEventFn unload = (WwiseUnloadEventFn)func;
     unload(sm, event_name);
@@ -560,16 +631,25 @@ static bool bank_id_valid(uint32_t bank_id) {
 }
 
 static bool require_bank_api(const char *operation) {
-    static bool warned = false;
     if (bank_api_ready()) {
         return true;
     }
 
-    if (!warned) {
-        log_message("[Audio] %s deferred: exported Wwise bank entry points are unavailable",
-                    operation);
-        warned = true;
+    /* Warn once per operation (callers pass string literals), so an early
+     * LoadBank warning does not silence the first UnloadBank/PrepareBank
+     * refusal. */
+    static const char *warned_ops[4];
+    static int warned_count = 0;
+    for (int i = 0; i < warned_count; i++) {
+        if (warned_ops[i] == operation) {
+            return false;
+        }
     }
+    if (warned_count < 4) {
+        warned_ops[warned_count++] = operation;
+    }
+    log_message("[Audio] %s deferred: exported Wwise bank entry points are unavailable",
+                operation);
     return false;
 }
 

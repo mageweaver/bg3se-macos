@@ -69,14 +69,38 @@ Each entry includes:
 - Passive/interrupt prototype sync — loader-inlined population, no top-level
   vptr (VMT-copy would corrupt).
 
+### Review fix pass (four-lens subagent review of the Wave 3 span)
+- **Fail-closed contracts** — `SweepCylinderAll`, `GetEntitiesOnTile`, and
+  `GetActivePathfindingRequests` now return `nil` when the physics scene or
+  AiGrid is unavailable instead of a truthy empty table, matching the other
+  SweepAll bindings; "system offline" is now distinguishable from "no results".
+- **`localization_ready` hardened** — the repository global is read through
+  `safe_memory_read_pointer` like every other singleton accessor, so a bad
+  data-shift on a future game update returns false instead of faulting.
+- **Warn-once hygiene** — `CreateComponent` warns once per distinct guard
+  (not once globally across its seven reasons); the Wwise bank gate warns once
+  per operation; `GetNetId`, the pre-discovery component walkers, eight silent
+  audio controls, and localization's subsystem-offline fallback all log a
+  warn-once instead of failing silently.
+- **parity.py** — timeout errors now distinguish "file never written" from
+  "file written but never parsed cleanly" (reports the last JSON error).
+- **Tests** — 2 new Tier 2 tests: `Wave3.Level.PathLookupLiveDispatch`
+  (exercises `GetPathById` on a real path ID when active requests exist) and
+  `Wave3.Audio.BankDispatchSmoke` (drives the dlsym'd `PrepareBank` dispatch);
+  `ComponentEnumeration` threshold raised from >0 to >10 component names.
+
 ### Technical
-- Test suite: 471 total (55 tier 0 C, 210 pytest, 113 tier 1, 93 tier 2).
-- Live validation on build 7209685: tier 1 113/113, tier 2 93/93; physics
-  smoke returns real geometry; paired damage-event firing re-verified via
-  Fire Bolt functor.
+- Test suite: 473 total (55 tier 0 C, 210 pytest, 113 tier 1, 95 tier 2).
+- Live validation on build 7209685: tier 1 113/113, tier 2 93/93 at Wave 3
+  closeout; physics smoke returns real geometry; paired damage-event firing
+  re-verified via Fire Bolt functor.
 - Offline vtable regression guard derives the ARM64 fat-slice offset from the
   Mach-O fat header (drifted 0xf534000 → 0xf558000 on this build) and joins
   every `PHYSICS_VMT_*` constant to its named symbol.
+- Known coverage limits (documented, not silent): the successful native
+  dispatch of `CreateComponent` and `FindPath`'s immediate branch have no
+  repeatable regression test — both were live-verified once during Wave 3
+  validation but need a game fixture that safely creates state.
 
 ---
 

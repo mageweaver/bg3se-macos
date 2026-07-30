@@ -546,8 +546,13 @@ static int lua_level_sweep_cylinder_all(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
     int context            = (int)luaL_optinteger(L, 7, 0);
     LevelPhysicsHitAll hits;
-    level_sweep_cylinder_all(src, dst, extents, &hits,
-                              phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_cylinder_all(src, dst, extents, &hits,
+                                           phys_type, include_group,
+                                           exclude_group, context);
+    if (!found) {
+        lua_pushnil(L);
+        return 1;
+    }
     return push_hit_all(L, &hits);
 }
 
@@ -587,8 +592,12 @@ static int lua_level_get_entities_on_tile(lua_State *L) {
 
     uint64_t *handles = NULL;
     size_t handle_count = 0;
-    (void)level_aigrid_get_entities_on_tile(
-        world_pos, &handles, &handle_count);
+    if (!level_aigrid_get_entities_on_tile(
+            world_pos, &handles, &handle_count)) {
+        /* Grid unavailable is distinct from an empty tile: return nil. */
+        lua_pushnil(L);
+        return 1;
+    }
 
     lua_newtable(L);
     for (size_t i = 0; i < handle_count; i++) {
@@ -672,8 +681,12 @@ static int lua_level_get_path_by_id(lua_State *L) {
 static int lua_level_get_active_pathfinding_requests(lua_State *L) {
     LevelAiPathState *states = NULL;
     size_t state_count = 0;
-    (void)level_aigrid_get_active_pathfinding_requests(
-        &states, &state_count);
+    if (!level_aigrid_get_active_pathfinding_requests(
+            &states, &state_count)) {
+        /* Grid unavailable is distinct from no active requests: return nil. */
+        lua_pushnil(L);
+        return 1;
+    }
 
     lua_newtable(L);
     for (size_t i = 0; i < state_count; i++) {
