@@ -1,71 +1,58 @@
 {
-  "task": "Wave 3 Goal 3.2: close small parity gaps across Ext.Math, Ext.Audio, Ext.Types, Ext.Localization, and Ext.Entity",
+  "task": "Wave 3 Builder E: repair macOS ARM64 PhysXScene VMT dispatch",
   "status": "done",
-  "started_at": "2026-07-30T03:11:46Z",
+  "started_at": "2026-07-30T04:00:00Z",
   "features": [
     {
-      "name": "Ext.Math Smoothstep and IsNaN",
+      "name": "Audited VMT constant and comment corrections",
       "status": "completed",
       "files": [
-        "src/math/lua_math.c",
+        "src/level/level_manager.c"
+      ],
+      "completed_at": "2026-07-30"
+    },
+    {
+      "name": "ARM64 ABI repairs and fail-closed Lua quarantines",
+      "status": "completed",
+      "files": [
+        "src/level/level_manager.c",
+        "src/level/level_manager.h",
+        "src/lua/lua_level.c",
         "src/lua/lua_ext.c"
       ],
-      "started_at": "2026-07-30T03:11:46Z",
-      "completed_at": "2026-07-30T03:32:23Z"
+      "completed_at": "2026-07-30"
     },
     {
-      "name": "Ext.Audio bank management",
+      "name": "Offline Mach-O PhysXScene vtable regression test",
       "status": "completed",
       "files": [
-        "src/audio/audio_manager.c",
-        "src/lua/lua_audio.c"
+        "tests/harness/test_physics_vmt_audit.py"
       ],
-      "completed_at": "2026-07-30T03:32:23Z"
+      "completed_at": "2026-07-30"
     },
     {
-      "name": "Ext.Types serialization and remaining gaps",
+      "name": "Clean build and regression gates",
       "status": "completed",
-      "files": [
-        "src/lua/lua_ext.c",
-        "src/entity/component_property.c",
-        "src/entity/component_property.h"
-      ],
-      "completed_at": "2026-07-30T03:32:23Z"
+      "files": [],
+      "completed_at": "2026-07-30T04:34:46Z"
     },
     {
-      "name": "Ext.Localization translation access",
+      "name": "Builder E handoff report",
       "status": "completed",
       "files": [
-        "src/localization/localization.c",
-        "src/lua/lua_localization.c"
+        "docs/bugs/wave3-builder-e-physics-vmt-report.md"
       ],
-      "completed_at": "2026-07-30T03:32:23Z"
-    },
-    {
-      "name": "Ext.Entity enumeration and tier-2 gap investigation",
-      "status": "completed",
-      "files": [
-        "src/entity/entity_system.c",
-        "src/injector/main.c",
-        "src/lua/lua_ext.c"
-      ],
-      "completed_at": "2026-07-30T03:32:23Z"
-    },
-    {
-      "name": "Offline verification and sweep report",
-      "status": "completed",
-      "files": [
-        "docs/bugs/wave3-builder-b-sweep-report.md"
-      ],
-      "completed_at": "2026-07-30T03:32:23Z"
+      "completed_at": "2026-07-30T04:34:46Z"
     }
   ],
   "verification": {
     "build": true,
+    "build_result": "clean universal ARM64/x86_64 build passed",
     "tier0": true,
     "tier0_result": "55/55 passed",
     "harness": true,
-    "harness_result": "194 passed (191 baseline plus 3 concurrent Wave 3 audit tests)"
+    "harness_result": "199 passed",
+    "diff_check": true
   },
-  "completed_at": "2026-07-30T03:32:23Z"
+  "completed_at": "2026-07-30T04:34:46Z"
 }

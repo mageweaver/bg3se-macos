@@ -77,8 +77,8 @@ typedef struct {
 // ============================================================================
 
 /**
- * Cast a ray and return the closest hit.
- * @return true if hit found
+ * Fail-closed internal shim. The macOS ABI is quarantined at the Lua binding
+ * until the trailing ls::Function parameter can be constructed safely.
  */
 bool level_raycast_closest(const float src[3], const float dst[3],
                            LevelPhysicsHit *hit,
@@ -88,9 +88,7 @@ bool level_raycast_closest(const float src[3], const float dst[3],
                            int context);
 
 /**
- * Cast a ray and return all hits.
- * @param out Pre-zeroed LevelPhysicsHitAll; inner arrays are game-owned, do not free.
- * @return true if any hits found (out->normals_size > 0)
+ * Fail-closed internal shim. The macOS optional read-lock ABI is not proven.
  */
 bool level_raycast_all(const float src[3], const float dst[3],
                        LevelPhysicsHitAll *out,
@@ -100,7 +98,7 @@ bool level_raycast_all(const float src[3], const float dst[3],
                        int context);
 
 /**
- * Cast a ray and check if anything is hit (boolean).
+ * Fail-closed internal shim. The macOS optional read-lock ABI is not proven.
  */
 bool level_raycast_any(const float src[3], const float dst[3],
                        uint32_t physics_type,
@@ -185,17 +183,21 @@ bool level_sweep_cylinder_all(const float src[3], const float dst[3],
                                int context);
 
 /**
- * Test if a box overlaps any physics objects.
+ * Test a box and populate the caller-owned PhysicsHitAll view.
+ * @return true when the engine produced overlap results
  */
 bool level_test_box(const float pos[3], const float extents[3],
+                    LevelPhysicsHitAll *out,
                     uint32_t physics_type,
                     uint32_t include_group,
                     uint32_t exclude_group);
 
 /**
- * Test if a sphere overlaps any physics objects.
+ * Test a sphere and populate the caller-owned PhysicsHitAll view.
+ * @return true when the engine produced overlap results
  */
 bool level_test_sphere(const float pos[3], float radius,
+                       LevelPhysicsHitAll *out,
                        uint32_t physics_type,
                        uint32_t include_group,
                        uint32_t exclude_group);

@@ -8,11 +8,9 @@
  *   Ext.Level.GetPhysicsScene() - Get physics scene pointer (or nil)
  *   Ext.Level.GetAiGrid() - Get AI grid pointer (or nil)
  *   Ext.Level.IsReady() - Check if LevelManager is available
- *   Ext.Level.RaycastClosest(src, dst, physType, includeGroup, excludeGroup, context) -> hit table or nil
- *   Ext.Level.RaycastAll(src, dst, physType, includeGroup, excludeGroup, context) -> array of hit tables
- *   Ext.Level.RaycastAny(src, dst, physType, includeGroup, excludeGroup, context) -> boolean
- *   Ext.Level.TestBox(pos, extents, physType, includeGroup, excludeGroup) -> boolean
- *   Ext.Level.TestSphere(pos, radius, physType, includeGroup, excludeGroup) -> boolean
+ *   Raycasts are explicit warn-once ABI deferrals.
+ *   Ext.Level.TestBox(pos, extents, physType, includeGroup, excludeGroup) -> hit array or nil
+ *   Ext.Level.TestSphere(pos, radius, physType, includeGroup, excludeGroup) -> hit array or nil
  *   Ext.Level.SweepCylinderClosest(src, dst, extents, ...) -> hit table or nil
  *   Ext.Level.SweepCylinderAll(src, dst, extents, ...) -> array of hit tables
  *   Ext.Level.GetHeightsAt(x, z) -> array of heights
@@ -30,6 +28,15 @@
 /* Forward declarations for shared hit-result helpers */
 static int push_hit_or_nil(lua_State *L, bool found, const LevelPhysicsHit *hit);
 static int push_hit_all(lua_State *L, const LevelPhysicsHitAll *hits);
+
+static void warn_deferred_once(bool *warned, const char *name,
+                               const char *reason) {
+    if (!*warned) {
+        log_message("[Level] WARN: Ext.Level.%s is deferred on macOS: %s",
+                    name, reason);
+        *warned = true;
+    }
+}
 
 // ============================================================================
 // Helper: Read vec3 from Lua table at stack index
@@ -116,55 +123,12 @@ static int lua_level_get_aigrid(lua_State *L) {
  *   Returns: hit table {Normal={x,y,z}, Position={x,y,z}, Distance=n, PhysicsGroup=n} or nil
  */
 static int lua_level_raycast_closest(lua_State *L) {
-    float src[3], dst[3];
-
-    if (!read_vec3(L, 1, src)) {
-        return luaL_error(L, "Ext.Level.RaycastClosest: src must be a {x,y,z} table");
-    }
-    if (!read_vec3(L, 2, dst)) {
-        return luaL_error(L, "Ext.Level.RaycastClosest: dst must be a {x,y,z} table");
-    }
-
-    uint32_t phys_type = (uint32_t)luaL_optinteger(L, 3, 1);
-    uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
-    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
-    int context = (int)luaL_optinteger(L, 6, 0);
-
-    LevelPhysicsHit hit;
-    bool found = level_raycast_closest(src, dst, &hit, phys_type, include_group, exclude_group, context);
-
-    if (!found) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    // Build result table
-    lua_newtable(L);
-
-    // Normal = {x, y, z}
-    lua_newtable(L);
-    for (int i = 0; i < 3; i++) {
-        lua_pushnumber(L, hit.normal[i]);
-        lua_rawseti(L, -2, i + 1);
-    }
-    lua_setfield(L, -2, "Normal");
-
-    // Position = {x, y, z}
-    lua_newtable(L);
-    for (int i = 0; i < 3; i++) {
-        lua_pushnumber(L, hit.position[i]);
-        lua_rawseti(L, -2, i + 1);
-    }
-    lua_setfield(L, -2, "Position");
-
-    // Distance
-    lua_pushnumber(L, hit.distance);
-    lua_setfield(L, -2, "Distance");
-
-    // PhysicsGroup
-    lua_pushinteger(L, hit.physics_group);
-    lua_setfield(L, -2, "PhysicsGroup");
-
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "RaycastClosest",
+        "the audited ARM64 signature requires an ls::Function filter whose "
+        "C representation and ownership are not verified; returning nil");
+    lua_pushnil(L);
     return 1;
 }
 
@@ -180,23 +144,13 @@ static int lua_level_raycast_closest(lua_State *L) {
  *            or empty table if no hits
  */
 static int lua_level_raycast_all(lua_State *L) {
-    float src[3], dst[3];
-
-    if (!read_vec3(L, 1, src)) {
-        return luaL_error(L, "Ext.Level.RaycastAll: src must be a {x,y,z} table");
-    }
-    if (!read_vec3(L, 2, dst)) {
-        return luaL_error(L, "Ext.Level.RaycastAll: dst must be a {x,y,z} table");
-    }
-
-    uint32_t phys_type    = (uint32_t)luaL_optinteger(L, 3, 1);
-    uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
-    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
-    int context           = (int)luaL_optinteger(L, 6, 0);
-
-    LevelPhysicsHitAll hits;
-    level_raycast_all(src, dst, &hits, phys_type, include_group, exclude_group, context);
-    return push_hit_all(L, &hits);
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "RaycastAll",
+        "the audited ARM64 trailing optional read-lock value cannot be "
+        "constructed safely from C; returning nil");
+    lua_pushnil(L);
+    return 1;
 }
 
 /**
@@ -204,22 +158,12 @@ static int lua_level_raycast_all(lua_State *L) {
  *   Returns: boolean (true if any hit)
  */
 static int lua_level_raycast_any(lua_State *L) {
-    float src[3], dst[3];
-
-    if (!read_vec3(L, 1, src)) {
-        return luaL_error(L, "Ext.Level.RaycastAny: src must be a {x,y,z} table");
-    }
-    if (!read_vec3(L, 2, dst)) {
-        return luaL_error(L, "Ext.Level.RaycastAny: dst must be a {x,y,z} table");
-    }
-
-    uint32_t phys_type = (uint32_t)luaL_optinteger(L, 3, 1);
-    uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
-    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
-    int context = (int)luaL_optinteger(L, 6, 0);
-
-    bool hit = level_raycast_any(src, dst, phys_type, include_group, exclude_group, context);
-    lua_pushboolean(L, hit);
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "RaycastAny",
+        "the complete audited ARM64 trailing argument ABI is not proven; "
+        "returning false");
+    lua_pushboolean(L, 0);
     return 1;
 }
 
@@ -227,7 +171,7 @@ static int lua_level_raycast_any(lua_State *L) {
  * Ext.Level.TestBox(pos, extents, physType, includeGroup, excludeGroup)
  *   pos: {x, y, z} table (center position)
  *   extents: {x, y, z} table (half-extents)
- *   Returns: boolean
+ *   Returns: array of overlap hit tables, or nil when there are no overlaps
  */
 static int lua_level_test_box(lua_State *L) {
     float pos[3], extents[3];
@@ -243,16 +187,21 @@ static int lua_level_test_box(lua_State *L) {
     uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
 
-    bool overlap = level_test_box(pos, extents, phys_type, include_group, exclude_group);
-    lua_pushboolean(L, overlap);
-    return 1;
+    LevelPhysicsHitAll hits;
+    bool overlap = level_test_box(pos, extents, &hits,
+                                  phys_type, include_group, exclude_group);
+    if (!overlap) {
+        lua_pushnil(L);
+        return 1;
+    }
+    return push_hit_all(L, &hits);
 }
 
 /**
  * Ext.Level.TestSphere(pos, radius, physType, includeGroup, excludeGroup)
  *   pos: {x, y, z} table (center position)
  *   radius: number
- *   Returns: boolean
+ *   Returns: array of overlap hit tables, or nil when there are no overlaps
  */
 static int lua_level_test_sphere(lua_State *L) {
     float pos[3];
@@ -266,9 +215,14 @@ static int lua_level_test_sphere(lua_State *L) {
     uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
 
-    bool overlap = level_test_sphere(pos, radius, phys_type, include_group, exclude_group);
-    lua_pushboolean(L, overlap);
-    return 1;
+    LevelPhysicsHitAll hits;
+    bool overlap = level_test_sphere(pos, radius, &hits,
+                                     phys_type, include_group, exclude_group);
+    if (!overlap) {
+        lua_pushnil(L);
+        return 1;
+    }
+    return push_hit_all(L, &hits);
 }
 
 // ============================================================================
@@ -361,8 +315,9 @@ static int lua_level_sweep_sphere_closest(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
     int context            = (int)luaL_optinteger(L, 7, 0);
     LevelPhysicsHit hit;
-    bool found = level_sweep_sphere_closest(src, dst, radius, &hit,
-                                             phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_sphere_closest(
+        src, dst, radius, &hit,
+        phys_type, include_group, exclude_group, context);
     return push_hit_or_nil(L, found, &hit);
 }
 
@@ -380,8 +335,13 @@ static int lua_level_sweep_sphere_all(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
     int context            = (int)luaL_optinteger(L, 7, 0);
     LevelPhysicsHitAll hits;
-    level_sweep_sphere_all(src, dst, radius, &hits,
-                            phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_sphere_all(
+        src, dst, radius, &hits,
+        phys_type, include_group, exclude_group, context);
+    if (!found) {
+        lua_pushnil(L);
+        return 1;
+    }
     return push_hit_all(L, &hits);
 }
 
@@ -400,8 +360,9 @@ static int lua_level_sweep_capsule_closest(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 7, 0);
     int context            = (int)luaL_optinteger(L, 8, 0);
     LevelPhysicsHit hit;
-    bool found = level_sweep_capsule_closest(src, dst, radius, half_height, &hit,
-                                              phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_capsule_closest(
+        src, dst, radius, half_height, &hit,
+        phys_type, include_group, exclude_group, context);
     return push_hit_or_nil(L, found, &hit);
 }
 
@@ -420,8 +381,13 @@ static int lua_level_sweep_capsule_all(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 7, 0);
     int context            = (int)luaL_optinteger(L, 8, 0);
     LevelPhysicsHitAll hits;
-    level_sweep_capsule_all(src, dst, radius, half_height, &hits,
-                             phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_capsule_all(
+        src, dst, radius, half_height, &hits,
+        phys_type, include_group, exclude_group, context);
+    if (!found) {
+        lua_pushnil(L);
+        return 1;
+    }
     return push_hit_all(L, &hits);
 }
 
@@ -440,8 +406,9 @@ static int lua_level_sweep_box_closest(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
     int context            = (int)luaL_optinteger(L, 7, 0);
     LevelPhysicsHit hit;
-    bool found = level_sweep_box_closest(src, dst, extents, &hit,
-                                          phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_box_closest(
+        src, dst, extents, &hit,
+        phys_type, include_group, exclude_group, context);
     return push_hit_or_nil(L, found, &hit);
 }
 
@@ -460,8 +427,13 @@ static int lua_level_sweep_box_all(lua_State *L) {
     uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
     int context            = (int)luaL_optinteger(L, 7, 0);
     LevelPhysicsHitAll hits;
-    level_sweep_box_all(src, dst, extents, &hits,
-                         phys_type, include_group, exclude_group, context);
+    bool found = level_sweep_box_all(
+        src, dst, extents, &hits,
+        phys_type, include_group, exclude_group, context);
+    if (!found) {
+        lua_pushnil(L);
+        return 1;
+    }
     return push_hit_all(L, &hits);
 }
 
@@ -534,15 +506,6 @@ static int lua_level_get_heights_at(lua_State *L) {
 // ============================================================================
 // Deferred AiGrid Tile and Pathfinding APIs
 // ============================================================================
-
-static void warn_deferred_once(bool *warned, const char *name,
-                               const char *reason) {
-    if (!*warned) {
-        log_message("[Level] WARN: Ext.Level.%s is deferred on macOS: %s",
-                    name, reason);
-        *warned = true;
-    }
-}
 
 static int lua_level_get_entities_on_tile(lua_State *L) {
     static bool warned = false;
