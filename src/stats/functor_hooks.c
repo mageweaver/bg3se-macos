@@ -32,6 +32,8 @@
 
 static lua_State* g_LuaState = NULL;
 static bool g_HooksInstalled = false;
+#define FUNCTOR_HOOK_TARGET_COUNT 10
+static int g_InstalledCount = 0;
 static uint64_t g_EventCount = 0;
 
 // Original function pointers (saved by Dobby)
@@ -391,9 +393,23 @@ bool functor_hooks_init(lua_State* L) {
     }
 
     g_HooksInstalled = (success_count > 0);
-    LOG_HOOKS_INFO("Functor hooks: %d/10 installed", success_count);
+    g_InstalledCount = success_count;
+    if (success_count > 0 && success_count < FUNCTOR_HOOK_TARGET_COUNT) {
+        // Partial installs break paired event semantics silently (a missing
+        // ProcessDealDamageFunctors hook means BeforeDealDamage/DealDamage
+        // never fire despite successful subscriptions) — make it loud.
+        LOG_HOOKS_ERROR("Functor hooks PARTIAL install: %d/%d — some functor "
+                        "contexts will not fire events",
+                        success_count, FUNCTOR_HOOK_TARGET_COUNT);
+    }
+    LOG_HOOKS_INFO("Functor hooks: %d/%d installed", success_count,
+                   FUNCTOR_HOOK_TARGET_COUNT);
 
     return g_HooksInstalled;
+}
+
+int functor_hooks_get_installed_count(void) {
+    return g_InstalledCount;
 }
 
 void functor_hooks_shutdown(void) {
@@ -414,6 +430,7 @@ void functor_hooks_shutdown(void) {
     g_OrigProcessDealDamage = NULL;
 
     g_HooksInstalled = false;
+    g_InstalledCount = 0;
     g_LuaState = NULL;
 }
 

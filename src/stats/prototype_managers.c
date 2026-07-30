@@ -762,6 +762,23 @@ bool sync_status_prototype(StatsObjectPtr obj, const char *name) {
         return false;
     }
 
+    // Copy the VMT from an existing prototype before calling Init — Init may
+    // dispatch through the vtable, and calloc leaves it NULL (the spell path
+    // does the same via its Projectile_FireBolt template).
+    uint32_t template_fs = fixed_string_intern("BURNING", -1);
+    void *template_prototype = (template_fs != FS_NULL_INDEX)
+        ? refmap_lookup(manager, template_fs) : NULL;
+    void *vmt_ptr = NULL;
+    if (!template_prototype || !safe_read_ptr(template_prototype, &vmt_ptr) ||
+        !vmt_ptr) {
+        LOG_STATS_DEBUG("[PrototypeManagers]   No template StatusPrototype to "
+                        "source a VMT for '%s' — refusing Init on NULL vtable",
+                        name);
+        free(new_prototype);
+        return false;
+    }
+    safe_write_ptr(new_prototype, vmt_ptr);
+
     int32_t slot = refmap_insert(manager, fs_key, new_prototype);
     if (slot < 0) {
         free(new_prototype);
@@ -796,21 +813,19 @@ bool sync_passive_prototype(StatsObjectPtr obj, const char *name) {
 bool sync_interrupt_prototype(StatsObjectPtr obj, const char *name) {
     if (!obj || !name) return false;
 
-    void *manager = get_interrupt_prototype_manager();
-    if (!manager) {
-        LOG_STATS_DEBUG("[PrototypeManagers] sync_interrupt_prototype: Manager not accessible for '%s'", name);
-        return false;
+    // InterruptPrototype is ~0x160+ bytes (destructor analysis: arrays at
+    // 0xC0/0xD0/0xF0/0x110/0x120), but no InterruptPrototype::Init layout has
+    // been verified for 4.1.1.7209685. Allocating/inserting a half-initialized
+    // prototype would corrupt the manager, so fail honestly (same policy as
+    // sync_passive_prototype).
+    static bool warned = false;
+    if (!warned) {
+        LOG_STATS_WARN("[PrototypeManagers] InterruptPrototype sync disabled: "
+                       "InterruptPrototype::Init layout is unverified for "
+                       "4.1.1.7209685");
+        warned = true;
     }
-
-    LOG_STATS_DEBUG("[PrototypeManagers] sync_interrupt_prototype: Manager found at %p for '%s'", manager, name);
-
-    // From destructor analysis, InterruptPrototype is ~0x160+ bytes
-    // Structure includes multiple arrays at offsets 0xC0, 0xD0, 0xF0, 0x110, 0x120
-
-    LOG_STATS_DEBUG("[PrototypeManagers]   InterruptPrototype struct is ~0x160+ bytes");
-    LOG_STATS_DEBUG("[PrototypeManagers]   TODO: Allocate and populate prototype, insert into manager");
-
-    return true;
+    return false;
 }
 
 // ============================================================================

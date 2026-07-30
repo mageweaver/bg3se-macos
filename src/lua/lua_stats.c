@@ -1186,13 +1186,11 @@ static int lua_stats_get_stats_loaded_before(lua_State *L) {
     }
 
     if (last_index < 0) {
-        static bool warned_missing_mod = false;
-        if (!warned_missing_mod) {
-            LOG_STATS_WARN("Ext.Stats.GetStatsLoadedBefore(): requested module "
-                           "'%s' is not present in modsettings load order",
-                           mod_id);
-            warned_missing_mod = true;
-        }
+        // No one-shot gate: each missing mod_id is a distinct misconfiguration
+        // worth its own WARN (a single static bool would hide the second one).
+        LOG_STATS_WARN("Ext.Stats.GetStatsLoadedBefore(): requested module "
+                       "'%s' is not present in modsettings load order",
+                       mod_id);
     }
 
     push_stats_loaded_mods(L, last_index);

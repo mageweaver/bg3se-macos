@@ -462,10 +462,14 @@ static bool component_property_is_pointer_typed(const ComponentPropertyDef *prop
 static bool component_property_bounds_valid(const ComponentLayoutDef *layout,
                                             const ComponentPropertyDef *prop,
                                             size_t fieldSize) {
-    if (layout->generated && layout->componentSize == 0) {
+    /* Unknown component size means no boundary to validate against — refuse
+     * writes for verified layouts too, not just generated ones, or a size-0
+     * verified layout would let writes past the component silently corrupt
+     * adjacent ECS memory. */
+    if (layout->componentSize == 0) {
         LOG_ENTITY_DEBUG(
-            "Refusing component write: generated layout %s has unknown size",
-            layout->componentName);
+            "Refusing component write: layout %s has unknown size%s",
+            layout->componentName, layout->generated ? " (generated)" : "");
         return false;
     }
 

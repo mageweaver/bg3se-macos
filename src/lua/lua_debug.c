@@ -783,6 +783,7 @@ static int lua_debug_reset(lua_State *L) {
 
 extern int bg3se_get_hook_count(void);
 extern int bg3se_get_hooks_fired(void);
+extern int functor_hooks_get_installed_count(void);
 
 static int lua_debug_get_hook_status(lua_State *L) {
     lua_newtable(L);
@@ -790,6 +791,8 @@ static int lua_debug_get_hook_status(lua_State *L) {
     lua_setfield(L, -2, "hook_count");
     lua_pushinteger(L, bg3se_get_hooks_fired());
     lua_setfield(L, -2, "hooks_fired");
+    lua_pushinteger(L, functor_hooks_get_installed_count());
+    lua_setfield(L, -2, "functor_hooks_installed");
     lua_pushboolean(L, !version_detect_addresses_safe());
     lua_setfield(L, -2, "version_gated");
     return 1;

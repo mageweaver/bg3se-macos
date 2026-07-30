@@ -34,6 +34,13 @@ void functor_hooks_shutdown(void);
 bool functor_hooks_is_active(void);
 
 /**
+ * Number of functor hooks actually installed (0-10). A value below 10 means
+ * some functor contexts will never fire events even though is_active() is
+ * true — surfaced via Ext.Debug.GetHookStatus().functor_hooks_installed.
+ */
+int functor_hooks_get_installed_count(void);
+
+/**
  * Get count of functor events fired.
  */
 uint64_t functor_hooks_get_event_count(void);
