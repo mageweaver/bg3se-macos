@@ -1,0 +1,24 @@
+{
+  "source": "mcm",
+  "bg3se_version": "0.39.0",
+  "timestamp": "2026-07-29T13:40:47",
+  "status": "working",
+  "se_required": false,
+  "load_success": true,
+  "bootstrap_executed": true,
+  "apis_used": [
+    "Ext.IMGUI",
+    "Ext.Net",
+    "Ext.Vars",
+    "Ext.ModEvents",
+    "Ext.RegisterNetListener",
+    "Ext.Events",
+    "Ext.Mod"
+  ],
+  "errors": [],
+  "warnings": [],
+  "notes": "",
+  "mod_name": "Mod Configuration Menu",
+  "nexus_id": 9162,
+  "bg3se_version_live": "3801"
+}

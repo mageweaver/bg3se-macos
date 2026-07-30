@@ -1693,9 +1693,11 @@ bool stats_sync(const char *name) {
         LOG_STATS_DEBUG("stats_sync: Prototype sync skipped/failed for '%s' (type: %s)", name, type);
     }
 
-    // For types that don't need prototype sync (Weapon, Armor, etc.),
-    // the stat is already usable since changes go directly to RPGStats
-    return true;
+    // sync_stat_prototype returns true for types without a prototype manager
+    // (Weapon, Armor, etc. — usable directly from RPGStats) and the real
+    // outcome for SpellData/StatusData/PassiveData/InterruptData. Propagate it:
+    // returning true unconditionally would hide gated/failed prototype syncs.
+    return sync_result;
 }
 
 // ============================================================================
