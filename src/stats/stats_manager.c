@@ -172,7 +172,7 @@ static bool safe_write_i32(void *addr, int32_t value) {
 //   HashMap Functors;                    // +0x28 (pointer)
 //   ... more fields ...
 //   int32_t Using;                       // near end (offset TBD)
-//   uint32_t ModifierListIndex;          // offset TBD
+//   int32_t ModifierListIndex;           // +0xe4 (StatsObject::SetType)
 //   uint32_t Level;                      // offset TBD
 // }
 #define OBJECT_OFFSET_VMT              0x00
@@ -188,9 +188,12 @@ static bool safe_write_i32(void *addr, int32_t value) {
 #define VECTOR_OFFSET_END       0x08   // Pointer past last element
 #define VECTOR_OFFSET_CAPACITY  0x10   // Pointer to end of allocation
 
-// Old offset notes (may be incorrect for ARM64):
+// StatsObject::SetType(int) in 4.1.1.7209685 reads/writes the signed
+// ModifierListIndex at +0xe4 (ldr/str wN, [x0, #0xe4]).  Reading +0x00 here
+// used the low byte of the VMT as a type index; that happened to be 8
+// (Weapon) on this build and misclassified prefix-less stats such as BURNING.
 #define OBJECT_OFFSET_USING            0xa8   // int32_t Using (parent stat index, -1 if none)
-#define OBJECT_OFFSET_MODIFIERLIST_IDX 0x00   // uint8_t ModifierListIndex (stat type) - verified via memory dump
+#define OBJECT_OFFSET_MODIFIERLIST_IDX 0xe4   // int32_t ModifierListIndex (StatsObject::SetType)
 #define OBJECT_OFFSET_LEVEL            0xb0   // uint32_t Level
 
 // FixedString structure
@@ -1149,10 +1152,20 @@ const char* stats_get_type(StatsObjectPtr obj) {
         return get_type_name_from_ml_index(shadow->modifier_list_index);
     }
 
-    // WORKAROUND: Use name-based type detection for game stats
-    // The Object struct layout on macOS ARM64 differs significantly from Windows x64
-    // due to different sizes of HashMap, Array, TrackedCompactSet, etc.
-    // Until we discover the true ModifierListIndex offset, use stat name prefixes.
+    // The authoritative type is the ModifierListIndex written by
+    // StatsObject::SetType(int). Resolve it before consulting the legacy
+    // prefix fallback; names such as BURNING have no type-bearing prefix.
+    int32_t modifier_list_idx = -1;
+    if (safe_read_i32((char*)obj + OBJECT_OFFSET_MODIFIERLIST_IDX,
+                      &modifier_list_idx) &&
+        modifier_list_idx >= 0) {
+        const char *type_name =
+            get_type_name_from_ml_index(modifier_list_idx);
+        if (type_name) return type_name;
+    }
+
+    // Retain name-based detection only as a fail-soft fallback if a future
+    // binary changes the object layout before its offsets are migrated.
     const char *obj_name = read_fixed_string((char*)obj + OBJECT_OFFSET_NAME);
     if (obj_name) {
         // Common stat name prefixes map to types
@@ -1172,12 +1185,6 @@ const char* stats_get_type(StatsObjectPtr obj) {
         // Status names vary more, check common patterns
         if (strstr(obj_name, "_STATUS") || strstr(obj_name, "Status_")) return "StatusData";
 
-        // Try ModifierListIndex lookup as fallback
-        uint8_t modifier_list_idx = 0;
-        if (safe_read_u8((char*)obj + OBJECT_OFFSET_MODIFIERLIST_IDX, &modifier_list_idx)) {
-            const char *type_name = get_type_name_from_ml_index(modifier_list_idx);
-            if (type_name) return type_name;
-        }
     }
 
     return NULL;
@@ -1308,13 +1315,15 @@ static void* get_object_modifier_list(StatsObjectPtr obj) {
         modifier_list_idx = shadow->modifier_list_index;
         LOG_STATS_DEBUG("get_object_modifier_list: Shadow stat ModifierListIndex = %u", modifier_list_idx);
     } else {
-        // For game objects, ModifierListIndex is a uint8_t at offset 0x00
-        uint8_t ml_idx_u8 = 0;
-        if (!safe_read_u8((char*)obj + OBJECT_OFFSET_MODIFIERLIST_IDX, &ml_idx_u8)) {
+        // StatsObject::SetType stores the signed ModifierListIndex at +0xe4.
+        int32_t ml_idx = -1;
+        if (!safe_read_i32((char*)obj + OBJECT_OFFSET_MODIFIERLIST_IDX,
+                           &ml_idx) ||
+            ml_idx < 0) {
             LOG_STATS_DEBUG("get_object_modifier_list: failed to read ModifierListIndex at +0x%x", OBJECT_OFFSET_MODIFIERLIST_IDX);
             return NULL;
         }
-        modifier_list_idx = (uint32_t)ml_idx_u8;
+        modifier_list_idx = (uint32_t)ml_idx;
         LOG_STATS_DEBUG("get_object_modifier_list: Game stat ModifierListIndex = %u", modifier_list_idx);
     }
 

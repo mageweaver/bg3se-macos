@@ -33,6 +33,7 @@ addresses AND wrapper ABIs were verified on, independent of
 ``BG3_KNOWN_VERSION`` (see test_functor_gate_is_independent below).
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -44,6 +45,8 @@ from bg3se_harness.config import BG3_EXEC
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OFFSET_TABLE_C = REPO_ROOT / "src/core/offset_table.c"
+OFFSET_TABLE_H = REPO_ROOT / "src/core/offset_table.h"
+OFFSET_MANIFEST = REPO_ROOT / "tools/offset_manifest.json"
 
 # (source file, #define name, expected demangled symbol substring,
 #  base-relative? — offsets below 0x100000000 are relative to the image base)
@@ -301,6 +304,35 @@ def test_offset_table_row_fields_complete():
         f"{declared - classified or classified - declared} — every new field "
         f"needs an audit entry or a documented exclusion"
     )
+
+
+def test_offset_manifest_covers_all_function_fields():
+    """Every function pointer needed by VersionOffsets must have a migration
+    recipe.  Otherwise a future resolver can emit a compiling zero that silently
+    disables the feature even though the current-build symbol audit is green."""
+    header = OFFSET_TABLE_H.read_text()
+    struct = re.search(r"typedef struct \{(.*?)\} VersionOffsets;", header,
+                       re.DOTALL)
+    assert struct
+    declared = set(re.findall(r"uintptr_t\s+(fn_\w+);", struct.group(1)))
+
+    manifest = json.loads(OFFSET_MANIFEST.read_text())
+    entries = manifest["offset_table_functions"]
+    fields = [entry["field"] for entry in entries]
+    assert len(fields) == len(set(fields)), (
+        "duplicate offset_table_functions fields in offset_manifest.json"
+    )
+    assert set(fields) == declared, (
+        "offset_manifest.json function recipes do not match VersionOffsets: "
+        f"missing={sorted(declared - set(fields))}, "
+        f"stale={sorted(set(fields) - declared)}"
+    )
+    for entry in entries:
+        assert entry.get("baseline", "").startswith("0x")
+        assert entry.get("symbol"), (
+            f"{entry['field']} has no symbol recipe; next migration would "
+            "silently emit zero"
+        )
 
 
 def test_remap_7209685_column(nm_symbols):

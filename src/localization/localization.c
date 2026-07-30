@@ -1,10 +1,10 @@
 /**
  * localization.c - Localization System Implementation
  *
- * Discovered offsets (macOS ARM64, Dec 2025):
- *   ls::TranslatedStringRepository::m_ptr at 0x8aed088 (from module base)
- *   ls::TranslatedStringRepository::TryGet at 0x106534d54
- *   ls::TranslatedStringRepository::Get at 0x106535148
+ * Verified 4.1.1.7209685 offsets (macOS ARM64):
+ *   ls::TranslatedStringRepository::m_ptr at 0x8af5088 (from module base)
+ *   ls::TranslatedStringRepository::TryGet at 0x10652390c
+ *   ls::TranslatedStringRepository::AddTranslatedString at 0x106521148
  *
  * TranslatedStringRepository structure (from Windows BG3SE):
  *   +0x00: int field_0
@@ -21,6 +21,7 @@
 #include "logging.h"
 #include "fixed_string.h"
 #include "../core/offset_table.h"
+#include "../core/safe_memory.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -44,8 +45,8 @@
 #define LOCA_FIXEDSTRING_CREATE     0x64a8a74   // ls::FixedString::Create(char*, int)
 #define LOCA_ADDTRANSLATEDSTRING    0x6521148   // AddTranslatedString(handle, value)
 
-// TranslatedStringRepository structure offsets (to be verified)
-// These are estimated from Windows x64 - may need ARM64 adjustment
+// TranslatedStringRepository structure offsets. +0x08 is verified by the
+// installed ARM64 TryGet implementation for identity 0.
 #define REPO_OFFSET_TRANSLATED_STRINGS  0x08   // TextPool* TranslatedStrings[9]
 #define REPO_OFFSET_FALLBACK_POOL       0x50   // TextPool* FallbackPool
 #define REPO_OFFSET_VERSIONED_FALLBACK  0x58   // TextPool* VersionedFallbackPool
@@ -78,17 +79,17 @@ typedef struct {
     uint64_t size;       // String length
 } LSStringView;
 
-// TryGet returns an optional<StringView> - on ARM64 this is likely 24 bytes:
-// { has_value (1 byte), padding (7 bytes), StringView (16 bytes) }
-// But since it returns > 16 bytes, ARM64 ABI uses x8 indirect return
+// TryGet writes a Result<StringView> to an explicit x0 output parameter.
+// Disassembly of 4.1.1.7209685 shows value at +0x00/+0x08 and an error flag
+// at +0x10 (0 = value present, 1 = no translation).
 typedef struct __attribute__((aligned(16))) {
     LSStringView value;      // 0x00: The StringView if present
-    uint8_t has_value;       // 0x10: Whether value is valid
+    uint8_t has_error;       // 0x10: 0 on success, 1 when no value exists
     uint8_t _pad[15];        // Padding to 32 bytes
 } TryGetResult;
 
-// TryGet signature: optional<StringView> TryGet(RuntimeStringHandle const&, EIdentity, EIdentity) const
-// On ARM64 with x8 indirect return for large structs
+// TryGet signature after lowering:
+// x0=result, x1=this, x2=&handle, w3=language, w4=fallback language.
 typedef void (*TryGetFn)(void *result, void *repo, const RuntimeStringHandle *handle, int lang1, int lang2);
 
 // AddTranslatedString signature (from Ghidra decompilation Dec 2025):
@@ -122,9 +123,19 @@ static struct {
     void **repo_ptr_addr;     // Address of the m_ptr global
     void *repo;               // Cached repository pointer
     FixedStringCreateFn fs_create;  // FixedString::Create function
-    void *tryget_fn;          // TryGet function address (raw, need x8 setup)
+    void *tryget_fn;          // TryGet function address (explicit x0 output)
     AddTranslatedStringFn add_string_fn;  // AddTranslatedString function
 } s_loca = {0};
+
+static void *localization_remap_fn(void *binary_base, uint64_t offset) {
+    uint64_t address =
+        offset_table_remap_fn(0x100000000ULL + offset);
+    if (!address) {
+        return NULL;
+    }
+    return (void *)((uintptr_t)binary_base
+        + (address - 0x100000000ULL));
+}
 
 // ============================================================================
 // Initialization
@@ -151,13 +162,12 @@ void localization_init(void *main_binary_base) {
     // The functions are __TEXT -> remap each hardcoded address (either vintage).
     // If a function has no verified address for this version, leave it NULL so
     // the caller skips it instead of jumping to a stale address.
-    #define LOCA_FN(off) ({ \
-        uint64_t _a = offset_table_remap_fn(0x100000000ULL + (off)); \
-        _a ? (void*)((uintptr_t)main_binary_base + (_a - 0x100000000ULL)) : NULL; })
-    s_loca.fs_create     = (FixedStringCreateFn)LOCA_FN(LOCA_FIXEDSTRING_CREATE);
-    s_loca.tryget_fn     = LOCA_FN(LOCA_TRYGET_OFFSET);
-    s_loca.add_string_fn = (AddTranslatedStringFn)LOCA_FN(LOCA_ADDTRANSLATEDSTRING);
-    #undef LOCA_FN
+    s_loca.fs_create = (FixedStringCreateFn)localization_remap_fn(
+        main_binary_base, LOCA_FIXEDSTRING_CREATE);
+    s_loca.tryget_fn = localization_remap_fn(
+        main_binary_base, LOCA_TRYGET_OFFSET);
+    s_loca.add_string_fn = (AddTranslatedStringFn)localization_remap_fn(
+        main_binary_base, LOCA_ADDTRANSLATEDSTRING);
 
     LOG_CORE_INFO("LOCA: Initialized - repo_ptr at %p", (void*)s_loca.repo_ptr_addr);
     LOG_CORE_DEBUG("LOCA: FixedString::Create at %p", (void*)s_loca.fs_create);
@@ -190,57 +200,25 @@ void* localization_get_raw(void) {
 }
 
 // ============================================================================
-// ARM64 Helper for x8 Indirect Return
+// Native TryGet Result Helper
 // ============================================================================
 
-#if defined(__aarch64__) || defined(__arm64__)
 /**
- * Call TryGet with x8 indirect return buffer.
- * ARM64 ABI: Functions returning structs > 16 bytes use x8 for return buffer.
- *
- * TryGet signature: optional<StringView> TryGet(this, RuntimeStringHandle const&, EIdentity, EIdentity)
- * - x0: this (repository pointer)
- * - x1: RuntimeStringHandle const* (pointer to handle)
- * - x2: EIdentity lang1 (int, typically 0)
- * - x3: EIdentity lang2 (int, typically 0)
- * - x8: pointer to result buffer
+ * TryGet is compiled with an explicit output pointer, not an AAPCS64 x8
+ * indirect result. This is verified by the function prologue saving x0 as the
+ * output buffer before reading the repository from x1.
  */
-static bool call_tryget_with_x8(void *fn, void *repo, const RuntimeStringHandle *handle,
-                                 int lang1, int lang2, TryGetResult *result) {
-    // Zero the result buffer
-    memset(result, 0, sizeof(TryGetResult));
+static bool call_tryget(void *fn, void *repo,
+                        const RuntimeStringHandle *handle,
+                        int lang1, int lang2, TryGetResult *result) {
+    if (!fn || !repo || !handle || !result) {
+        return false;
+    }
 
-    // Call with x8 pointing to result buffer
-    // Using minimal clobbers like arm64_call.c
-    __asm__ volatile (
-        "mov x8, %[buf]\n"      // x8 = result buffer (indirect return)
-        "mov x0, %[repo]\n"     // x0 = this (repository)
-        "mov x1, %[handle]\n"   // x1 = RuntimeStringHandle const*
-        "mov x2, %[lang1]\n"    // x2 = lang1
-        "mov x3, %[lang2]\n"    // x3 = lang2
-        "blr %[fn]\n"           // Call TryGet
-        : "+m"(*result)         // result may be modified
-        : [buf] "r"(result),
-          [repo] "r"(repo),
-          [handle] "r"(handle),
-          [lang1] "r"((uint64_t)lang1),
-          [lang2] "r"((uint64_t)lang2),
-          [fn] "r"(fn)
-        : "x0", "x1", "x2", "x3", "x8", "x9", "x10", "x11", "x12", "x13",
-          "x14", "x15", "x16", "x17", "x30", "memory"
-    );
-
-    return result->has_value != 0;
-}
-#else
-// x86_64 stub - TryGet likely uses different calling convention
-static bool call_tryget_with_x8(void *fn, void *repo, const RuntimeStringHandle *handle,
-                                 int lang1, int lang2, TryGetResult *result) {
-    (void)fn; (void)repo; (void)handle; (void)lang1; (void)lang2;
     memset(result, 0, sizeof(TryGetResult));
-    return false;
+    ((TryGetFn)fn)(result, repo, handle, lang1, lang2);
+    return result->has_error == 0;
 }
-#endif
 
 // ============================================================================
 // RuntimeStringHandle Helpers
@@ -303,42 +281,87 @@ bool localization_create_handle(char *out, size_t out_size) {
 // String Access
 // ============================================================================
 
-// Thread-local buffer for returned strings (to avoid lifetime issues)
-static __thread char s_result_buffer[4096];
+// Thread-local storage decouples returned text from the game's map lifetime.
+// Grow on demand so translations are not silently truncated.
+static __thread char *s_result_buffer = NULL;
+static __thread size_t s_result_capacity = 0;
+
+static bool ensure_result_capacity(size_t required) {
+    if (required <= s_result_capacity) {
+        return true;
+    }
+
+    size_t capacity = s_result_capacity ? s_result_capacity : 256;
+    while (capacity < required) {
+        if (capacity > SIZE_MAX / 2) {
+            capacity = required;
+            break;
+        }
+        capacity *= 2;
+    }
+
+    char *buffer = (char *)realloc(s_result_buffer, capacity);
+    if (!buffer) {
+        return false;
+    }
+    s_result_buffer = buffer;
+    s_result_capacity = capacity;
+    return true;
+}
 
 const char* localization_get(const char *handle, const char *fallback) {
-    // DEFERRED: TryGet crashes when looking up non-existent handles.
-    // The calling convention is verified correct, but the game's TryGet
-    // doesn't gracefully handle missing keys - it crashes on NULL dereference.
-    //
-    // To properly implement this, we need to:
-    // 1. Verify the handle exists in TranslatedStrings HashMap BEFORE calling TryGet
-    // 2. Or find a safer lookup function that returns optional<> correctly
-    //
-    // For now, return fallback to prevent crashes.
-    // GetLanguage() works correctly - that's the primary localization function.
+    const char *fallback_value = fallback ? fallback : "";
+    if (!handle || !*handle || !localization_ready()
+        || !s_loca.fs_create || !s_loca.tryget_fn) {
+        return fallback_value;
+    }
 
-    LOG_CORE_DEBUG("LOCA: GetTranslatedString called for '%s', returning fallback (deferred)",
-                   handle ? handle : "(null)");
+    uint32_t fixed_string = create_fixedstring_from_handle(handle);
+    if (fixed_string == UINT32_MAX) {
+        return fallback_value;
+    }
 
-    return fallback ? fallback : "";
+    RuntimeStringHandle runtime_handle = {
+        .handle = fixed_string,
+        .version = 0,
+        ._padding = 0
+    };
+    TryGetResult result;
+    if (!call_tryget(
+            s_loca.tryget_fn, s_loca.repo, &runtime_handle, 0, 0, &result)) {
+        return fallback_value;
+    }
+
+    if (result.value.size == 0) {
+        if (!ensure_result_capacity(1)) {
+            return fallback_value;
+        }
+        s_result_buffer[0] = '\0';
+        return s_result_buffer;
+    }
+    if (!result.value.data) {
+        return fallback_value;
+    }
+
+    if (result.value.size > SIZE_MAX - 1) {
+        return fallback_value;
+    }
+    size_t copy_size = (size_t)result.value.size;
+    if (!ensure_result_capacity(copy_size + 1)) {
+        return fallback_value;
+    }
+    if (!safe_memory_read(
+            (mach_vm_address_t)result.value.data, s_result_buffer, copy_size)) {
+        return fallback_value;
+    }
+
+    s_result_buffer[copy_size] = '\0';
+    return s_result_buffer;
 }
 
 bool localization_set(const char *handle, const char *value) {
     LOG_CORE_DEBUG("LOCA: UpdateTranslatedString called with handle='%s' value='%s'",
                    handle ? handle : "(null)", value ? value : "(null)");
-
-    // DEFERRED: Full implementation requires HashMap insertion reverse engineering
-    // The AddTranslatedString function was successfully called but only works for
-    // updating EXISTING translations, not adding new ones.
-    //
-    // For new translations, we would need to:
-    // 1. Insert into TranslatedStrings[lang].Texts HashMap
-    // 2. Properly handle hash bucket allocation and collision chains
-    // 3. Allocate storage for the string value
-    //
-    // Current status: FixedString::Create and AddTranslatedString calling conventions verified.
-    // See Issue #39 for tracking.
 
     if (!localization_ready()) {
         LOG_CORE_DEBUG("LOCA: Repository not ready");
@@ -349,10 +372,69 @@ bool localization_set(const char *handle, const char *value) {
         return false;
     }
 
-    // For now, return false to indicate update not performed
-    // This prevents crashes from incomplete HashMap manipulation
-    LOG_CORE_INFO("LOCA: UpdateTranslatedString deferred - requires HashMap insertion support");
-    return false;
+    if (!s_loca.fs_create || !s_loca.tryget_fn || !s_loca.add_string_fn) {
+        LOG_CORE_INFO(
+            "LOCA: UpdateTranslatedString deferred for this game version; "
+            "one or more verified entry points are unavailable");
+        return false;
+    }
+
+    uint32_t fixed_string = create_fixedstring_from_handle(handle);
+    if (fixed_string == UINT32_MAX) {
+        return false;
+    }
+
+    void *translated_pool = NULL;
+    if (!safe_memory_read_pointer(
+            (mach_vm_address_t)((uintptr_t)s_loca.repo
+                + REPO_OFFSET_TRANSLATED_STRINGS),
+            &translated_pool)
+        || !translated_pool) {
+        LOG_CORE_INFO("LOCA: default translated-string pool is unavailable");
+        return false;
+    }
+
+    RuntimeStringHandle input = {
+        .handle = fixed_string,
+        .version = 0,
+        ._padding = 0
+    };
+    RuntimeStringHandle output = {
+        .handle = UINT32_MAX,
+        .version = 0,
+        ._padding = 0
+    };
+    size_t value_size = strlen(value);
+
+    s_loca.add_string_fn(
+        &output, s_loca.repo, &input, value, value_size,
+        translated_pool, 0);
+
+    TryGetResult verify;
+    if (!call_tryget(
+            s_loca.tryget_fn, s_loca.repo, &input, 0, 0, &verify)
+        || verify.value.size != value_size
+        || (value_size > 0 && !verify.value.data)) {
+        LOG_CORE_INFO(
+            "LOCA: UpdateTranslatedString('%s') could not be verified",
+            handle);
+        return false;
+    }
+
+    if (value_size > 0) {
+        if (!ensure_result_capacity(value_size)
+            || !safe_memory_read(
+                (mach_vm_address_t)verify.value.data,
+                s_result_buffer, value_size)
+            || memcmp(s_result_buffer, value, value_size) != 0) {
+            LOG_CORE_INFO(
+                "LOCA: UpdateTranslatedString('%s') verification mismatch",
+                handle);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // ============================================================================

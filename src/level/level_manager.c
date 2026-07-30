@@ -31,22 +31,24 @@
 #define EOCLEVEL_PHYSICS_SCENE_OFFSET       0x30   // PhysicsSceneBase*
 #define EOCLEVEL_AIGRID_OFFSET              0x80   // AiGrid*
 
-// PhysicsScene VMT indices (from Windows BG3SE Physics.h vtable layout)
-// Derived from sequential vtable: dtor(0), InstantiateReadLock(1), Unload(2),
-// AddPhysicsObjects(3), RemovePhysicsObjects(4), AddPhysicsShape(5),
-// RemovePhysicsShape(6), then Raycast/Sweep/Test in declaration order.
+// Legacy indices below are derived from the Windows BG3SE Physics.h layout.
+// The current macOS ARM64 vtable has two destructor entries, so the existing
+// ray/sphere/capsule/box range still needs a dedicated ABI audit.
 #define PHYSICS_VMT_RAYCAST_CLOSEST     7
 #define PHYSICS_VMT_RAYCAST_ALL         8
 #define PHYSICS_VMT_RAYCAST_ANY         9
 #define PHYSICS_VMT_SWEEP_SPHERE_CLOSEST    10
 #define PHYSICS_VMT_SWEEP_CAPSULE_CLOSEST   11
 #define PHYSICS_VMT_SWEEP_BOX_CLOSEST       12
-#define PHYSICS_VMT_SWEEP_CYLINDER_CLOSEST  13   /* SweepCylinderClosest — not exposed in Lua */
 #define PHYSICS_VMT_SWEEP_SPHERE_ALL        14
 #define PHYSICS_VMT_SWEEP_CAPSULE_ALL       15
 #define PHYSICS_VMT_SWEEP_BOX_ALL           16
-#define PHYSICS_VMT_SWEEP_CYLINDER_ALL      17   /* SweepCylinderAll — not exposed in Lua */
-#define PHYSICS_VMT_SWEEP_SHAPE_ALL         18   /* SweepShapeAll — not exposed in Lua */
+
+// Verified directly in the current ARM64 PhysXScene vtable and named symbols.
+// The overlap with legacy SphereAll(14) is intentional pending that audit.
+#define PHYSICS_VMT_SWEEP_CYLINDER_CLOSEST  14
+#define PHYSICS_VMT_SWEEP_CYLINDER_ALL      18
+#define PHYSICS_VMT_SWEEP_SHAPE_ALL         19   /* Verified, not exposed in Lua */
 #define PHYSICS_VMT_TEST_BOX           20
 #define PHYSICS_VMT_TEST_SPHERE        24
 
@@ -301,6 +303,26 @@ typedef bool (*PhysicsSweepBoxClosestFn)(void *this_,
                                           int excludePhysObjIdx);
 
 /**
+ * SweepCylinderClosest — macOS ARM64 VMT[14]
+ * macOS ARM64 symbol:
+ *   phx::PhysXScene::SweepCylinderClosest(Vector3f const&, Vector3f const&,
+ *     Vector3f const&, ls::PhysicsHit&, ...)
+ * The first vector is the cylinder extents. Vector3f const& parameters are
+ * pointers in the ARM64 ABI; the bool return is direct and needs no x8 buffer.
+ */
+typedef bool (*PhysicsSweepCylinderClosestFn)(void *this_,
+                                               const float extents[3],
+                                               const float src[3],
+                                               const float dst[3],
+                                               LevelPhysicsHit *hit,
+                                               uint32_t physType,
+                                               uint32_t includeGroup,
+                                               uint32_t excludeGroup,
+                                               int context,
+                                               int physObjIdx,
+                                               int excludePhysObjIdx);
+
+/**
  * SweepSphereAll — VMT[14]
  * Windows: bool SweepSphereAll(float radius, vec3 src, vec3 dst,
  *                              PhysicsHitAll& hits, physType, include, exclude,
@@ -341,6 +363,22 @@ typedef bool (*PhysicsSweepBoxAllFn)(void *this_,
                                       int context,
                                       int physObjIdx,
                                       int excludePhysObjIdx);
+
+/**
+ * SweepCylinderAll — macOS ARM64 VMT[18], same extents/source/destination
+ * vector order as SweepCylinderClosest with PhysicsHitAll passed by reference.
+ */
+typedef bool (*PhysicsSweepCylinderAllFn)(void *this_,
+                                           const float extents[3],
+                                           const float src[3],
+                                           const float dst[3],
+                                           LevelPhysicsHitAll *hits,
+                                           uint32_t physType,
+                                           uint32_t includeGroup,
+                                           uint32_t excludeGroup,
+                                           int context,
+                                           int physObjIdx,
+                                           int excludePhysObjIdx);
 
 // ============================================================================
 // Sweep Implementations — Closest (single hit)
@@ -436,6 +474,34 @@ bool level_sweep_box_closest(const float src[3], const float dst[3],
                  context, -1, -1);
 }
 
+bool level_sweep_cylinder_closest(const float src[3], const float dst[3],
+                                   const float extents[3],
+                                   LevelPhysicsHit *hit,
+                                   uint32_t physics_type,
+                                   uint32_t include_group,
+                                   uint32_t exclude_group,
+                                   int context) {
+    if (!hit) return false;
+    memset(hit, 0, sizeof(*hit));
+
+    void *physics = level_get_physics_scene();
+    if (!physics) return false;
+
+    void *func = read_vmt_entry(physics, PHYSICS_VMT_SWEEP_CYLINDER_CLOSEST);
+    if (!func) {
+        log_message("[Level] SweepCylinderClosest VMT entry not found at index %d",
+                    PHYSICS_VMT_SWEEP_CYLINDER_CLOSEST);
+        return false;
+    }
+
+    PhysicsSweepCylinderClosestFn sweep = (PhysicsSweepCylinderClosestFn)func;
+    return sweep(physics,
+                 extents, src, dst,
+                 hit,
+                 physics_type, include_group, exclude_group,
+                 context, -1, -1);
+}
+
 // ============================================================================
 // Sweep Implementations — All (multiple hits)
 // ============================================================================
@@ -525,6 +591,34 @@ bool level_sweep_box_all(const float src[3], const float dst[3],
                  extents[0], extents[1], extents[2],
                  src[0], src[1], src[2],
                  dst[0], dst[1], dst[2],
+                 out,
+                 physics_type, include_group, exclude_group,
+                 context, -1, -1);
+}
+
+bool level_sweep_cylinder_all(const float src[3], const float dst[3],
+                               const float extents[3],
+                               LevelPhysicsHitAll *out,
+                               uint32_t physics_type,
+                               uint32_t include_group,
+                               uint32_t exclude_group,
+                               int context) {
+    if (!out) return false;
+    memset(out, 0, sizeof(*out));
+
+    void *physics = level_get_physics_scene();
+    if (!physics) return false;
+
+    void *func = read_vmt_entry(physics, PHYSICS_VMT_SWEEP_CYLINDER_ALL);
+    if (!func) {
+        log_message("[Level] SweepCylinderAll VMT entry not found at index %d",
+                    PHYSICS_VMT_SWEEP_CYLINDER_ALL);
+        return false;
+    }
+
+    PhysicsSweepCylinderAllFn sweep = (PhysicsSweepCylinderAllFn)func;
+    return sweep(physics,
+                 extents, src, dst,
                  out,
                  physics_type, include_group, exclude_group,
                  context, -1, -1);

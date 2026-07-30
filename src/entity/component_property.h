@@ -190,6 +190,26 @@ void component_property_push_proxy(lua_State *L, void *componentPtr,
  */
 const ComponentLayoutDef *component_property_check_proxy(lua_State *L, int index);
 
+/**
+ * Serialize a component or dynamic-array proxy to a plain Lua table.
+ *
+ * @return true when index is a supported proxy and one table was pushed;
+ *         false when index is not a supported proxy.
+ */
+bool component_property_serialize_proxy(lua_State *L, int index);
+
+/**
+ * Apply fields from a Lua table to a component proxy.
+ *
+ * Read-only and ownership-bearing fields are skipped. Writable scalar fields
+ * use the same bounds-checked path as ComponentProxy.__newindex.
+ *
+ * @return true when proxyIndex is a component proxy; false otherwise.
+ *         A refused field write raises a Lua error.
+ */
+bool component_property_unserialize_proxy(lua_State *L, int proxyIndex,
+                                          int tableIndex);
+
 // ============================================================================
 // Array Proxy (for FIELD_TYPE_DYNAMIC_ARRAY)
 // ============================================================================

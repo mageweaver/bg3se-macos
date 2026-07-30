@@ -100,6 +100,11 @@
       "field": "fn_spell_proto_init",
       "baseline": "0x101f72754",
       "symbol": "eoc::SpellPrototype::Init(ls::FixedString const&)"
+    },
+    {
+      "field": "fn_status_proto_init",
+      "baseline": "0x102012bf0",
+      "symbol": "eoc::StatusPrototype::Init(ls::FixedString const&, bool)"
     }
   ],
   "remap_functions": [

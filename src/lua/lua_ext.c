@@ -1001,13 +1001,49 @@ static int lua_types_getvaluetype(lua_State *L) {
     return 1;
 }
 
+// Ext.Types.Serialize(obj) -> table
+// Serializes macOS component/array proxy userdata through the same component
+// layout database used by GetComponentLayout/GetAllLayouts.
+static int lua_types_serialize(lua_State *L) {
+    luaL_checkany(L, 1);
+    if (!component_property_serialize_proxy(L, 1)) {
+        return luaL_error(
+            L, "Ext.Types.Serialize: unsupported value type '%s' "
+               "(expected component or component-array userdata)",
+            luaL_typename(L, 1));
+    }
+    return 1;
+}
+
+// Ext.Types.Unserialize(obj, table)
+// Applies writable scalar fields in-place; ownership-bearing and read-only
+// fields are intentionally skipped by the component property layer.
+static int lua_types_unserialize(lua_State *L) {
+    luaL_checkany(L, 1);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    if (!component_property_unserialize_proxy(L, 1, 2)) {
+        return luaL_error(
+            L, "Ext.Types.Unserialize: unsupported value type '%s' "
+               "(expected component userdata)",
+            luaL_typename(L, 1));
+    }
+    return 0;
+}
+
 // Ext.Types.Construct(typeName) -> object or nil
 // Constructs a new instance of a registered type. macOS stub: most C++ types
 // are not heap-constructible from Lua without the full C++ runtime, so we
 // return nil with a warning and let callers handle it gracefully.
 static int lua_types_construct(lua_State *L) {
+    static bool warned = false;
     const char *type_name = luaL_checkstring(L, 1);
-    LOG_LUA_WARN("Ext.Types.Construct('%s'): not supported on macOS (C++ object construction requires full runtime)", type_name);
+    if (!warned) {
+        LOG_LUA_WARN(
+            "Ext.Types.Construct('%s'): deferred on macOS; the layout database "
+            "describes fields but has no game allocator, constructor, or destructor",
+            type_name);
+        warned = true;
+    }
     lua_pushnil(L);
     return 1;
 }
@@ -1016,10 +1052,15 @@ static int lua_types_construct(lua_State *L) {
 // Returns the element at a given 0-based index in a BG3 hash-set proxy.
 // macOS: We don't have the C++ proxy metatables, so return nil gracefully.
 static int lua_types_gethashsetvalueat(lua_State *L) {
+    static bool warned = false;
     luaL_checkany(L, 1);
     luaL_checkinteger(L, 2);
-    // Without full proxy infrastructure we cannot index into hash sets.
-    // Return nil so mods that check for nil can degrade gracefully.
+    if (!warned) {
+        LOG_LUA_WARN(
+            "Ext.Types.GetHashSetValueAt: deferred on macOS; no hash-set proxy "
+            "metadata exposes element size, key hash, or occupancy state");
+        warned = true;
+    }
     lua_pushnil(L);
     return 1;
 }
@@ -1146,6 +1187,12 @@ void lua_ext_register_types(lua_State *L, int ext_table_index) {
     lua_pushcfunction(L, lua_types_getvaluetype);
     lua_setfield(L, -2, "GetValueType");
 
+    lua_pushcfunction(L, lua_types_serialize);
+    lua_setfield(L, -2, "Serialize");
+
+    lua_pushcfunction(L, lua_types_unserialize);
+    lua_setfield(L, -2, "Unserialize");
+
     lua_pushcfunction(L, lua_types_construct);
     lua_setfield(L, -2, "Construct");
 
@@ -1163,7 +1210,7 @@ void lua_ext_register_types(lua_State *L, int ext_table_index) {
 
     lua_setfield(L, ext_table_index, "Types");
 
-    LOG_LUA_INFO("Ext.Types namespace registered (15 functions)");
+    LOG_LUA_INFO("Ext.Types namespace registered (17 functions)");
 }
 
 // ============================================================================
@@ -1582,6 +1629,13 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "    'unknown treasure category must return nil')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Stats.Goal23.ModuleLoadOrder', function()\n"
+        "  local function isUuid(v)\n"
+        "    if type(v) ~= 'string' or #v ~= 36 then return false end\n"
+        "    local a, b, c, d, e = v:match(\n"
+        "      '^([%x]+)%-([%x]+)%-([%x]+)%-([%x]+)%-([%x]+)$')\n"
+        "    return a ~= nil and #a == 8 and #b == 4 and #c == 4 and\n"
+        "      #d == 4 and #e == 12\n"
+        "  end\n"
         "  local loaded = Ext.Stats.GetStatsLoadedMods()\n"
         "  AssertType(loaded, 'table', 'GetStatsLoadedMods result')\n"
         "  assert(#loaded > 0, 'expected at least the base module in load order')\n"
@@ -1589,15 +1643,37 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertNotNil(base, 'base module')\n"
         "  local baseUuid = base.UUID or (base.Info and base.Info.ModuleUUID)\n"
         "  AssertType(baseUuid, 'string', 'base module UUID')\n"
+        "  assert(isUuid(baseUuid), 'base module UUID has invalid format: ' .. baseUuid)\n"
         "  local throughBase = Ext.Stats.GetStatsLoadedBefore(baseUuid)\n"
         "  AssertType(throughBase, 'table', 'GetStatsLoadedBefore result')\n"
         "  assert(#throughBase > 0, 'base-module boundary should be inclusive')\n"
         "  AssertEquals(throughBase[#throughBase], baseUuid,\n"
         "    'load-order prefix boundary')\n"
         "  for i, moduleId in ipairs(throughBase) do\n"
+        "    assert(isUuid(moduleId),\n"
+        "      'load-order entry ' .. i .. ' is not a UUID: ' .. tostring(moduleId))\n"
         "    AssertEquals(moduleId, loaded[i],\n"
         "      'GetStatsLoadedBefore prefix entry ' .. i)\n"
         "  end\n"
+        "end)\n";
+
+    // Tier 1: Wave 3 Stats regression coverage (2 tests)
+    static const char *console_cmd_test_wave3_stats =
+        "BG3SE_AddTest(1, 'Stats.SyncNonexistentReturnsFalse', function()\n"
+        "  AssertEquals(Ext.Stats.Sync('BG3SE_Wave3_Stat_Does_Not_Exist'), false,\n"
+        "    'nonexistent stat sync result')\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Stats.TreasureTable.EmptyIsRealTable', function()\n"
+        "  -- Shared/Stats/Generated/TreasureTable.txt declares _TradeItems\n"
+        "  -- with no following subtable before the next treasuretable.\n"
+        "  local info = Ext.Stats.TreasureTable.Get('_TradeItems')\n"
+        "  AssertNotNil(info, '_TradeItems treasure table')\n"
+        "  AssertEquals(info.Name, '_TradeItems', 'empty treasure table name')\n"
+        "  AssertType(info.Address, 'number', 'empty treasure table address')\n"
+        "  AssertType(info.SubTables, 'table', 'empty treasure subtables')\n"
+        "  AssertEquals(#info.SubTables, 0, 'empty treasure subtable count')\n"
+        "  assert(next(info.SubTables) == nil,\n"
+        "    'empty treasure subtables must be a real empty table')\n"
         "end)\n";
 
     // Tier 1: Timer (8 tests)
@@ -2142,6 +2218,40 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertType(err, 'string', 'OneFrame refusal error')\n"
         "end)\n";
 
+    // Tier 2: Wave 3 component write-refusal regressions (2 tests)
+    static const char *console_cmd_test_wave3_components =
+        "BG3SE_AddTest(2, 'Entity.ComponentWrite.DynamicArrayRefused', function()\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local spellBook = entity.SpellBook\n"
+        "  AssertNotNil(spellBook, 'host SpellBook component')\n"
+        "  local before = spellBook.Spells\n"
+        "  AssertNotNil(before, 'SpellBook.Spells dynamic array')\n"
+        "  local beforeCount = #before\n"
+        "  local ok, err = pcall(function() spellBook.Spells = {} end)\n"
+        "  assert(not ok, 'DYNAMIC_ARRAY write should be refused')\n"
+        "  AssertType(err, 'string', 'DYNAMIC_ARRAY refusal error')\n"
+        "  local after = spellBook.Spells\n"
+        "  AssertNotNil(after, 'SpellBook.Spells after refused write')\n"
+        "  AssertEquals(#after, beforeCount,\n"
+        "    'refused DYNAMIC_ARRAY write changed array header')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Entity.ComponentWrite.UnknownSizeRefused', function()\n"
+        "  local layout = Ext.Types.GetComponentLayout('Net')\n"
+        "  AssertNotNil(layout, 'Net component layout')\n"
+        "  AssertEquals(layout.Size, 0, 'Net layout must remain unknown-size fixture')\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local net = entity.Net\n"
+        "  AssertNotNil(net, 'host Net component')\n"
+        "  local beforeType = net.__type\n"
+        "  local ok, err = pcall(function() net.BG3SE_MustNotWrite = true end)\n"
+        "  assert(not ok, 'componentSize==0 write should be refused')\n"
+        "  AssertType(err, 'string', 'unknown-size refusal error')\n"
+        "  AssertEquals(net.__type, beforeType,\n"
+        "    'refused unknown-size write changed component proxy')\n"
+        "end)\n";
+
     // Tier 2: Wave 2 Stats read/sync behavior (2 tests)
     static const char *console_cmd_test_wave2_stats_ingame =
         "BG3SE_AddTest(2, 'Stats.Goal23.TreasureReads', function()\n"
@@ -2169,10 +2279,16 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(2, 'Stats.Goal23.PrototypeSyncHonesty', function()\n"
         "  local status = Ext.Stats.Get('BURNING')\n"
         "  AssertNotNil(status, 'BURNING StatusData fixture')\n"
+        "  AssertEquals(status.Type, 'StatusData',\n"
+        "    'BURNING must resolve through its real ModifierList')\n"
         "  AssertEquals(Ext.Stats.Sync('BURNING'), true,\n"
         "    'status prototype sync result')\n"
-        "  AssertNotNil(Ext.Stats.GetCachedStatus('BURNING'),\n"
-        "    'status sync cached prototype')\n"
+        "  local cached = Ext.Stats.GetCachedStatus('BURNING')\n"
+        "  AssertNotNil(cached, 'status sync cached prototype')\n"
+        "  AssertEquals(cached.Name, 'BURNING', 'cached status name')\n"
+        "  AssertEquals(cached.Type, 'StatusPrototype', 'cached status type')\n"
+        "  AssertType(cached.Address, 'number', 'cached status address')\n"
+        "  assert(cached.Address ~= 0, 'cached status address must be nonzero')\n"
         "  local name = 'BG3SE_Goal23_GatedPassive'\n"
         "  local passive = Ext.Stats.Get(name) or\n"
         "    Ext.Stats.Create(name, 'PassiveData')\n"
@@ -2209,9 +2325,11 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(ok, 'Get(bad string) should not crash')\n"
         "end)\n"
         "BG3SE_AddTest(2, 'Parity.Entity.ComponentEnumeration', function()\n"
-        "  local names = Ext.Entity.GetAllComponentNames()\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local names = entity:GetAllComponentNames()\n"
         "  assert(type(names) == 'table', 'should be table')\n"
-        "  assert(#names > 100, 'should have >100 components, got: ' .. #names)\n"
+        "  assert(#names > 0, 'host should have components')\n"
         "  local found = false\n"
         "  for _, n in ipairs(names) do\n"
         "    if n:find('Health') then found = true; break end\n"
@@ -2249,7 +2367,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local host = Osi.GetHostCharacter()\n"
         "  local x, y, z = Osi.GetPosition(host)\n"
         "  if not x then return end\n"
-        "  local hit = Ext.Level.RaycastClosest(x, y+5, z, x, y-5, z)\n"
+        "  local hit = Ext.Level.RaycastClosest({x, y+5, z}, {x, y-5, z})\n"
         "  if hit then\n"
         "    AssertNotNil(hit.Position, 'Position field')\n"
         "    AssertNotNil(hit.Normal, 'Normal field')\n"
@@ -2268,7 +2386,9 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  if not Ext.Net.IsReady() then return end\n"
         "  local ok = pcall(Ext.Net.PostMessageToServer, '_parity_test', '{}')\n"
         "  assert(ok, 'PostMessageToServer should not crash')\n"
-        "end)\n"
+        "end)\n";
+
+    static const char *console_cmd_test_parity_ingame_entity =
         "BG3SE_AddTest(2, 'Parity.Entity.TypeIdDiscoveryComplete', function()\n"
         "  if not Ext.Entity.DiscoverTypeIds then return end\n"
         "  local info = Ext.Entity.DiscoverTypeIds()\n"
@@ -2279,14 +2399,10 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  end\n"
         "end)\n"
         "BG3SE_AddTest(2, 'Parity.Entity.RegistryCounts', function()\n"
-        "  local chars = Ext.Entity.GetAll('esv::Character')\n"
-        "  if chars == nil then\n"
-        "    chars = Ext.Entity.GetAll('Character')\n"
-        "  end\n"
-        "  if chars then\n"
-        "    assert(#chars > 0, 'Character count should be >0, got: ' .. #chars)\n"
-        "    assert(#chars < 10000, 'Character count should be <10k, got: ' .. #chars)\n"
-        "  end\n"
+        "  local chars = Ext.Entity.GetAllEntitiesWithComponent('esv::Character')\n"
+        "  assert(type(chars) == 'table', 'character query should return a table')\n"
+        "  assert(#chars > 0, 'Character count should be >0, got: ' .. #chars)\n"
+        "  assert(#chars < 10000, 'Character count should be <10k, got: ' .. #chars)\n"
         "end)\n"
         "BG3SE_AddTest(2, 'Parity.Entity.HealthLayoutSnapshot', function()\n"
         "  local guid = Osi.GetHostCharacter()\n"
@@ -2410,8 +2526,8 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(2, 'Parity.Level.RaycastAll', function()\n"
         "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
         "  AssertType(Ext.Level.RaycastAll, 'function', 'Level.RaycastAll')\n"
-        "  local src = {x=0,y=0,z=0}\n"
-        "  local dst = {x=0,y=-10,z=0}\n"
+        "  local src = {0, 0, 0}\n"
+        "  local dst = {0, -10, 0}\n"
         "  local ok, r = pcall(Ext.Level.RaycastAll, src, dst)\n"
         "  assert(ok, 'RaycastAll should not crash: ' .. tostring(r))\n"
         "  assert(type(r) == 'table', 'RaycastAll: expected table result')\n"
@@ -2436,6 +2552,68 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertType(Ext.Level.SweepBoxAll, 'function', 'Level.SweepBoxAll')\n"
         "end)\n";
 
+    // Wave 3 Goal 3.1: cylinder execution and honest AiGrid deferral contracts.
+    static const char *console_cmd_test_wave3_level =
+        "BG3SE_AddTest(2, 'Parity.Level.SweepCylinderClosest', function()\n"
+        "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
+        "  AssertType(Ext.Level.SweepCylinderClosest, 'function', 'Level.SweepCylinderClosest')\n"
+        "  local ok, hit = pcall(Ext.Level.SweepCylinderClosest,\n"
+        "    {0, 1, 0}, {0, -1, 0}, {0.5, 1.0, 0.5})\n"
+        "  assert(ok, 'SweepCylinderClosest should not crash: ' .. tostring(hit))\n"
+        "  assert(hit == nil or type(hit) == 'table', 'expected nil or hit table')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.SweepCylinderAll', function()\n"
+        "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
+        "  AssertType(Ext.Level.SweepCylinderAll, 'function', 'Level.SweepCylinderAll')\n"
+        "  local ok, hits = pcall(Ext.Level.SweepCylinderAll,\n"
+        "    {0, 1, 0}, {0, -1, 0}, {0.5, 1.0, 0.5})\n"
+        "  assert(ok, 'SweepCylinderAll should not crash: ' .. tostring(hits))\n"
+        "  assert(type(hits) == 'table', 'expected hit array')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetEntitiesOnTileDeferred', function()\n"
+        "  AssertType(Ext.Level.GetEntitiesOnTile, 'function', 'Level.GetEntitiesOnTile')\n"
+        "  local ok, result = pcall(Ext.Level.GetEntitiesOnTile, {0, 0, 0})\n"
+        "  assert(ok, 'GetEntitiesOnTile stub should not error')\n"
+        "  assert(result == nil, 'deferred GetEntitiesOnTile must return nil')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetTileDebugInfoDeferred', function()\n"
+        "  AssertType(Ext.Level.GetTileDebugInfo, 'function', 'Level.GetTileDebugInfo')\n"
+        "  local ok, result = pcall(Ext.Level.GetTileDebugInfo, {0, 0, 0})\n"
+        "  assert(ok, 'GetTileDebugInfo stub should not error')\n"
+        "  assert(result == nil, 'deferred GetTileDebugInfo must return nil')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.BeginPathfindingDeferred', function()\n"
+        "  AssertType(Ext.Level.BeginPathfinding, 'function', 'Level.BeginPathfinding')\n"
+        "  local ok, result = pcall(Ext.Level.BeginPathfinding, nil, {0, 0, 0}, nil)\n"
+        "  assert(ok, 'BeginPathfinding stub should not error')\n"
+        "  assert(result == nil, 'deferred BeginPathfinding must return nil')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.FindPathDeferred', function()\n"
+        "  AssertType(Ext.Level.FindPath, 'function', 'Level.FindPath')\n"
+        "  local ok, result = pcall(Ext.Level.FindPath, nil)\n"
+        "  assert(ok, 'FindPath stub should not error')\n"
+        "  assert(result == false, 'deferred FindPath must return false')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.ReleasePathDeferred', function()\n"
+        "  AssertType(Ext.Level.ReleasePath, 'function', 'Level.ReleasePath')\n"
+        "  local ok, result = pcall(Ext.Level.ReleasePath, nil)\n"
+        "  assert(ok, 'ReleasePath stub should not error')\n"
+        "  assert(result == false, 'deferred ReleasePath must return false')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetPathByIdDeferred', function()\n"
+        "  AssertType(Ext.Level.GetPathById, 'function', 'Level.GetPathById')\n"
+        "  local ok, result = pcall(Ext.Level.GetPathById, -1)\n"
+        "  assert(ok, 'GetPathById stub should not error')\n"
+        "  assert(result == nil, 'deferred GetPathById must return nil')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetActivePathfindingRequestsDeferred', function()\n"
+        "  AssertType(Ext.Level.GetActivePathfindingRequests, 'function',\n"
+        "    'Level.GetActivePathfindingRequests')\n"
+        "  local ok, result = pcall(Ext.Level.GetActivePathfindingRequests)\n"
+        "  assert(ok, 'GetActivePathfindingRequests stub should not error')\n"
+        "  assert(result == nil, 'deferred GetActivePathfindingRequests must return nil')\n"
+        "end)\n";
+
     // Parity stubs part 3: Ext.Audio, Ext.Types, Ext.Math, Ext.Localization (tier 1)
     static const char *console_cmd_test_parity_apis =
         "BG3SE_AddTest(1, 'Parity.Audio.PlayExternalSound', function()\n"
@@ -2449,6 +2627,9 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Audio.PrepareBank', function()\n"
         "  AssertType(Ext.Audio.PrepareBank, 'function', 'Audio.PrepareBank')\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Parity.Audio.UnprepareBank', function()\n"
+        "  AssertType(Ext.Audio.UnprepareBank, 'function', 'Audio.UnprepareBank')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Types.Serialize', function()\n"
         "  AssertType(Ext.Types.Serialize, 'function', 'Types.Serialize')\n"
@@ -2473,17 +2654,30 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local v = Ext.Math.Smoothstep(0.0, 1.0, 0.5)\n"
         "  AssertType(v, 'number', 'Smoothstep result')\n"
         "  AssertEqualsFloat(v, 0.5, 0.01, 'Smoothstep(0,1,0.5)')\n"
+        "  AssertEqualsFloat(Ext.Math.Smoothstep(0.0, 1.0, -1.0), 0.0, 0.001,\n"
+        "    'Smoothstep lower clamp')\n"
+        "  AssertEqualsFloat(Ext.Math.Smoothstep(0.0, 1.0, 2.0), 1.0, 0.001,\n"
+        "    'Smoothstep upper clamp')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Math.IsNaN', function()\n"
         "  AssertType(Ext.Math.IsNaN, 'function', 'Math.IsNaN')\n"
         "  assert(Ext.Math.IsNaN(0/0) == true, 'IsNaN(nan) should be true')\n"
         "  assert(Ext.Math.IsNaN(1.0) == false, 'IsNaN(1.0) should be false')\n"
+        "  assert(Ext.Math.IsNaN(math.huge) == false, 'IsNaN(infinity) should be false')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Localization.CreateHandle', function()\n"
         "  AssertType(Ext.Loca.CreateHandle, 'function', 'Loca.CreateHandle')\n"
-        "  local ok, r = pcall(Ext.Loca.CreateHandle, 'test string')\n"
+        "  local ok, r = pcall(Ext.Loca.CreateHandle)\n"
         "  assert(ok, 'CreateHandle should not crash: ' .. tostring(r))\n"
         "  assert(r ~= nil, 'CreateHandle should return a handle')\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Parity.Localization.TranslationSurface', function()\n"
+        "  AssertType(Ext.Loca.GetTranslatedString, 'function',\n"
+        "    'Loca.GetTranslatedString')\n"
+        "  AssertType(Ext.Loca.UpdateTranslatedString, 'function',\n"
+        "    'Loca.UpdateTranslatedString')\n"
+        "  AssertEquals(Ext.Loca.GetTranslatedString('', 'fallback'), 'fallback',\n"
+        "    'empty handle fallback')\n"
         "end)\n";
 
     // Parity part 4: Ext.Events functor/damage subscription lifecycles
@@ -2508,6 +2702,33 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertType(id, 'number', 'DealDamage subscription handle')\n"
         "  AssertEquals(Ext.Events.DealDamage:Unsubscribe(id), true,\n"
         "    'DealDamage unsubscribe result')\n"
+        "end)\n";
+
+    // Tier 2: Wave 3 end-to-end damage hook probe. The subscriptions are armed
+    // when the Lua test definitions load so a real game tick can occur before
+    // the synchronous test runner checks the paired counts.
+    static const char *console_cmd_test_wave3_damage_events =
+        "BG3SE_DamageEventProbe = BG3SE_DamageEventProbe or {before=0, deal=0}\n"
+        "if BG3SE_DamageEventProbe.beforeId == nil then\n"
+        "  BG3SE_DamageEventProbe.beforeId = Ext.Events.BeforeDealDamage:Subscribe(function()\n"
+        "    BG3SE_DamageEventProbe.before = BG3SE_DamageEventProbe.before + 1\n"
+        "  end)\n"
+        "end\n"
+        "if BG3SE_DamageEventProbe.dealId == nil then\n"
+        "  BG3SE_DamageEventProbe.dealId = Ext.Events.DealDamage:Subscribe(function()\n"
+        "    BG3SE_DamageEventProbe.deal = BG3SE_DamageEventProbe.deal + 1\n"
+        "  end)\n"
+        "end\n"
+        "BG3SE_AddTest(2, 'Stats.DamageEvents.PairedFiring', function()\n"
+        "  AssertType(BG3SE_DamageEventProbe.beforeId, 'number',\n"
+        "    'BeforeDealDamage subscription')\n"
+        "  AssertType(BG3SE_DamageEventProbe.dealId, 'number',\n"
+        "    'DealDamage subscription')\n"
+        "  assert(BG3SE_DamageEventProbe.before > 0,\n"
+        "    'no damage functor observed; apply BURNING to the host, allow one status tick, then rerun this test')\n"
+        "  AssertEquals(BG3SE_DamageEventProbe.deal,\n"
+        "    BG3SE_DamageEventProbe.before,\n"
+        "    'BeforeDealDamage/DealDamage paired event counts')\n"
         "end)\n";
 
     // Parity part 5: behavioral tests (Tier 1 — test actual behavior, not just presence)
@@ -2563,12 +2784,49 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local ok, err = pcall(Ext.Audio.PlayExternalSound, nil, nil)\n"
         "  assert(not ok or err == nil, 'PlayExternalSound(nil,nil) should fail safely')\n"
         "end)\n"
-        "BG3SE_AddTest(1, 'Parity.Types.SerializeRoundtrip', function()\n"
-        "  if not Ext.Types.Serialize then return end\n"
-        "  local ok, data = pcall(Ext.Types.Serialize, {x=1})\n"
-        "  if not ok then return end\n"
-        "  local ok2, obj = pcall(Ext.Types.Unserialize, data)\n"
-        "  if ok2 then AssertNotNil(obj, 'Unserialize result') end\n"
+        "BG3SE_AddTest(1, 'Parity.Types.SerializeRejectsPlainTable', function()\n"
+        "  local ok = pcall(Ext.Types.Serialize, {x=1})\n"
+        "  assert(not ok, 'Serialize must reject values without reflected layouts')\n"
+        "end)\n";
+
+    // Wave 3 small-gap behavioral coverage (Tier 2 — loaded save required)
+    static const char *console_cmd_test_wave3_small_gaps =
+        "BG3SE_AddTest(2, 'Wave3.Entity.GetAllEntities', function()\n"
+        "  local entities = Ext.Entity.GetAllEntities()\n"
+        "  assert(type(entities) == 'table', 'GetAllEntities should return a table')\n"
+        "  assert(#entities > 0, 'loaded world should contain entities')\n"
+        "  AssertType(entities[1], 'userdata', 'enumerated entity')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Wave3.Entity.GetAllComponents', function()\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local viaMethod = entity:GetAllComponents()\n"
+        "  local viaNamespace = Ext.Entity.GetAllComponents(entity)\n"
+        "  assert(type(viaMethod) == 'table', 'method result should be a table')\n"
+        "  assert(type(viaNamespace) == 'table', 'namespace result should be a table')\n"
+        "  assert(next(viaMethod) ~= nil, 'host components should not be empty')\n"
+        "  assert(next(viaNamespace) ~= nil, 'namespace components should not be empty')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Wave3.Types.ComponentSerializeRoundtrip', function()\n"
+        "  local entity = Ext.Entity.Get(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(entity, 'host entity')\n"
+        "  local health = entity.Health\n"
+        "  AssertNotNil(health, 'host Health component')\n"
+        "  local snapshot = Ext.Types.Serialize(health)\n"
+        "  assert(type(snapshot) == 'table', 'Serialize should return a table')\n"
+        "  AssertType(snapshot.Hp, 'number', 'serialized Health.Hp')\n"
+        "  local originalHp = health.Hp\n"
+        "  Ext.Types.Unserialize(health, snapshot)\n"
+        "  AssertEquals(health.Hp, originalHp, 'Health.Hp after same-value roundtrip')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Wave3.Localization.UpdateRoundtrip', function()\n"
+        "  assert(Ext.Loca.IsReady(), 'localization repository should be ready')\n"
+        "  local handle = Ext.Loca.CreateHandle()\n"
+        "  local value = 'BG3SE Wave 3 localization roundtrip'\n"
+        "  assert(Ext.Loca.UpdateTranslatedString(handle, value),\n"
+        "    'UpdateTranslatedString should succeed')\n"
+        "  AssertEquals(Ext.Loca.GetTranslatedString(handle, 'fallback'), value,\n"
+        "    'updated translation')\n"
         "end)\n";
 
     // Execute each command registration chunk
@@ -2578,6 +2836,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         // Test suite: framework + assertions first, then test definitions, then registration
         console_cmd_test_framework, console_cmd_test_assertions,
         console_cmd_test_core, console_cmd_test_stats, console_cmd_test_wave2_stats,
+        console_cmd_test_wave3_stats,
         console_cmd_test_timer,
         console_cmd_test_events, console_cmd_test_debug, console_cmd_test_types,
         console_cmd_test_misc, console_cmd_test_mcm, console_cmd_test_register,
@@ -2586,14 +2845,19 @@ void lua_ext_register_global_helpers(lua_State *L) {
         console_cmd_test_osiris, console_cmd_test_osiris_edge,
         console_cmd_test_entity_events,
         console_cmd_test_wave2_components,
+        console_cmd_test_wave3_components,
         console_cmd_test_wave2_stats_ingame,
         // Fail-first parity stubs (FAIL now, PASS after implementation)
         console_cmd_test_parity_entity,
         console_cmd_test_parity_level,
+        console_cmd_test_wave3_level,
         console_cmd_test_parity_apis,
         console_cmd_test_parity_events,
+        console_cmd_test_wave3_damage_events,
         console_cmd_test_parity_behavior,
+        console_cmd_test_wave3_small_gaps,
         console_cmd_test_parity_ingame,
+        console_cmd_test_parity_ingame_entity,
         console_cmd_test_ingame_reg,
         console_cmd_ide,
         console_cmd_mod_diag

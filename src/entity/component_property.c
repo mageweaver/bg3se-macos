@@ -5,8 +5,20 @@
  */
 
 #include "component_property.h"
+
+// Generated layout records intentionally rely on zero-initialization for the
+// optional array metadata fields and use empty arrays for tag components.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#pragma clang diagnostic ignored "-Wzero-length-array"
+#endif
 #include "component_offsets.h"
 #include "generated_property_defs.h"  // 504 generated component layouts
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
 #include "../core/safe_memory.h"
 #include "../core/logging.h"
 #include "../lifetime/lifetime.h"
@@ -1100,6 +1112,131 @@ void component_property_push_array_proxy(lua_State *L, void *arrayPtr,
 
     luaL_getmetatable(L, ARRAY_PROXY_METATABLE);
     lua_setmetatable(L, -2);
+}
+
+static void serialize_array_proxy(lua_State *L, ArrayProxy *proxy) {
+    if (!proxy || proxy->elemSize == 0) {
+        lua_pushnil(L);
+        return;
+    }
+
+    void *buf = NULL;
+    uint32_t size = 0;
+    if (!array_proxy_read_metadata(proxy, &buf, &size) || (size > 0 && !buf)) {
+        lua_pushnil(L);
+        return;
+    }
+    if (size > (uint32_t)INT_MAX) {
+        LOG_ENTITY_DEBUG("Refusing to serialize implausibly large array (%u elements)",
+                         size);
+        lua_pushnil(L);
+        return;
+    }
+
+    lua_createtable(L, (int)size, 0);
+    for (uint32_t i = 0; i < size; i++) {
+        array_proxy_push_element(L, proxy, buf, i);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+}
+
+bool component_property_serialize_proxy(lua_State *L, int index) {
+    int absoluteIndex = lua_absindex(L, index);
+    ComponentProxy *component = (ComponentProxy *)luaL_testudata(
+        L, absoluteIndex, COMPONENT_PROXY_METATABLE);
+    if (component) {
+        if (!lifetime_lua_is_valid(L, component->lifetime)) {
+            lifetime_lua_expired_error(L, "Component");
+            return true;
+        }
+
+        lua_createtable(L, 0, component->layout->propertyCount);
+        for (int i = 0; i < component->layout->propertyCount; i++) {
+            const ComponentPropertyDef *prop = &component->layout->properties[i];
+            if (prop->type == FIELD_TYPE_DYNAMIC_ARRAY) {
+                ArrayProxy array = {
+                    .arrayPtr = (char *)component->componentPtr + prop->offset,
+                    .elemType = prop->elemType,
+                    .elemSize = prop->elemSize,
+                    .lifetime = component->lifetime
+                };
+                serialize_array_proxy(L, &array);
+            } else {
+                component_property_read_def(
+                    L, component->componentPtr, prop);
+            }
+
+            if (lua_isnil(L, -1)) {
+                lua_pop(L, 1);
+            } else {
+                lua_setfield(L, -2, prop->name);
+            }
+        }
+        return true;
+    }
+
+    ArrayProxy *array = (ArrayProxy *)luaL_testudata(
+        L, absoluteIndex, ARRAY_PROXY_METATABLE);
+    if (array) {
+        if (!lifetime_lua_is_valid(L, array->lifetime)) {
+            lifetime_lua_expired_error(L, "Array");
+            return true;
+        }
+        serialize_array_proxy(L, array);
+        return true;
+    }
+
+    return false;
+}
+
+static bool property_can_unserialize(const ComponentLayoutDef *layout,
+                                     const ComponentPropertyDef *prop) {
+    if (!layout || !prop || prop->readOnly) return false;
+    if (strstr(layout->componentName, "OneFrame") != NULL
+        || strstr(layout->componentName, "Request") != NULL) {
+        return false;
+    }
+    if (prop->type == FIELD_TYPE_FIXEDSTRING
+        || component_property_is_pointer_typed(prop)) {
+        return false;
+    }
+    return component_property_field_size(prop) > 0;
+}
+
+bool component_property_unserialize_proxy(lua_State *L, int proxyIndex,
+                                          int tableIndex) {
+    int absoluteProxy = lua_absindex(L, proxyIndex);
+    int absoluteTable = lua_absindex(L, tableIndex);
+    ComponentProxy *component = (ComponentProxy *)luaL_testudata(
+        L, absoluteProxy, COMPONENT_PROXY_METATABLE);
+    if (!component) {
+        return false;
+    }
+
+    if (!lifetime_lua_is_valid(L, component->lifetime)) {
+        lifetime_lua_expired_error(L, "Component");
+        return true;
+    }
+
+    luaL_checktype(L, absoluteTable, LUA_TTABLE);
+    for (int i = 0; i < component->layout->propertyCount; i++) {
+        const ComponentPropertyDef *prop = &component->layout->properties[i];
+        if (!property_can_unserialize(component->layout, prop)) {
+            continue;
+        }
+
+        lua_getfield(L, absoluteTable, prop->name);
+        if (!lua_isnil(L, -1)
+            && !component_property_write(
+                L, component->componentPtr, component->layout, prop->name, -1)) {
+            return luaL_error(
+                L, "Cannot unserialize component property %s.%s",
+                component->layout->componentName, prop->name);
+        }
+        lua_pop(L, 1);
+    }
+
+    return true;
 }
 
 // ============================================================================

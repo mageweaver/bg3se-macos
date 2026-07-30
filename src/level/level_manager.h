@@ -109,7 +109,7 @@ bool level_raycast_any(const float src[3], const float dst[3],
                        int context);
 
 // ============================================================================
-// Sweep Functions (VMT[10]-[16])
+// Sweep Functions
 // ============================================================================
 
 /** Sweep sphere along path, return closest hit. */
@@ -139,6 +139,15 @@ bool level_sweep_box_closest(const float src[3], const float dst[3],
                               uint32_t exclude_group,
                               int context);
 
+/** Sweep cylinder along path, return closest hit. */
+bool level_sweep_cylinder_closest(const float src[3], const float dst[3],
+                                   const float extents[3],
+                                   LevelPhysicsHit *hit,
+                                   uint32_t physics_type,
+                                   uint32_t include_group,
+                                   uint32_t exclude_group,
+                                   int context);
+
 /** Sweep sphere along path, return all hits. */
 bool level_sweep_sphere_all(const float src[3], const float dst[3],
                              float radius,
@@ -165,6 +174,15 @@ bool level_sweep_box_all(const float src[3], const float dst[3],
                           uint32_t include_group,
                           uint32_t exclude_group,
                           int context);
+
+/** Sweep cylinder along path, return all hits. */
+bool level_sweep_cylinder_all(const float src[3], const float dst[3],
+                               const float extents[3],
+                               LevelPhysicsHitAll *out,
+                               uint32_t physics_type,
+                               uint32_t include_group,
+                               uint32_t exclude_group,
+                               int context);
 
 /**
  * Test if a box overlaps any physics objects.

@@ -1,44 +1,71 @@
 {
-  "task": "Goal 2.4 (Wave 2): register staged tests and convert presence checks to execution assertions",
+  "task": "Wave 3 Goal 3.2: close small parity gaps across Ext.Math, Ext.Audio, Ext.Types, Ext.Localization, and Ext.Entity",
   "status": "done",
-  "started_at": "2026-07-29T00:00:00-04:00",
-  "completed_at": "2026-07-29T18:10:18-04:00",
+  "started_at": "2026-07-30T03:11:46Z",
   "features": [
     {
-      "name": "Reconcile staged tests with existing Lua test idioms",
+      "name": "Ext.Math Smoothstep and IsNaN",
+      "status": "completed",
+      "files": [
+        "src/math/lua_math.c",
+        "src/lua/lua_ext.c"
+      ],
+      "started_at": "2026-07-30T03:11:46Z",
+      "completed_at": "2026-07-30T03:32:23Z"
+    },
+    {
+      "name": "Ext.Audio bank management",
+      "status": "completed",
+      "files": [
+        "src/audio/audio_manager.c",
+        "src/lua/lua_audio.c"
+      ],
+      "completed_at": "2026-07-30T03:32:23Z"
+    },
+    {
+      "name": "Ext.Types serialization and remaining gaps",
       "status": "completed",
       "files": [
         "src/lua/lua_ext.c",
-        "docs/e2e-review/wave2-goal21-proposed-tests.lua",
-        "docs/e2e-review/wave2-goal23-proposed-tests.lua"
-      ]
+        "src/entity/component_property.c",
+        "src/entity/component_property.h"
+      ],
+      "completed_at": "2026-07-30T03:32:23Z"
     },
     {
-      "name": "Register Wave 2 execution-assertion tests",
+      "name": "Ext.Localization translation access",
       "status": "completed",
       "files": [
+        "src/localization/localization.c",
+        "src/lua/lua_localization.c"
+      ],
+      "completed_at": "2026-07-30T03:32:23Z"
+    },
+    {
+      "name": "Ext.Entity enumeration and tier-2 gap investigation",
+      "status": "completed",
+      "files": [
+        "src/entity/entity_system.c",
+        "src/injector/main.c",
         "src/lua/lua_ext.c"
-      ]
+      ],
+      "completed_at": "2026-07-30T03:32:23Z"
     },
     {
-      "name": "Update documented test counts and remove staged proposals",
+      "name": "Offline verification and sweep report",
       "status": "completed",
       "files": [
-        "docs/testing.md",
-        "agent_docs/development.md"
-      ]
-    },
-    {
-      "name": "Run acceptance verification",
-      "status": "completed",
-      "files": []
+        "docs/bugs/wave3-builder-b-sweep-report.md"
+      ],
+      "completed_at": "2026-07-30T03:32:23Z"
     }
   ],
   "verification": {
     "build": true,
-    "clean_build": "cmake --build build --clean-first",
-    "tier0": "55/55 passed",
-    "harness": "191 passed",
-    "diff_check": true
-  }
+    "tier0": true,
+    "tier0_result": "55/55 passed",
+    "harness": true,
+    "harness_result": "194 passed (191 baseline plus 3 concurrent Wave 3 audit tests)"
+  },
+  "completed_at": "2026-07-30T03:32:23Z"
 }

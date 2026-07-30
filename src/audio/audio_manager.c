@@ -17,6 +17,7 @@
 #include "../core/safe_memory.h"
 #include "../core/offset_table.h"
 #include "../strings/fixed_string.h"
+#include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -48,9 +49,9 @@
 // Additional VMT indices — TBD: verify via Ghidra for ARM64
 #define WWISE_VMT_PLAY_EXTERNAL    28   /* PlayExternalSound */
 #define WWISE_VMT_GET_ID_FROM_STR  30   /* GetIDFromString (SoundNameId) */
-#define WWISE_VMT_LOAD_BANK        32   /* LoadBank */
-#define WWISE_VMT_UNLOAD_BANK      34   /* UnloadBank */
-#define WWISE_VMT_PREPARE_BANK     36   /* PrepareBank */
+
+// Wwise AKRESULT value used by the game's ww::WwiseManager wrappers.
+#define AK_SUCCESS 1
 
 // Well-known sound object IDs
 #define SOUND_OBJECT_INVALID  0ULL
@@ -73,6 +74,28 @@ typedef struct {
 // Passed through offset_table_remap_fn() (either-vintage match, fail-closed).
 #define OFFSET_STDSTRING_CTOR  0x0650e718ULL
 typedef void (*STDStringCtorFn)(LSSTDString *this_, const char *str);
+
+/*
+ * Exported Wwise SoundEngine entry points used by the installed macOS game.
+ *
+ * These signatures and argument constants are mirrored from disassembly of
+ * ww::WwiseManager::{Load,Unload,Prepare,Unprepare}Bank_Blocking in build
+ * 4.1.1.7209685.  Resolving the exported AK symbols avoids the unverified
+ * ResourceManager -> SoundManager receiver offset and guessed VMT indices.
+ */
+typedef uint32_t (*AkGetIdFromStringFn)(const char *name);
+typedef int32_t (*AkLoadBankFn)(const char *name, uint32_t *out_bank_id,
+                                uint32_t bank_type);
+typedef int32_t (*AkUnloadBankFn)(uint32_t bank_id, const void *memory,
+                                  uint32_t memory_size);
+typedef int32_t (*AkPrepareBankByNameFn)(uint32_t preparation_type,
+                                         const char *name,
+                                         uint32_t bank_content,
+                                         uint32_t flags);
+typedef int32_t (*AkPrepareBankByIdFn)(uint32_t preparation_type,
+                                       uint32_t bank_id,
+                                       uint32_t bank_content,
+                                       uint32_t flags);
 
 static void ls_stdstring_init(LSSTDString *out, const char *str, STDStringCtorFn ctor) {
     size_t len = str ? strlen(str) : 0;
@@ -103,6 +126,11 @@ static struct {
     void *main_binary_base;
     void **resource_manager_ptr;
     STDStringCtorFn stdstring_ctor;
+    AkGetIdFromStringFn ak_get_id_from_string;
+    AkLoadBankFn ak_load_bank;
+    AkUnloadBankFn ak_unload_bank;
+    AkPrepareBankByNameFn ak_prepare_bank_by_name;
+    AkPrepareBankByIdFn ak_prepare_bank_by_id;
 } g_audio = {0};
 
 // ============================================================================
@@ -135,10 +163,29 @@ bool audio_manager_init(void *main_binary_base) {
         ? (STDStringCtorFn)((uintptr_t)main_binary_base + (stdstr_ghidra - 0x100000000ULL))
         : NULL;
 
+    g_audio.ak_get_id_from_string = (AkGetIdFromStringFn)dlsym(
+        RTLD_DEFAULT, "_ZN2AK11SoundEngine15GetIDFromStringEPKc");
+    g_audio.ak_load_bank = (AkLoadBankFn)dlsym(
+        RTLD_DEFAULT, "_ZN2AK11SoundEngine8LoadBankEPKcRjj");
+    g_audio.ak_unload_bank = (AkUnloadBankFn)dlsym(
+        RTLD_DEFAULT, "_ZN2AK11SoundEngine10UnloadBankEjPKvj");
+    g_audio.ak_prepare_bank_by_name = (AkPrepareBankByNameFn)dlsym(
+        RTLD_DEFAULT,
+        "_ZN2AK11SoundEngine11PrepareBankENS0_15PreparationTypeEPKcNS0_13AkBankContentEj");
+    g_audio.ak_prepare_bank_by_id = (AkPrepareBankByIdFn)dlsym(
+        RTLD_DEFAULT,
+        "_ZN2AK11SoundEngine11PrepareBankENS0_15PreparationTypeEjNS0_13AkBankContentEj");
+
     log_message("[Audio] Audio manager initialized");
     log_message("[Audio]   Base: %p", main_binary_base);
     log_message("[Audio]   ResourceManager::m_ptr -> %p", (void *)g_audio.resource_manager_ptr);
     log_message("[Audio]   STDString ctor: %p", (void *)g_audio.stdstring_ctor);
+    log_message("[Audio]   Wwise bank API: getId=%p load=%p unload=%p prepareName=%p prepareId=%p",
+                (void *)g_audio.ak_get_id_from_string,
+                (void *)g_audio.ak_load_bank,
+                (void *)g_audio.ak_unload_bank,
+                (void *)g_audio.ak_prepare_bank_by_name,
+                (void *)g_audio.ak_prepare_bank_by_id);
 
     g_audio.initialized = true;
     return true;
@@ -500,33 +547,51 @@ bool audio_play_external_sound(uint64_t sound_object_id, const char *event_name,
     return result;
 }
 
-/**
- * LoadBank — load a Wwise sound bank.
- *
- * Windows: LoadBank(SoundNameId& bankId, char const* bankName)
- * bankId is set by the callee. We pass a local uint32_t by address.
- */
-typedef void (*WwiseLoadBankFn)(void *this_, uint32_t *out_bank_id, const char *bank_name);
+static bool bank_api_ready(void) {
+    return g_audio.ak_get_id_from_string
+        && g_audio.ak_load_bank
+        && g_audio.ak_unload_bank
+        && g_audio.ak_prepare_bank_by_name
+        && g_audio.ak_prepare_bank_by_id;
+}
+
+static bool bank_id_valid(uint32_t bank_id) {
+    return bank_id != 0 && bank_id != UINT32_MAX;
+}
+
+static bool require_bank_api(const char *operation) {
+    static bool warned = false;
+    if (bank_api_ready()) {
+        return true;
+    }
+
+    if (!warned) {
+        log_message("[Audio] %s deferred: exported Wwise bank entry points are unavailable",
+                    operation);
+        warned = true;
+    }
+    return false;
+}
 
 bool audio_load_bank(const char *bank_name) {
-    if (!bank_name) return false;
-
-    void *sm = get_sound_manager();
-    if (!sm) {
-        log_message("[Audio] SoundManager not available for LoadBank");
-        return false;
-    }
-
-    void *func = read_vmt_entry(sm, WWISE_VMT_LOAD_BANK);
-    if (!func) {
-        log_message("[Audio] LoadBank VMT entry not found at index %d", WWISE_VMT_LOAD_BANK);
-        return false;
-    }
+    if (!bank_name || !*bank_name || !require_bank_api("LoadBank")) return false;
 
     uint32_t bank_id = UINT32_MAX;
-    WwiseLoadBankFn load = (WwiseLoadBankFn)func;
-    load(sm, &bank_id, bank_name);
-    return bank_id != UINT32_MAX;
+    int32_t result;
+
+    if (strcmp(bank_name, "Init") == 0) {
+        result = g_audio.ak_load_bank(bank_name, &bank_id, 0);
+    } else {
+        result = g_audio.ak_prepare_bank_by_name(0, bank_name, 1, 0);
+        if (result == AK_SUCCESS) {
+            bank_id = g_audio.ak_get_id_from_string(bank_name);
+        }
+    }
+
+    bool success = result == AK_SUCCESS && bank_id_valid(bank_id);
+    log_message("[Audio] LoadBank('%s') -> %s (AKRESULT=%d, id=%u)",
+                bank_name, success ? "OK" : "FAIL", result, bank_id);
+    return success;
 }
 
 /**
@@ -534,31 +599,22 @@ bool audio_load_bank(const char *bank_name) {
  *
  * Windows: UnloadBank(SoundNameId bankId)
  */
-typedef bool (*WwiseUnloadBankFn)(void *this_, uint32_t bank_id);
-
 bool audio_unload_bank(const char *bank_name) {
-    if (!bank_name) return false;
+    if (!bank_name || !*bank_name || !require_bank_api("UnloadBank")) return false;
 
-    void *sm = get_sound_manager();
-    if (!sm) {
-        log_message("[Audio] SoundManager not available for UnloadBank");
-        return false;
-    }
-
-    uint32_t bank_id = get_sound_name_id(sm, bank_name);
-    if (bank_id == UINT32_MAX) {
+    uint32_t bank_id = g_audio.ak_get_id_from_string(bank_name);
+    if (!bank_id_valid(bank_id)) {
         log_message("[Audio] UnloadBank: could not resolve bank ID for '%s'", bank_name);
         return false;
     }
 
-    void *func = read_vmt_entry(sm, WWISE_VMT_UNLOAD_BANK);
-    if (!func) {
-        log_message("[Audio] UnloadBank VMT entry not found at index %d", WWISE_VMT_UNLOAD_BANK);
-        return false;
-    }
-
-    WwiseUnloadBankFn unload = (WwiseUnloadBankFn)func;
-    return unload(sm, bank_id);
+    int32_t result = strcmp(bank_name, "Init") == 0
+        ? g_audio.ak_unload_bank(bank_id, NULL, 0)
+        : g_audio.ak_prepare_bank_by_id(1, bank_id, 1, 0);
+    bool success = result == AK_SUCCESS;
+    log_message("[Audio] UnloadBank('%s') -> %s (AKRESULT=%d, id=%u)",
+                bank_name, success ? "OK" : "FAIL", result, bank_id);
+    return success;
 }
 
 /**
@@ -566,31 +622,23 @@ bool audio_unload_bank(const char *bank_name) {
  * Same signature as LoadBank: callee sets bankId.
  */
 bool audio_prepare_bank(const char *bank_name) {
-    if (!bank_name) return false;
+    if (!bank_name || !*bank_name || !require_bank_api("PrepareBank")) return false;
 
-    void *sm = get_sound_manager();
-    if (!sm) {
-        log_message("[Audio] SoundManager not available for PrepareBank");
-        return false;
-    }
-
-    void *func = read_vmt_entry(sm, WWISE_VMT_PREPARE_BANK);
-    if (!func) {
-        log_message("[Audio] PrepareBank VMT entry not found at index %d", WWISE_VMT_PREPARE_BANK);
-        return false;
-    }
-
-    uint32_t bank_id = UINT32_MAX;
-    WwiseLoadBankFn prepare = (WwiseLoadBankFn)func;
-    prepare(sm, &bank_id, bank_name);
-    return bank_id != UINT32_MAX;
+    int32_t result = g_audio.ak_prepare_bank_by_name(0, bank_name, 0, 0);
+    uint32_t bank_id = result == AK_SUCCESS
+        ? g_audio.ak_get_id_from_string(bank_name)
+        : UINT32_MAX;
+    bool success = result == AK_SUCCESS && bank_id_valid(bank_id);
+    log_message("[Audio] PrepareBank('%s') -> %s (AKRESULT=%d, id=%u)",
+                bank_name, success ? "OK" : "FAIL", result, bank_id);
+    return success;
 }
 
 /**
  * UnprepareBank — release prepared bank metadata.
- * Windows implementation calls UnloadBank internally (same as UnloadBank).
+ * Windows BG3SE's Lua wrapper resolves the name and calls UnloadBank rather
+ * than SoundManager::UnprepareBank. Preserve that observable behavior here.
  */
 bool audio_unprepare_bank(const char *bank_name) {
-    /* Windows BG3SE UnprepareBank calls UnloadBank internally */
     return audio_unload_bank(bank_name);
 }

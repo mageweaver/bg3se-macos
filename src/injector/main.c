@@ -1105,20 +1105,6 @@ static void register_ext_api(lua_State *L) {
         "end\n"
     );
 
-    // Register Ext.Types.Serialize/Unserialize stubs (Issue #69)
-    // Note: Windows BG3SE operates on C++ proxy userdata; we provide JSON fallback
-    // with a warning so mods know the semantics differ
-    luaL_dostring(L,
-        "Ext.Types.Serialize = Ext.Types.Serialize or function(obj)\n"
-        "  Ext.Log.Warn('Lua', 'Ext.Types.Serialize: using JSON fallback (proxy userdata not supported on macOS)')\n"
-        "  return Ext.Json.Stringify(obj)\n"
-        "end\n"
-        "Ext.Types.Unserialize = Ext.Types.Unserialize or function(str)\n"
-        "  Ext.Log.Warn('Lua', 'Ext.Types.Unserialize: using JSON fallback (proxy userdata not supported on macOS)')\n"
-        "  return Ext.Json.Parse(str)\n"
-        "end\n"
-    );
-
     // NOTE: entity_events_register_lua() moved after entity_register_lua() below
     // (Ext.Entity table must exist before we can register event functions on it)
 
@@ -1132,7 +1118,6 @@ static void register_ext_api(lua_State *L) {
         "    end\n"
         "  end\n"
         "  local stubs = {'EnableTracing', 'DisableTracing',\n"
-        "    'GetAllEntities', 'GetAllEntitiesWithComponent', 'GetAllComponents',\n"
         "    'GetReplicationFlags'}\n"
         "  for _, name in ipairs(stubs) do\n"
         "    Ext.Entity[name] = Ext.Entity[name] or entity_stub(name)\n"

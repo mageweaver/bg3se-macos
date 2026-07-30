@@ -13,7 +13,11 @@
  *   Ext.Level.RaycastAny(src, dst, physType, includeGroup, excludeGroup, context) -> boolean
  *   Ext.Level.TestBox(pos, extents, physType, includeGroup, excludeGroup) -> boolean
  *   Ext.Level.TestSphere(pos, radius, physType, includeGroup, excludeGroup) -> boolean
+ *   Ext.Level.SweepCylinderClosest(src, dst, extents, ...) -> hit table or nil
+ *   Ext.Level.SweepCylinderAll(src, dst, extents, ...) -> array of hit tables
  *   Ext.Level.GetHeightsAt(x, z) -> array of heights
+ *   Tile/pathfinding names are registered as explicit warn-once deferrals
+ *   until their macOS AiGrid ABI and layouts are verified.
  */
 
 #include "lua_level.h"
@@ -461,6 +465,49 @@ static int lua_level_sweep_box_all(lua_State *L) {
     return push_hit_all(L, &hits);
 }
 
+/**
+ * Ext.Level.SweepCylinderClosest(src, dst, extents, physType,
+ *                                includeGroup, excludeGroup, context)
+ *   extents: {x, y, z} cylinder extents
+ *   Returns: hit table or nil
+ */
+static int lua_level_sweep_cylinder_closest(lua_State *L) {
+    float src[3], dst[3], extents[3];
+    if (!read_vec3(L, 1, src))     return luaL_error(L, "SweepCylinderClosest: src must be {x,y,z}");
+    if (!read_vec3(L, 2, dst))     return luaL_error(L, "SweepCylinderClosest: dst must be {x,y,z}");
+    if (!read_vec3(L, 3, extents)) return luaL_error(L, "SweepCylinderClosest: extents must be {x,y,z}");
+    uint32_t phys_type     = (uint32_t)luaL_optinteger(L, 4, 1);
+    uint32_t include_group = (uint32_t)luaL_optinteger(L, 5, 0x7FFFFFFF);
+    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
+    int context            = (int)luaL_optinteger(L, 7, 0);
+    LevelPhysicsHit hit;
+    bool found = level_sweep_cylinder_closest(src, dst, extents, &hit,
+                                               phys_type, include_group,
+                                               exclude_group, context);
+    return push_hit_or_nil(L, found, &hit);
+}
+
+/**
+ * Ext.Level.SweepCylinderAll(src, dst, extents, physType,
+ *                            includeGroup, excludeGroup, context)
+ *   extents: {x, y, z} cylinder extents
+ *   Returns: array of hit tables
+ */
+static int lua_level_sweep_cylinder_all(lua_State *L) {
+    float src[3], dst[3], extents[3];
+    if (!read_vec3(L, 1, src))     return luaL_error(L, "SweepCylinderAll: src must be {x,y,z}");
+    if (!read_vec3(L, 2, dst))     return luaL_error(L, "SweepCylinderAll: dst must be {x,y,z}");
+    if (!read_vec3(L, 3, extents)) return luaL_error(L, "SweepCylinderAll: extents must be {x,y,z}");
+    uint32_t phys_type     = (uint32_t)luaL_optinteger(L, 4, 1);
+    uint32_t include_group = (uint32_t)luaL_optinteger(L, 5, 0x7FFFFFFF);
+    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 6, 0);
+    int context            = (int)luaL_optinteger(L, 7, 0);
+    LevelPhysicsHitAll hits;
+    level_sweep_cylinder_all(src, dst, extents, &hits,
+                              phys_type, include_group, exclude_group, context);
+    return push_hit_all(L, &hits);
+}
+
 // ============================================================================
 // Tile Queries
 // ============================================================================
@@ -485,6 +532,82 @@ static int lua_level_get_heights_at(lua_State *L) {
 }
 
 // ============================================================================
+// Deferred AiGrid Tile and Pathfinding APIs
+// ============================================================================
+
+static void warn_deferred_once(bool *warned, const char *name,
+                               const char *reason) {
+    if (!*warned) {
+        log_message("[Level] WARN: Ext.Level.%s is deferred on macOS: %s",
+                    name, reason);
+        *warned = true;
+    }
+}
+
+static int lua_level_get_entities_on_tile(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "GetEntitiesOnTile",
+        "AiGrid tile/subgrid and metadata layouts are not verified; returning nil");
+    lua_pushnil(L);
+    return 1;
+}
+
+static int lua_level_get_tile_debug_info(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "GetTileDebugInfo",
+        "AiGrid tile/subgrid and metadata layouts are not verified; returning nil");
+    lua_pushnil(L);
+    return 1;
+}
+
+static int lua_level_begin_pathfinding(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "BeginPathfinding",
+        "AiGrid path creation ABI and AiPath layout are not verified; returning nil");
+    lua_pushnil(L);
+    return 1;
+}
+
+static int lua_level_find_path(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "FindPath",
+        "AiGrid::FindPathImmediate ABI and AiPath layout are not verified; returning false");
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
+static int lua_level_release_path(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "ReleasePath",
+        "AiGrid path ownership and release routine are not verified; returning false");
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
+static int lua_level_get_path_by_id(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "GetPathById",
+        "AiGrid PathMap layout is not verified; returning nil");
+    lua_pushnil(L);
+    return 1;
+}
+
+static int lua_level_get_active_pathfinding_requests(lua_State *L) {
+    static bool warned = false;
+    warn_deferred_once(
+        &warned, "GetActivePathfindingRequests",
+        "AiGrid PathPool and AiPath::InUse layouts are not verified; returning nil");
+    lua_pushnil(L);
+    return 1;
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -502,9 +625,19 @@ static const struct luaL_Reg level_functions[] = {
     {"SweepCapsuleAll",      lua_level_sweep_capsule_all},
     {"SweepBoxClosest",      lua_level_sweep_box_closest},
     {"SweepBoxAll",          lua_level_sweep_box_all},
+    {"SweepCylinderClosest", lua_level_sweep_cylinder_closest},
+    {"SweepCylinderAll",     lua_level_sweep_cylinder_all},
     {"TestBox",              lua_level_test_box},
     {"TestSphere",           lua_level_test_sphere},
     {"GetHeightsAt",         lua_level_get_heights_at},
+    {"GetEntitiesOnTile",     lua_level_get_entities_on_tile},
+    {"GetTileDebugInfo",      lua_level_get_tile_debug_info},
+    {"BeginPathfinding",      lua_level_begin_pathfinding},
+    {"FindPath",              lua_level_find_path},
+    {"ReleasePath",           lua_level_release_path},
+    {"GetPathById",           lua_level_get_path_by_id},
+    {"GetActivePathfindingRequests",
+                               lua_level_get_active_pathfinding_requests},
     {NULL, NULL}
 };
 

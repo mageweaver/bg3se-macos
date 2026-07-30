@@ -1508,6 +1508,43 @@ static int lua_entity_get_net_id(lua_State *L) {
     return 1;
 }
 
+static int s_create_component_warned = 0;
+static int s_remove_component_warned = 0;
+
+// Entity:CreateComponent(componentName) -> nil
+// Honest compatibility stub: construction requires ComponentOps and the
+// immediate command buffer, neither of which has a version-safe macOS mapping.
+static int lua_entity_create_component(lua_State *L) {
+    (void)luaL_checkudata(L, 1, "BG3Entity");
+    const char *component = luaL_checkstring(L, 2);
+    if (!s_create_component_warned) {
+        log_message(
+            "[WARN] [Entity] entity:CreateComponent('%s') deferred: "
+            "ComponentOps/AddImmediateDefaultComponent is not mapped safely",
+            component);
+        s_create_component_warned = 1;
+    }
+    lua_pushnil(L);
+    return 1;
+}
+
+// Entity:RemoveComponent(componentName) -> false
+// Honest compatibility stub: removal must go through ImmediateWorldCache to
+// preserve ECS bookkeeping; raw storage mutation is not safe.
+static int lua_entity_remove_component(lua_State *L) {
+    (void)luaL_checkudata(L, 1, "BG3Entity");
+    const char *component = luaL_checkstring(L, 2);
+    if (!s_remove_component_warned) {
+        log_message(
+            "[WARN] [Entity] entity:RemoveComponent('%s') deferred: "
+            "ImmediateWorldCache::RemoveComponent is not mapped safely",
+            component);
+        s_remove_component_warned = 1;
+    }
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
 // Helper: Push TransformComponent as Lua table
 static void push_transform_component(lua_State *L, void *component) {
     TransformComponent *transform = (TransformComponent*)component;
@@ -1825,9 +1862,13 @@ static int lua_entity_get_all_components(lua_State *L) {
                 lua_pushstring(L, buf);
             }
 
-            // Push component data (light userdata for now)
-            // TODO: Eventually convert to proper Lua tables like Transform
-            lua_pushlightuserdata(L, component);
+            const ComponentLayoutDef *layout =
+                component_property_get_layout_by_index(indices[i]);
+            if (layout) {
+                component_property_push_proxy(L, component, layout);
+            } else {
+                lua_pushlightuserdata(L, component);
+            }
             lua_rawset(L, -3);
         } else if (warnOnMissing && name) {
             LOG_ENTITY_DEBUG("GetAllComponents: Failed to get %s (type %u)", name, indices[i]);
@@ -1870,6 +1911,14 @@ static int lua_entity_index(lua_State *L) {
     }
     if (strcmp(key, "GetComponent") == 0) {
         lua_pushcfunction(L, lua_entity_get_component);
+        return 1;
+    }
+    if (strcmp(key, "CreateComponent") == 0) {
+        lua_pushcfunction(L, lua_entity_create_component);
+        return 1;
+    }
+    if (strcmp(key, "RemoveComponent") == 0) {
+        lua_pushcfunction(L, lua_entity_remove_component);
         return 1;
     }
     if (strcmp(key, "GetAllComponents") == 0) {
@@ -2311,8 +2360,34 @@ static int lua_entity_dump_uuid_map(lua_State *L) {
     return 1;
 }
 
+// Ext.Entity.GetAllEntities() -> { entity1, entity2, ... }
+// Returns all entities represented by the captured storage container.
+static int lua_entity_get_all(lua_State *L) {
+    if (!component_lookup_ready()) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    static uint64_t handles[65536];
+    int count = component_lookup_get_all_entities(handles, 65536);
+    lua_createtable(L, count, 0);
+    LifetimeHandle currentLifetime = lifetime_lua_get_current(L);
+
+    for (int i = 0; i < count; i++) {
+        EntityUserdata *ud =
+            (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
+        ud->handle = handles[i];
+        ud->lifetime = currentLifetime;
+        luaL_getmetatable(L, "BG3Entity");
+        lua_setmetatable(L, -2);
+        lua_rawseti(L, -2, i + 1);
+    }
+
+    return 1;
+}
+
 // Ext.Entity.GetAllEntitiesWithComponent(componentName) -> { entity1, entity2, ... }
-// Returns an array of all entities that have the specified component
+// Returns an array of all entities that have the specified component.
 static int lua_entity_get_all_with_component(lua_State *L) {
     const char *componentName = luaL_checkstring(L, 1);
 
@@ -2656,8 +2731,16 @@ void entity_register_lua(lua_State *L) {
     lua_setfield(L, -2, "DumpUuidMap");
 
     // Entity enumeration API
+    lua_pushcfunction(L, lua_entity_get_all);
+    lua_setfield(L, -2, "GetAllEntities");
+
     lua_pushcfunction(L, lua_entity_get_all_with_component);
     lua_setfield(L, -2, "GetAllEntitiesWithComponent");
+
+    // Convenience wrapper matching the campaign surface; the canonical
+    // Windows API remains entity:GetAllComponents(warnOnMissing).
+    lua_pushcfunction(L, lua_entity_get_all_components);
+    lua_setfield(L, -2, "GetAllComponents");
 
     lua_pushcfunction(L, lua_entity_count_with_component);
     lua_setfield(L, -2, "CountEntitiesWithComponent");

@@ -570,6 +570,47 @@ static int get_oneframe_entities(void *storageData, uint16_t componentTypeIndex,
     return (int)entriesToCopy;
 }
 
+int component_lookup_get_all_entities(uint64_t *outHandles, int maxHandles) {
+    if (!component_lookup_ready() || !outHandles || maxHandles <= 0) {
+        return 0;
+    }
+
+    GenericArray *entities = storage_container_get_entities(g_StorageContainer);
+    if (!entities->buf || entities->size == 0) {
+        return 0;
+    }
+
+    int totalCount = 0;
+    void **entityClasses = (void **)entities->buf;
+    for (uint32_t classIdx = 0;
+         classIdx < entities->size && totalCount < maxHandles;
+         classIdx++) {
+        void *storageData = entityClasses[classIdx];
+        if (!storageData) continue;
+
+        void *instanceMap =
+            (char *)storageData + STORAGE_DATA_INSTANCE_TO_PAGE_MAP;
+        GenericArray *keys = GET_KEYS(instanceMap);
+        if (!keys->buf || keys->size == 0) continue;
+
+        uint64_t *handleArray = (uint64_t *)keys->buf;
+        uint32_t entriesToCopy = keys->size;
+        if (totalCount + (int)entriesToCopy > maxHandles) {
+            entriesToCopy = (uint32_t)(maxHandles - totalCount);
+        }
+
+        for (uint32_t i = 0; i < entriesToCopy; i++) {
+            outHandles[totalCount++] = handleArray[i];
+        }
+    }
+
+    if (totalCount == maxHandles) {
+        LOG_ENTITY_DEBUG(
+            "GetAllEntities reached the %d-handle safety cap", maxHandles);
+    }
+    return totalCount;
+}
+
 int component_lookup_get_all_with_component(uint16_t componentTypeIndex,
                                              uint64_t *outHandles,
                                              int maxHandles) {

@@ -143,6 +143,16 @@ int storage_data_enumerate_component_types(void *storageData,
 // ============================================================================
 
 /**
+ * Get all live entity handles by walking each storage archetype's
+ * InstanceToPageMap.
+ *
+ * @param outHandles Output array for entity handles
+ * @param maxHandles Maximum handles to return
+ * @return Number of entity handles copied
+ */
+int component_lookup_get_all_entities(uint64_t *outHandles, int maxHandles);
+
+/**
  * Get all entity handles that have a specific component type.
  * Iterates through all EntityStorageData classes and collects handles
  * from those that have the component registered.
