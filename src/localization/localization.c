@@ -410,14 +410,31 @@ bool localization_set(const char *handle, const char *value) {
         &output, s_loca.repo, &input, value, value_size,
         translated_pool, 0);
 
+    // The pool's storage handle in `output` resolves immediately; the input
+    // handle only becomes visible to TryGet on a later repository merge
+    // (observed live: input-handle verify misses synchronously, hits seconds
+    // later). Verify against output first, falling back to input.
     TryGetResult verify;
-    if (!call_tryget(
-            s_loca.tryget_fn, s_loca.repo, &input, 0, 0, &verify)
-        || verify.value.size != value_size
-        || (value_size > 0 && !verify.value.data)) {
+    bool verified = false;
+    if (output.handle != UINT32_MAX
+        && call_tryget(
+               s_loca.tryget_fn, s_loca.repo, &output, 0, 0, &verify)
+        && verify.value.size == value_size
+        && (value_size == 0 || verify.value.data)) {
+        verified = true;
+    }
+    if (!verified
+        && call_tryget(
+               s_loca.tryget_fn, s_loca.repo, &input, 0, 0, &verify)
+        && verify.value.size == value_size
+        && (value_size == 0 || verify.value.data)) {
+        verified = true;
+    }
+    if (!verified) {
         LOG_CORE_INFO(
-            "LOCA: UpdateTranslatedString('%s') could not be verified",
-            handle);
+            "LOCA: UpdateTranslatedString('%s') could not be verified "
+            "(output handle 0x%x)",
+            handle, output.handle);
         return false;
     }
 

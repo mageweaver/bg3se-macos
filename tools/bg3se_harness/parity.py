@@ -13,9 +13,42 @@ from __future__ import annotations
 
 import json
 import sys
+import time
+from pathlib import Path
 
 from .config import CATALOG_DIR
 from .console import Console
+
+# Ext.IO.SaveFile writes under the SE data dir (mirrors Windows UserProfile
+# PathRoot). Console prints flush asynchronously after the prompt returns, so
+# large JSON results are handed off through a file instead of the socket.
+SE_DATA_DIR = (
+    Path.home() / "Documents/Larian Studios/Baldur's Gate 3/Script Extender"
+)
+
+
+def _run_lua_json(c, lua_code, out_name, timeout=15.0):
+    """Run a Lua block that SaveFiles JSON to harness/<out_name>; return parsed JSON.
+
+    The block must end by assigning the JSON string to local `js`; this helper
+    appends the SaveFile call. Returns (data, None) or (None, error_string).
+    """
+    out_path = SE_DATA_DIR / "harness" / out_name
+    try:
+        out_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+    c.send_lua(lua_code + f'\nExt.IO.SaveFile("harness/{out_name}", js)')
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if out_path.exists():
+            try:
+                with open(out_path) as f:
+                    return json.load(f), None
+            except (json.JSONDecodeError, OSError):
+                pass  # partial write; retry
+        time.sleep(0.2)
+    return None, f"harness/{out_name} was not written by the game within {timeout}s"
 
 
 def _load_baseline():
@@ -57,26 +90,15 @@ for k, v in pairs(Ext) do
         table.insert(result["_toplevel"], k)
     end
 end
-Ext.Print(Ext.Json.Stringify(result))
+local js = Ext.Json.Stringify(result)
 """
     try:
         with Console() as c:
-            raw = c.send(lua_code)
+            live_data, err = _run_lua_json(c, lua_code, "parity_scan.json")
     except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
         return {"error": f"Socket connection failed: {e}. Is the game running with SE?"}
-
-    # Parse live data
-    try:
-        import re
-        cleaned = re.sub(r'\033\[[0-9;]*m', '', raw).strip()
-        # Find the JSON in the output (may have prompts around it)
-        start = cleaned.find("{")
-        end = cleaned.rfind("}") + 1
-        if start < 0 or end <= start:
-            return {"error": "Could not parse Ext table from game", "raw": cleaned[:500]}
-        live_data = json.loads(cleaned[start:end])
-    except (json.JSONDecodeError, ValueError) as e:
-        return {"error": f"JSON parse error: {e}", "raw": raw[:500]}
+    if err:
+        return {"error": f"Could not read Ext table from game: {err}"}
 
     # Compare against baseline
     namespaces = {}
@@ -182,26 +204,16 @@ def verify(namespace):
     lua_code = f"""
 local results = {{}}
 {chr(10).join(lua_probes)}
-Ext.Print(Ext.Json.Stringify(results))
+local js = Ext.Json.Stringify(results)
 """
 
     try:
         with Console() as c:
-            raw = c.send(lua_code)
+            probe_results, err = _run_lua_json(c, lua_code, "parity_probe.json")
     except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
         return {"error": f"Socket connection failed: {e}"}
-
-    # Parse results
-    try:
-        import re
-        cleaned = re.sub(r'\033\[[0-9;]*m', '', raw).strip()
-        start = cleaned.find("[")
-        end = cleaned.rfind("]") + 1
-        if start < 0 or end <= start:
-            return {"error": "Could not parse probe results", "raw": cleaned[:500]}
-        probe_results = json.loads(cleaned[start:end])
-    except (json.JSONDecodeError, ValueError) as e:
-        return {"error": f"JSON parse error: {e}"}
+    if err:
+        return {"error": f"Could not read probe results from game: {err}"}
 
     verified = []
     missing_funcs = []
