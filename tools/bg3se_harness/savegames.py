@@ -24,6 +24,10 @@ from pathlib import Path
 from .config import SAVES_DIR, SAVE_FIXTURES_DIR
 from .mod_manager.pak_inspector import PakInspectorError, PakReader
 
+# Sidecar written into each fixture recording which save directory it was
+# snapshotted from; restore() refuses fixtures without it.
+FIXTURE_META_NAME = "fixture_meta.json"
+
 
 def _ensure_fixtures_dir():
     SAVE_FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -225,7 +229,7 @@ def _fixture_dirs():
     _ensure_fixtures_dir()
     dirs = []
     for entry in SAVE_FIXTURES_DIR.iterdir():
-        if entry.is_dir() and not entry.name.startswith("."):
+        if entry.is_dir() and not entry.name.startswith((".", "_")):
             dirs.append(entry)
     dirs.sort(key=lambda d: d.name)
     return dirs
@@ -290,10 +294,29 @@ def snapshot(fixture_name, source_dir_name=None):
     if dest.exists():
         backup_name = f"{fixture_name}.bak.{int(time.time())}"
         backup = SAVE_FIXTURES_DIR / backup_name
-        shutil.move(str(dest), str(backup))
+        try:
+            shutil.move(str(dest), str(backup))
+        except OSError as exc:
+            return {
+                "error": (
+                    f"Could not back up existing fixture {fixture_name!r} to "
+                    f"{backup_name!r}: {exc}. The fixture was left in place "
+                    "and nothing was copied."
+                ),
+            }
         print(f"Existing fixture backed up to {backup_name}", file=sys.stderr)
 
     shutil.copytree(str(source), str(dest))
+
+    # Record the source save directory so restore() can write the fixture back
+    # into a name the game recognizes. BG3 requires
+    # <Profile>-<id>__<DisplayName>/<DisplayName>.lsv — an invented directory
+    # name hangs -continueGame at 0% (observed live 2026-07-30).
+    meta = {
+        "source_dir_name": source.name,
+        "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    (dest / FIXTURE_META_NAME).write_text(json.dumps(meta, indent=2))
 
     return {
         "success": True,
@@ -304,9 +327,14 @@ def snapshot(fixture_name, source_dir_name=None):
 
 
 def restore(fixture_name):
-    """Restore a fixture into the game's save directory.
+    """Restore a fixture back into the save directory it was snapshotted from.
 
-    Creates a backup of the current save state before restoring.
+    The fixture's recorded source directory is the only game-loadable
+    destination: BG3 expects <Profile>-<id>__<DisplayName>/<DisplayName>.lsv,
+    and -continueGame hangs at 0% on a save directory with any other shape
+    (observed live 2026-07-30). The current content of that directory is backed
+    up under the fixtures area (never inside the game's save tree, which the
+    game scans) before being overwritten.
     """
     if not _safe_name(fixture_name):
         return {"error": f"Invalid fixture name (no path separators or ..): {fixture_name}"}
@@ -318,23 +346,75 @@ def restore(fixture_name):
             "available": available,
         }
 
-    # Determine destination name in saves dir
-    dest = SAVES_DIR / f"Harness__{fixture_name}"
+    meta_path = fixture_path / FIXTURE_META_NAME
+    try:
+        meta = json.loads(meta_path.read_text())
+        source_dir_name = meta.get("source_dir_name")
+    except (OSError, json.JSONDecodeError):
+        source_dir_name = None
+    if not source_dir_name or not _safe_name(source_dir_name):
+        return {
+            "error": (
+                f"Fixture {fixture_name!r} has no valid {FIXTURE_META_NAME} — "
+                "it predates source tracking and cannot be restored to a "
+                "game-loadable save directory. Re-create it with: "
+                f"save snapshot {fixture_name}"
+            ),
+        }
 
-    # Backup previous restore before overwriting
+    dest = SAVES_DIR / source_dir_name
+
+    # Back up whatever currently occupies the destination — outside SAVES_DIR
+    # so the game never scans the backup. Microseconds in the stamp keep
+    # rapid back-to-back restores from colliding on the same backup name.
+    backup_dest = None
     if dest.exists():
         from datetime import datetime
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dest = dest.parent / f"{dest.name}__backup_{ts}"
-        shutil.move(str(dest), str(backup_dest))
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backups_dir = SAVE_FIXTURES_DIR / "_restore_backups"
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        backup_dest = backups_dir / f"{source_dir_name}__{ts}"
+        try:
+            shutil.move(str(dest), str(backup_dest))
+        except OSError as exc:
+            return {
+                "error": (
+                    f"Could not back up the existing save {source_dir_name!r} "
+                    f"before restore: {exc}. The save was left in place and "
+                    "nothing was restored."
+                ),
+            }
 
-    shutil.copytree(str(fixture_path), str(dest))
+    try:
+        shutil.copytree(
+            str(fixture_path), str(dest),
+            ignore=shutil.ignore_patterns(FIXTURE_META_NAME),
+        )
+    except OSError as exc:
+        # Put the user's original save back rather than leaving a partial
+        # restore in the game's save tree.
+        shutil.rmtree(dest, ignore_errors=True)
+        rollback = None
+        if backup_dest is not None:
+            try:
+                shutil.move(str(backup_dest), str(dest))
+                rollback = "original save restored from backup"
+            except OSError as rollback_exc:
+                rollback = (
+                    f"rollback failed, original save is at {backup_dest}: "
+                    f"{rollback_exc}"
+                )
+        return {
+            "error": f"Restore copy failed: {exc}",
+            "rollback": rollback,
+        }
 
     return {
         "success": True,
         "fixture": fixture_name,
         "restored_to": str(dest),
         "save_name": dest.name,
+        "backup": str(backup_dest) if backup_dest else None,
     }
 
 

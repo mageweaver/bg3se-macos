@@ -17,7 +17,9 @@ Usage:
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+import tempfile
 
 
 def _resolve_uuid(uuid_or_name: str) -> str | dict:
@@ -108,15 +110,70 @@ def cmd_mod(args):
     elif subcmd == "install":
         source = args.source
         if source.startswith("nexus:"):
-            mod_id = source.replace("nexus:", "")
-            from .mod_manager.nexus import get_mod_info, get_download_links
-            info = get_mod_info(int(mod_id))
-            if "error" in info:
-                print(json.dumps(info, indent=2))
+            try:
+                mod_id = int(source.split(":", 1)[1])
+            except ValueError:
+                result = {"success": False, "error": f"Invalid Nexus mod ID: {source!r}"}
+                print(json.dumps(result, indent=2))
                 return 1
-            links = get_download_links(int(mod_id))
-            print(json.dumps(links, indent=2))
-            return 0 if links.get("success") else 1
+
+            if getattr(args, "links_only", False):
+                from .mod_manager.nexus import get_mod_info, get_download_links
+                info = get_mod_info(mod_id)
+                if info.get("success") is False or "error" in info:
+                    print(json.dumps(info, indent=2))
+                    return 1
+                links = get_download_links(mod_id)
+                print(json.dumps(links, indent=2))
+                return 0 if links.get("success") else 1
+
+            from .mod_manager.installer import install_local
+            from .mod_manager.nexus import download_file
+
+            temp_dir = tempfile.mkdtemp(prefix=f"bg3se-nexus-{mod_id}-")
+            download = download_file(mod_id, temp_dir)
+            if not download.get("success"):
+                print(json.dumps(download, indent=2))
+                return 1
+
+            paks = download.get("paks") or []
+            if not paks:
+                result = {
+                    "success": False,
+                    "error_type": "no_paks",
+                    "message": "The downloaded file contained no installable .pak files.",
+                    "download": download,
+                    "temp_dir": temp_dir,
+                }
+                print(json.dumps(result, indent=2))
+                return 1
+
+            enable = not getattr(args, "no_enable", False)
+            installs = []
+            for pak_path in paks:
+                install_result = install_local(pak_path, enable=enable)
+                installs.append({"pak": pak_path, **install_result})
+
+            success = all(
+                result.get("installed") is True and "error" not in result
+                for result in installs
+            )
+            if success:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            result = {
+                "success": success,
+                "mod_id": mod_id,
+                "file_id": download.get("file_id"),
+                "archive": download.get("archive"),
+                "temp_dir": temp_dir,
+                "cleanup": (
+                    "temp_dir_removed" if success
+                    else "temp_dir_retained_for_debugging"
+                ),
+                "installs": installs,
+            }
+            print(json.dumps(result, indent=2))
+            return 0 if success else 1
         else:
             from .mod_manager.installer import install_local
             enable = not getattr(args, "no_enable", False)

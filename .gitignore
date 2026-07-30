@@ -47,3 +47,6 @@ pyghidra_mcp_projects/
 .subdaimon-output/
 __pycache__/
 *.pyc
+
+# Compat run reports (committed evidence lives in docs/compat-reports/baseline/)
+.reports/

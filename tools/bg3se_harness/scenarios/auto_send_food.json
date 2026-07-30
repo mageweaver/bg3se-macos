@@ -1,0 +1,18 @@
+{
+  "description": "Auto Send Food To Camp compatibility test. P1 — minimal MCM-dependent Osiris, Events, and Vars smoke test.",
+  "mods": ["auto_send_food"],
+  "save_fixture": "vetting_base",
+  "requires_save": true,
+  "assertions": [
+    "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
+    "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
+    "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
+    "assert(type(Ext.Vars.IsPersistentVarsLoaded) == 'function', 'Ext.Vars.IsPersistentVarsLoaded exists')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'send food', 1, true) then return true end end return false end)(), 'Auto Send Food To Camp present in load order')",
+    "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
+    "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
+    "assert(type(Ext.Vars.IsPersistentVarsLoaded()) == 'boolean', 'persistent variable state query executes')",
+    "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
+  ],
+  "notes": "Requires MCM; the runner injects it automatically. Simple MCM smoke test with a minimal API surface."
+}

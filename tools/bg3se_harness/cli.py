@@ -858,8 +858,21 @@ def main():
 
     p_cr = compat_sub.add_parser("run", help="Run a compatibility test scenario")
     p_cr.add_argument("scenario", help="Scenario name (e.g. mcm, community_library)")
+    p_cr.add_argument("--launch", action="store_true",
+                      help="Launch or reuse BG3 and run live compatibility assertions")
+    p_cr.add_argument("--auto-install", action="store_true",
+                      help="Download and install missing scenario mods from Nexus")
+    p_cr.add_argument("--save-baseline", action="store_true",
+                      help="Save a successful report as the scenario baseline")
 
-    compat_sub.add_parser("matrix", help="Run all scenarios and produce summary")
+    p_cm = compat_sub.add_parser("matrix", help="Run all scenarios and produce summary")
+    p_cm.add_argument("--launch", action="store_true",
+                      help="Launch or reuse BG3 for each scenario")
+    p_cm.add_argument("--auto-install", action="store_true",
+                      help="Download and install missing scenario mods from Nexus")
+
+    p_cd = compat_sub.add_parser("diff", help="Compare latest scenario run to its baseline")
+    p_cd.add_argument("scenario", help="Scenario name")
 
     p_cv = compat_sub.add_parser("vet", help="Vet a mod: install, detect SE, probe, report")
     p_cv.add_argument("source", help="Nexus mod ID, catalog key, or path to .pak")
@@ -913,6 +926,8 @@ def main():
     p_mi = mod_sub.add_parser("install", help="Install a mod from local file or Nexus")
     p_mi.add_argument("source", help="Local .pak path, directory, or nexus:MOD_ID")
     p_mi.add_argument("--no-enable", action="store_true", help="Install without enabling")
+    p_mi.add_argument("--links-only", action="store_true",
+                      help="Print Nexus Premium download links without downloading")
 
     p_me = mod_sub.add_parser("enable", help="Enable a mod in modsettings.lsx")
     p_me.add_argument("name", help="Mod UUID or name")

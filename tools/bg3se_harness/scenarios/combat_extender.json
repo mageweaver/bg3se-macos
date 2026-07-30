@@ -1,15 +1,23 @@
 {
   "description": "Combat Extender compatibility test. P1 — stress-tests Stats mutation under MCM control.",
-  "mods": ["combat_extender", "mcm"],
-  "save_fixture": null,
+  "mods": ["combat_extender"],
+  "save_fixture": "vetting_base",
+  "requires_save": true,
   "assertions": [
     "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
     "assert(type(Ext.Stats.Get) == 'function', 'Ext.Stats.Get exists')",
-    "assert(type(Ext.Stats.SetRawAttribute) == 'function', 'Stats mutation available')",
+    "assert(type(Ext.Stats.Get('WPN_Longsword').SetRawAttribute) == 'function', 'Stats mutation available on StatsObject')",
     "assert(type(Ext.Entity.Get) == 'function', 'Ext.Entity.Get exists')",
     "assert(type(Ext.Vars) == 'table', 'Ext.Vars available')",
     "assert(type(Ext.IMGUI.NewWindow) == 'function', 'IMGUI available (MCM dep)')",
-    "assert(type(Ext.ModEvents.Subscribe) == 'function', 'ModEvents available (MCM dep)')"
+    "assert(type(Ext.ModEvents['BG3SECompat']['Probe'].Subscribe) == 'function', 'ModEvents per-mod event object exposes Subscribe (MCM dep)')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'combat extender', 1, true) then return true end end return false end)(), 'Combat Extender present in load order')",
+    "assert(Ext.Stats.Get('WPN_Longsword') ~= nil, 'vanilla longsword stat resolves')",
+    "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
+    "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
+    "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
+    "assert(type(Ext.Vars.IsPersistentVarsLoaded()) == 'boolean', 'persistent variable state query executes')",
+    "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
   ],
-  "notes": "Combat Extender depends on MCM. Tests multi-mod loading + Stats mutation at runtime."
+  "notes": "Combat Extender requires MCM; the runner injects it automatically. Tests multi-mod loading + Stats mutation at runtime."
 }

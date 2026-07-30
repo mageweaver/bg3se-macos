@@ -6,6 +6,8 @@
       "name": "Mod Configuration Menu",
       "nexus_id": 9162,
       "author": "Volitio",
+      "last_tested": "v0.41.0",
+      "last_status": "working",
       "priority": "P0",
       "tier": 1,
       "github": "AtilioA/BG3-MCM",
@@ -36,7 +38,7 @@
     "expansion_lvl20": {
       "name": "Expansion - Level 20",
       "nexus_id": 279,
-      "author": "nitram166",
+      "author": "DiZ91891",
       "priority": "P0",
       "tier": 1,
       "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.StaticData"],
@@ -77,7 +79,8 @@
     },
     "camp_event_notifications": {
       "name": "Camp Event Notifications",
-      "nexus_id": 7247,
+      "nexus_id": 1879,
+      "author": "Kvalyr",
       "priority": "P1",
       "tier": 2,
       "apis_used": ["Ext.Events", "Ext.Osiris", "Ext.IMGUI"],
@@ -86,7 +89,8 @@
     },
     "auto_send_food": {
       "name": "Auto Send Food To Camp",
-      "nexus_id": 5978,
+      "nexus_id": 6086,
+      "author": "Volitio",
       "priority": "P1",
       "tier": 2,
       "apis_used": ["Ext.Osiris", "Ext.Events", "Ext.Vars"],
@@ -95,7 +99,9 @@
     },
     "always_show_approvals": {
       "name": "Always Show Approvals",
-      "nexus_id": 5373,
+      "nexus_id": 4675,
+      "author": "ancientbuho",
+      "file_id": 69737,
       "priority": "P2",
       "tier": 2,
       "apis_used": ["Ext.Events", "Ext.Entity", "Ext.Osiris"],

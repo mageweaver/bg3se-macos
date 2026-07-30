@@ -23,7 +23,7 @@ macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-correct
 - `src/hooks/arm64_hook.c/h` - ARM64 inline hooks with MAP_JIT trampolines
 - `ghidra/offsets/` - Reverse-engineered offsets documentation
 
-## Modding Toolkit (37 Commands)
+## Modding Toolkit
 
 ```bash
 # Core pipeline
@@ -52,7 +52,7 @@ PYTHONPATH=tools python3 -m bg3se_harness diff-test base.json curr.json   # Test
 
 # Mod management (delegates to BG3MacModManager or pure Python fallback)
 PYTHONPATH=tools python3 -m bg3se_harness mod list          # Installed mods + enabled/SE status
-PYTHONPATH=tools python3 -m bg3se_harness mod install <path.pak>  # Install local PAK
+PYTHONPATH=tools python3 -m bg3se_harness mod install <path.pak|nexus:ID>  # Install local PAK or Nexus download (--links-only: URLs only)
 PYTHONPATH=tools python3 -m bg3se_harness mod enable <name> # Enable in modsettings.lsx
 PYTHONPATH=tools python3 -m bg3se_harness mod search <query>  # Search Nexus Mods API
 
@@ -69,10 +69,14 @@ PYTHONPATH=tools python3 -m bg3se_harness wiki clear-cache         # Wipe ~/.con
 PYTHONPATH=tools python3 -m bg3se_harness parity scan       # Compare Ext table vs Windows baseline
 PYTHONPATH=tools python3 -m bg3se_harness parity missing    # List gaps (offline)
 PYTHONPATH=tools python3 -m bg3se_harness compat list       # Available test scenarios
-PYTHONPATH=tools python3 -m bg3se_harness compat run mcm    # Autonomous mod compat test
+PYTHONPATH=tools python3 -m bg3se_harness compat run mcm --launch --auto-install  # Full autonomous vet: install+launch+assert+quit
+PYTHONPATH=tools python3 -m bg3se_harness compat matrix [--launch --auto-install]  # All scenarios, summary matrix
+PYTHONPATH=tools python3 -m bg3se_harness compat diff mcm   # Compare latest run vs docs/compat-reports/baseline/
 PYTHONPATH=tools python3 -m bg3se_harness compat vet mcm    # Vet mod: probe SE, scan logs, JSON report
 PYTHONPATH=tools python3 -m bg3se_harness doctor            # Verify all prerequisites
 PYTHONPATH=tools python3 -m bg3se_harness save list         # Available saves with metadata
+PYTHONPATH=tools python3 -m bg3se_harness save snapshot <name>  # Save → fixture (records source dir in fixture_meta.json)
+PYTHONPATH=tools python3 -m bg3se_harness save restore <name>   # Fixture → its recorded source dir (backs up outside save tree)
 PYTHONPATH=tools python3 -m bg3se_harness author new MyMod  # Scaffold new mod
 
 # Menu automation (Vision OCR + CGEvent click)
@@ -201,7 +205,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (113 tests, always works). Use `!test_ingame` for Tier 2 tests (95 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 265 offline tests (55 C + 210 pytest) run via CI.
+Use `!test` to run Tier 1 regression tests (113 tests, always works). Use `!test_ingame` for Tier 2 tests (95 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 294 offline tests (55 C + 239 pytest) run via CI.
 
 ## Reverse Engineering
 

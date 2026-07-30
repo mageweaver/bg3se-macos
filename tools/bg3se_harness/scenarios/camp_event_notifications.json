@@ -1,0 +1,18 @@
+{
+  "description": "Camp Event Notifications compatibility test. P1 — tests event hooks, Osiris, and headless-safe IMGUI queries.",
+  "mods": ["camp_event_notifications"],
+  "save_fixture": "vetting_base",
+  "requires_save": true,
+  "assertions": [
+    "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
+    "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
+    "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
+    "assert(type(Ext.IMGUI.GetViewportSize) == 'function', 'Ext.IMGUI.GetViewportSize exists')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'camp event notifications', 1, true) then return true end end return false end)(), 'Camp Event Notifications present in load order')",
+    "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
+    "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
+    "assert((function() local size=Ext.IMGUI.GetViewportSize(); return type(size) == 'table' and type(size[1]) == 'number' and size[1] > 0 and type(size[2]) == 'number' and size[2] > 0 end)(), 'IMGUI viewport query executes')",
+    "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
+  ],
+  "notes": "Requires MCM; the runner injects it automatically. Tests IMGUI notification rendering without creating a headless window."
+}

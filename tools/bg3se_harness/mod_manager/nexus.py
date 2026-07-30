@@ -21,13 +21,16 @@ All public functions return dicts.  Errors are indicated by a top-level
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -38,6 +41,7 @@ from pathlib import Path
 _API_BASE = "https://api.nexusmods.com/v1"
 _DEFAULT_GAME = "baldursgate3"
 _RATE_WARN_THRESHOLD = 10
+_USER_AGENT = "bg3se-harness/1.0 (github.com/tomdimino/bg3se-macos)"
 
 # ---------------------------------------------------------------------------
 # API key resolution
@@ -135,7 +139,7 @@ def _make_request(
         headers={
             "apikey": key,
             "Accept": "application/json",
-            "User-Agent": "bg3se-harness/1.0 (github.com/tomdimino/bg3se-macos)",
+            "User-Agent": _USER_AGENT,
         },
     )
 
@@ -544,6 +548,175 @@ def get_download_links(
         })
 
     return {"success": True, "file_id": file_id, "links": links}
+
+
+def download_file(
+    mod_id: int,
+    dest_dir: str,
+    file_id: int | None = None,
+    game: str = _DEFAULT_GAME,
+) -> dict:
+    """Download a Nexus mod file and return any installable PAK paths.
+
+    The Premium-only CDN URL is resolved through :func:`get_download_links`.
+    Its structured errors are returned unchanged so callers can distinguish
+    account restrictions from network and API failures.
+    """
+    links_result = get_download_links(mod_id, file_id=file_id, game=game)
+    if not links_result.get("success"):
+        return links_result
+
+    links = links_result.get("links")
+    if not isinstance(links, list) or not links:
+        return _error(
+            "download_unavailable",
+            f"Nexus returned no download links for mod {mod_id}.",
+        )
+
+    uri = links[0].get("uri") if isinstance(links[0], dict) else None
+    if not uri:
+        return _error(
+            "download_unavailable",
+            f"The first Nexus download link for mod {mod_id} has no URI.",
+        )
+
+    parsed = urllib.parse.urlparse(uri)
+    filename = Path(urllib.parse.unquote(parsed.path)).name
+    if not filename:
+        return _error(
+            "invalid_download_url",
+            f"Could not determine a filename from the Nexus download URL for mod {mod_id}.",
+        )
+
+    destination = Path(dest_dir)
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return _error("destination_error", f"Could not create download directory: {exc}")
+
+    download_path = destination / filename
+    # Nexus CDN URIs contain literal spaces in filenames; http.client rejects
+    # unencoded control/space characters, so re-quote path and query (keeping
+    # existing %-escapes intact via '%' in the safe sets).
+    safe_uri = urllib.parse.urlunparse(parsed._replace(
+        path=urllib.parse.quote(parsed.path, safe="/%:@"),
+        query=urllib.parse.quote(parsed.query, safe="=&%+"),
+    ))
+    request = urllib.request.Request(safe_uri, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            with download_path.open("wb") as output:
+                shutil.copyfileobj(response, output)
+    except urllib.error.HTTPError as exc:
+        return _error(
+            "download_failed",
+            f"Nexus CDN download failed with HTTP {exc.code}: {exc.reason}",
+            status_code=exc.code,
+        )
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as exc:
+        return _error("download_failed", f"Nexus CDN download failed: {exc}")
+
+    try:
+        resolved_file_id = int(links_result["file_id"])
+    except (KeyError, TypeError, ValueError):
+        return _error(
+            "api_error",
+            "Nexus download response did not include a valid file_id.",
+            path=str(download_path),
+        )
+
+    # Nexus CDN filenames sometimes lack an extension entirely (observed live:
+    # a bare-UUID name that was a ZIP) — fall back to content sniffing when the
+    # suffix is inconclusive. PAK files start with the LSPK magic.
+    try:
+        with download_path.open("rb") as sniff:
+            magic = sniff.read(4)
+    except OSError:
+        magic = b""
+    suffix = download_path.suffix.lower()
+    if suffix not in (".pak", ".zip"):
+        if magic == b"LSPK":
+            suffix = ".pak"
+        elif zipfile.is_zipfile(download_path):
+            suffix = ".zip"
+
+    if suffix == ".pak":
+        # A .pak-named download without LSPK magic is CDN error content (an
+        # HTML challenge or maintenance page served with HTTP 200), not a PAK.
+        if magic != b"LSPK":
+            return _error(
+                "invalid_archive",
+                (
+                    f"Downloaded {download_path.name} has a .pak name but no "
+                    "LSPK magic — the CDN likely returned error content "
+                    "instead of the mod file."
+                ),
+                path=str(download_path),
+            )
+        return {
+            "success": True,
+            "file_id": resolved_file_id,
+            "archive": None,
+            "paks": [str(download_path)],
+        }
+
+    if suffix == ".zip":
+        try:
+            with zipfile.ZipFile(download_path) as archive:
+                members = archive.infolist()
+                for member in members:
+                    normalized = member.filename.replace("\\", "/")
+                    parts = [part for part in normalized.split("/") if part]
+                    if normalized.startswith("/") or ".." in parts:
+                        return _error(
+                            "unsafe_archive",
+                            f"ZIP contains a path-traversal entry: {member.filename!r}",
+                            path=str(download_path),
+                        )
+
+                pak_members = [
+                    member for member in members
+                    if not member.is_dir() and member.filename.lower().endswith(".pak")
+                ]
+                flattened = {}
+                for member in pak_members:
+                    target_name = Path(member.filename.replace("\\", "/")).name
+                    if target_name in flattened:
+                        return _error(
+                            "unsafe_archive",
+                            f"ZIP contains duplicate flattened PAK name: {target_name!r}",
+                            path=str(download_path),
+                        )
+                    flattened[target_name] = member
+
+                pak_paths = []
+                for target_name, member in flattened.items():
+                    target = destination / target_name
+                    with archive.open(member) as source, target.open("wb") as output:
+                        shutil.copyfileobj(source, output)
+                    pak_paths.append(str(target))
+        except (zipfile.BadZipFile, OSError) as exc:
+            return _error(
+                "invalid_archive",
+                f"Could not extract downloaded ZIP archive: {exc}",
+                path=str(download_path),
+            )
+
+        return {
+            "success": True,
+            "file_id": resolved_file_id,
+            "archive": str(download_path),
+            "paks": pak_paths,
+        }
+
+    return _error(
+        "unsupported_archive",
+        (
+            f"Downloaded {download_path.name}, but only .pak and .zip files can "
+            "be installed automatically; the archive was kept on disk."
+        ),
+        path=str(download_path),
+    )
 
 
 # ---------------------------------------------------------------------------

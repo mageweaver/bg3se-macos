@@ -63,6 +63,9 @@ tooling.
 | `doctor` | Verify every prerequisite (SDK, BG3 install, launcher flag, codesign) |
 | `save list` | Available saves with metadata |
 | `save mods [--continue\|NAME]` | Infer save-required mods from `.lsv` archive markers |
+| `save snapshot <name> [--source DIR]` | Copy a save into a named fixture; records the source directory in `fixture_meta.json` |
+| `save restore <name>` | Write a fixture back to its recorded source save directory (BG3 only loads `<Profile>-<id>__<DisplayName>` names); the existing save is backed up under the fixtures area's `_restore_backups/`, never inside the game's save tree. Fixtures without `fixture_meta.json` are refused — re-snapshot them |
+| `save clone <src> <dst>` | Duplicate a fixture or save under a new fixture name (keeps `fixture_meta.json`, so the clone restores to the same source directory) |
 
 ### Mod management
 
@@ -117,7 +120,9 @@ follow-up.
 | Command | Description |
 |---------|-------------|
 | `parity scan` / `parity missing` | Compare Ext table vs Windows baseline |
-| `compat list` / `compat run mcm` | Autonomous mod compat scenarios |
+| `compat list` / `compat run <s> [--launch] [--auto-install] [--save-baseline]` | Autonomous mod compat scenarios (10 manifests, Tier-2 assertions) |
+| `compat matrix [--launch] [--auto-install]` | Run every scenario and emit a pass/fail summary matrix |
+| `compat diff <s>` | Step-level comparison of latest run vs `docs/compat-reports/baseline/`. Assertions are keyed by list index (`assertion_N`), so reordering or inserting assertions in a manifest misaligns the comparison — re-save the baseline after editing a manifest's assertion list |
 | `compat vet <source>` | Vet mod (catalog key, Nexus ID, PAK path) — JSON report |
 | `author new MyMod` | Scaffold a new mod directory |
 | `menu detect [--debug-image PATH]` / `menu click "Continue"` | Vision OCR + CGEvent main-menu automation |

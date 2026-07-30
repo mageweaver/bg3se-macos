@@ -1,6 +1,6 @@
 # BG3SE Test Harness
 
-37-command Python CLI for autonomous BG3 operation. All commands emit JSON to stdout.
+Python CLI for autonomous BG3 operation. All commands emit JSON to stdout.
 
 ## Invocation
 
@@ -52,7 +52,8 @@ Stall-detecting wrapper that drives BG3 from launch through a running session. E
 - `flags` — 40 discovered BG3 CLI flags
 - `ghidra decompile|search-strings|search-functions|xrefs` — Ghidra HTTP bridge
 - `parity scan|missing` — Windows BG3SE API comparison
-- `compat list|run|vet` — mod compatibility testing
+- `compat list|run|matrix|diff|vet` — mod compatibility testing; `run --launch --auto-install --save-baseline` is the full autonomous pipeline (Nexus download, requires_mcm injection, fixture restore, launch, identity handshake, sentinel assertions, launch-scoped log scan, quit); `matrix` accepts `--launch --auto-install` too
+- `save snapshot|restore|clone <name>` — save fixtures; snapshot records the source save directory in `fixture_meta.json` and restore writes back to it (BG3 only loads `<Profile>-<id>__<DisplayName>` names), backing up the existing save under the fixtures area, never inside the game's save tree
 
 ## Architecture
 

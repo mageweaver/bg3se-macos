@@ -1,12 +1,18 @@
 {
   "description": "Party Limit Begone compatibility test. P1 — 40K+ endorsements, tests entity manipulation.",
   "mods": ["party_limit_begone"],
-  "save_fixture": null,
+  "save_fixture": "vetting_base",
+  "requires_save": true,
   "assertions": [
     "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
     "assert(type(Ext.Entity.Get) == 'function', 'Ext.Entity.Get exists')",
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
-    "assert(type(Ext.Events.Subscribe) == 'function', 'Ext.Events.Subscribe exists')"
+    "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'party limit begone', 1, true) then return true end end return false end)(), 'Party Limit Begone present in load order')",
+    "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
+    "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
+    "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
+    "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
   ],
   "notes": "Party Limit Begone increases party to 16 and MP to 8. Tests entity system under load."
 }

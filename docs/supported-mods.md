@@ -55,9 +55,9 @@ Mods are tiered by community impact. Tier 1 mods gate hundreds of downstream mod
 |-----|-------|-----------|--------|-------|
 | [Combat Extender](https://www.nexusmods.com/baldursgate3/mods/5207) | 5207 | Stats, Entity, Osiris, Events, Vars | Untested | Requires MCM. Stress-tests Stats. |
 | [Party Limit Begone](https://www.nexusmods.com/baldursgate3/mods/327) | 327 | Entity, Osiris, Events | Untested | Party to 16, MP to 8. Entity manipulation. |
-| [Camp Event Notifications](https://www.nexusmods.com/baldursgate3/mods/7247) | 7247 | Events, Osiris, IMGUI | Untested | Requires MCM. Tests IMGUI notifications. |
-| [Auto Send Food To Camp](https://www.nexusmods.com/baldursgate3/mods/5978) | 5978 | Osiris, Events, Vars | Untested | Requires MCM. Minimal API surface. |
-| [Always Show Approvals](https://www.nexusmods.com/baldursgate3/mods/5373) | 5373 | Events, Entity, Osiris | Untested | Tests UI hooks and Events system. |
+| [Camp Event Notifications](https://www.nexusmods.com/baldursgate3/mods/1879) | 1879 | Events, Osiris, IMGUI | Untested | Requires MCM. Tests IMGUI notifications. |
+| [Auto Send Food To Camp](https://www.nexusmods.com/baldursgate3/mods/6086) | 6086 | Osiris, Events, Vars | Untested | Requires MCM. Minimal API surface. |
+| [Always Show Approvals](https://www.nexusmods.com/baldursgate3/mods/4675) | 4675 | Events, Entity, Osiris | Untested | Tests UI hooks and Events system. |
 | [AI Allies](https://www.nexusmods.com/baldursgate3/mods/7780) | 7780 | Entity, Osiris, Events, Stats | Untested | Tests entity creation, Osiris integration. |
 | [Configurable Enemies](https://www.nexusmods.com/baldursgate3/mods/5765) | 5765 | Stats, Entity, Osiris, Events | Untested | Requires MCM. Stats mutation stress test. |
 | [Smart Autosaving](https://www.nexusmods.com/baldursgate3/mods/7358) | 7358 | Timer, Events, Vars | Untested | Tests Timer persistence across save/load. |

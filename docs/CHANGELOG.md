@@ -17,6 +17,102 @@ Each entry includes:
 
 **Category:** Parity | **Parity:** ~97.3% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)
 
+### Wave 4 review fix pass (2026-07-30, same version)
+
+Four-lens review (silent-failure, correctness, tests, docs) over the Wave 4
+span; all confirmed findings fixed at root cause:
+
+- **Game can no longer be orphaned** — the entire post-launch section of
+  `run_scenario` (identity, assertions, log scan, screenshot, crashlog) now
+  runs inside try/finally; any exception, including Ctrl-C, still quits a
+  game the run launched (`tools/bg3se_harness/compat.py`).
+- **Enablement honesty** — a `set_mod_enabled` registry failure now fails the
+  `mod_check` step instead of being recorded-but-ignored, and any successful
+  enable marks `mod_state_changed` (the branch is only reached when the mod
+  was absent from the load order), forcing the stale-game restart.
+- **Download integrity** — a `.pak`-named download without the LSPK magic
+  (e.g. an HTML challenge page served with HTTP 200) is now rejected as
+  `invalid_archive` instead of installed; content sniffing no longer leaks a
+  file handle.
+- **Scenario-manifest correctness** — `Ext.Events.Subscribe` does not exist
+  (events expose `Subscribe` per event object); three manifests now assert
+  `Ext.Events.Tick.Subscribe`. `Ext.Stats.SetRawAttribute` is a StatsObject
+  method, not a namespace function; combat_extender now asserts it on
+  `Ext.Stats.Get('WPN_Longsword')`. Both were latent only because the old
+  runner fabricated assertion success.
+- **Fail-closed save handling** — snapshot/restore backup moves that fail
+  now abort with the original data untouched; a failed restore copy rolls
+  the user's save back from backup; backup names carry microseconds to
+  survive sub-second successive restores.
+- **No more false-clean scans** — `_scan_log_for_mod` returns a scan error
+  distinct from "no errors found"; `run_scenario` fails the log-scan step
+  and `vet_mod` downgrades the verdict from `working` when the log could
+  not be read. Corrupt scenario JSON now warns to stderr instead of
+  silently vanishing from the catalog.
+- **Hygiene** — auto-install temp dirs are removed on success and marked
+  `temp_dir_retained_for_debugging` on failure (compat + `mod install
+  nexus:`); dead `requires_mcm` re-ordering code removed.
+- **Tests: pytest 232 → 239 (total 502)** — regressions pinned for quit-on-exception,
+  registry-enable failure, pak-magic rejection, scan-failure reporting,
+  restore backup-move abort, snapshot-overwrite backup, clone metadata
+  inheritance, and sentinel dict-shape (`output` vs `output_tail`).
+- **Docs** — stale Tier-2 counts (93→95, 206→208) in docs/testing.md; wrong
+  Nexus IDs in docs/supported-mods.md (7247→1879, 5978→6086, 5373→4675);
+  `save snapshot/restore/clone`, `compat matrix` flags, `mod install
+  nexus:<id>` and the `compat diff` index-keying caveat documented; the
+  perpetually stale "37 Commands" header dropped.
+
+### Wave 4 — Vetting Infrastructure (2026-07-30, same version)
+
+- **Integrated compat pipeline** — `compat run <scenario> --launch --auto-install
+  --save-baseline` is now a full autonomous vet: catalog-driven `requires_mcm`
+  dependency injection (MCM prepended, deduped), missing mods downloaded from
+  Nexus (Premium) and installed/enabled, save fixture restored, game launched
+  via `_launch_until_socket` (`-continueGame`, retries, boot-health record),
+  `!identity` handshake gating all Lua work, and a clean quit when the run
+  launched the game itself. `compat diff <scenario>` compares the latest run
+  step-by-step against `docs/compat-reports/baseline/` (regressions, fixes,
+  added/removed steps).
+- **Honest assertions** — the old runner logged every assertion as passed
+  because `Console.send` returns Lua errors as text. Each assertion now runs
+  inside `pcall` with a `BG3SE_COMPAT_PASS`/`BG3SE_COMPAT_FAIL:` sentinel;
+  no sentinel in output is a failure, and assertions that cannot run are
+  recorded as `not_run`, never as passes. This immediately exposed three
+  manifests asserting `type(Ext.ModEvents.Subscribe) == 'function'` — it is a
+  lazily-created mod-bucket table — which were corrected to the real per-mod
+  event-object semantics.
+- **`nexus.download_file()`** — Premium CDN download with ZIP extraction
+  (path-traversal and flatten-collision rejection), content sniffing for
+  extensionless files (LSPK magic → PAK, `is_zipfile` → ZIP; observed live:
+  Expansion Level 20 ships as a bare-UUID ZIP), CDN URLs with literal spaces
+  re-quoted (http.client rejects them), and catalog `file_id` pinning so mods
+  whose newest "primary" file is a translation install the right file.
+  `mod install nexus:<id>` now downloads and installs (old behavior behind
+  `--links-only`).
+- **Scenarios to 10** — added `expansion_lvl20`, `more_reactive_companions`,
+  `camp_event_notifications`, `auto_send_food`, `always_show_approvals`; all
+  10 manifests upgraded to Tier-2 execution assertions (load-order resolution
+  by name, live entity/DB/StaticData/ModEvents/Tick/IMGUI-viewport calls
+  against a loaded save) with the shared `vetting_base` fixture and
+  `requires_save: true`. Schema + luac syntax validation in
+  `tests/harness/test_scenarios.py`.
+- **Save fixture integrity** — `restore()` previously copied fixtures into an
+  invented `Harness__<name>` directory; BG3 requires
+  `<Profile>-<id>__<DisplayName>/<DisplayName>.lsv` and `-continueGame` hangs
+  at 0% on anything else (observed live). `snapshot` now records its source
+  directory in a `fixture_meta.json` sidecar, `restore` writes back into that
+  exact directory (backing up the current content outside the game's save
+  tree), and fixtures without metadata refuse to restore.
+- **Catalog corrections** — three wrong Nexus IDs fixed
+  (camp_event_notifications 7247→1879 Kvalyr, auto_send_food 5978→6086
+  Volitio, always_show_approvals 5373→4675 ancientbuho + explicit English
+  `file_id`), expansion_lvl20 author corrected to DiZ91891.
+- **Exit gate** — autonomous `compat run mcm --launch` passed 27/27 steps
+  (launch → identity → 17 live assertions → launch-scoped log scan →
+  screenshot → crashlog → quit); report saved as the MCM baseline and
+  `compat diff mcm` verifies clean. Community vetting call posted as
+  issue #97. Tests: pytest 210 → 232 (total 495).
+
 ### Added
 - **Five AiGrid pathfinding/tile APIs** — `Ext.Level.GetPathById`,
   `ReleasePath`, `GetActivePathfindingRequests`, `FindPath`, and

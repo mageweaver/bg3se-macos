@@ -137,7 +137,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 55 C (Tier 0) + 210 pytest (Tier H) + 113 `!test` (Tier 1) + 95 `!test_ingame` (Tier 2) = **473 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 239 pytest (Tier H) + 113 `!test` (Tier 1) + 95 `!test_ingame` (Tier 2) = **502 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`; evidence in `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).

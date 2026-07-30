@@ -51,9 +51,9 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 473 (265 offline + 208 Lua) |
+| **Total tests** | 502 (294 offline + 208 Lua) |
 | **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 210 — Python harness, no game, CI-safe |
+| **Tier H (pytest)** | 239 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
 | **Tier 2 (In-Game)** | 95 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
@@ -77,7 +77,7 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 
 ### Tier H: Python Harness Tests
 
-210 tests in `tests/harness/`. Run with pytest, no game dependency.
+239 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -86,8 +86,11 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | Module | Count | What it Tests |
 |--------|-------|---------------|
 | test_cli | 11 | headless lifecycle, build failures, memory-pressure flags |
-| test_compat | 3 | log timestamp scoping (all, filtered, future) |
+| test_compat | 23 | log scan scoping + honesty, Nexus download hardening, sentinel protocol, enable/quit fail-closed paths, diff |
+| test_component_ops_audit | 5 | ComponentOps registry invariants |
+| test_component_write_audit | 2 | component write layout guards |
 | test_crashlog | 3 | IPS parsing, crash classification, enabled-mod extraction |
+| test_functor_abi_audit | 1 | functor ABI invariant |
 | test_game_path | 10 | Steam library parsing and BG3 app bundle resolution |
 | test_headless_graphics | 4 | windowed mode graphics prep and restore |
 | test_launch | 6 | wait_for_socket lifecycle and menu-stall watchdog |
@@ -95,8 +98,10 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | test_menu | 5 | menu detection, click delivery, coordinate geometry |
 | test_mod | 16 | UUID resolution, pak metadata, registry reconciliation, preflight |
 | test_monitor | 8 | process tracking, atomic health writes, graphics restoration |
-| test_offset_audit | 64 | symbol manifest, offset-table, remap, and functor invariants |
-| test_savegames | 4 | restore backups and save-mod marker classification |
+| test_offset_audit | 71 | symbol manifest, offset-table, remap, and functor invariants |
+| test_physics_vmt_audit | 4 | physics VMT index invariants |
+| test_savegames | 10 | fixture snapshot/restore source tracking, backup safety, save-mod marker classification |
+| test_scenarios | 3 | scenario manifest schema, MCM injection, Lua assertion syntax (luac) |
 | test_test_runner | 6 | output parsing and socket error handling |
 
 ### Tier 1+2: Lua In-Game Tests
@@ -342,7 +347,7 @@ Entity event subscription system.
 ```lua
 !test                    -- Run all 113 Tier 1 tests
 !test Stats              -- Filter: only Stats.* tests
-!test_ingame             -- Run all 93 Tier 2 tests (needs save)
+!test_ingame             -- Run all 95 Tier 2 tests (needs save)
 !test_ingame Osi         -- Filter: only Osi.* Tier 2 tests
 !test_ingame EntityEvents -- Filter: Entity Events tests
 ```
@@ -509,4 +514,4 @@ grep -E "(ms|initialized|complete)" "/Users/tomdimino/Library/Application Suppor
 
 ### Test Registration Overhead
 
-All 206 test definitions (113 Tier 1 + 93 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.
+All 208 test definitions (113 Tier 1 + 95 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.

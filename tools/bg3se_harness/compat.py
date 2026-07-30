@@ -16,7 +16,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -33,8 +35,13 @@ def _load_scenarios():
             data = json.loads(f.read_text())
             data["_file"] = f.name
             scenarios[f.stem] = data
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            # A corrupt manifest must not silently vanish from the catalog —
+            # the caller would see "scenario not found" with no diagnostic.
+            print(
+                f"warning: skipping unreadable scenario {f.name}: {exc}",
+                file=sys.stderr,
+            )
     return scenarios
 
 
@@ -45,7 +52,8 @@ def _load_popular_mods():
         return {}
     try:
         data = json.loads(path.read_text())
-        return data.get("mods", {})
+        mods = data.get("mods", {})
+        return mods if isinstance(mods, dict) else {}
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -78,18 +86,70 @@ def list_scenarios():
     return {"scenarios": items, "count": len(items)}
 
 
-def run_scenario(scenario_name):
+def _parse_assertion_output(output, tail_limit=500):
+    """Parse the last compat sentinel in console output."""
+    text = output or ""
+    pass_marker = "BG3SE_COMPAT_PASS"
+    fail_marker = "BG3SE_COMPAT_FAIL:"
+    pass_at = text.rfind(pass_marker)
+    fail_at = text.rfind(fail_marker)
+
+    if pass_at >= 0 and pass_at > fail_at:
+        return {"success": True, "output": text[-tail_limit:]}
+    if fail_at >= 0:
+        error = text[fail_at + len(fail_marker):].splitlines()[0].strip()
+        return {
+            "success": False,
+            "error": error or "assertion failed without an error message",
+            "output": text[-tail_limit:],
+        }
+    return {
+        "success": False,
+        "error": "no sentinel in output",
+        "output_tail": text[-tail_limit:],
+    }
+
+
+def _find_installed_mod(registry, mod_name):
+    """Return ``(uuid, entry)`` using the catalog-name match used by vet_mod."""
+    name_lower = mod_name.lower()
+    for uuid, entry in registry.items():
+        if name_lower in (entry.get("name") or "").lower():
+            return uuid, entry
+    return None, None
+
+
+def _baseline_path(scenario_name):
+    from .config import PROJECT_ROOT
+    return PROJECT_ROOT / "docs" / "compat-reports" / "baseline" / f"{scenario_name}.json"
+
+
+def _catalog_error(catalog):
+    """Return why the catalog is unavailable, or None for a valid catalog."""
+    if catalog:
+        return None
+    path = CATALOG_DIR / "popular_mods.json"
+    if not path.exists():
+        return f"catalog missing: {path}"
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return f"catalog unreadable: {exc}"
+    if not isinstance(data, dict) or not isinstance(data.get("mods", {}), dict):
+        return "catalog has an invalid mods mapping"
+    return None
+
+
+def run_scenario(
+    scenario_name,
+    launch=False,
+    auto_install=False,
+    save_baseline=False,
+):
     """Run a compatibility test scenario.
 
-    Steps:
-    1. Load scenario manifest (or build one from catalog)
-    2. Install required mods
-    3. Restore save fixture (if specified)
-    4. Launch game with SE
-    5. Wait for socket
-    6. Run Lua assertions
-    7. Capture screenshots
-    8. Collect results
+    Live launch/socket work is opt-in through *launch*.  Missing mods are only
+    downloaded when *auto_install* is true.
     """
     scenarios = _load_scenarios()
     catalog = _load_popular_mods()
@@ -128,25 +188,70 @@ def run_scenario(scenario_name):
     }
 
     def log_step(name, result):
-        step = {"name": name, "success": result.get("success", "error" not in result), **result}
+        step = {"success": result.get("success", "error" not in result), **result, "name": name}
         results["steps"].append(step)
-        status = "OK" if step["success"] else "FAIL"
+        status = "SKIP" if step.get("status") == "not_run" else ("OK" if step["success"] else "FAIL")
         print(f"  [{status}] {name}", file=sys.stderr)
         return step["success"]
 
     print(f"Running compat scenario: {scenario_name}", file=sys.stderr)
 
-    # Step 1: Check prerequisites
-    from .doctor import run_doctor
-    doctor_result = run_doctor()
-    prereq_ok = doctor_result.get("all_passed", False)
-    # Only hard-fail on critical checks
-    critical_checks = ["bg3_app_bundle", "bg3_binary", "se_dylib_deployed", "mods_directory"]
-    critical_passed = all(
-        c["passed"] for c in doctor_result["checks"]
-        if c["name"] in critical_checks
+    original_mod_keys = scenario.get("mods", [])
+    if not isinstance(original_mod_keys, list):
+        original_mod_keys = []
+    requires_mcm = any(
+        catalog.get(mod_key, {}).get("requires_mcm") is True
+        for mod_key in original_mod_keys
     )
-    log_step("prerequisites", {"success": critical_passed, "passed": doctor_result["passed"], "total": doctor_result["total"]})
+    effective_mod_keys = list(original_mod_keys)
+    if requires_mcm:
+        effective_mod_keys = ["mcm", *effective_mod_keys]
+    # dict.fromkeys keeps first occurrence, so the prepended mcm stays first.
+    effective_mod_keys = list(dict.fromkeys(effective_mod_keys))
+    results["mods"] = effective_mod_keys
+    catalog_error = _catalog_error(catalog)
+    log_step("dependency_resolution", {
+        "success": catalog_error is None,
+        "requires_mcm": requires_mcm,
+        "mcm_injected": requires_mcm and "mcm" not in original_mod_keys,
+        "original_mods": original_mod_keys,
+        "effective_mods": effective_mod_keys,
+        "error_type": "catalog_unavailable" if catalog_error else None,
+        "error": catalog_error,
+    })
+
+    # Check prerequisites.
+    from .doctor import run_doctor
+    try:
+        doctor_result = run_doctor()
+    except Exception as exc:
+        doctor_result = {"checks": [], "passed": 0, "total": 0, "error": str(exc)}
+    if not isinstance(doctor_result, dict):
+        doctor_result = {
+            "checks": [],
+            "passed": 0,
+            "total": 0,
+            "error": "doctor returned an invalid response",
+        }
+    critical_checks = ["bg3_app_bundle", "bg3_binary", "se_dylib_deployed", "mods_directory"]
+    checks = doctor_result.get("checks")
+    checks_by_name = {
+        check.get("name"): check
+        for check in checks or []
+        if isinstance(check, dict)
+    }
+    critical_passed = all(
+        name in checks_by_name and checks_by_name[name].get("passed") is True
+        for name in critical_checks
+    )
+    log_step("prerequisites", {
+        "success": critical_passed,
+        "passed": doctor_result.get("passed", 0),
+        "total": doctor_result.get("total", len(checks or [])),
+        "critical_checks": critical_checks,
+        "error_type": "doctor_unavailable" if doctor_result.get("error") else None,
+        "error": doctor_result.get("error"),
+    })
 
     if not critical_passed:
         results["success"] = False
@@ -154,63 +259,464 @@ def run_scenario(scenario_name):
         _save_report(report_dir, results)
         return results
 
-    # Step 2: Install mods (if mod PAKs are available locally)
-    mod_keys = scenario.get("mods", [])
-    for mod_key in mod_keys:
+    # Resolve installed/enabled state and optionally install missing mods.
+    from .mod_manager.registry import load_registry
+    try:
+        registry = load_registry()
+        registry_error = None
+    except (OSError, ValueError, TypeError) as exc:
+        registry = {}
+        registry_error = str(exc)
+    if not isinstance(registry, dict):
+        registry = {}
+        registry_error = "registry returned an invalid response"
+
+    mod_state_changed = False
+    for mod_key in effective_mod_keys:
         mod_info = catalog.get(mod_key, {})
+        mod_name = mod_info.get("name", mod_key)
+
+        if registry_error:
+            log_step(f"mod_check_{mod_key}", {
+                "success": False,
+                "mod_name": mod_name,
+                "error_type": "registry_unavailable",
+                "error": registry_error,
+            })
+            continue
+
+        installed_uuid, entry = _find_installed_mod(registry, mod_name)
+        if not installed_uuid:
+            if not auto_install:
+                log_step(f"mod_check_{mod_key}", {
+                    "success": False,
+                    "mod_name": mod_name,
+                    "state": "missing",
+                    "note": "not installed; rerun with --auto-install",
+                })
+                continue
+
+            nexus_id = mod_info.get("nexus_id")
+            if not nexus_id:
+                log_step(f"mod_check_{mod_key}", {
+                    "success": False,
+                    "mod_name": mod_name,
+                    "state": "missing",
+                    "error_type": "missing_nexus_id",
+                    "error": f"No Nexus mod ID is configured for {mod_name}.",
+                })
+                continue
+
+            from .mod_manager.nexus import download_file
+            from .mod_manager.installer import install_local
+
+            temp_dir = tempfile.mkdtemp(prefix=f"bg3se-compat-{mod_key}-")
+            try:
+                # An explicit catalog file_id overrides Nexus primary-file
+                # auto-pick (e.g. mods whose newest primary is a translation).
+                download = download_file(
+                    nexus_id, temp_dir, file_id=mod_info.get("file_id"),
+                )
+            except Exception as exc:
+                download = {
+                    "success": False,
+                    "error_type": "download_unavailable",
+                    "message": str(exc),
+                }
+            if not download.get("success"):
+                log_step(f"mod_check_{mod_key}", {
+                    "success": False,
+                    "mod_name": mod_name,
+                    "state": "download_failed",
+                    "error_type": download.get("error_type", "download_failed"),
+                    "error": download.get("message") or download.get("error"),
+                    "download": download,
+                    "temp_dir": temp_dir,
+                    "cleanup": "temp_dir_retained_for_debugging",
+                })
+                continue
+
+            paks = download.get("paks") or []
+            if not paks:
+                log_step(f"mod_check_{mod_key}", {
+                    "success": False,
+                    "mod_name": mod_name,
+                    "state": "downloaded_no_paks",
+                    "error_type": "no_paks",
+                    "note": "download completed but contained no installable .pak files",
+                    "download": download,
+                    "temp_dir": temp_dir,
+                    "cleanup": "temp_dir_retained_for_debugging",
+                })
+                continue
+
+            install_results = []
+            for pak_path in paks:
+                try:
+                    install_result = install_local(pak_path, enable=True)
+                except Exception as exc:
+                    install_result = {"error": str(exc)}
+                install_results.append({"pak": pak_path, **install_result})
+                if install_result.get("installed") is True:
+                    mod_state_changed = True
+
+            install_success = all(
+                result.get("installed") is True and "error" not in result
+                for result in install_results
+            )
+            if install_success:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            log_step(f"mod_check_{mod_key}", {
+                "success": install_success,
+                "mod_name": mod_name,
+                "state": "installed" if install_success else "install_failed",
+                "download": download,
+                "installs": install_results,
+                "temp_dir": temp_dir,
+                "cleanup": (
+                    "temp_dir_removed" if install_success
+                    else "temp_dir_retained_for_debugging"
+                ),
+            })
+            continue
+
+        from .mod_manager.modsettings import read_mod_order, add_mod
+        try:
+            mod_order = read_mod_order()
+        except (OSError, ValueError, TypeError) as exc:
+            mod_order = [{"error": str(exc)}]
+        if not isinstance(mod_order, list):
+            mod_order = [{"error": "modsettings returned an invalid response"}]
+
+        if mod_order and isinstance(mod_order[0], dict) and "error" in mod_order[0]:
+            log_step(f"mod_check_{mod_key}", {
+                "success": False,
+                "mod_name": mod_name,
+                "uuid": installed_uuid,
+                "state": "installed_unknown_enablement",
+                "error_type": "modsettings_unavailable",
+                "error": mod_order[0]["error"],
+            })
+            continue
+
+        if any(mod.get("uuid") == installed_uuid for mod in mod_order):
+            log_step(f"mod_check_{mod_key}", {
+                "success": True,
+                "mod_name": mod_name,
+                "uuid": installed_uuid,
+                "state": "installed_enabled",
+            })
+            continue
+
+        try:
+            enable_result = add_mod(
+                uuid=installed_uuid,
+                name=entry.get("name") or installed_uuid,
+                folder=entry.get("folder") or entry.get("name") or installed_uuid,
+                version=entry.get("version") or "36028797018963968",
+                md5=entry.get("md5", ""),
+            )
+        except Exception as exc:
+            enable_result = {"error": str(exc)}
+        enabled = "error" not in enable_result
+        registry_result = None
+        if enabled:
+            from .mod_manager.registry import set_mod_enabled
+            try:
+                registry_result = set_mod_enabled(installed_uuid, True)
+            except Exception as exc:
+                registry_result = {"updated": False, "error": str(exc)}
+            if not (
+                isinstance(registry_result, dict)
+                and registry_result.get("updated") is True
+            ):
+                enabled = False
+        if enabled:
+            # This branch is only reached when the mod was absent from the
+            # load order, so any successful enable changes mod state — a
+            # running game must be restarted to pick it up.
+            mod_state_changed = True
         log_step(f"mod_check_{mod_key}", {
-            "success": True,
-            "name": mod_info.get("name", mod_key),
-            "priority": mod_info.get("priority", "unknown"),
-            "note": "Mod must be manually installed for now. Auto-install via Nexus planned.",
+            "success": enabled,
+            "mod_name": mod_name,
+            "uuid": installed_uuid,
+            "state": "enabled" if enabled else "enable_failed",
+            "enable_result": enable_result,
+            "registry_result": registry_result,
         })
 
-    # Step 3: Restore save fixture (if specified)
+    results["mod_state_changed"] = mod_state_changed
+
+    # Restore the named fixture only when it actually exists.
     save_fixture = scenario.get("save_fixture")
     if save_fixture:
-        from .savegames import restore
-        restore_result = restore(save_fixture)
-        log_step("restore_save", restore_result)
+        from .savegames import list_fixtures, restore
+        try:
+            fixtures_result = list_fixtures()
+        except Exception as exc:
+            fixtures_result = {"error": str(exc), "fixtures": []}
+        if not isinstance(fixtures_result, dict):
+            fixtures_result = {
+                "error": "fixture catalog returned an invalid response",
+                "fixtures": [],
+            }
+        fixture_names = {
+            fixture.get("name")
+            for fixture in fixtures_result.get("fixtures", [])
+            if isinstance(fixture, dict)
+        }
+        if "error" in fixtures_result:
+            log_step("restore_save", {
+                "success": False,
+                "error_type": "fixture_catalog_unavailable",
+                "error": fixtures_result["error"],
+            })
+        elif save_fixture not in fixture_names:
+            log_step("restore_save", {
+                "success": False,
+                "fixture": save_fixture,
+                "note": f"fixture missing: {save_fixture}",
+            })
+        else:
+            try:
+                restore_result = restore(save_fixture)
+            except Exception as exc:
+                restore_result = {
+                    "success": False,
+                    "error_type": "restore_unavailable",
+                    "error": str(exc),
+                }
+            log_step("restore_save", restore_result)
 
-    # Step 4: Check if game is already running
-    from . import launch as launch_mod
-    if launch_mod.is_running() and launch_mod.socket_alive():
-        log_step("game_status", {"success": True, "note": "Game already running with SE"})
+    # Launch lifecycle and live checks are explicitly opt-in.
+    assertions = scenario.get("assertions", [])
+    live_ready = False
+    launched_game = False
+    expected_pid = None
+    log_since = None
+    launch_mod = None
+
+    if launch:
+        from . import launch as launch_mod
+        log_since = time.strftime("%Y-%m-%d %H:%M:%S")
+        cleanup_ok = True
+
+        if mod_state_changed:
+            was_running = launch_mod.is_running()
+            if was_running:
+                launch_mod.kill_existing(force_all=True)
+            still_running = launch_mod.is_running()
+            cleanup_ok = not still_running
+            log_step("stale_mod_state_cleanup", {
+                "success": cleanup_ok,
+                "was_running": was_running,
+                "still_running": still_running,
+                "note": "running game stopped because mod state changed",
+            })
+
+        if cleanup_ok and not mod_state_changed and launch_mod.is_running() and launch_mod.socket_alive():
+            live_ready = True
+            log_step("launch_health", {
+                "success": True,
+                "socket_connected": True,
+                "reused_running_game": True,
+            })
+        elif cleanup_ok:
+            launched_game = True
+            try:
+                from .cli import _launch_until_socket
+                _, health, attempts = _launch_until_socket(
+                    continue_game=True,
+                    load_save=None,
+                    extra_flags=None,
+                    skip_videos=True,
+                    headless=False,
+                    timeout=launch_mod.default_timeout(continue_game=True),
+                    retries=1,
+                )
+                live_ready = bool(
+                    health.get("socket_connected")
+                    and health.get("session_loaded")
+                )
+                expected_pid = health.get("pid")
+                log_step("launch_health", {
+                    **health,
+                    "success": live_ready,
+                    "attempts": attempts,
+                    "reused_running_game": False,
+                })
+            except Exception as exc:
+                log_step("launch_health", {
+                    "success": False,
+                    "error_type": "launch_unavailable",
+                    "error": str(exc),
+                    "reused_running_game": False,
+                })
+        else:
+            log_step("launch_health", {
+                "success": False,
+                "error_type": "stale_game_still_running",
+                "note": "launch blocked because the stale running game could not be stopped",
+                "reused_running_game": False,
+            })
     else:
-        log_step("game_status", {
+        log_step("launch_health", {
             "success": False,
-            "note": "Game not running. Launch manually or via: bg3se-harness launch --continue",
+            "status": "not_run",
+            "note": "launch disabled; rerun with --launch",
+            "reused_running_game": False,
         })
 
-    # Step 5: Run assertions (if game is running)
-    assertions = scenario.get("assertions", [])
-    if assertions and launch_mod.socket_alive():
-        from .console import Console
-        try:
-            with Console() as c:
-                for i, assertion_lua in enumerate(assertions):
-                    try:
-                        output = c.send(assertion_lua)
-                        log_step(f"assertion_{i}", {"success": True, "lua": assertion_lua, "output": output[:200]})
-                    except Exception as e:
-                        log_step(f"assertion_{i}", {"success": False, "lua": assertion_lua, "error": str(e)})
-        except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
-            log_step("assertions", {"success": False, "error": f"Socket connection failed: {e}"})
-
-    # Step 6: Capture screenshot
-    if launch_mod.is_running():
-        from .screenshot import capture
-        ss_result = capture(output=str(report_dir / "screenshot.jpg"))
-        log_step("screenshot", {"success": "error" not in ss_result, **ss_result})
-
-    # Step 7: Check crash log
+    # Every post-launch check runs inside this try; the finally block quits
+    # any game this run launched, so a pipeline bug (or Ctrl-C) can never
+    # orphan a live BG3 process.
     try:
-        from .crashlog import get_crash_report
-        crash_data = get_crash_report(ring=False, tail=20)
-        has_crash = bool(crash_data.get("signal"))
-        log_step("crashlog", {"success": not has_crash, **crash_data})
-    except Exception:
-        log_step("crashlog", {"success": True, "note": "crashlog check skipped"})
+        # Verify socket identity before trusting any Lua assertion.
+        if assertions and live_ready:
+            from .console import Console
+            try:
+                with Console() as c:
+                    identity_output = c.send("!identity")
+                    identity = launch_mod.parse_identity_json(
+                        (identity_output or "").encode("utf-8", errors="replace")
+                    )
+                    session_init = identity.get("session_init") if identity else None
+                    pid = identity.get("pid") if identity else None
+                    identity_ok = bool(
+                        identity
+                        and pid is not None
+                        and session_init == "complete"
+                        and (expected_pid is None or pid == expected_pid)
+                    )
+                    log_step("identity", {
+                        "success": identity_ok,
+                        "pid": pid,
+                        "expected_pid": expected_pid,
+                        "session_init": session_init,
+                        "raw_output": (identity_output or "")[-500:],
+                        "error": (
+                            None if identity_ok
+                            else "identity JSON unavailable or did not match the live session"
+                        ),
+                    })
+
+                    if not identity_ok:
+                        for i, assertion_lua in enumerate(assertions):
+                            log_step(f"assertion_{i}", {
+                                "success": False,
+                                "status": "not_run",
+                                "lua": assertion_lua,
+                                "note": (
+                                    f"identity not ready: pid={pid!r}, "
+                                    f"session_init={session_init or 'unavailable'}"
+                                ),
+                            })
+                    else:
+                        for i, assertion_lua in enumerate(assertions):
+                            command = (
+                                "local __ok, __err = pcall(function() "
+                                f"{assertion_lua} end); "
+                                "Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or "
+                                "('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))"
+                            )
+                            try:
+                                output = c.send(command)
+                                parsed = _parse_assertion_output(output)
+                                log_step(f"assertion_{i}", {
+                                    **parsed,
+                                    "lua": assertion_lua,
+                                })
+                            except Exception as exc:
+                                log_step(f"assertion_{i}", {
+                                    "success": False,
+                                    "lua": assertion_lua,
+                                    "error": str(exc),
+                                })
+            except Exception as exc:
+                log_step("identity", {
+                    "success": False,
+                    "error_type": "socket_unavailable",
+                    "error": f"Socket connection failed: {exc}",
+                    "pid": None,
+                    "session_init": None,
+                })
+                for i, assertion_lua in enumerate(assertions):
+                    log_step(f"assertion_{i}", {
+                        "success": False,
+                        "status": "not_run",
+                        "lua": assertion_lua,
+                        "note": "identity handshake unavailable",
+                    })
+        elif assertions:
+            reason = "live session unavailable" if launch else "launch disabled; rerun with --launch"
+            for i, assertion_lua in enumerate(assertions):
+                log_step(f"assertion_{i}", {
+                    "success": False,
+                    "status": "not_run",
+                    "lua": assertion_lua,
+                    "note": reason,
+                })
+
+        # Scan only the log window opened immediately before launch.
+        if launch and log_since:
+            log_path = Path.home() / "Library/Application Support/BG3SE/logs/latest.log"
+            for mod_key in effective_mod_keys:
+                mod_name = catalog.get(mod_key, {}).get("name", mod_key)
+                if not log_path.exists():
+                    log_step(f"log_scan_{mod_key}", {
+                        "success": False,
+                        "error_type": "log_unavailable",
+                        "mod": mod_name,
+                        "since": log_since,
+                        "note": f"log file unavailable: {log_path}",
+                    })
+                    continue
+                log_errors, log_warnings, scan_error = _scan_log_for_mod(
+                    mod_name,
+                    since_timestamp=log_since,
+                )
+                # A failed read must not read as "scanned clean".
+                log_step(f"log_scan_{mod_key}", {
+                    "success": not log_errors and scan_error is None,
+                    "mod": mod_name,
+                    "since": log_since,
+                    "errors": log_errors,
+                    "warnings": log_warnings,
+                    "error_type": "log_scan_failed" if scan_error else None,
+                    "error": scan_error,
+                })
+
+        # Capture and crash checks are meaningful only for a live run.
+        if live_ready:
+            try:
+                from .screenshot import capture
+                ss_result = capture(output=str(report_dir / "screenshot.jpg"))
+                log_step("screenshot", {"success": "error" not in ss_result, **ss_result})
+            except Exception as exc:
+                log_step("screenshot", {
+                    "success": False,
+                    "error_type": "screenshot_unavailable",
+                    "error": str(exc),
+                })
+
+            try:
+                from .crashlog import get_crash_report
+                crash_data = get_crash_report(ring=False, tail=20)
+                has_crash = bool(crash_data.get("signal"))
+                log_step("crashlog", {"success": not has_crash, **crash_data})
+            except Exception as exc:
+                log_step("crashlog", {
+                    "success": False,
+                    "error_type": "crashlog_unavailable",
+                    "error": str(exc),
+                })
+    finally:
+        if launched_game:
+            try:
+                quit_result = launch_mod.quit_game(force=False)
+            except Exception as exc:
+                quit_result = {"success": False, "error": str(exc)}
+            log_step("quit_game", quit_result)
 
     # Finalize
     passed_steps = sum(1 for s in results["steps"] if s.get("success"))
@@ -220,10 +726,20 @@ def run_scenario(scenario_name):
     results["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
     _save_report(report_dir, results)
+    if save_baseline and results["success"]:
+        baseline_path = _baseline_path(scenario_name)
+        try:
+            baseline_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(report_dir / "report.json"), str(baseline_path))
+            results["baseline"] = str(baseline_path)
+        except OSError as exc:
+            results["success"] = False
+            results["baseline_error"] = str(exc)
+            _save_report(report_dir, results)
     return results
 
 
-def run_matrix():
+def run_matrix(launch=False, auto_install=False):
     """Run all scenarios and produce a summary."""
     catalog = _load_popular_mods()
     scenarios = _load_scenarios()
@@ -231,7 +747,11 @@ def run_matrix():
 
     matrix_results = []
     for name in all_names:
-        result = run_scenario(name)
+        result = run_scenario(
+            name,
+            launch=launch,
+            auto_install=auto_install,
+        )
         matrix_results.append({
             "scenario": name,
             "success": result.get("success", False),
@@ -245,6 +765,124 @@ def run_matrix():
         "passed": passed,
         "total": len(matrix_results),
         "all_passed": passed == len(matrix_results),
+    }
+
+
+def diff_scenario(scenario_name):
+    """Compare the latest scenario report with its saved baseline."""
+    baseline_path = _baseline_path(scenario_name)
+    run_candidates = []
+    if REPORTS_DIR.exists():
+        prefix = f"{scenario_name}_"
+        for directory in REPORTS_DIR.iterdir():
+            if not directory.is_dir() or not directory.name.startswith(prefix):
+                continue
+            suffix = directory.name[len(prefix):]
+            if suffix.isdigit() and (directory / "report.json").exists():
+                run_candidates.append((int(suffix), directory / "report.json"))
+
+    available_baselines = []
+    if baseline_path.parent.exists():
+        available_baselines = sorted(path.stem for path in baseline_path.parent.glob("*.json"))
+    available_runs = []
+    if REPORTS_DIR.exists():
+        available_runs = sorted(
+            (
+                directory.name
+                for directory in REPORTS_DIR.iterdir()
+                if directory.is_dir() and (directory / "report.json").exists()
+            ),
+            reverse=True,
+        )
+
+    if not baseline_path.exists():
+        return {
+            "success": False,
+            "error_type": "missing_baseline",
+            "error": f"No baseline report exists for scenario '{scenario_name}'.",
+            "baseline_exists": False,
+            "available_baselines": available_baselines,
+            "available_runs": available_runs,
+        }
+    if not run_candidates:
+        return {
+            "success": False,
+            "error_type": "missing_run",
+            "error": f"No run report exists for scenario '{scenario_name}'.",
+            "baseline_exists": True,
+            "available_baselines": available_baselines,
+            "available_runs": available_runs,
+        }
+
+    current_path = max(run_candidates, key=lambda item: item[0])[1]
+    try:
+        baseline = json.loads(baseline_path.read_text())
+        current = json.loads(current_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return {
+            "success": False,
+            "error_type": "report_unavailable",
+            "error": str(exc),
+            "baseline": str(baseline_path),
+            "current": str(current_path),
+            "available_baselines": available_baselines,
+            "available_runs": available_runs,
+        }
+
+    if (
+        not isinstance(baseline, dict)
+        or not isinstance(current, dict)
+        or not isinstance(baseline.get("steps"), list)
+        or not isinstance(current.get("steps"), list)
+    ):
+        return {
+            "success": False,
+            "error_type": "report_unavailable",
+            "error": "baseline or current report has an invalid steps list",
+            "baseline": str(baseline_path),
+            "current": str(current_path),
+            "available_baselines": available_baselines,
+            "available_runs": available_runs,
+        }
+
+    baseline_steps = {
+        step.get("name"): step
+        for step in baseline.get("steps", [])
+        if isinstance(step, dict) and step.get("name")
+    }
+    current_steps = {
+        step.get("name"): step
+        for step in current.get("steps", [])
+        if isinstance(step, dict) and step.get("name")
+    }
+
+    regressions = []
+    fixes = []
+    for name in sorted(baseline_steps.keys() & current_steps.keys()):
+        baseline_success = baseline_steps[name].get("success") is True
+        current_success = current_steps[name].get("success") is True
+        change = {
+            "name": name,
+            "baseline_success": baseline_success,
+            "current_success": current_success,
+        }
+        if baseline_success and not current_success:
+            regressions.append(change)
+        elif not baseline_success and current_success:
+            fixes.append(change)
+
+    added_steps = sorted(current_steps.keys() - baseline_steps.keys())
+    removed_steps = sorted(baseline_steps.keys() - current_steps.keys())
+    return {
+        "success": True,
+        "scenario": scenario_name,
+        "baseline": str(baseline_path),
+        "current": str(current_path),
+        "regressions": regressions,
+        "fixes": fixes,
+        "added_steps": added_steps,
+        "removed_steps": removed_steps,
+        "regressed": bool(regressions or removed_steps),
     }
 
 
@@ -367,12 +1005,16 @@ def vet_mod(source, no_launch=False, output_path=None):
         return report
 
     # Step 4: Parse latest log for errors related to this mod
-    log_errors, log_warnings = _scan_log_for_mod(
+    log_errors, log_warnings, scan_error = _scan_log_for_mod(
         report.get("mod_name", ""),
         since_timestamp=report["timestamp"].replace("T", " "),
     )
     report["errors"].extend(log_errors)
     report["warnings"].extend(log_warnings)
+    if scan_error:
+        # A failed scan means the log was never verified — surface it as a
+        # warning so the verdict can be at most "partial", never "working".
+        report["warnings"].append(f"log scan incomplete: {scan_error}")
 
     # Step 5: Determine status
     if report["errors"]:
@@ -418,14 +1060,19 @@ def _scan_log_for_mod(mod_name, since_timestamp=None):
 
     If *since_timestamp* is given (ISO format "YYYY-MM-DD HH:MM:SS"), only
     lines with timestamps at or after that value are considered.
+
+    Returns ``(errors, warnings, scan_error)``. *scan_error* is None when the
+    log was actually read; otherwise it describes the read failure so callers
+    can distinguish "scanned clean" from "could not scan".
     """
     errors = []
     warnings = []
+    scan_error = None
     if not mod_name:
-        return errors, warnings
+        return errors, warnings, scan_error
     log_path = Path.home() / "Library/Application Support/BG3SE/logs/latest.log"
     if not log_path.exists():
-        return errors, warnings
+        return errors, warnings, scan_error
 
     try:
         lines = log_path.read_text(errors="replace").splitlines()
@@ -444,10 +1091,10 @@ def _scan_log_for_mod(mod_name, since_timestamp=None):
                 errors.append(line.strip()[:200])
             elif "warn" in lower:
                 warnings.append(line.strip()[:200])
-    except OSError:
-        pass
+    except OSError as exc:
+        scan_error = f"could not read {log_path.name}: {exc}"
 
-    return errors[:20], warnings[:20]
+    return errors[:20], warnings[:20], scan_error
 
 
 def _save_vet_report(report, output_path=None):
@@ -485,14 +1132,27 @@ def cmd_compat(args):
         return 0
 
     elif subcmd == "run":
-        result = run_scenario(args.scenario)
+        result = run_scenario(
+            args.scenario,
+            launch=getattr(args, "launch", False),
+            auto_install=getattr(args, "auto_install", False),
+            save_baseline=getattr(args, "save_baseline", False),
+        )
         print(json.dumps(result, indent=2))
         return 0 if result.get("success") else 1
 
     elif subcmd == "matrix":
-        result = run_matrix()
+        result = run_matrix(
+            launch=getattr(args, "launch", False),
+            auto_install=getattr(args, "auto_install", False),
+        )
         print(json.dumps(result, indent=2))
         return 0 if result.get("all_passed") else 1
+
+    elif subcmd == "diff":
+        result = diff_scenario(args.scenario)
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("success") and not result.get("regressed") else 1
 
     elif subcmd == "vet":
         result = vet_mod(
