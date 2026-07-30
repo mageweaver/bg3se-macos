@@ -13,6 +13,73 @@ Each entry includes:
 
 ---
 
+## [v0.41.0] - 2026-07-30 — Wave 3: Parity Closure B — physics VMT repair, AiGrid pathfinding, ComponentOps unlock
+
+**Category:** Parity | **Parity:** ~97.3% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)
+
+### Added
+- **Five AiGrid pathfinding/tile APIs** — `Ext.Level.GetPathById`,
+  `ReleasePath`, `GetActivePathfindingRequests`, `FindPath`, and
+  `GetEntitiesOnTile`, built on instruction-level RE of the AiGrid/AiPath/
+  PathMap/tile layouts (`ghidra/offsets/AIGRID_PATHFINDING.md`). All state is
+  copied into Lua-owned values; IDs resolve only through PathMap with `-1337`
+  sentinel rejection; five new version-gated `fn_aigrid_*` offsets with exact
+  nm manifest recipes.
+- **Cylinder sweeps** — `Ext.Level.SweepCylinderClosest`/`SweepCylinderAll`
+  at their proven macOS VMT slots (14/18).
+- **`Entity:CreateComponent`** — dispatches through the verified ComponentOps
+  registry (embedded DynamicArray at `EntityWorld+0x390`, Itanium vptr slot 5),
+  fail-closed on every guard (`ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`).
+- **Ext.Math 100%** — `Smoothstep` and `IsNaN` added (59/59).
+- **Ext.Audio 100%** — `LoadBank`, `UnloadBank`, `PrepareBank`,
+  `UnprepareBank` via dlsym'd `AK::SoundEngine` exports (17/17).
+- **Ext.Types Serialize/Unserialize** — real component-proxy serialization
+  (13/15).
+- **Ext.Localization UpdateTranslatedString/GetTranslatedString** — corrected
+  `TryGet`/`AddTranslatedString` ABIs; update verified against the returned
+  pool handle (live-verified round trip).
+- **Entity enumeration** — `GetAllEntities`, `GetAllEntitiesWithComponent`,
+  `GetAllComponents` are real archetype walks (live: 916 characters via
+  `eoc::character::CharacterComponent`, 9,215 Health carriers).
+
+### Fixed
+- **PhysXScene VMT dispatch (critical)** — nine Windows-derived vtable
+  indices were one slot early on macOS (Itanium dual-destructor shift):
+  `RaycastClosest` dispatched `RemovePhysicsShape`, and every sphere/capsule/
+  box sweep dispatched the preceding method. All nine corrected against the
+  audited vtable (`ghidra/offsets/PHYSICS_VMT_AUDIT.md`); six sweep + two
+  overlap call ABIs repaired to the proven AAPCS64 register shape
+  (`Vector3f const&` as pointers, `PhysicsHitAll` output honored).
+- **`stats_get_type` vtable-byte misread** — `ModifierListIndex` was read
+  from offset 0x00 (the vtable pointer); real field proven at 0xE4 via
+  `StatsObject::SetType`. `BURNING` now resolves as `StatusData`.
+- **Refuted passive singleton** — `PassivePrototypeManager` `0x108aeccd8`
+  has zero references in build 7209685; replaced with `eoc::Passives::m_ptr`
+  at `0x1089bc228` (nm BSS symbol, 74 ADRP+LDR sites).
+- **Parity scan transport** — multi-line Lua now sent as a proper block with
+  results handed off via `Ext.IO.SaveFile` instead of racing the async
+  console print.
+
+### Deferred (fail-closed, documented in docs/deferrals.md)
+- `Ext.Level.RaycastClosest/All/Any` — quarantined; trailing by-value
+  `ls::Function`/`ls::Optional` parameters cannot be safely constructed from C.
+- `Ext.Level.GetTileDebugInfo`, `BeginPathfinding` — OPEN layout evidence.
+- `Entity:RemoveComponent` — 734 per-type template instantiations, no generic
+  entry point.
+- Passive/interrupt prototype sync — loader-inlined population, no top-level
+  vptr (VMT-copy would corrupt).
+
+### Technical
+- Test suite: 471 total (55 tier 0 C, 210 pytest, 113 tier 1, 93 tier 2).
+- Live validation on build 7209685: tier 1 113/113, tier 2 93/93; physics
+  smoke returns real geometry; paired damage-event firing re-verified via
+  Fire Bolt functor.
+- Offline vtable regression guard derives the ARM64 fat-slice offset from the
+  Mach-O fat header (drifted 0xf534000 → 0xf558000 on this build) and joins
+  every `PHYSICS_VMT_*` constant to its named symbol.
+
+---
+
 ## [v0.40.0] - 2026-07-29 — Wave 2: Parity Closure A — component writes, live damage events, Stats de-stubbing
 
 **Category:** Parity | **Parity:** ~94.7% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)

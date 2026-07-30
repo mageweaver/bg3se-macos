@@ -2,9 +2,11 @@
 
 This document tracks the development roadmap for scope-corrected 100% parity with Windows BG3SE (Norbyte's Script Extender): 100% of the supported macOS surface.
 
-## Current Status: v0.40.0
+## Current Status: v0.41.0
 
-**Overall Feature Parity: approximately 94.7%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix))
+**Overall Feature Parity: approximately 97.3%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix))
+
+**Deferral registry:** every intentionally fail-closed API is cataloged with evidence citations and unlock paths in [docs/deferrals.md](docs/deferrals.md).
 
 **Excluded or deferred surfaces:** `Ext.UI`/Noesis is excluded by decision and has a stub layer only. Lua Debugger/DAP, entity replication (`Replicate`, `GetReplicationFlags`, `SetReplicationFlags`), Virtual Textures, and Input Injection are deferred. These surfaces are outside the scope-corrected parity denominator.
 
@@ -44,16 +46,16 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 | `Ext.Timer` | ✅ Full (13) | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, IsPaused, MonotonicTime, MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, IsGamePaused, +6 persistent (20) | **100%** | 2.3 |
 | `Ext.Debug` | ✅ Full (8) | ✅ Memory introspection (11 macOS-specific) | **100%** | 2.3 |
 | `Ext.Vars` | ✅ Full (8) | ✅ User + Mod Variables (12) | **100%** | 2.6 |
-| `Ext.Types` | ✅ Full (15) | ⚠️ 11/15 functional: GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers, GetValueType, GetFunctionLocation; Serialize, Unserialize, Construct, and GetHashSetValueAt are stubs (`src/lua/lua_ext.c:1004-1025`) | **73%** | 7 |
+| `Ext.Types` | ✅ Full (15) | ⚠️ 13/15 functional: GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers, GetValueType, GetFunctionLocation, **Serialize, Unserialize** (component-proxy); Construct and GetHashSetValueAt are deferrals ([docs/deferrals.md](docs/deferrals.md)) | **86.7%** | 7 |
 | `Ext.Enums` | ✅ Full | ✅ 14 enum/bitfield types | **100%** | 7 |
-| `Ext.Math` | ✅ Full (59) | ⚠️ 57/59 functions (vectors, matrices, 16 quaternions, scalars, **Fract**); Smoothstep and IsNaN are missing | **96.6%** | 7.5 |
+| `Ext.Math` | ✅ Full (59) | ✅ 59/59 functions (vectors, matrices, 16 quaternions, scalars, Fract, **Smoothstep, IsNaN**) | **100%** | 7.5 |
 | `Ext.Input` | ✅ Full | ✅ CGEventTap capture, hotkeys (8 macOS-specific) | **100%** | 9 |
 | `Ext.Net` | ✅ Full | ✅ Phase 4I Complete (handshake, version negotiation, full multiplayer transport) | **95%** | 6 |
 | `Ext.UI` | ✅ Full (9) | Excluded by decision; compatibility stub layer only | — | 8 |
 | `Ext.IMGUI` | ✅ Full (7+) | ✅ Complete widget system (40 types) - All widgets, events, Metal backend | **100%** | 8 |
-| `Ext.Level` | ✅ Full (21) | ⚠️ 15/21 functions: RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, singleton accessors, **SweepClosest** (Sphere, Capsule, Box), **SweepAll** (Sphere, Capsule, Box); missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and the pathfinding suite | **71%** | 9 |
-| `Ext.Audio` | ✅ Full (17) | ⚠️ 13/17 functions: PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, **PlayExternalSound** (STDString ABI); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank | **76%** | 10 |
-| `Ext.Localization` | ✅ Full (2) | ✅ GetLanguage, **CreateHandle** (2) | **100%** | 10 |
+| `Ext.Level` | ✅ Full (21) | ⚠️ 20/25 registered functions engine-backed: TestBox, TestSphere, GetHeightsAt, singleton accessors, all 8 sweeps (incl. **cylinders**, VMT 14/18), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**) — physics dispatch repaired against the audited macOS vtable (9 wrong-by-1 indices fixed). 5 deferrals: RaycastClosest/All/Any (quarantined by-value C++ params), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) | **80%** | 9 |
+| `Ext.Audio` | ✅ Full (17) | ✅ 17/17 functions: PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine exports) | **100%** | 10 |
+| `Ext.Localization` | ✅ Full (2) | ✅ GetLanguage, CreateHandle, **GetTranslatedString, UpdateTranslatedString** (live-verified round trip via corrected TryGet/AddTranslatedString ABIs) (4) | **100%** | 10 |
 | `Ext.StaticData` | ✅ Full (5) | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription), ForceCapture, HashLookup | **100%** | 10 |
 | `Ext.Resource` | ✅ Full (2) | ✅ Get, GetAll, GetTypes, GetCount, IsReady (5) | **100%** | 10 |
 | `Ext.Template` | ✅ Full (9) | ✅ 14 functions, **auto-capture**, Cache/LocalCache iteration | **100%** | 10 |
@@ -64,8 +66,8 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 
 ---
 
-[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (Init layouts unverified for build 7209685, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
-[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:1134-1136`). `entity:Replicate()` is a no-op. Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
+[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`; evidence in `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
+[^entity-stubs]: EnableTracing, DisableTracing, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c`); `entity:Replicate()` is a no-op. GetAllEntities, GetAllEntitiesWithComponent, and GetAllComponents are real server-world archetype walks (Wave 3). `entity:CreateComponent` dispatches through the verified ComponentOps registry; `entity:RemoveComponent` returns false (734 per-type templates, no generic entry point — `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
 
 ## Phase 1: Core Osiris Integration (Complete)
 
@@ -1546,6 +1548,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.41.0 | 2026-07-30 | **Wave 3: Parity Closure B** — physics VMT dispatch repaired (9 wrong-by-1 indices vs the audited macOS vtable; RaycastClosest had been dispatching RemovePhysicsShape); sweep/overlap ABIs corrected, raycasts quarantined; five AiGrid pathfinding/tile APIs implemented from instruction-level RE (GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath, GetEntitiesOnTile); cylinder sweeps (VMT 14/18); Entity:CreateComponent via verified ComponentOps registry (EntityWorld+0x390, vptr slot 5); Ext.Math 59/59, Ext.Audio 17/17 (dlsym'd WWise banks), Ext.Types 13/15 (Serialize/Unserialize), Loca update round trip live-verified; refuted passive singleton replaced (eoc::Passives::m_ptr 0x1089bc228); deferral registry created (docs/deferrals.md). Live: tier 1 113/113, tier 2 93/93. 471 tests (55 C + 210 pytest + 113 Tier 1 + 93 Tier 2) |
 | v0.40.0 | 2026-07-29 | **Wave 2: Parity Closure A** — component property writes real (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY, unknown-size layouts refused); ExecuteFunctor/BeforeDealDamage/DealDamage fire live (hidden `result_out` ABI fix across all 9 ExecuteStatsFunctors wrappers, verified 51/51 paired); TreasureTable/TreasureCategory reads + GetStatsLoadedMods real; spell/status prototype sync real (status VMT-copy-before-Init), passive/interrupt honestly false; functor-hook install count surfaced via `Ext.Debug.GetHookStatus`; review-pass hardening from four subagent audits. 429 tests (55 C + 191 pytest + 109 Tier 1 + 74 Tier 2) |
 | v0.39.0 | 2026-07-29 | **Community PR integration (PRs #91, #93, #95)** — per-version offset table + `port_offsets.py` (mikowals); Osiris DB Facts reader with name-index discovery, signature-typed Osi dispatch, per-mod `_ENV` sandbox + module cache + bare `require()`, GameStateChanged EnumValues, deferred IMGUI event queue, local in-process net transport (marcus-sa); four-agent review hardening; MCM vets as working. 385 tests (55 C + 154 pytest + 109 Tier 1 + 67 Tier 2) |
 | v0.38.1 | 2026-07-29 | **Community issue triage** — Folder-keyed SE mod detection with PAK-stem + Config.json-scan fallbacks (#87, #81); game-path discovery via `BG3SE_GAME_PATH` / libraryfolders.vdf (#90, #86); launch script injection sentinel (#84) |

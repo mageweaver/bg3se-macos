@@ -51,11 +51,11 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 429 (246 offline + 183 Lua) |
+| **Total tests** | 471 (265 offline + 206 Lua) |
 | **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 191 — Python harness, no game, CI-safe |
-| **Tier 1 (General)** | 109 — Lua, run anytime, no save needed (22 parity) |
-| **Tier 2 (In-Game)** | 74 — Lua, require loaded save (29 parity) |
+| **Tier H (pytest)** | 210 — Python harness, no game, CI-safe |
+| **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
+| **Tier 2 (In-Game)** | 93 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
@@ -77,7 +77,7 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 
 ### Tier H: Python Harness Tests
 
-191 tests in `tests/harness/`. Run with pytest, no game dependency.
+210 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -126,7 +126,7 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 1: General Tests
 
-109 tests that run without a loaded save. Test API registration and behavior, including 22 parity tests.
+113 tests that run without a loaded save. Test API registration and behavior, including 22 parity tests.
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
@@ -149,7 +149,7 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 2: In-Game Tests
 
-74 tests requiring a loaded save (entity access, Osiris queries, physics, and 29 parity tests).
+93 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
@@ -340,9 +340,9 @@ Entity event subscription system.
 ### Console Commands
 
 ```lua
-!test                    -- Run all 109 Tier 1 tests
+!test                    -- Run all 113 Tier 1 tests
 !test Stats              -- Filter: only Stats.* tests
-!test_ingame             -- Run all 74 Tier 2 tests (needs save)
+!test_ingame             -- Run all 93 Tier 2 tests (needs save)
 !test_ingame Osi         -- Filter: only Osi.* Tier 2 tests
 !test_ingame EntityEvents -- Filter: Entity Events tests
 ```
@@ -372,7 +372,7 @@ echo '!test' | nc -U /tmp/bg3se.sock > /tmp/test_results.txt 2>&1
 ## Test Output Format
 
 ```
-=== BG3SE General Tests (109 tests) ===
+=== BG3SE General Tests (113 tests) ===
 
 --- Stats ---
   PASS: Stats.Get (175ms) [16/109]
@@ -509,4 +509,4 @@ grep -E "(ms|initialized|complete)" "/Users/tomdimino/Library/Application Suppor
 
 ### Test Registration Overhead
 
-All 183 test definitions (109 Tier 1 + 74 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.
+All 206 test definitions (113 Tier 1 + 93 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.

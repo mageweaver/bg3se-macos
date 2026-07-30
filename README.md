@@ -102,7 +102,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 
 ## Status
 
-**Version:** v0.40.0 | **Feature Parity:** approximately 94.7%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix)
+**Version:** v0.41.0 | **Feature Parity:** approximately 97.3%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
 
 | Feature | Status |
 |---------|--------|
@@ -117,14 +117,14 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Ext.Timer | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, **MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, Persistent timers (6 functions)** |
 | Ext.Vars | ✅ PersistentVars + User Variables + Mod Variables |
 | Ext.Input | ✅ Hotkeys and input capture; Input Injection is deferred and excluded |
-| Ext.Math | ⚠️ **57/59 (96.6%)** — vector/matrix operations, **16 quaternion functions**, scalar utils, and **Fract**; Smoothstep and IsNaN are missing |
+| Ext.Math | ✅ **59/59 (100%)** — vector/matrix operations, **16 quaternion functions**, scalar utils, Fract, **Smoothstep, IsNaN** |
 | Ext.Enums | ✅ 14 enum/bitfield types |
-| Ext.Types | ⚠️ **11/15 (73%)** — reflection API includes **GenerateIdeHelpers** for VS Code IntelliSense, **GetValueType**, and **GetFunctionLocation**; Serialize, Unserialize, Construct, and GetHashSetValueAt are stubs (`src/lua/lua_ext.c:1004-1025`) |
+| Ext.Types | ⚠️ **13/15 (86.7%)** — reflection API includes **GenerateIdeHelpers** for VS Code IntelliSense, **GetValueType**, **GetFunctionLocation**, and **Serialize/Unserialize** (component-proxy); Construct and GetHashSetValueAt are deferrals ([docs/deferrals.md](docs/deferrals.md)) |
 | Ext.StaticData | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription) via ForceCapture |
 | Ext.Resource | ✅ Get, GetAll, GetTypes, GetCount (34 resource types) |
 | Ext.Template | ✅ **Auto-capture**, iteration (Cache/LocalCache), GUID resolution |
-| Ext.Level | ⚠️ **15/21 (71%)** — RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, singleton accessors, **SweepClosest** (Sphere, Capsule, Box), and **SweepAll** (Sphere, Capsule, Box); missing cylinder sweeps, GetEntitiesOnTile, GetTileDebugInfo, and the pathfinding suite |
-| Ext.Audio | ⚠️ **13/17 (76%)** — PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, SetRTPC, GetRTPC, ResetRTPC, LoadEvent, UnloadEvent, and **PlayExternalSound** (STDString ABI); missing LoadBank, UnloadBank, PrepareBank, and UnprepareBank |
+| Ext.Level | ⚠️ **20/25 (80%)** — TestBox, TestSphere, GetHeightsAt, singleton accessors, all 8 sweeps (incl. **cylinders**), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**); physics dispatch repaired against the audited macOS vtable. 5 deferrals: RaycastClosest/All/Any (quarantined), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) |
+| Ext.Audio | ✅ **17/17 (100%)** — PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, SetRTPC, GetRTPC, ResetRTPC, LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine) |
 | Ext.Net | ✅ **Phase 4I Complete** - Full RakNet backend, PostMessageToServer/User/Client, BroadcastMessage, IsHost, IsReady, PeerVersion, **Request/Reply Callbacks** |
 | Ext.RegisterNetListener | ✅ Per-channel network message listener (MCM backbone) |
 | Net.CreateChannel | ✅ **Phase 4I Complete** - High-level channel API with SetHandler, **SetRequestHandler**, SendToServer, **RequestToServer with callbacks**, Broadcast |
@@ -137,7 +137,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 55 C (Tier 0) + 191 pytest (Tier H) + 109 `!test` (Tier 1) + 74 `!test_ingame` (Tier 2) = **429 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 210 pytest (Tier H) + 113 `!test` (Tier 1) + 93 `!test_ingame` (Tier 2) = **471 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (Init layouts unverified for build 7209685, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
