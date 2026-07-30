@@ -2578,7 +2578,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(r == nil or type(r) == 'table', 'expected nil or hit array')\n"
         "end)\n";
 
-    // Wave 3 Goal 3.1: cylinder execution and honest AiGrid deferral contracts.
+    // Wave 3 Goal 3.1: cylinder execution plus copied-value AiGrid contracts.
     static const char *console_cmd_test_wave3_level =
         "BG3SE_AddTest(2, 'Parity.Level.SweepCylinderClosest', function()\n"
         "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
@@ -2611,12 +2611,17 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local hits = Ext.Level.TestSphere({x, y, z}, 1.0)\n"
         "  assert(hits == nil or type(hits) == 'table',\n"
         "    'TestSphere must return nil or a PhysicsHitAll array')\n"
-        "end)\n"
-        "BG3SE_AddTest(2, 'Parity.Level.GetEntitiesOnTileDeferred', function()\n"
+        "end)\n";
+
+    static const char *console_cmd_test_wave3_aigrid =
+        "BG3SE_AddTest(2, 'Parity.Level.GetEntitiesOnTile', function()\n"
         "  AssertType(Ext.Level.GetEntitiesOnTile, 'function', 'Level.GetEntitiesOnTile')\n"
         "  local ok, result = pcall(Ext.Level.GetEntitiesOnTile, {0, 0, 0})\n"
-        "  assert(ok, 'GetEntitiesOnTile stub should not error')\n"
-        "  assert(result == nil, 'deferred GetEntitiesOnTile must return nil')\n"
+        "  assert(ok, 'GetEntitiesOnTile should not error: ' .. tostring(result))\n"
+        "  assert(type(result) == 'table', 'GetEntitiesOnTile must return a copied array')\n"
+        "  for _, handle in ipairs(result) do\n"
+        "    assert(type(handle) == 'number', 'tile entity handles must be copied numbers')\n"
+        "  end\n"
         "end)\n"
         "BG3SE_AddTest(2, 'Parity.Level.GetTileDebugInfoDeferred', function()\n"
         "  AssertType(Ext.Level.GetTileDebugInfo, 'function', 'Level.GetTileDebugInfo')\n"
@@ -2630,30 +2635,45 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(ok, 'BeginPathfinding stub should not error')\n"
         "  assert(result == nil, 'deferred BeginPathfinding must return nil')\n"
         "end)\n"
-        "BG3SE_AddTest(2, 'Parity.Level.FindPathDeferred', function()\n"
+        "BG3SE_AddTest(2, 'Parity.Level.FindPath', function()\n"
         "  AssertType(Ext.Level.FindPath, 'function', 'Level.FindPath')\n"
-        "  local ok, result = pcall(Ext.Level.FindPath, nil)\n"
-        "  assert(ok, 'FindPath stub should not error')\n"
-        "  assert(result == false, 'deferred FindPath must return false')\n"
+        "  local ok, result = pcall(Ext.Level.FindPath, -1337, true)\n"
+        "  assert(ok, 'FindPath invalid-ID guard should not error')\n"
+        "  assert(result == false or result == nil,\n"
+        "    'invalid FindPath must return false/nil without a native call')\n"
         "end)\n"
-        "BG3SE_AddTest(2, 'Parity.Level.ReleasePathDeferred', function()\n"
+        "BG3SE_AddTest(2, 'Parity.Level.ReleasePath', function()\n"
         "  AssertType(Ext.Level.ReleasePath, 'function', 'Level.ReleasePath')\n"
-        "  local ok, result = pcall(Ext.Level.ReleasePath, nil)\n"
-        "  assert(ok, 'ReleasePath stub should not error')\n"
-        "  assert(result == false, 'deferred ReleasePath must return false')\n"
+        "  local ok, result = pcall(Ext.Level.ReleasePath, -1337)\n"
+        "  assert(ok, 'ReleasePath invalid-ID guard should not error')\n"
+        "  assert(result == false, 'invalid ReleasePath must return false without a native call')\n"
         "end)\n"
-        "BG3SE_AddTest(2, 'Parity.Level.GetPathByIdDeferred', function()\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetPathById', function()\n"
         "  AssertType(Ext.Level.GetPathById, 'function', 'Level.GetPathById')\n"
-        "  local ok, result = pcall(Ext.Level.GetPathById, -1)\n"
-        "  assert(ok, 'GetPathById stub should not error')\n"
-        "  assert(result == nil, 'deferred GetPathById must return nil')\n"
+        "  local ok, result = pcall(Ext.Level.GetPathById, -1337)\n"
+        "  assert(ok, 'GetPathById invalid-ID guard should not error')\n"
+        "  assert(result == nil, 'GetPathById(-1337) must return nil without a native call')\n"
         "end)\n"
-        "BG3SE_AddTest(2, 'Parity.Level.GetActivePathfindingRequestsDeferred', function()\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetActivePathfindingRequests', function()\n"
         "  AssertType(Ext.Level.GetActivePathfindingRequests, 'function',\n"
         "    'Level.GetActivePathfindingRequests')\n"
         "  local ok, result = pcall(Ext.Level.GetActivePathfindingRequests)\n"
-        "  assert(ok, 'GetActivePathfindingRequests stub should not error')\n"
-        "  assert(result == nil, 'deferred GetActivePathfindingRequests must return nil')\n"
+        "  assert(ok, 'GetActivePathfindingRequests should not error: ' .. tostring(result))\n"
+        "  assert(type(result) == 'table', 'active requests must be a copied array')\n"
+        "  for _, path in ipairs(result) do\n"
+        "    assert(type(path) == 'table', 'active request must be a copied state table')\n"
+        "    assert(type(path.PathId) == 'number', 'PathId must be copied')\n"
+        "    assert(type(path.SearchStarted) == 'boolean', 'SearchStarted must be copied')\n"
+        "    assert(type(path.SearchComplete) == 'boolean', 'SearchComplete must be copied')\n"
+        "    assert(type(path.GoalFound) == 'boolean', 'GoalFound must be copied')\n"
+        "    assert(type(path.DestinationReached) == 'boolean',\n"
+        "      'DestinationReached must be copied')\n"
+        "    assert(type(path.MovingBound) == 'number', 'MovingBound must be copied')\n"
+        "    assert(type(path.StandingBound) == 'number', 'StandingBound must be copied')\n"
+        "    assert(type(path.MovingBound2) == 'number', 'MovingBound2 must be copied')\n"
+        "    assert(type(path.NodeCount) == 'number' and path.NodeCount >= 0,\n"
+        "      'NodeCount must be a non-negative copied number')\n"
+        "  end\n"
         "end)\n";
 
     // Parity stubs part 3: Ext.Audio, Ext.Types, Ext.Math, Ext.Localization (tier 1)
@@ -2893,6 +2913,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         console_cmd_test_parity_entity,
         console_cmd_test_parity_level,
         console_cmd_test_wave3_level,
+        console_cmd_test_wave3_aigrid,
         console_cmd_test_parity_apis,
         console_cmd_test_parity_events,
         console_cmd_test_wave3_damage_events,

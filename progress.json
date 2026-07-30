@@ -1,48 +1,73 @@
 {
-  "task": "Wave 3 Builder E: repair macOS ARM64 PhysXScene VMT dispatch",
+  "task": "Wave 3 Builder F: implement AiGrid pathfinding and tile Lua APIs",
   "status": "done",
-  "started_at": "2026-07-30T04:00:00Z",
+  "started_at": "2026-07-30T04:38:45Z",
   "features": [
     {
-      "name": "Audited VMT constant and comment corrections",
+      "name": "Inspect verified layouts and repository conventions",
       "status": "completed",
       "files": [
-        "src/level/level_manager.c"
+        "ghidra/offsets/AIGRID_PATHFINDING.md",
+        "src/core/safe_memory.h",
+        "src/core/offset_table.h",
+        "src/core/offset_table.c",
+        "src/level/level_manager.c",
+        "src/level/level_manager.h",
+        "src/lua/lua_level.c",
+        "src/lua/lua_ext.c",
+        "tools/offset_manifest.json",
+        "tests/harness/test_offset_audit.py"
       ],
-      "completed_at": "2026-07-30"
+      "completed_at": "2026-07-30T04:38:45Z"
     },
     {
-      "name": "ARM64 ABI repairs and fail-closed Lua quarantines",
+      "name": "Add version-gated AiGrid function offsets and safe snapshot helpers",
+      "status": "completed",
+      "files": [
+        "src/core/offset_table.h",
+        "src/core/offset_table.c",
+        "tools/offset_manifest.json",
+        "tests/harness/test_offset_audit.py",
+        "src/level/level_manager.c",
+        "src/level/level_manager.h"
+      ],
+      "started_at": "2026-07-30T04:38:45Z",
+      "completed_at": "2026-07-30T05:11:45Z"
+    },
+    {
+      "name": "Implement five Ext.Level AiGrid APIs and update deferrals",
       "status": "completed",
       "files": [
         "src/level/level_manager.c",
         "src/level/level_manager.h",
-        "src/lua/lua_level.c",
-        "src/lua/lua_ext.c"
+        "src/lua/lua_level.c"
       ],
-      "completed_at": "2026-07-30"
+      "completed_at": "2026-07-30T05:11:45Z"
     },
     {
-      "name": "Offline Mach-O PhysXScene vtable regression test",
+      "name": "Convert deferred parity tests to contract tests",
       "status": "completed",
       "files": [
-        "tests/harness/test_physics_vmt_audit.py"
+        "src/lua/lua_ext.c",
+        "tests/harness/test_offset_audit.py"
       ],
-      "completed_at": "2026-07-30"
+      "started_at": "2026-07-30T05:11:45Z",
+      "completed_at": "2026-07-30T05:13:10Z"
     },
     {
-      "name": "Clean build and regression gates",
+      "name": "Run clean build, tier0, and harness pytest gates",
       "status": "completed",
       "files": [],
-      "completed_at": "2026-07-30T04:34:46Z"
+      "started_at": "2026-07-30T05:13:10Z",
+      "completed_at": "2026-07-30T05:16:43Z"
     },
     {
-      "name": "Builder E handoff report",
+      "name": "Write Builder F handoff report",
       "status": "completed",
       "files": [
-        "docs/bugs/wave3-builder-e-physics-vmt-report.md"
+        "docs/bugs/wave3-builder-f-aigrid-report.md"
       ],
-      "completed_at": "2026-07-30T04:34:46Z"
+      "completed_at": "2026-07-30T05:16:43Z"
     }
   ],
   "verification": {
@@ -51,8 +76,10 @@
     "tier0": true,
     "tier0_result": "55/55 passed",
     "harness": true,
-    "harness_result": "199 passed",
+    "harness_result": "204 passed",
+    "offset_resolver": true,
+    "offset_resolver_result": "all 30 fields + 18 remaps match",
     "diff_check": true
   },
-  "completed_at": "2026-07-30T04:34:46Z"
+  "completed_at": "2026-07-30T05:16:43Z"
 }

@@ -14,8 +14,11 @@
  *   Ext.Level.SweepCylinderClosest(src, dst, extents, ...) -> hit table or nil
  *   Ext.Level.SweepCylinderAll(src, dst, extents, ...) -> array of hit tables
  *   Ext.Level.GetHeightsAt(x, z) -> array of heights
- *   Tile/pathfinding names are registered as explicit warn-once deferrals
- *   until their macOS AiGrid ABI and layouts are verified.
+ *   Ext.Level.GetEntitiesOnTile(pos) -> copied EntityHandle array
+ *   Ext.Level.GetPathById(pathId) -> copied path state or nil
+ *   Ext.Level.GetActivePathfindingRequests() -> copied path-state array
+ *   Ext.Level.FindPath(pathId, immediate?) -> copied path result or false
+ *   Ext.Level.ReleasePath(pathId) -> boolean
  */
 
 #include "lua_level.h"
@@ -55,6 +58,74 @@ static bool read_vec3(lua_State *L, int idx, float out[3]) {
         lua_pop(L, 1);
     }
     return true;
+}
+
+static bool read_path_id(lua_State *L, int idx, int32_t *out_path_id) {
+    if (!out_path_id || !lua_isinteger(L, idx)) return false;
+
+    lua_Integer value = lua_tointeger(L, idx);
+    if (value < INT32_MIN || value > INT32_MAX) return false;
+
+    *out_path_id = (int32_t)value;
+    return true;
+}
+
+static void push_path_state(lua_State *L, const LevelAiPathState *state) {
+    lua_newtable(L);
+
+    lua_pushinteger(L, state->path_id);
+    lua_setfield(L, -2, "PathId");
+    lua_pushboolean(L, state->search_started);
+    lua_setfield(L, -2, "SearchStarted");
+    lua_pushboolean(L, state->search_complete);
+    lua_setfield(L, -2, "SearchComplete");
+    lua_pushboolean(L, state->goal_found);
+    lua_setfield(L, -2, "GoalFound");
+    lua_pushboolean(L, state->destination_reached);
+    lua_setfield(L, -2, "DestinationReached");
+    lua_pushnumber(L, state->moving_bound);
+    lua_setfield(L, -2, "MovingBound");
+    lua_pushnumber(L, state->standing_bound);
+    lua_setfield(L, -2, "StandingBound");
+    lua_pushnumber(L, state->moving_bound2);
+    lua_setfield(L, -2, "MovingBound2");
+    lua_pushinteger(L, state->node_count);
+    lua_setfield(L, -2, "NodeCount");
+}
+
+static void push_path_node(lua_State *L, const LevelAiPathNode *node) {
+    lua_newtable(L);
+
+    lua_newtable(L);
+    for (int i = 0; i < 3; i++) {
+        lua_pushnumber(L, node->position[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "Position");
+
+    /* EntityHandle convention in this codebase: raw Lua integer. */
+    lua_pushinteger(L, (lua_Integer)node->portal);
+    lua_setfield(L, -2, "Portal");
+    lua_pushnumber(L, node->distance);
+    lua_setfield(L, -2, "Distance");
+    lua_pushnumber(L, node->distance_modifier);
+    lua_setfield(L, -2, "DistanceModifier");
+    lua_pushinteger(L, node->flags);
+    lua_setfield(L, -2, "Flags");
+}
+
+static void push_path_result(lua_State *L,
+                             const LevelAiPathResult *result) {
+    push_path_state(L, &result->state);
+
+    if (result->state.search_complete && result->state.goal_found) {
+        lua_newtable(L);
+        for (size_t i = 0; i < result->nodes_count; i++) {
+            push_path_node(L, &result->nodes[i]);
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        lua_setfield(L, -2, "Nodes");
+    }
 }
 
 // ============================================================================
@@ -504,15 +575,28 @@ static int lua_level_get_heights_at(lua_State *L) {
 }
 
 // ============================================================================
-// Deferred AiGrid Tile and Pathfinding APIs
+// AiGrid Tile and Pathfinding APIs
 // ============================================================================
 
 static int lua_level_get_entities_on_tile(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "GetEntitiesOnTile",
-        "AiGrid tile/subgrid and metadata layouts are not verified; returning nil");
-    lua_pushnil(L);
+    float world_pos[3];
+    if (!read_vec3(L, 1, world_pos)) {
+        return luaL_error(
+            L, "Ext.Level.GetEntitiesOnTile: pos must be a {x,y,z} table");
+    }
+
+    uint64_t *handles = NULL;
+    size_t handle_count = 0;
+    (void)level_aigrid_get_entities_on_tile(
+        world_pos, &handles, &handle_count);
+
+    lua_newtable(L);
+    for (size_t i = 0; i < handle_count; i++) {
+        /* Match Ext.Entity/GetHandle and event EntityHandle conventions. */
+        lua_pushinteger(L, (lua_Integer)handles[i]);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    level_aigrid_free_entity_handles(handles);
     return 1;
 }
 
@@ -520,7 +604,8 @@ static int lua_level_get_tile_debug_info(lua_State *L) {
     static bool warned = false;
     warn_deferred_once(
         &warned, "GetTileDebugInfo",
-        "AiGrid tile/subgrid and metadata layouts are not verified; returning nil");
+        "AIGRID_PATHFINDING.md leaves AiGridTile::MinHeight at +0x0a OPEN "
+        "and the public cloud-surface enum conversion PROVISIONAL; returning nil");
     lua_pushnil(L);
     return 1;
 }
@@ -529,44 +614,73 @@ static int lua_level_begin_pathfinding(lua_State *L) {
     static bool warned = false;
     warn_deferred_once(
         &warned, "BeginPathfinding",
-        "AiGrid path creation ABI and AiPath layout are not verified; returning nil");
+        "AIGRID_PATHFINDING.md leaves complete character-path setup OPEN: "
+        "the engine writes fields beyond AiGrid::CreatePath; returning nil");
     lua_pushnil(L);
     return 1;
 }
 
 static int lua_level_find_path(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "FindPath",
-        "AiGrid::FindPathImmediate ABI and AiPath layout are not verified; returning false");
-    lua_pushboolean(L, 0);
+    int32_t path_id = 0;
+    if (!read_path_id(L, 1, &path_id)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    /*
+     * Preserve Windows FindPath's synchronous behavior by default. Passing
+     * false queues only; true/omitted also runs FindPathImmediate on the Lua
+     * gate's game thread.
+     */
+    bool immediate = lua_gettop(L) < 2 || lua_toboolean(L, 2);
+
+    LevelAiPathResult result;
+    if (!level_aigrid_find_path(path_id, immediate, &result)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    push_path_result(L, &result);
+    level_aigrid_free_path_result(&result);
     return 1;
 }
 
 static int lua_level_release_path(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "ReleasePath",
-        "AiGrid path ownership and release routine are not verified; returning false");
-    lua_pushboolean(L, 0);
+    int32_t path_id = 0;
+    if (!read_path_id(L, 1, &path_id)) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    lua_pushboolean(L, level_aigrid_release_path(path_id));
     return 1;
 }
 
 static int lua_level_get_path_by_id(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "GetPathById",
-        "AiGrid PathMap layout is not verified; returning nil");
-    lua_pushnil(L);
+    int32_t path_id = 0;
+    LevelAiPathState state;
+    if (!read_path_id(L, 1, &path_id)
+        || !level_aigrid_get_path_by_id(path_id, &state)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    push_path_state(L, &state);
     return 1;
 }
 
 static int lua_level_get_active_pathfinding_requests(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "GetActivePathfindingRequests",
-        "AiGrid PathPool and AiPath::InUse layouts are not verified; returning nil");
-    lua_pushnil(L);
+    LevelAiPathState *states = NULL;
+    size_t state_count = 0;
+    (void)level_aigrid_get_active_pathfinding_requests(
+        &states, &state_count);
+
+    lua_newtable(L);
+    for (size_t i = 0; i < state_count; i++) {
+        push_path_state(L, &states[i]);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    level_aigrid_free_path_states(states);
     return 1;
 }
 

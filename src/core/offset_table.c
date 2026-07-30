@@ -61,6 +61,11 @@ static const VersionOffsets g_offset_table[] = {
         .fn_get_actionresource   = 0x011a4494,  // Get<eoc::ActionResourceTypes>
         .fn_get_template_raw     = 0x05f96304,  // GlobalTemplateManager::GetTemplateRaw
         .fn_cache_template       = 0x05d31ce4,  // CacheTemplateManagerBase::CacheTemplate
+        .fn_aigrid_to_tile_pos   = 0,           // not derived for this binary vintage
+        .fn_aigrid_get_metadata  = 0,           // not derived for this binary vintage
+        .fn_aigrid_remove_path   = 0,           // not derived for this binary vintage
+        .fn_aigrid_find_path     = 0,           // not derived for this binary vintage
+        .fn_aigrid_find_path_immediate = 0,     // not derived for this binary vintage
 
         /* Entity system */
         .fn_try_get_uuid_mapping = 0x010dc924,  // TryGetSingleton<uuid::ToHandleMappingComponent>
@@ -136,6 +141,11 @@ static const VersionOffsets g_offset_table[] = {
         .fn_get_actionresource   = 0x011889f4,  // ImmutableDataHeadmaster::Get<eoc::ActionResourceTypes>() const
         .fn_get_template_raw     = 0x05f85d1c,  // ls::GlobalTemplateManager::GetTemplateRaw(FixedString const&) const
         .fn_cache_template       = 0x05d216fc,  // ls::CacheTemplateManagerBase::CacheTemplate(...)
+        .fn_aigrid_to_tile_pos   = 0x011619c0,  // eoc::AiGrid::ToTilePos(Vector3f const&, AiTilePos&, bool) const
+        .fn_aigrid_get_metadata  = 0x0114b2e4,  // eoc::AiGrid::GetMetaData(AiTilePos const&)
+        .fn_aigrid_remove_path   = 0x01161ea4,  // eoc::AiGrid::RemovePath(int)
+        .fn_aigrid_find_path     = 0x01162a4c,  // eoc::AiGrid::FindPath(int)
+        .fn_aigrid_find_path_immediate = 0x01165cec, // eoc::AiGrid::FindPathImmediate(int, bool)
 
         /* Entity system (verified end-to-end).
          * fn_try_get_uuid_mapping: ecs::legacy::Helper::TryGetSingleton<

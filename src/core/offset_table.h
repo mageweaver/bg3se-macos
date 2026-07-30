@@ -64,6 +64,11 @@ typedef struct {
     uintptr_t fn_get_actionresource;    // Get<eoc::ActionResourceTypes>
     uintptr_t fn_get_template_raw;      // GlobalTemplateManager::GetTemplateRaw
     uintptr_t fn_cache_template;        // CacheTemplateManagerBase::CacheTemplate
+    uintptr_t fn_aigrid_to_tile_pos;    // eoc::AiGrid::ToTilePos
+    uintptr_t fn_aigrid_get_metadata;   // eoc::AiGrid::GetMetaData
+    uintptr_t fn_aigrid_remove_path;    // eoc::AiGrid::RemovePath
+    uintptr_t fn_aigrid_find_path;      // eoc::AiGrid::FindPath
+    uintptr_t fn_aigrid_find_path_immediate; // eoc::AiGrid::FindPathImmediate
 
     /* ------------------------------------------------------------------ */
     /* Entity system                                                       */

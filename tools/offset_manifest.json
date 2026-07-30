@@ -105,6 +105,31 @@
       "field": "fn_status_proto_init",
       "baseline": "0x102012bf0",
       "symbol": "eoc::StatusPrototype::Init(ls::FixedString const&, bool)"
+    },
+    {
+      "field": "fn_aigrid_to_tile_pos",
+      "baseline": "0x1011619c0",
+      "symbol": "eoc::AiGrid::ToTilePos(Vector3f const&, eoc::AiTilePos&, bool) const"
+    },
+    {
+      "field": "fn_aigrid_get_metadata",
+      "baseline": "0x10114b2e4",
+      "symbol": "eoc::AiGrid::GetMetaData(eoc::AiTilePos const&)"
+    },
+    {
+      "field": "fn_aigrid_remove_path",
+      "baseline": "0x101161ea4",
+      "symbol": "eoc::AiGrid::RemovePath(int)"
+    },
+    {
+      "field": "fn_aigrid_find_path",
+      "baseline": "0x101162a4c",
+      "symbol": "eoc::AiGrid::FindPath(int)"
+    },
+    {
+      "field": "fn_aigrid_find_path_immediate",
+      "baseline": "0x101165cec",
+      "symbol": "eoc::AiGrid::FindPathImmediate(int, bool)"
     }
   ],
   "remap_functions": [

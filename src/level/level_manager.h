@@ -9,6 +9,7 @@
 #define LEVEL_MANAGER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // ============================================================================
@@ -212,5 +213,75 @@ bool level_test_sphere(const float pos[3], float radius,
  * @return Number of heights written
  */
 int level_get_heights_at(float x, float z, float *out_heights, int max_heights);
+
+// ============================================================================
+// AiGrid Pathfinding and Tile Snapshots
+// ============================================================================
+
+/**
+ * Lua-safe copy of the verified AiPath state used by Ext.Level.
+ * This struct contains no game-owned pointers.
+ */
+typedef struct {
+    int32_t path_id;
+    bool search_started;
+    bool search_complete;
+    bool goal_found;
+    bool destination_reached;
+    float moving_bound;
+    float standing_bound;
+    float moving_bound2;
+    int32_t node_count;
+} LevelAiPathState;
+
+/** Lua-safe copy of one verified AiPathNode. */
+typedef struct {
+    float position[3];
+    uint64_t portal;
+    float distance;
+    float distance_modifier;
+    uint8_t flags;
+} LevelAiPathNode;
+
+/**
+ * Result of queueing/finishing a path request.
+ * nodes is populated only when state.search_complete && state.goal_found.
+ */
+typedef struct {
+    LevelAiPathState state;
+    LevelAiPathNode *nodes;
+    size_t nodes_count;
+} LevelAiPathResult;
+
+/** Resolve path_id only through AiGrid::PathMap and copy its public state. */
+bool level_aigrid_get_path_by_id(int32_t path_id, LevelAiPathState *out_state);
+
+/** Resolve path_id through PathMap, then invoke AiGrid::RemovePath(int). */
+bool level_aigrid_release_path(int32_t path_id);
+
+/**
+ * Snapshot AiGrid::Paths and return copied path IDs/states.
+ * The caller owns *out_states and must release it with
+ * level_aigrid_free_path_states().
+ */
+bool level_aigrid_get_active_pathfinding_requests(
+    LevelAiPathState **out_states, size_t *out_count);
+void level_aigrid_free_path_states(LevelAiPathState *states);
+
+/**
+ * Validate path_id through PathMap, invoke AiGrid::FindPath(int), optionally
+ * finish it synchronously, then copy state and any completed goal polyline.
+ */
+bool level_aigrid_find_path(int32_t path_id, bool immediate,
+                            LevelAiPathResult *out_result);
+void level_aigrid_free_path_result(LevelAiPathResult *result);
+
+/**
+ * Convert world_pos with AiGrid::ToTilePos, look up AiMetaData, and copy the
+ * validated LEGACY_Set<EntityHandle>. The caller owns *out_handles.
+ */
+bool level_aigrid_get_entities_on_tile(
+    const float world_pos[3], uint64_t **out_handles, size_t *out_count);
+void level_aigrid_free_entity_handles(uint64_t *handles);
 
 #endif // LEVEL_MANAGER_H
