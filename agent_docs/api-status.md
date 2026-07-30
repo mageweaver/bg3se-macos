@@ -1,4 +1,4 @@
-# API Status (v0.37.1)
+# API Status (v0.40.0)
 
 Full namespace-by-namespace parity status with Windows BG3SE.
 
@@ -8,14 +8,14 @@ Overall parity is approximately 94.7% across the supported macOS surface, source
 - **Ext.Osiris** - RegisterListener, NewCall/NewQuery/NewEvent (server context guards)
 - **Context System** - Ext.IsServer/IsClient/GetContext, two-phase bootstrap (v0.36.4)
 - **Ext.Entity** - GUID lookup, **1,999 components registered** (462 layouts: 169 verified + 293 generated), **1,730 sizes** (1,577 Ghidra + 153 Windows-only, 87% coverage), GetByHandle, **Dual EntityWorld Complete** (client + server auto-captured), **Entity Events** (Subscribe/OnCreate/OnDestroy + 8 variants, Unsubscribe — salted pool, deferred queue, per-entity hooks)[^entity-stubs]
-- **Ext.Stats** - **100% Windows API function-count parity** (52 functions): Get/GetAll/Create/Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory stubs, all StatsObject methods[^stats-stubs]
+- **Ext.Stats** - **100% Windows API function-count parity** (52 functions): Get/GetAll/Create/Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory, all StatsObject methods[^stats-stubs]
 - **Ext.Events** - 33 events with priority ordering, Once flag, Prevent pattern (13 lifecycle + 17 engine + 2 functor + 1 network events), **runtime mod attribution** (per-handler mod tracking, soft-disable, health stats)
 - **Ext.Timer** - **20 functions**: WaitFor, WaitForRealtime, Cancel/Pause/Resume, GameTime/DeltaTime/Ticks, **Persistent timers** (save/load support)
 - **Ext.Vars** - PersistentVars, User Variables, Mod Variables
 - **Ext.StaticData** - Immutable game data (**All 9 types**: Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription via ForceCapture)
 - **Ext.Resource** - Non-GUID resources (34 types: Visual, Material, Texture, Dialog, etc.)
 - **Ext.Template** - Game object templates (14 functions, 10 properties, type detection via VMT)
-- **Ext.Types** - **9/15 (60%)**: GetAllTypes (~2050), GetTypeInfo, GetObjectType, TypeOf, IsA, Validate, GetComponentLayout, GetAllLayouts, and **GenerateIdeHelpers** (VS Code IntelliSense); Serialize, Unserialize, and Construct are stubs (`src/lua/lua_ext.c:877-934`); GetValueType, GetHashSetValueAt, and GetFunctionLocation are missing
+- **Ext.Types** - **11/15 (73%)**: GetAllTypes (~2050), GetTypeInfo, GetObjectType, TypeOf, IsA, Validate, GetComponentLayout, GetAllLayouts, **GenerateIdeHelpers** (VS Code IntelliSense), **GetValueType**, and **GetFunctionLocation**; Serialize, Unserialize, Construct, and GetHashSetValueAt are stubs (`src/lua/lua_ext.c:1004-1025`)
 - **Ext.Debug** - Memory introspection (ReadPtr, ProbeStruct, HexDump), **mod diagnostics** (ModHealthCount, ModHealthAll, ModDisable), **observability APIs** (GetHookStatus, GetVersionStatus, GetCacheStats, GetEventStatus, GetManagerStatus)
 - **Ext.IMGUI** - **Complete widget system** (40 widget types): NewWindow, AddText, AddButton, AddCheckbox, AddInputText, AddCombo, AddSlider, AddColorEdit, AddProgressBar, AddTree, AddTable, AddTabBar, AddMenu, handle-based objects, event callbacks (OnClick, OnChange, OnClose, OnExpand, OnCollapse)
 - **Ext.Mod** - Mod information (5 functions): IsModLoaded, GetLoadOrder, GetMod, GetBaseMod, GetModManager
@@ -30,8 +30,8 @@ Overall parity is approximately 94.7% across the supported macOS surface, source
 - **Ext.ModEvents** - Per-mod cross-mod event system: Subscribe, Throw, Unsubscribe (MCM compat)
 - **Osi.DB_*** - Generic database query accessor (e.g. `Osi.DB_Players:Get()`, `Osi.DB_IsTag:Get()`)
 - **Entity** - Extended entity API: **CreateComponent**, **RemoveComponent**, **GetEntityType**, **GetSalt**, **GetIndex**, **GetNetId**
-- **Events** - **ExecuteFunctor** Dobby hook, BeforeDealDamage/DealDamage exist as event objects
+- **Events** - **ExecuteFunctor** Dobby hook, BeforeDealDamage/DealDamage fire live (build 7209685, verified 51/51 paired)
 - **Version Detection** - Sentinel address probes for game version mismatch tolerance (Issue #78)
 
-[^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).
-[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:955-958`). `entity:Replicate()` is a no-op. Component property reads work, but writes are stubbed and return false (`src/entity/component_property.c:418`).
+[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (Init layouts unverified for build 7209685, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
+[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:1134-1136`). `entity:Replicate()` is a no-op. Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).

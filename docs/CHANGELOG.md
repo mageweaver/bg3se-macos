@@ -13,6 +13,49 @@ Each entry includes:
 
 ---
 
+## [v0.40.0] - 2026-07-29 — Wave 2: Parity Closure A — component writes, live damage events, Stats de-stubbing
+
+**Category:** Parity | **Parity:** ~94.7% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)
+
+### Added
+- **Component property writes** — `entity.Component.Field = value` is real for
+  INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields; writes to unknown-size
+  layouts or unsupported field types are refused with `false` instead of
+  silently corrupting memory (`src/entity/component_property.c`).
+- **Live damage events** — `ExecuteFunctor`, `BeforeDealDamage`, and
+  `DealDamage` fire from the game's functor execution path (all 10
+  ExecuteStatsFunctors/ProcessDealDamageFunctors hooks). Verified live on
+  build 7209685: 51/51 paired before/after events, 7,472-execution soak.
+- **TreasureTable/TreasureCategory reads** — real data from the game's
+  treasure managers (fail-closed memory reads), no longer empty tables.
+- **GetStatsLoadedMods** — returns the actual mod load order.
+- **Spell/status prototype sync** — `Ext.Stats.Sync` populates real
+  SpellPrototype/StatusPrototype objects (status path copies the VMT from a
+  template prototype before the game's `Init` runs).
+- **`Ext.Debug.GetHookStatus().functor_hooks_installed`** — surfaces the
+  functor hook install count (0-10); partial installs log an ERROR.
+
+### Fixed
+- **Hidden `result_out` ABI** — all 9 `esv::functor::ExecuteStatsFunctors`
+  overloads return `esv::functor::Result` via a hidden leading x0 out-param;
+  wrappers now accept and forward it (root cause of the Wave 2 crash class).
+- **Test honesty** — `stats_sync` returns its computed result instead of
+  unconditional `true`; `sync_interrupt_prototype` and passive sync honestly
+  return `false` (Init layouts unverified for 7209685); FixedStringRefused
+  degrades gracefully when the save lacks its fixture.
+- Menu-stall scare adjudicated as a non-regression: `-continueGame` auto-load
+  rides the documented Noesis focus race (FocuslessInput's injected Space),
+  not any dylib change (three independent codex debugger reports,
+  `docs/bugs/wave2-menu-stall-*.md`).
+
+### Technical
+- Review-pass hardening from four parallel subagent audits
+  (`docs/bugs/wave2-review-findings-2026-07-29.md`).
+- Test suite now 429 tests: 55 C (Tier 0) + 191 pytest (Tier H) +
+  109 Tier 1 + 74 Tier 2.
+
+---
+
 ## [v0.39.0] - 2026-07-29 — Community PR integration: offset-table architecture + Osiris DB access + mod runtime
 
 **Category:** Community contributions | **Parity:** ~94.7% | **Issues:** PR #91, PR #93, PR #95

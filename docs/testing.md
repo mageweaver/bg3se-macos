@@ -509,4 +509,4 @@ grep -E "(ms|initialized|complete)" "/Users/tomdimino/Library/Application Suppor
 
 ### Test Registration Overhead
 
-All 125 test definitions are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.
+All 183 test definitions (109 Tier 1 + 74 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.

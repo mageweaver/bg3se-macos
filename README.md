@@ -102,16 +102,16 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 
 ## Status
 
-**Version:** v0.39.0 | **Feature Parity:** approximately 94.7%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix)
+**Version:** v0.40.0 | **Feature Parity:** approximately 94.7%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix)
 
 | Feature | Status |
 |---------|--------|
-| DYLD Injection | ✅ Complete |
+| Injection (`insert_dylib` static Mach-O patching) | ✅ Complete |
 | Lua Runtime | ✅ Lua 5.4 with Ext API |
 | Mod Loading | ✅ PAK file reading, auto-detection |
 | Ext.Osiris | ✅ Event listeners, custom functions (NewCall/NewQuery/NewEvent/RaiseEvent/GetCustomFunctions), **server context guards** |
 | Ext.Entity | ✅ GUID lookup, **Dual EntityWorld** (client + server), **1,999 components registered** (534 layouts: 169 verified + 365 generated), **1,577 ARM64 sizes** + **702 Windows estimates** = **1,730 total** (87% coverage), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId**[^entity-stubs] |
-| Ext.Stats | ✅ **100% function-count parity** — 15,774 stats, Get/GetAll/Create/Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory stubs[^stats-stubs] |
+| Ext.Stats | ✅ **100% function-count parity** — 15,774 stats, Get/GetAll/Create/Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory[^stats-stubs] |
 | Ext.Events | ✅ 33 events (13 lifecycle + 17 engine + 2 functor + 1 network) with Prevent pattern, **runtime mod attribution** + `!mod_diag` |
 | Ext.IO | ✅ LoadFile, SaveFile, **AddPathOverride, GetPathOverride** |
 | Ext.Timer | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, **MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, Persistent timers (6 functions)** |
@@ -119,7 +119,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Ext.Input | ✅ Hotkeys and input capture; Input Injection is deferred and excluded |
 | Ext.Math | ⚠️ **57/59 (96.6%)** — vector/matrix operations, **16 quaternion functions**, scalar utils, and **Fract**; Smoothstep and IsNaN are missing |
 | Ext.Enums | ✅ 14 enum/bitfield types |
-| Ext.Types | ⚠️ **9/15 (60%)** — reflection API includes **GenerateIdeHelpers** for VS Code IntelliSense; Serialize, Unserialize, and Construct are stubs (`src/lua/lua_ext.c:877-934`); GetValueType, GetHashSetValueAt, and GetFunctionLocation are missing |
+| Ext.Types | ⚠️ **11/15 (73%)** — reflection API includes **GenerateIdeHelpers** for VS Code IntelliSense, **GetValueType**, and **GetFunctionLocation**; Serialize, Unserialize, Construct, and GetHashSetValueAt are stubs (`src/lua/lua_ext.c:1004-1025`) |
 | Ext.StaticData | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription) via ForceCapture |
 | Ext.Resource | ✅ Get, GetAll, GetTypes, GetCount (34 resource types) |
 | Ext.Template | ✅ **Auto-capture**, iteration (Cache/LocalCache), GUID resolution |
@@ -137,11 +137,11 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 55 C (Tier 0) + 154 pytest (Tier H) + 109 `!test` (Tier 1) + 67 `!test_ingame` (Tier 2) = **385 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 191 pytest (Tier H) + 109 `!test` (Tier 1) + 74 `!test_ingame` (Tier 2) = **429 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
-[^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).
-[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:955-958`). `entity:Replicate()` is a no-op. Component property reads work, but writes are stubbed and return false (`src/entity/component_property.c:418`).
+[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (Init layouts unverified for build 7209685, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
+[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:1134-1136`). `entity:Replicate()` is a no-op. Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
 
 See [ROADMAP.md](ROADMAP.md) for detailed progress.
 

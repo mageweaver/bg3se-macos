@@ -1,7 +1,8 @@
 # Architecture
 
 ## Injection Method
-- `DYLD_INSERT_LIBRARIES` loads dylib before game starts
+- `insert_dylib` static Mach-O patching adds an `LC_LOAD_WEAK_DYLIB` command to the game binary, loading the dylib at launch — `DYLD_INSERT_LIBRARIES` is dead (crashes through Steam)
+- Launcher bypass: `defaults write com.larian.bg3 NoLauncher 1` (set automatically by the harness)
 - Dobby framework for inline function hooking (ARM64 + x86_64 universal)
 - Hooks into libOsiris.dylib for Osiris scripting integration
 

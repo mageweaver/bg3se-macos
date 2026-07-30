@@ -2,7 +2,7 @@
 
 This document tracks the development roadmap for scope-corrected 100% parity with Windows BG3SE (Norbyte's Script Extender): 100% of the supported macOS surface.
 
-## Current Status: v0.39.0
+## Current Status: v0.40.0
 
 **Overall Feature Parity: approximately 94.7%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix))
 
@@ -39,12 +39,12 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 | `Ext.Json` | ✅ Full (2) | ✅ Parse, Stringify | **100%** | 1 |
 | `Ext.IO` | ✅ Full (4) | ✅ LoadFile, SaveFile, AddPathOverride, GetPathOverride (4) | **100%** | 1 |
 | `Ext.Entity` | ✅ Full (26) | ✅ Get, GetByHandle, **Dual EntityWorld**, components, enumeration, **Entity Events** (Subscribe/OnCreate/OnDestroy + 8 variants, Unsubscribe), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId** (30)[^entity-stubs] | **100%** | 2 |
-| `Ext.Stats` | ✅ Full (52) | ✅ **100% function-count parity** — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable stubs (52)[^stats-stubs] | **100%** | 3 |
+| `Ext.Stats` | ✅ Full (52) | ✅ **100% function-count parity** — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory (52)[^stats-stubs] | **100%** | 3 |
 | `Ext.Events` | ✅ Full (~33) | ✅ 33 events (13 lifecycle + 17 engine + 2 functor + 1 network) + Subscribe/Unsubscribe/Prevent | **100%** | 2.5 |
 | `Ext.Timer` | ✅ Full (13) | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, IsPaused, MonotonicTime, MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, IsGamePaused, +6 persistent (20) | **100%** | 2.3 |
 | `Ext.Debug` | ✅ Full (8) | ✅ Memory introspection (11 macOS-specific) | **100%** | 2.3 |
 | `Ext.Vars` | ✅ Full (8) | ✅ User + Mod Variables (12) | **100%** | 2.6 |
-| `Ext.Types` | ✅ Full (15) | ⚠️ 9/15 functional: GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers; Serialize, Unserialize, and Construct are stubs (`src/lua/lua_ext.c:877-934`); GetValueType, GetHashSetValueAt, and GetFunctionLocation are missing | **60%** | 7 |
+| `Ext.Types` | ✅ Full (15) | ⚠️ 11/15 functional: GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers, GetValueType, GetFunctionLocation; Serialize, Unserialize, Construct, and GetHashSetValueAt are stubs (`src/lua/lua_ext.c:1004-1025`) | **73%** | 7 |
 | `Ext.Enums` | ✅ Full | ✅ 14 enum/bitfield types | **100%** | 7 |
 | `Ext.Math` | ✅ Full (59) | ⚠️ 57/59 functions (vectors, matrices, 16 quaternions, scalars, **Fract**); Smoothstep and IsNaN are missing | **96.6%** | 7.5 |
 | `Ext.Input` | ✅ Full | ✅ CGEventTap capture, hotkeys (8 macOS-specific) | **100%** | 9 |
@@ -64,8 +64,8 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 
 ---
 
-[^stats-stubs]: Function-count parity includes known stubs: TreasureTable and TreasureCategory return empty tables; AddAttribute and AddEnumerationValue return false; GetStatsLoadedMods returns an empty result; ExecuteFunctors is partial; and prototype sync is incomplete (`src/stats/prototype_managers.c:693-744`).
-[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:955-958`). `entity:Replicate()` is a no-op. Component property reads work, but writes are stubbed and return false (`src/entity/component_property.c:418`).
+[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (Init layouts unverified for build 7209685, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
+[^entity-stubs]: EnableTracing, DisableTracing, GetAllEntities, GetAllEntitiesWithComponent, GetAllComponents, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c:1134-1136`). `entity:Replicate()` is a no-op. Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
 
 ## Phase 1: Core Osiris Integration (Complete)
 
@@ -289,8 +289,8 @@ Features:
 - [x] `entity:GetNetId()` - Network ID (v23+)
 - [ ] `entity:Replicate(component)` - Network replication
 - [ ] `entity:SetReplicationFlags()`, `entity:GetReplicationFlags()` - Replication control
-- [ ] **Component property read** via `__index` (IndexedProperties + pools)
-- [ ] **Component property write** via `__newindex`
+- [x] **Component property read** via `__index` (IndexedProperties + pools)
+- [x] **Component property write** via `__newindex` (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY; unknown-size layouts refused)
 
 **Discovered TypeIds (at SessionLoaded):**
 | Component | Index |
@@ -479,12 +479,9 @@ end)
 | `EquipmentChanged` | Equipment slot changed | {Entity} | esv::stats::EquipmentSlotChangedEventOneFrameComponent |
 | `LevelUp` | Character level increased | {Entity} | esv::stats::LevelChangedOneFrameComponent |
 
-**Missing Events (~12) - See Issue #51:**
+**Missing Events (~9) - See Issue #51:**
 | Event | Type | Priority | Notes |
 |-------|------|----------|-------|
-| `ExecuteFunctor` | Hook | HIGH | Stats functor execution - needed for damage mods |
-| `BeforeDealDamage` | Hook | HIGH | Pre-damage modification |
-| `DealDamage` | Hook | HIGH | Damage dealt |
 | `MouseButton` | Client | LOW | Mouse clicks |
 | `MouseWheel` | Client | LOW | Scroll wheel |
 | `ControllerButton` | Client | LOW | Gamepad buttons |
@@ -706,7 +703,7 @@ end
 - `SpellSet`, `EquipmentSet`, `TreasureTable`, `TreasureCategory`, `ItemGroup`, `NameGroup`
 
 ### 3.2 Stats Functors (v22+)
-**Status:** ❌ Not Started
+**Status:** ✅ Complete (Wave 2) — all 10 ExecuteStatsFunctors hooks installed, ExecuteFunctor/BeforeDealDamage/DealDamage fire live (verified 51/51 paired on build 7209685)
 
 ```lua
 Ext.Stats.ExecuteFunctors(type, ...)
@@ -1549,6 +1546,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.40.0 | 2026-07-29 | **Wave 2: Parity Closure A** — component property writes real (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY, unknown-size layouts refused); ExecuteFunctor/BeforeDealDamage/DealDamage fire live (hidden `result_out` ABI fix across all 9 ExecuteStatsFunctors wrappers, verified 51/51 paired); TreasureTable/TreasureCategory reads + GetStatsLoadedMods real; spell/status prototype sync real (status VMT-copy-before-Init), passive/interrupt honestly false; functor-hook install count surfaced via `Ext.Debug.GetHookStatus`; review-pass hardening from four subagent audits. 429 tests (55 C + 191 pytest + 109 Tier 1 + 74 Tier 2) |
 | v0.39.0 | 2026-07-29 | **Community PR integration (PRs #91, #93, #95)** — per-version offset table + `port_offsets.py` (mikowals); Osiris DB Facts reader with name-index discovery, signature-typed Osi dispatch, per-mod `_ENV` sandbox + module cache + bare `require()`, GameStateChanged EnumValues, deferred IMGUI event queue, local in-process net transport (marcus-sa); four-agent review hardening; MCM vets as working. 385 tests (55 C + 154 pytest + 109 Tier 1 + 67 Tier 2) |
 | v0.38.1 | 2026-07-29 | **Community issue triage** — Folder-keyed SE mod detection with PAK-stem + Config.json-scan fallbacks (#87, #81); game-path discovery via `BG3SE_GAME_PATH` / libraryfolders.vdf (#90, #86); launch script injection sentinel (#84) |
 | v0.38.0 | 2026-07-28 | **Thread-safe Lua core + launch-lifecycle hardening** — `lua_gate` recursive mutex serializes every native-to-Lua entry (fixes ServerWorker/console crash); MAP_JIT trampoline write gate; overlay TextKit SIGBUS fix; `!identity` handshake + duplicate-dylib guard; harness `ProcessTracker` with Steam-bounce adoption, `LOCAL_PEERPID` socket verification, Steam/memory preflights; windowed mode verified via `FakeFullscreenEnabled` in graphicSettings.lsx. 361 tests (41 C + 144 pytest + 109 Tier 1 + 67 Tier 2) |

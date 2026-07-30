@@ -4,10 +4,10 @@ Technical deep-dive into BG3SE-macOS internals.
 
 ## How It Works
 
-BG3SE-macOS uses `DYLD_INSERT_LIBRARIES` to inject a dynamic library into the BG3 process at launch. This works because:
+BG3SE-macOS injects its dylib by statically patching the game binary with `insert_dylib` (vendored at `tools/vendor/insert_dylib`), which appends an `LC_LOAD_WEAK_DYLIB` load command pointing at `libbg3se.dylib`. This works because:
 
 1. BG3 macOS has **no hardened runtime** (`flags=0x0`)
-2. DYLD injection is allowed for non-hardened apps
+2. The binary is re-signed ad-hoc after patching, which macOS accepts for non-hardened apps
 3. libOsiris.dylib exports clean C/C++ symbols we can hook
 
 ### Why This Works
@@ -15,33 +15,24 @@ BG3SE-macOS uses `DYLD_INSERT_LIBRARIES` to inject a dynamic library into the BG
 | Factor | Value |
 |--------|-------|
 | Hardened Runtime | `flags=0x0` (none) |
-| Code Signing | Developer ID signed, but not hardened |
-| DYLD Injection | Allowed |
+| Code Signing | Developer ID signed, but not hardened; ad-hoc re-sign accepted |
+| Load Command Patching | `LC_LOAD_WEAK_DYLIB` honored at launch, Steam-compatible |
 | libOsiris Exports | 1,013 symbols |
 
 ## Injection Method
 
-- `DYLD_INSERT_LIBRARIES` loads dylib before game starts
+- `insert_dylib` static Mach-O patching adds an `LC_LOAD_WEAK_DYLIB` command to the game binary; the dylib loads at every launch, including launches Steam initiates itself
+- Launcher bypass: `defaults write com.larian.bg3 NoLauncher 1` (set automatically by the harness)
 - Dobby framework for inline function hooking (ARM64 + x86_64 universal)
 - Hooks into libOsiris.dylib for Osiris scripting integration
 
-### Launch Method Matters
+### Why Not DYLD_INSERT_LIBRARIES
 
-macOS apps must be launched as `.app` bundles via the `open` command:
-
-| Method | Result |
-|--------|--------|
-| `exec "$APP/Contents/MacOS/Baldur's Gate 3"` | ❌ Crashes |
-| `open -W "$APP"` | ✅ Works (but env not inherited) |
-| `open -W --env "DYLD_INSERT_LIBRARIES=..." "$APP"` | ✅ Works perfectly |
-
-### Environment Variable Inheritance
-
-The `open` command does **not** inherit environment variables from the parent shell. You must use `open --env VAR=value` to pass environment variables to the launched application.
+The original injection method was `open --env "DYLD_INSERT_LIBRARIES=..."`. It is dead: launching through Steam crashes with it, and Steam's own relaunch path (the Steamworks DRM bounce) never carries the environment variable. Static patching survives both.
 
 ### Universal Binary Required
 
-BG3 can run either natively (ARM64) or under Rosetta (x86_64). The `open --env` method launches natively on Apple Silicon, so our dylib must be a universal binary containing both architectures.
+BG3 can run either natively (ARM64) or under Rosetta (x86_64), so our dylib must be a universal binary containing both architectures.
 
 ## Module Structure
 
