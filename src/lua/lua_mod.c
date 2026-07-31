@@ -155,13 +155,19 @@ static void load_mod_uuids(void) {
         }
 
         // Store if both found
-        if (uuid[0] && name[0] && g_mod_uuid_count < MAX_MOD_UUIDS) {
-            ModUuidEntry *e = &g_mod_uuids[g_mod_uuid_count];
-            strncpy(e->uuid, uuid, UUID_LEN - 1);   e->uuid[UUID_LEN - 1] = '\0';
-            strncpy(e->name, name, 255);            e->name[255] = '\0';
-            strncpy(e->folder, folder, 255);        e->folder[255] = '\0';
-            strncpy(e->version64, version64, 31);   e->version64[31] = '\0';
-            g_mod_uuid_count++;
+        if (uuid[0] && name[0]) {
+            if (g_mod_uuid_count < MAX_MOD_UUIDS) {
+                ModUuidEntry *e = &g_mod_uuids[g_mod_uuid_count];
+                strncpy(e->uuid, uuid, UUID_LEN - 1);   e->uuid[UUID_LEN - 1] = '\0';
+                strncpy(e->name, name, 255);            e->name[255] = '\0';
+                strncpy(e->folder, folder, 255);        e->folder[255] = '\0';
+                strncpy(e->version64, version64, 31);   e->version64[31] = '\0';
+                g_mod_uuid_count++;
+            } else {
+                LOG_MOD_INFO("Warning: mod UUID cache full at %d — '%s' and later "
+                             "entries will not appear in Ext.Mod.GetLoadOrder",
+                             MAX_MOD_UUIDS, name);
+            }
         }
 
         node_start = node_end;
@@ -169,10 +175,17 @@ static void load_mod_uuids(void) {
 
     free(content);
 
-    // Only mark as loaded after successful parse
-    g_uuids_loaded = true;
-
-    LOG_MOD_DEBUG("Loaded %d mod UUID mappings", g_mod_uuid_count);
+    // A parse that found zero mods (empty/reset/foreign-schema file) must not
+    // latch the loaded flag: that would permanently pin every Ext.Mod query to
+    // an empty cache with no retry. Leave it unlatched so a later call
+    // re-parses once the game has written a real mod list.
+    if (g_mod_uuid_count > 0) {
+        g_uuids_loaded = true;
+        LOG_MOD_DEBUG("Loaded %d mod UUID mappings", g_mod_uuid_count);
+    } else {
+        LOG_MOD_INFO("Warning: modsettings.lsx parsed but contained no mods; "
+                     "will re-parse on next Ext.Mod query");
+    }
 }
 
 /**
@@ -221,6 +234,10 @@ static int lua_mod_is_mod_loaded(lua_State *L) {
 
     lua_pushboolean(L, 0);
     return 1;
+}
+
+void lua_mod_prime_uuid_cache(void) {
+    load_mod_uuids();
 }
 
 /**

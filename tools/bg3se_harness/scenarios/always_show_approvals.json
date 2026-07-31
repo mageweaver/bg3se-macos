@@ -1,6 +1,8 @@
 {
-  "description": "Always Show Approvals compatibility test. P2 — tests approval Events, entity access, and Osiris integration.",
-  "mods": ["always_show_approvals"],
+  "description": "Always Show Approvals compatibility test. P2 \u2014 tests approval Events, entity access, and Osiris integration.",
+  "mods": [
+    "always_show_approvals"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -8,7 +10,7 @@
     "assert(type(Ext.Events.ApprovalChanged.Subscribe) == 'function', 'Ext.Events.ApprovalChanged.Subscribe exists')",
     "assert(type(Ext.Entity.GetAllEntitiesWithComponent) == 'function', 'Ext.Entity.GetAllEntitiesWithComponent exists')",
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'always show approvals', 1, true) then return true end end return false end)(), 'Always Show Approvals present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'alwaysshowapprovals', 1, true) then return true end end return false end)(), 'Always Show Approvals present in load order')",
     "assert((function() local id=Ext.Events.ApprovalChanged:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.ApprovalChanged:Unsubscribe(id); return ok end)(), 'ApprovalChanged event subscribe roundtrip executes')",
     "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",

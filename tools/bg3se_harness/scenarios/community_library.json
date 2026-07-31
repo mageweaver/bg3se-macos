@@ -1,6 +1,8 @@
 {
-  "description": "Community Library compatibility test. P0 — dependency for hundreds of gameplay mods.",
-  "mods": ["community_library"],
+  "description": "Community Library compatibility test. P0 \u2014 dependency for hundreds of gameplay mods.",
+  "mods": [
+    "community_library"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -11,7 +13,7 @@
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
     "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
     "assert(type(Ext.ModEvents['BG3SECompat']['Probe'].Subscribe) == 'function', 'ModEvents per-mod event object exposes Subscribe')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'community library', 1, true) then return true end end return false end)(), 'Community Library present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'communitylibrary', 1, true) then return true end end return false end)(), 'Community Library present in load order')",
     "assert(Ext.Stats.Get('WPN_Longsword') ~= nil, 'vanilla longsword stat resolves')",
     "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
@@ -19,5 +21,5 @@
     "assert((function() local event=Ext.ModEvents['BG3SECompat']['CommunityLibrary']; local fired=false; local id=event:Subscribe(function() fired=true end); event:Throw({}); event:Unsubscribe(id); return fired end)(), 'ModEvents roundtrip executes')",
     "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
   ],
-  "notes": "Community Library provides shared Lua utilities and a Compatibility Framework. Uses only foundational APIs — low risk."
+  "notes": "Community Library provides shared Lua utilities and a Compatibility Framework. Uses only foundational APIs \u2014 low risk."
 }

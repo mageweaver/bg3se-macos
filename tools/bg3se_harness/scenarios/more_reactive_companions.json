@@ -1,13 +1,15 @@
 {
-  "description": "More Reactive Companions compatibility test. P1 — re-verifies Osiris and Events behavior on the latest extender.",
-  "mods": ["more_reactive_companions"],
+  "description": "More Reactive Companions compatibility test. P1 \u2014 re-verifies Osiris and Events behavior on the latest extender.",
+  "mods": [
+    "more_reactive_companions"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
     "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
     "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'more reactive companions', 1, true) then return true end end return false end)(), 'More Reactive Companions present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'morereactivecompanions', 1, true) then return true end end return false end)(), 'More Reactive Companions present in load order')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
     "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
     "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"

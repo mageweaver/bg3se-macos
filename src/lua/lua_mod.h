@@ -27,6 +27,16 @@
 void lua_mod_register(lua_State *L, int ext_table_index);
 
 /**
+ * Parse modsettings.lsx into the UUID cache now, at startup.
+ *
+ * The game rewrites modsettings.lsx to the loaded save's mod list during a
+ * session, so a lazy first parse can miss mods that were present at launch.
+ * Priming at init pins GetLoadOrder/GetMod to the launch-time load order,
+ * matching Windows BG3SE's in-memory ModManager semantics.
+ */
+void lua_mod_prime_uuid_cache(void);
+
+/**
  * Check if a mod is loaded by UUID.
  *
  * @param mod_uuid The mod's UUID

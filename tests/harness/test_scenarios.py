@@ -1,6 +1,7 @@
 """Offline validation for BG3SE compatibility scenario manifests."""
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS_DIR = ROOT / "tools" / "bg3se_harness" / "scenarios"
 CATALOG_PATH = ROOT / "tools" / "bg3se_harness" / "catalog" / "popular_mods.json"
+BASELINE_DIR = ROOT / "docs" / "compat-reports" / "baseline"
 REQUIRED_KEYS = {
     "description",
     "mods",
@@ -69,6 +71,67 @@ def test_mcm_dependency_is_runner_injected():
             assert scenario["mods"] == ["mcm"]
         else:
             assert all("mcm" not in mod.lower() for mod in scenario["mods"])
+
+
+def test_load_order_assertions_use_normalized_name_or_uuid():
+    """Load-order checks must not regress to raw-name matching.
+
+    Wave 5 established two robust patterns: name matching after gsub
+    normalization (case/whitespace/underscore/hyphen stripped), or exact UUID
+    equality for mods whose PAK metadata hides the public name (Party Limit
+    Begone ships as a Gustav override, Camp Event Notifications as
+    KvCampEvents, Expansion Level 20 as bare "Expansion").
+    """
+    for name, scenario in load_scenarios().items():
+        for index, assertion in enumerate(scenario["assertions"]):
+            if "GetLoadOrder" not in assertion or "load order" not in assertion:
+                continue
+            uses_gsub = "string.gsub" in assertion
+            uses_uuid = re.search(r"u\s*==\s*'[0-9a-f]{8}-[0-9a-f-]{27}'", assertion)
+            assert uses_gsub or uses_uuid, (
+                f"{name} assertion {index} matches load order by raw name — "
+                f"use gsub normalization or an exact UUID"
+            )
+
+
+def test_vetted_catalog_mods_have_complete_stamps():
+    for key, mod in load_catalog().items():
+        if mod.get("status") != "working":
+            continue
+        for field in ("vetted_version", "vetted_date", "vetted_evidence"):
+            assert mod.get(field), f"{key}: vetted mod missing {field}"
+        assert re.search(r"\d+/\d+", mod["vetted_evidence"]), (
+            f"{key}: vetted_evidence '{mod['vetted_evidence']}' lacks an N/N count"
+        )
+        assert re.fullmatch(r"v\d+\.\d+\.\d+", mod["vetted_version"]), (
+            f"{key}: vetted_version '{mod['vetted_version']}' is not vX.Y.Z"
+        )
+
+
+def test_baselines_parse_and_cover_every_scenario():
+    baselines = {p.stem for p in BASELINE_DIR.glob("*.json")}
+    assert baselines == EXPECTED_SCENARIOS, (
+        f"baseline/scenario mismatch: {baselines ^ EXPECTED_SCENARIOS}"
+    )
+    for path in BASELINE_DIR.glob("*.json"):
+        data = json.loads(path.read_text())
+        assert data.get("success") is True, f"{path.name}: baseline is not a passing run"
+        assert isinstance(data.get("steps"), list) and data["steps"], (
+            f"{path.name}: baseline has no steps"
+        )
+        assert re.fullmatch(r"\d+/\d+ steps passed", data.get("summary", "")), (
+            f"{path.name}: unexpected summary '{data.get('summary')}'"
+        )
+
+
+def test_max_osiris_listeners_is_512():
+    header = (ROOT / "src" / "lua" / "lua_osiris.h").read_text()
+    match = re.search(r"#define\s+MAX_OSIRIS_LISTENERS\s+(\d+)", header)
+    assert match, "MAX_OSIRIS_LISTENERS not found in lua_osiris.h"
+    assert int(match.group(1)) == 512, (
+        f"MAX_OSIRIS_LISTENERS is {match.group(1)}, expected 512 — "
+        f"64 was exhausted by real mod stacks (Expansion Level 20, Wave 5)"
+    )
 
 
 @pytest.mark.skipif(LUAC is None, reason="luac is not available on PATH")

@@ -1,18 +1,18 @@
 {
-  "scenario": "mcm",
-  "run_id": "mcm_1785467708",
-  "description": "MCM (Mod Configuration Menu) compatibility test. P0 gate mod \u2014 500+ configurable mods depend on it.",
-  "report_dir": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.reports/mcm_1785467708",
+  "scenario": "party_limit_begone",
+  "run_id": "party_limit_begone_1785464573",
+  "description": "Party Limit Begone compatibility test. P1 \u2014 40K+ endorsements, tests entity manipulation.",
+  "report_dir": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.reports/party_limit_begone_1785464573",
   "steps": [
     {
       "success": true,
       "requires_mcm": false,
       "mcm_injected": false,
       "original_mods": [
-        "mcm"
+        "party_limit_begone"
       ],
       "effective_mods": [
-        "mcm"
+        "party_limit_begone"
       ],
       "error_type": null,
       "error": null,
@@ -34,24 +34,63 @@
     },
     {
       "success": true,
-      "mod_name": "Mod Configuration Menu",
-      "uuid": "755a8a72-407f-4f0d-9a33-274ac0f0b53d",
-      "state": "installed_enabled",
-      "name": "mod_check_mcm"
+      "mod_name": "Party Limit Begone",
+      "state": "installed",
+      "download": {
+        "success": true,
+        "file_id": 117597,
+        "archive": "/var/folders/5p/0qxhwmjn2231x2d6t7d82t400000gn/T/bg3se-compat-party_limit_begone-ghbbe27w/Party Limit Begone SE v3.5-327-3-5-1774659272.zip",
+        "paks": [
+          "/var/folders/5p/0qxhwmjn2231x2d6t7d82t400000gn/T/bg3se-compat-party_limit_begone-ghbbe27w/PartyLimitBegone.pak"
+        ]
+      },
+      "installs": [
+        {
+          "pak": "/var/folders/5p/0qxhwmjn2231x2d6t7d82t400000gn/T/bg3se-compat-party_limit_begone-ghbbe27w/PartyLimitBegone.pak",
+          "installed": true,
+          "uuid": "991c9c7a-fb80-40cb-8f0d-b92d4e80e9b1",
+          "name": "Gustav",
+          "pak_path": "/Users/tomdimino/Documents/Larian Studios/Baldur's Gate 3/Mods/PartyLimitBegone.pak",
+          "in_load_order": true,
+          "entry": {
+            "uuid": "991c9c7a-fb80-40cb-8f0d-b92d4e80e9b1",
+            "name": "Gustav",
+            "folder": "Gustav",
+            "source_path": "/var/folders/5p/0qxhwmjn2231x2d6t7d82t400000gn/T/bg3se-compat-party_limit_begone-ghbbe27w/PartyLimitBegone.pak",
+            "pak_path": "/Users/tomdimino/Documents/Larian Studios/Baldur's Gate 3/Mods/PartyLimitBegone.pak",
+            "installed_at": "2026-07-31T02:16:22.788896+00:00",
+            "enabled": true,
+            "se_mod": true,
+            "version": "36029301684370529",
+            "author": "",
+            "description": ""
+          }
+        }
+      ],
+      "temp_dir": "/var/folders/5p/0qxhwmjn2231x2d6t7d82t400000gn/T/bg3se-compat-party_limit_begone-ghbbe27w",
+      "cleanup": "temp_dir_removed",
+      "name": "mod_check_party_limit_begone"
     },
     {
       "success": true,
       "fixture": "vetting_base",
       "restored_to": "/Users/tomdimino/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story/Tamarru-62412511136__Ebonlake Grotto - 27h 19m",
       "save_name": "Tamarru-62412511136__Ebonlake Grotto - 27h 19m",
-      "backup": "/Users/tomdimino/.config/bg3se-harness/save_fixtures/_restore_backups/Tamarru-62412511136__Ebonlake Grotto - 27h 19m__20260730_231508_726444",
+      "backup": "/Users/tomdimino/.config/bg3se-harness/save_fixtures/_restore_backups/Tamarru-62412511136__Ebonlake Grotto - 27h 19m__20260730_222254_976885",
       "name": "restore_save"
     },
     {
       "success": true,
+      "was_running": false,
+      "still_running": false,
+      "note": "running game stopped because mod state changed",
+      "name": "stale_mod_state_cleanup"
+    },
+    {
+      "success": true,
       "socket_connected": true,
-      "se_version": "{\"pid\":73187,\"version\":\"0.41.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}\n>",
-      "elapsed_ms": 32044,
+      "se_version": "{\"pid\":63641,\"version\":\"0.41.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}\n>",
+      "elapsed_ms": 32001,
       "dismiss_attempts": 0,
       "phases": [
         {
@@ -70,7 +109,7 @@
         {
           "t": 3.3,
           "phase": "socket_responded",
-          "detail": "3313ms"
+          "detail": "3312ms"
         },
         {
           "t": 3.3,
@@ -78,7 +117,7 @@
           "detail": "game_state=Init, grace=240s"
         },
         {
-          "t": 28.4,
+          "t": 28.3,
           "phase": "menu_watchdog_action",
           "detail": "#1 in_process_click"
         },
@@ -89,15 +128,15 @@
         }
       ],
       "identity": {
-        "pid": 73187,
+        "pid": 63641,
         "version": "0.41.0",
         "game_state": "Running",
         "session_init": "complete",
         "stats_ready": true,
         "image": "/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib"
       },
-      "identity_pid": 73187,
-      "peer_pid": 73187,
+      "identity_pid": 63641,
+      "peer_pid": 63641,
       "watchdog_actions": [
         {
           "attempt": 1,
@@ -129,11 +168,11 @@
             }
           ],
           "geometry": {
-            "pid": 73187,
-            "window_id": 80724,
+            "pid": 63641,
+            "window_id": 80433,
             "quartz": {
-              "id": 80724,
-              "owner_pid": 73187,
+              "id": 80433,
+              "owner_pid": 63641,
               "owner_name": "bg3",
               "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
               "bounds": {
@@ -169,19 +208,19 @@
               "y": 1.0
             }
           },
-          "t": 22.2,
-          "stalled_for_s": 21.7
+          "t": 22.0,
+          "stalled_for_s": 21.5
         }
       ],
       "session_loaded": true,
-      "pid": 73187,
+      "pid": 63641,
       "attempt": 2,
       "attempts": [
         {
           "socket_connected": true,
           "session_loaded": false,
           "stage": "menu_stalled",
-          "elapsed_ms": 123913,
+          "elapsed_ms": 122057,
           "dismiss_attempts": 0,
           "phases": [
             {
@@ -200,7 +239,7 @@
             {
               "t": 3.3,
               "phase": "socket_responded",
-              "detail": "3314ms"
+              "detail": "3307ms"
             },
             {
               "t": 3.3,
@@ -208,39 +247,39 @@
               "detail": "game_state=Init, grace=240s"
             },
             {
-              "t": 30.2,
+              "t": 27.9,
               "phase": "menu_watchdog_action",
               "detail": "#1 in_process_click"
             },
             {
-              "t": 43.3,
+              "t": 41.7,
               "phase": "menu_watchdog_action",
               "detail": "#2 in_process_click"
             },
             {
-              "t": 68.9,
+              "t": 66.9,
               "phase": "menu_watchdog_action",
               "detail": "#3 in_process_click"
             },
             {
-              "t": 78.3,
+              "t": 75.7,
               "phase": "menu_watchdog_action",
               "detail": "#4 in_process_click"
             },
             {
-              "t": 106.7,
+              "t": 101.5,
               "phase": "menu_watchdog_action",
               "detail": "#5 in_process_click"
             },
             {
-              "t": 115.7,
+              "t": 110.6,
               "phase": "menu_watchdog_action",
               "detail": "#6 in_process_click"
             },
             {
-              "t": 123.9,
+              "t": 122.1,
               "phase": "menu_stalled",
-              "detail": "123913ms"
+              "detail": "122057ms"
             }
           ],
           "watchdog_actions": [
@@ -274,11 +313,11 @@
                 }
               ],
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -314,8 +353,8 @@
                   "y": 1.0
                 }
               },
-              "t": 24.5,
-              "stalled_for_s": 24.0
+              "t": 22.3,
+              "stalled_for_s": 21.8
             },
             {
               "attempt": 2,
@@ -347,11 +386,11 @@
                 }
               ],
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -387,8 +426,8 @@
                   "y": 1.0
                 }
               },
-              "t": 37.6,
-              "stalled_for_s": 37.1
+              "t": 36.2,
+              "stalled_for_s": 35.7
             },
             {
               "attempt": 3,
@@ -517,11 +556,11 @@
                 }
               ],
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -557,8 +596,8 @@
                   "y": 1.0
                 }
               },
-              "t": 50.8,
-              "stalled_for_s": 50.2
+              "t": 49.0,
+              "stalled_for_s": 48.5
             },
             {
               "attempt": 4,
@@ -590,11 +629,11 @@
                 }
               ],
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -630,8 +669,8 @@
                   "y": 1.0
                 }
               },
-              "t": 72.2,
-              "stalled_for_s": 71.7
+              "t": 70.2,
+              "stalled_for_s": 69.7
             },
             {
               "attempt": 5,
@@ -760,11 +799,11 @@
                 }
               ],
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -800,8 +839,8 @@
                   "y": 1.0
                 }
               },
-              "t": 87.5,
-              "stalled_for_s": 87.0
+              "t": 83.6,
+              "stalled_for_s": 83.1
             },
             {
               "attempt": 6,
@@ -833,11 +872,11 @@
                 }
               ],
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -873,23 +912,23 @@
                   "y": 1.0
                 }
               },
-              "t": 110.0,
-              "stalled_for_s": 109.5
+              "t": 104.8,
+              "stalled_for_s": 104.3
             }
           ],
           "diagnostics": {
-            "latest_log": "/Users/tomdimino/Library/Application Support/BG3SE/logs/bg3se_2026-07-30_23-15-09.log",
-            "latest_log_tail": "[2026-07-30 23:17:08.901] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.000] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.000] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.101] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.101] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.201] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.201] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.300] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.300] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.400] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.400] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.501] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.501] [INFO ] [Console] Client 0 connected\n[2026-07-30 23:17:09.501] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.601] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.601] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.701] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.701] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.801] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.801] [DEBUG] [Console] ! identity\n[2026-07-30 23:17:09.801] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.901] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.901] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:09.999] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:09.999] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.102] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.102] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.201] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.201] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.299] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.299] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.400] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.400] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.500] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.500] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.599] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.599] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.700] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.700] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.800] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.800] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:10.899] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:10.899] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.001] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.001] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.099] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.099] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.200] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.201] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.301] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.301] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.399] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.399] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.500] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.500] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.600] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.600] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.699] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.699] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.799] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.799] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:11.899] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:11.899] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.000] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.001] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.101] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.101] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.200] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.201] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.301] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.301] [INFO ] [Console] Client 0 disconnected\n[2026-07-30 23:17:12.301] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.400] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.400] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.499] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.499] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.599] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.599] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 23:17:12.698] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 23:17:12.698] [INFO ] [Lua    ] Lua context changed: Server -> None",
+            "latest_log": "/Users/tomdimino/Library/Application Support/BG3SE/logs/bg3se_2026-07-30_22-22-55.log",
+            "latest_log_tail": "[2026-07-30 22:24:53.413] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:53.413] [INFO ] [Console] Client 0 disconnected\n[2026-07-30 22:24:53.413] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:53.514] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:53.515] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:53.615] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:53.615] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:53.715] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:53.715] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:53.812] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:53.813] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:53.912] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:53.912] [INFO ] [Console] Client 0 connected\n[2026-07-30 22:24:53.912] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.015] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.015] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.115] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.115] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.213] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.213] [DEBUG] [Console] ! identity\n[2026-07-30 22:24:54.213] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.314] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.314] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.415] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.415] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.515] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.515] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.615] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.615] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.715] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.715] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.814] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.814] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:54.914] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:54.914] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.013] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.013] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.114] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.114] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.212] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.212] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.315] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.315] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.415] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.415] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.514] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.514] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.614] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.614] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.714] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.714] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.815] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.815] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:55.914] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:55.914] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.015] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.015] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.114] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.115] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.214] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.214] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.314] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.314] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.414] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.414] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.514] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.514] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.612] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.612] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.715] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.715] [INFO ] [Console] Client 0 disconnected\n[2026-07-30 22:24:56.715] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.814] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.814] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:56.915] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:56.915] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:57.013] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:57.013] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-07-30 22:24:57.113] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-07-30 22:24:57.113] [INFO ] [Lua    ] Lua context changed: Server -> None",
             "latest_log_analysis": {
               "has_problem_markers": false,
               "problem_lines": []
             },
             "geometry": {
-              "pid": 71066,
-              "window_id": 80712,
+              "pid": 58143,
+              "window_id": 80407,
               "quartz": {
-                "id": 80712,
-                "owner_pid": 71066,
+                "id": 80407,
+                "owner_pid": 58143,
                 "owner_name": "bg3",
                 "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                 "bounds": {
@@ -930,11 +969,11 @@
               "raw_ocr": [],
               "error": null,
               "geometry": {
-                "pid": 71066,
-                "window_id": 80712,
+                "pid": 58143,
+                "window_id": 80407,
                 "quartz": {
-                  "id": 80712,
-                  "owner_pid": 71066,
+                  "id": 80407,
+                  "owner_pid": 58143,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -972,12 +1011,12 @@
               },
               "debug_image": {
                 "success": true,
-                "path": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.screenshots/boot-stall-1785467833.png",
+                "path": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.screenshots/boot-stall-1785464697.png",
                 "method": "jxa_appkit"
               }
             }
           },
-          "pid": 71066,
+          "pid": 58143,
           "attempt": 1,
           "retrying": true,
           "retry_cleanup": {
@@ -990,8 +1029,8 @@
         },
         {
           "socket_connected": true,
-          "se_version": "{\"pid\":73187,\"version\":\"0.41.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}\n>",
-          "elapsed_ms": 32044,
+          "se_version": "{\"pid\":63641,\"version\":\"0.41.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}\n>",
+          "elapsed_ms": 32001,
           "dismiss_attempts": 0,
           "phases": [
             {
@@ -1010,7 +1049,7 @@
             {
               "t": 3.3,
               "phase": "socket_responded",
-              "detail": "3313ms"
+              "detail": "3312ms"
             },
             {
               "t": 3.3,
@@ -1018,7 +1057,7 @@
               "detail": "game_state=Init, grace=240s"
             },
             {
-              "t": 28.4,
+              "t": 28.3,
               "phase": "menu_watchdog_action",
               "detail": "#1 in_process_click"
             },
@@ -1029,15 +1068,15 @@
             }
           ],
           "identity": {
-            "pid": 73187,
+            "pid": 63641,
             "version": "0.41.0",
             "game_state": "Running",
             "session_init": "complete",
             "stats_ready": true,
             "image": "/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib"
           },
-          "identity_pid": 73187,
-          "peer_pid": 73187,
+          "identity_pid": 63641,
+          "peer_pid": 63641,
           "watchdog_actions": [
             {
               "attempt": 1,
@@ -1069,11 +1108,11 @@
                 }
               ],
               "geometry": {
-                "pid": 73187,
-                "window_id": 80724,
+                "pid": 63641,
+                "window_id": 80433,
                 "quartz": {
-                  "id": 80724,
-                  "owner_pid": 73187,
+                  "id": 80433,
+                  "owner_pid": 63641,
                   "owner_name": "bg3",
                   "name": "Baldur's Gate 3 (1920x942) - (Metal) - (6 + 6 WT)",
                   "bounds": {
@@ -1109,12 +1148,12 @@
                   "y": 1.0
                 }
               },
-              "t": 22.2,
-              "stalled_for_s": 21.7
+              "t": 22.0,
+              "stalled_for_s": 21.5
             }
           ],
           "session_loaded": true,
-          "pid": 73187,
+          "pid": 63641,
           "attempt": 2
         }
       ],
@@ -1123,10 +1162,10 @@
     },
     {
       "success": true,
-      "pid": 73187,
-      "expected_pid": 73187,
+      "pid": 63641,
+      "expected_pid": 63641,
       "session_init": "complete",
-      "raw_output": "{\"pid\":73187,\"version\":\"0.41.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}",
+      "raw_output": "{\"pid\":63641,\"version\":\"0.41.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}",
       "error": null,
       "name": "identity"
     },
@@ -1139,143 +1178,95 @@
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.IMGUI) == 'table', 'Ext.IMGUI namespace available')",
+      "lua": "assert(type(Ext.Entity.Get) == 'function', 'Ext.Entity.Get exists')",
       "name": "assertion_1"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.IMGUI.NewWindow) == 'function', 'Ext.IMGUI.NewWindow exists')",
+      "lua": "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
       "name": "assertion_2"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.ModEvents) == 'table', 'Ext.ModEvents namespace available')",
+      "lua": "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
       "name": "assertion_3"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.ModEvents['BG3SECompat']['Probe'].Subscribe) == 'function', 'ModEvents per-mod event object exposes Subscribe')",
+      "lua": "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do if u == '991c9c7a-fb80-40cb-8f0d-b92d4e80e9b1' then return true end end return false end)(), 'Party Limit Begone Gustav-override module present in load order (PLB masquerades as Gustav by design)')",
       "name": "assertion_4"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.RegisterNetListener) == 'function', 'Ext.RegisterNetListener exists')",
+      "lua": "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
       "name": "assertion_5"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.Vars) == 'table', 'Ext.Vars namespace available')",
+      "lua": "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
       "name": "assertion_6"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.Net) == 'table', 'Ext.Net namespace available')",
+      "lua": "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
       "name": "assertion_7"
     },
     {
       "success": true,
       "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.Mod.IsModLoaded) == 'function', 'Ext.Mod.IsModLoaded exists')",
+      "lua": "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')",
       "name": "assertion_8"
     },
     {
       "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'configurationmenu', 1, true) then return true end end return false end)(), 'Mod Configuration Menu present in load order')",
-      "name": "assertion_9"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert((function() local size=Ext.IMGUI.GetViewportSize(); return type(size) == 'table' and type(size[1]) == 'number' and size[1] > 0 and type(size[2]) == 'number' and size[2] > 0 end)(), 'IMGUI viewport query executes')",
-      "name": "assertion_10"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.Net.Version()) == 'number', 'network version query executes')",
-      "name": "assertion_11"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Ext.Vars.IsPersistentVarsLoaded()) == 'boolean', 'persistent variable state query executes')",
-      "name": "assertion_12"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert((function() local event=Ext.ModEvents['BG3SECompat']['MCM']; local fired=false; local id=event:Subscribe(function() fired=true end); event:Throw({}); event:Unsubscribe(id); return fired end)(), 'ModEvents roundtrip executes')",
-      "name": "assertion_13"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(pcall(Ext.RegisterNetListener, '_bg3se_compat_mcm_probe', function() end), 'network listener registration executes')",
-      "name": "assertion_14"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
-      "name": "assertion_15"
-    },
-    {
-      "success": true,
-      "output": "BG3SE_COMPAT_PASS",
-      "lua": "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')",
-      "name": "assertion_16"
-    },
-    {
-      "success": true,
-      "mod": "Mod Configuration Menu",
-      "since": "2026-07-30 23:15:08",
+      "mod": "Party Limit Begone",
+      "since": "2026-07-30 22:22:54",
       "errors": [],
       "warnings": [],
       "error_type": null,
       "error": null,
-      "name": "log_scan_mcm"
+      "name": "log_scan_party_limit_begone"
     },
     {
       "success": true,
-      "path": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.reports/mcm_1785467708/screenshot.jpg",
+      "path": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.reports/party_limit_begone_1785464573/screenshot.jpg",
       "width": 1568,
       "height": 792,
       "tokens_est": 1655,
-      "size_bytes": 157450,
+      "size_bytes": 157488,
       "format": "jpeg",
       "name": "screenshot"
     },
     {
       "success": true,
-      "crash_time": 1785467839.2848802,
+      "crash_time": 1785464703.2798135,
       "last_log_lines": [
-        "[2026-07-30 23:17:52.931] [DEBUG] [Console] > local __ok, __err = pcall(function() assert(pcall(Ext.RegisterNetListener, '_bg3se_compat_mcm_probe', function() end), 'network listener registration executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
-        "[2026-07-30 23:17:52.931] [DEBUG] [Events ] Registered net listener for channel '_bg3se_compat_mcm_probe' (ref=164)",
-        "[2026-07-30 23:17:52.931] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
-        "[2026-07-30 23:17:52.931] [INFO ] [Lua    ] Lua context changed: Server -> Client",
-        "[2026-07-30 23:17:53.033] [INFO ] [Lua    ] Lua context changed: Client -> Server",
-        "[2026-07-30 23:17:53.033] [DEBUG] [Console] > local __ok, __err = pcall(function() assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
-        "[2026-07-30 23:17:53.048] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
-        "[2026-07-30 23:17:53.048] [INFO ] [Lua    ] Lua context changed: Server -> Client",
-        "[2026-07-30 23:17:53.132] [INFO ] [Lua    ] Lua context changed: Client -> Server",
-        "[2026-07-30 23:17:53.132] [DEBUG] [Console] > local __ok, __err = pcall(function() assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
-        "[2026-07-30 23:17:53.133] [DEBUG] [Osiris ] Osi.DB_Players:Get() \u2014 DB not yet discovered, returning empty",
-        "[2026-07-30 23:17:53.133] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
-        "[2026-07-30 23:17:53.133] [INFO ] [Lua    ] Lua context changed: Server -> Client",
-        "[2026-07-30 23:17:53.233] [INFO ] [Lua    ] Lua context changed: Client -> Server",
-        "[2026-07-30 23:17:53.233] [INFO ] [Console] Client 1 disconnected",
-        "[2026-07-30 23:17:53.233] [INFO ] [Lua    ] Lua context changed: Server -> Client",
-        "[2026-07-30 23:17:53.333] [INFO ] [Lua    ] Lua context changed: Client -> Server",
-        "[2026-07-30 23:17:53.333] [INFO ] [Lua    ] Lua context changed: Server -> Client",
-        "[2026-07-30 23:17:53.432] [INFO ] [Lua    ] Lua context changed: Client -> Server",
-        "[2026-07-30 23:17:53.432] [INFO ] [Lua    ] Lua context changed: Server -> Client"
+        "[2026-07-30 22:25:36.120] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.120] [DEBUG] [Console] > local __ok, __err = pcall(function() assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
+        "[2026-07-30 22:25:36.121] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
+        "[2026-07-30 22:25:36.121] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-07-30 22:25:36.220] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.220] [DEBUG] [Console] > local __ok, __err = pcall(function() assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
+        "[2026-07-30 22:25:36.220] [DEBUG] [Osiris ] Osi.DB_Players:Get() \u2014 DB not yet discovered, returning empty",
+        "[2026-07-30 22:25:36.220] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
+        "[2026-07-30 22:25:36.220] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-07-30 22:25:36.322] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.322] [INFO ] [Console] Client 1 disconnected",
+        "[2026-07-30 22:25:36.322] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-07-30 22:25:36.420] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.420] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-07-30 22:25:36.520] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.520] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-07-30 22:25:36.620] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.620] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-07-30 22:25:36.719] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-07-30 22:25:36.719] [INFO ] [Lua    ] Lua context changed: Server -> Client"
       ],
       "macos_ips": {
         "path": "/Users/tomdimino/Library/Logs/DiagnosticReports/Baldur's Gate 3-2026-07-29-182309.ips",
@@ -1473,12 +1464,12 @@
       "name": "quit_game"
     }
   ],
-  "started_at": "2026-07-30 23:15:08",
+  "started_at": "2026-07-30 22:22:53",
   "mods": [
-    "mcm"
+    "party_limit_begone"
   ],
-  "mod_state_changed": false,
+  "mod_state_changed": true,
   "success": true,
-  "summary": "27/27 steps passed",
-  "finished_at": "2026-07-30 23:17:55"
+  "summary": "20/20 steps passed",
+  "finished_at": "2026-07-30 22:25:38"
 }

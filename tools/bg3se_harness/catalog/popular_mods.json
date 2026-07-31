@@ -11,9 +11,21 @@
       "priority": "P0",
       "tier": 1,
       "github": "AtilioA/BG3-MCM",
-      "apis_used": ["Ext.IMGUI", "Ext.Net", "Ext.Vars", "Ext.ModEvents", "Ext.RegisterNetListener", "Ext.Events", "Ext.Mod"],
+      "apis_used": [
+        "Ext.IMGUI",
+        "Ext.Net",
+        "Ext.Vars",
+        "Ext.ModEvents",
+        "Ext.RegisterNetListener",
+        "Ext.Events",
+        "Ext.Mod"
+      ],
       "requires_mcm": false,
-      "notes": "THE gate mod. 500+ mods depend on it. 18K lines Lua, AGPL-3.0."
+      "notes": "THE gate mod. 500+ mods depend on it. 18K lines Lua, AGPL-3.0.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "27/27 assertions"
     },
     "community_library": {
       "name": "Community Library",
@@ -21,9 +33,20 @@
       "author": "NellsRelo",
       "priority": "P0",
       "tier": 1,
-      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.Events", "Ext.Utils", "Ext.ModEvents"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.Entity",
+        "Ext.Osiris",
+        "Ext.Events",
+        "Ext.Utils",
+        "Ext.ModEvents"
+      ],
       "requires_mcm": false,
-      "notes": "Shared utilities and compatibility framework. Dependency for hundreds of mods."
+      "notes": "Shared utilities and compatibility framework. Dependency for hundreds of mods.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "25/25 steps"
     },
     "5e_spells": {
       "name": "5e Spells",
@@ -31,9 +54,18 @@
       "author": "Celes",
       "priority": "P0",
       "tier": 1,
-      "apis_used": ["Ext.Stats", "Ext.Osiris", "Ext.Events", "Ext.StaticData"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.Osiris",
+        "Ext.Events",
+        "Ext.StaticData"
+      ],
       "requires_mcm": false,
-      "notes": "Most endorsed SE spell mod. Tests Stats, functors, StaticData."
+      "notes": "Most endorsed SE spell mod. Tests Stats, functors, StaticData.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "23/23 steps"
     },
     "expansion_lvl20": {
       "name": "Expansion - Level 20",
@@ -41,9 +73,18 @@
       "author": "DiZ91891",
       "priority": "P0",
       "tier": 1,
-      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.StaticData"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.Entity",
+        "Ext.Osiris",
+        "Ext.StaticData"
+      ],
       "requires_mcm": false,
-      "notes": "Major gameplay mod — levels 13-20, spells 7-9. Tests Stats, progression, StaticData."
+      "notes": "Major gameplay mod \u2014 levels 13-20, spells 7-9. Tests Stats, progression, StaticData.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "22/22 steps"
     },
     "more_reactive_companions": {
       "name": "More Reactive Companions",
@@ -51,11 +92,18 @@
       "author": "LightningLarryL",
       "priority": "P1",
       "tier": 1,
-      "apis_used": ["Ext.Osiris", "Ext.Events"],
+      "apis_used": [
+        "Ext.Osiris",
+        "Ext.Events"
+      ],
       "requires_mcm": false,
       "notes": "Already confirmed working on v0.36.17. Re-verify on latest.",
       "last_tested": "v0.36.17",
-      "last_status": "working"
+      "last_status": "working",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "18/18 steps"
     },
     "combat_extender": {
       "name": "Combat Extender",
@@ -63,9 +111,19 @@
       "author": "DarknessSilverTower",
       "priority": "P1",
       "tier": 2,
-      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.Events", "Ext.Vars"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.Entity",
+        "Ext.Osiris",
+        "Ext.Events",
+        "Ext.Vars"
+      ],
       "requires_mcm": true,
-      "notes": "Most popular gameplay mod. Stress-tests Stats + MCM."
+      "notes": "Most popular gameplay mod. Stress-tests Stats + MCM.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "27/27 steps (with MCM)"
     },
     "party_limit_begone": {
       "name": "Party Limit Begone",
@@ -73,9 +131,17 @@
       "author": "SildurFX",
       "priority": "P1",
       "tier": 2,
-      "apis_used": ["Ext.Entity", "Ext.Osiris", "Ext.Events"],
+      "apis_used": [
+        "Ext.Entity",
+        "Ext.Osiris",
+        "Ext.Events"
+      ],
       "requires_mcm": false,
-      "notes": "Party limit to 16, multiplayer to 8. Tests entity manipulation."
+      "notes": "Party limit to 16, multiplayer to 8. Tests entity manipulation.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "20/20 steps"
     },
     "camp_event_notifications": {
       "name": "Camp Event Notifications",
@@ -83,9 +149,17 @@
       "author": "Kvalyr",
       "priority": "P1",
       "tier": 2,
-      "apis_used": ["Ext.Events", "Ext.Osiris", "Ext.IMGUI"],
+      "apis_used": [
+        "Ext.Events",
+        "Ext.Osiris",
+        "Ext.IMGUI"
+      ],
       "requires_mcm": true,
-      "notes": "Tests IMGUI notification rendering."
+      "notes": "Tests IMGUI notification rendering.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "22/22 steps (with MCM)"
     },
     "auto_send_food": {
       "name": "Auto Send Food To Camp",
@@ -93,9 +167,17 @@
       "author": "Volitio",
       "priority": "P1",
       "tier": 2,
-      "apis_used": ["Ext.Osiris", "Ext.Events", "Ext.Vars"],
+      "apis_used": [
+        "Ext.Osiris",
+        "Ext.Events",
+        "Ext.Vars"
+      ],
       "requires_mcm": true,
-      "notes": "Simple MCM smoke test — minimal API surface."
+      "notes": "Simple MCM smoke test \u2014 minimal API surface.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "22/22 steps (with MCM)"
     },
     "always_show_approvals": {
       "name": "Always Show Approvals",
@@ -104,16 +186,29 @@
       "file_id": 69737,
       "priority": "P2",
       "tier": 2,
-      "apis_used": ["Ext.Events", "Ext.Entity", "Ext.Osiris"],
+      "apis_used": [
+        "Ext.Events",
+        "Ext.Entity",
+        "Ext.Osiris"
+      ],
       "requires_mcm": false,
-      "notes": "Tests UI hooks and Events system."
+      "notes": "Tests UI hooks and Events system.",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-07-30",
+      "vetted_evidence": "20/20 steps"
     },
     "ai_allies": {
       "name": "AI Allies",
       "nexus_id": 7780,
       "priority": "P2",
       "tier": 2,
-      "apis_used": ["Ext.Entity", "Ext.Osiris", "Ext.Events", "Ext.Stats"],
+      "apis_used": [
+        "Ext.Entity",
+        "Ext.Osiris",
+        "Ext.Events",
+        "Ext.Stats"
+      ],
       "requires_mcm": false,
       "notes": "Tests entity creation, Osiris integration."
     },
@@ -122,7 +217,12 @@
       "nexus_id": 5765,
       "priority": "P2",
       "tier": 2,
-      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.Events"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.Entity",
+        "Ext.Osiris",
+        "Ext.Events"
+      ],
       "requires_mcm": true,
       "notes": "Stress-tests Stats mutation under MCM control."
     },
@@ -131,7 +231,11 @@
       "nexus_id": 7358,
       "priority": "P2",
       "tier": 2,
-      "apis_used": ["Ext.Timer", "Ext.Events", "Ext.Vars"],
+      "apis_used": [
+        "Ext.Timer",
+        "Ext.Events",
+        "Ext.Vars"
+      ],
       "requires_mcm": true,
       "notes": "Tests Timer persistence across save/load."
     },
@@ -140,7 +244,11 @@
       "nexus_id": 11959,
       "priority": "P2",
       "tier": 3,
-      "apis_used": ["Ext.Stats", "Ext.StaticData", "Ext.Events"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.StaticData",
+        "Ext.Events"
+      ],
       "requires_mcm": false,
       "notes": "SE plugin, tests StaticData and Stats interaction."
     },
@@ -149,7 +257,11 @@
       "nexus_id": 9262,
       "priority": "P2",
       "tier": 3,
-      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Events"],
+      "apis_used": [
+        "Ext.Stats",
+        "Ext.Entity",
+        "Ext.Events"
+      ],
       "requires_mcm": false,
       "notes": "Tests Stats, loot table access."
     },
@@ -161,7 +273,7 @@
       "tier": 3,
       "apis_used": [],
       "requires_mcm": false,
-      "notes": "Pure UI XML mod — no SE APIs. Tests clean load (negative control)."
+      "notes": "Pure UI XML mod \u2014 no SE APIs. Tests clean load (negative control)."
     },
     "bg3_mod_fixer": {
       "name": "BG3 Mod Fixer",
@@ -171,7 +283,7 @@
       "tier": 3,
       "apis_used": [],
       "requires_mcm": false,
-      "notes": "Story recompile — unnecessary on Patch 7+. Negative test."
+      "notes": "Story recompile \u2014 unnecessary on Patch 7+. Negative test."
     }
   }
 }

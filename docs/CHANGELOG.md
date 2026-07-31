@@ -17,6 +17,75 @@ Each entry includes:
 
 **Category:** Parity | **Parity:** ~97.3% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)
 
+### Wave 5 review fix pass (2026-07-30, same version)
+
+Four-lens review (silent-failure, correctness, tests, docs) over the Wave 5
+span; correctness came back clean, all other confirmed findings fixed:
+
+- **Empty modsettings.lsx no longer poisons the Ext.Mod cache** — a parse that
+  found zero mods used to latch `g_uuids_loaded`, permanently pinning every
+  `Ext.Mod` query to an empty cache with no retry and no warning. The flag now
+  latches only on a non-empty parse; the zero-mod case logs a warning and
+  re-parses on the next query (`src/lua/lua_mod.c`).
+- **Mod UUID cache overflow now warns** — entries past MAX_MOD_UUIDS (128)
+  were silently dropped from `GetLoadOrder`; the cap now logs which mod fell
+  off the end.
+- **Expansion Level 20 asserts by UUID** — the normalized needle 'expansion'
+  could match any mod with "expansion" in its name; the manifest now checks
+  the module UUID `a2c4b0fc` exactly, and the MCM manifest was migrated to the
+  same normalized-name pattern as the other nine. Both baselines re-run live
+  and re-saved (22/22, 27/27).
+- **Four new pytest guards** (`tests/harness/test_scenarios.py`, 239 → 243,
+  total 506): load-order assertions must use gsub normalization or exact UUID;
+  vetted catalog entries must carry complete version/date/evidence stamps;
+  the 10 committed baselines must parse, pass, and cover every scenario 1:1;
+  MAX_OSIRIS_LISTENERS pinned at 512.
+- **Docs truth pass** — supported-mods.md parity claim ~94% → ~97.3%, vet
+  report example version v0.36.50 → v0.41.0, five stale API-coverage rows
+  corrected to the deferral-aware counts (Types 13/15, Level 20/25, Audio
+  17/17, Localization 4 functions, Math 59/59); `compat matrix` no-launch
+  caveat documented in both harness docs; testing.md Stats section header
+  14 → 16.
+- Noted, not fixed: `lua_osiris_reset_listeners()` is dead code that would
+  leak registry refs if ever wired up (comment added); the plain-bool
+  `g_uuids_loaded` guard is technically unordered under C11 but init
+  sequencing (dylib constructor before any Lua thread exists) makes the race
+  unreachable.
+
+### Wave 5: Top-10 Vetting Campaign (2026-07-30, same version)
+
+All 10 top-priority mods vetted end-to-end with the autonomous compat pipeline
+(`compat run <scenario> --launch --auto-install --save-baseline`): MCM 27/27,
+Community Library 25/25, 5e Spells 23/23, Expansion Level 20 22/22, More
+Reactive Companions 18/18, Party Limit Begone 20/20, Combat Extender 27/27
+(MCM injected), Camp Event Notifications 22/22 (MCM injected), Auto Send Food
+To Camp 22/22 (MCM injected), Always Show Approvals 20/20. Baselines committed
+under `docs/compat-reports/baseline/`; catalog and `docs/supported-mods.md`
+stamped working v0.41.0.
+
+Fixes surfaced by the campaign:
+
+- **Ext.Mod load-order snapshot pinned to launch time** — the game rewrites
+  `modsettings.lsx` to the loaded save's mod list mid-session, so the lazy
+  first parse in `lua_mod.c` could miss mods present at launch. New
+  `lua_mod_prime_uuid_cache()` runs at injector init (matching Windows BG3SE's
+  in-memory ModManager semantics); Community Library's load-order assertion
+  went 24/25 → 25/25.
+- **Osiris listener capacity 64 → 512, fail-loud on overflow** — Expansion
+  Level 20 + companion-mod stacks exhausted the 64-slot table; the silent
+  zero-return then surfaced as a nil-returning `RegisterListener`. The cap is
+  now 512 and exhaustion raises a Lua error instead of returning nothing
+  (`src/lua/lua_osiris.c`).
+- **StaticData Feat assertions ForceCapture first** — `GetAll('Feat')` returns
+  an empty table until managers are captured; the 5e Spells and Expansion
+  manifests now call `Ext.StaticData.ForceCapture()` before asserting.
+- **Load-order assertions made name-robust** — all 9 non-MCM manifests
+  normalize case/whitespace/underscores before matching, and mods whose PAK
+  metadata hides the public name assert by UUID instead: Party Limit Begone
+  ships as a Gustav-module override (UUID `991c9c7a`), Camp Event
+  Notifications ships as KvCampEvents (UUID `1b8d381f`), Expansion Level 20's
+  module is named just "Expansion".
+
 ### Wave 4 review fix pass (2026-07-30, same version)
 
 Four-lens review (silent-failure, correctness, tests, docs) over the Wave 4

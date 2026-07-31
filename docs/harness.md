@@ -121,7 +121,7 @@ follow-up.
 |---------|-------------|
 | `parity scan` / `parity missing` | Compare Ext table vs Windows baseline |
 | `compat list` / `compat run <s> [--launch] [--auto-install] [--save-baseline]` | Autonomous mod compat scenarios (10 manifests, Tier-2 assertions) |
-| `compat matrix [--launch] [--auto-install]` | Run every scenario and emit a pass/fail summary matrix |
+| `compat matrix [--launch] [--auto-install]` | Run every scenario and emit a pass/fail summary matrix. Without `--launch`, runtime assertions have no game to talk to and will all fail — the no-launch mode only validates manifest structure; real verdicts require `--launch` or the per-scenario baselines in `docs/compat-reports/baseline/` |
 | `compat diff <s>` | Step-level comparison of latest run vs `docs/compat-reports/baseline/`. Assertions are keyed by list index (`assertion_N`), so reordering or inserting assertions in a manifest misaligns the comparison — re-save the baseline after editing a manifest's assertion list |
 | `compat vet <source>` | Vet mod (catalog key, Nexus ID, PAK path) — JSON report |
 | `author new MyMod` | Scaffold a new mod directory |

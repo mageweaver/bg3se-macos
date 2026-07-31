@@ -90,13 +90,22 @@ Script Extender (SE) mods are mods that require BG3SE to function—they use Lua
 
 ### Mod Compatibility
 
-Most SE mods designed for the Windows Script Extender will work on macOS. We're actively testing popular mods and tracking compatibility:
+Most SE mods designed for the Windows Script Extender will work on macOS. The 10 most popular SE mods have been vetted end-to-end on v0.41.0 with an autonomous test pipeline (launch, load save, assert APIs, scan logs)—all passing:
 
-| Mod | Author | Status | Notes |
-|-----|--------|--------|-------|
-| [More Reactive Companions](https://www.nexusmods.com/baldursgate3/mods/5447) | LightningLarryL | ✅ Working | Party banter, companion reactions |
+| Mod | Status | Notes |
+|-----|--------|-------|
+| [Mod Configuration Menu](https://www.nexusmods.com/baldursgate3/mods/8901) | ✅ Working | Gate mod—500+ mods depend on it |
+| [Community Library](https://www.nexusmods.com/baldursgate3/mods/1333) | ✅ Working | Shared dependency for hundreds of mods |
+| [5e Spells](https://www.nexusmods.com/baldursgate3/mods/366) | ✅ Working | Most endorsed SE spell mod |
+| [Expansion - Level 20](https://www.nexusmods.com/baldursgate3/mods/3755) | ✅ Working | Levels 13-20 progression |
+| [Party Limit Begone](https://www.nexusmods.com/baldursgate3/mods/327) | ✅ Working | Party to 16, multiplayer to 8 |
+| [Combat Extender](https://www.nexusmods.com/baldursgate3/mods/5207) | ✅ Working | Combat tuning via MCM |
+| [More Reactive Companions](https://www.nexusmods.com/baldursgate3/mods/5447) | ✅ Working | Party banter, companion reactions |
+| [Camp Event Notifications](https://www.nexusmods.com/baldursgate3/mods/1879) | ✅ Working | Never miss a camp scene |
+| [Auto Send Food To Camp](https://www.nexusmods.com/baldursgate3/mods/6086) | ✅ Working | Inventory quality-of-life |
+| [Always Show Approvals](https://www.nexusmods.com/baldursgate3/mods/4675) | ✅ Working | Approval visibility |
 
-This is just a sample—many more mods work out of the box. See **[docs/supported-mods.md](docs/supported-mods.md)** for the full compatibility list, testing notes, and known issues.
+Many more mods work out of the box. See **[docs/supported-mods.md](docs/supported-mods.md)** for the full compatibility list with vetting evidence, testing notes, and known issues.
 
 **Tested a mod?** Help the community by [reporting your results](https://github.com/tdimino/bg3se-macos/issues/new?template=mod-compatibility.md)! Whether it works perfectly or has issues, your feedback helps other Mac players.
 
@@ -137,7 +146,7 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 55 C (Tier 0) + 239 pytest (Tier H) + 113 `!test` (Tier 1) + 95 `!test_ingame` (Tier 2) = **502 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 243 pytest (Tier H) + 113 `!test` (Tier 1) + 95 `!test_ingame` (Tier 2) = **506 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`; evidence in `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).

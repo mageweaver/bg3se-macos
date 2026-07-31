@@ -1,6 +1,8 @@
 {
-  "description": "Combat Extender compatibility test. P1 — stress-tests Stats mutation under MCM control.",
-  "mods": ["combat_extender"],
+  "description": "Combat Extender compatibility test. P1 \u2014 stress-tests Stats mutation under MCM control.",
+  "mods": [
+    "combat_extender"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -11,7 +13,7 @@
     "assert(type(Ext.Vars) == 'table', 'Ext.Vars available')",
     "assert(type(Ext.IMGUI.NewWindow) == 'function', 'IMGUI available (MCM dep)')",
     "assert(type(Ext.ModEvents['BG3SECompat']['Probe'].Subscribe) == 'function', 'ModEvents per-mod event object exposes Subscribe (MCM dep)')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'combat extender', 1, true) then return true end end return false end)(), 'Combat Extender present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'combatextender', 1, true) then return true end end return false end)(), 'Combat Extender present in load order')",
     "assert(Ext.Stats.Get('WPN_Longsword') ~= nil, 'vanilla longsword stat resolves')",
     "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",

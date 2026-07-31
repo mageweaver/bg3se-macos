@@ -1,6 +1,8 @@
 {
-  "description": "5e Spells compatibility test. P0 — top spell mod, tests Stats+StaticData functor chain.",
-  "mods": ["5e_spells"],
+  "description": "5e Spells compatibility test. P0 \u2014 top spell mod, tests Stats+StaticData functor chain.",
+  "mods": [
+    "5e_spells"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -10,9 +12,9 @@
     "assert(type(Ext.StaticData.Get) == 'function', 'Ext.StaticData.Get exists')",
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
     "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), '5e spells', 1, true) then return true end end return false end)(), '5e Spells present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, '5espells', 1, true) then return true end end return false end)(), '5e Spells present in load order')",
     "assert(Ext.Stats.Get('WPN_Longsword') ~= nil, 'vanilla longsword stat resolves')",
-    "assert((function() local entries=Ext.StaticData.GetAll('Feat'); return type(entries) == 'table' and #entries > 0 end)(), 'vanilla feat static data resolves')",
+    "assert((function() Ext.StaticData.ForceCapture(); local entries=Ext.StaticData.GetAll('Feat'); return type(entries) == 'table' and #entries > 0 end)(), 'vanilla feat static data resolves after ForceCapture')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
     "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
     "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"

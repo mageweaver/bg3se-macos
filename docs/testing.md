@@ -13,7 +13,7 @@ Comprehensive reference for the BG3SE-macOS test suite.
   - [Core](#core-6-tests)
   - [Json](#json-4-tests)
   - [Helpers](#helpers-5-tests)
-  - [Stats](#stats-14-tier-1-tests)
+  - [Stats](#stats-16-tier-1-tests)
   - [Timer](#timer-8-tests)
   - [Events](#events-5-tests)
   - [Debug](#debug-10-tests)
@@ -51,7 +51,7 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 502 (294 offline + 208 Lua) |
+| **Total tests** | 506 (298 offline + 208 Lua) |
 | **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
 | **Tier H (pytest)** | 239 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
@@ -196,7 +196,7 @@ Global debug helper functions.
 - `Helpers.Dump` / `Helpers.DumpShallow` — `_D()` / `_DS()` on tables
 - `Helpers.PrintError` — `_PE()` logs error
 
-### Stats (14 Tier 1 tests)
+### Stats (16 Tier 1 tests)
 RPGStats system access via `Ext.Stats`.
 - `Stats.Get` — Fetch "WPN_Longsword" stat object
 - `Stats.GetName` — Stat name matches input

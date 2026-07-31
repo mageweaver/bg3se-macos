@@ -1,6 +1,8 @@
 {
-  "description": "Expansion - Level 20 compatibility test. P0 — tests high-level progression, Stats, and StaticData.",
-  "mods": ["expansion_lvl20"],
+  "description": "Expansion - Level 20 compatibility test. P0 \u2014 tests high-level progression, Stats, and StaticData.",
+  "mods": [
+    "expansion_lvl20"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -9,12 +11,12 @@
     "assert(type(Ext.Entity.GetAllEntitiesWithComponent) == 'function', 'Ext.Entity.GetAllEntitiesWithComponent exists')",
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
     "assert(type(Ext.StaticData.GetAll) == 'function', 'Ext.StaticData.GetAll exists')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'level 20', 1, true) then return true end end return false end)(), 'Expansion - Level 20 present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do if u == 'a2c4b0fc-e745-41df-81b7-fa53950d86a0' then return true end end return false end)(), 'Expansion (Level 20) module present in load order')",
     "assert(Ext.Stats.Get('WPN_Longsword') ~= nil, 'vanilla longsword stat resolves')",
     "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
-    "assert((function() local entries=Ext.StaticData.GetAll('Feat'); return type(entries) == 'table' and #entries > 0 end)(), 'vanilla feat static data resolves')",
+    "assert((function() Ext.StaticData.ForceCapture(); local entries=Ext.StaticData.GetAll('Feat'); return type(entries) == 'table' and #entries > 0 end)(), 'vanilla feat static data resolves after ForceCapture')",
     "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
   ],
-  "notes": "Does not require MCM. Major gameplay mod — levels 13-20, spells 7-9. Tests Stats, progression, StaticData."
+  "notes": "Does not require MCM. Major gameplay mod \u2014 levels 13-20, spells 7-9. Tests Stats, progression, StaticData."
 }

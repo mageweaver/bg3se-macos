@@ -4403,6 +4403,9 @@ static void bg3se_init(void) {
 
     t0 = t_init_start;
     mod_detect_enabled();
+    // Pin the Ext.Mod load-order snapshot to launch-time modsettings.lsx —
+    // the game rewrites that file to the loaded save's mod list mid-session.
+    lua_mod_prime_uuid_cache();
     t1 = (uint64_t)timer_get_monotonic_ms();
     LOG_CORE_INFO("  mod_detect_enabled: %llums", (unsigned long long)(t1 - t0));
 

@@ -1,6 +1,8 @@
 {
-  "description": "MCM (Mod Configuration Menu) compatibility test. P0 gate mod — 500+ configurable mods depend on it.",
-  "mods": ["mcm"],
+  "description": "MCM (Mod Configuration Menu) compatibility test. P0 gate mod \u2014 500+ configurable mods depend on it.",
+  "mods": [
+    "mcm"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -13,7 +15,7 @@
     "assert(type(Ext.Vars) == 'table', 'Ext.Vars namespace available')",
     "assert(type(Ext.Net) == 'table', 'Ext.Net namespace available')",
     "assert(type(Ext.Mod.IsModLoaded) == 'function', 'Ext.Mod.IsModLoaded exists')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'configuration menu', 1, true) then return true end end return false end)(), 'Mod Configuration Menu present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'configurationmenu', 1, true) then return true end end return false end)(), 'Mod Configuration Menu present in load order')",
     "assert((function() local size=Ext.IMGUI.GetViewportSize(); return type(size) == 'table' and type(size[1]) == 'number' and size[1] > 0 and type(size[2]) == 'number' and size[2] > 0 end)(), 'IMGUI viewport query executes')",
     "assert(type(Ext.Net.Version()) == 'number', 'network version query executes')",
     "assert(type(Ext.Vars.IsPersistentVarsLoaded()) == 'boolean', 'persistent variable state query executes')",

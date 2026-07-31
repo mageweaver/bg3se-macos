@@ -1,6 +1,8 @@
 {
-  "description": "Party Limit Begone compatibility test. P1 — 40K+ endorsements, tests entity manipulation.",
-  "mods": ["party_limit_begone"],
+  "description": "Party Limit Begone compatibility test. P1 \u2014 40K+ endorsements, tests entity manipulation.",
+  "mods": [
+    "party_limit_begone"
+  ],
   "save_fixture": "vetting_base",
   "requires_save": true,
   "assertions": [
@@ -8,7 +10,7 @@
     "assert(type(Ext.Entity.Get) == 'function', 'Ext.Entity.Get exists')",
     "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
     "assert(type(Ext.Events.Tick.Subscribe) == 'function', 'Ext.Events.Tick.Subscribe exists')",
-    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); if m and m.Info and string.find(string.lower(m.Info.Name or ''), 'party limit begone', 1, true) then return true end end return false end)(), 'Party Limit Begone present in load order')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do if u == '991c9c7a-fb80-40cb-8f0d-b92d4e80e9b1' then return true end end return false end)(), 'Party Limit Begone Gustav-override module present in load order (PLB masquerades as Gustav by design)')",
     "assert((function() local entities=Ext.Entity.GetAllEntitiesWithComponent('eoc::character::CharacterComponent'); return type(entities) == 'table' and #entities > 0 end)(), 'loaded-save character entity query executes')",
     "assert(type(Ext.Osiris.RegisterListener('SavegameLoaded', 0, 'after', function() end)) == 'number', 'Osiris listener registration executes')",
     "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",

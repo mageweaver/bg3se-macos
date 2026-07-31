@@ -55,8 +55,10 @@ int lua_ext_osiris_registerlistener(lua_State *L) {
     luaL_checktype(L, 4, LUA_TFUNCTION);
 
     if (osiris_listener_count >= MAX_OSIRIS_LISTENERS) {
-        LOG_LUA_DEBUG("Warning: Max Osiris listeners reached");
-        return 0;
+        // A silent zero-return here reads as success-with-nil to mods; fail
+        // loudly so the caller (and our compat assertions) see the real cause.
+        return luaL_error(L, "RegisterListener: listener table full (%d)",
+                          MAX_OSIRIS_LISTENERS);
     }
 
     // Store the listener
@@ -300,6 +302,10 @@ OsirisListener *lua_osiris_get_listener(int index) {
 }
 
 void lua_osiris_reset_listeners(void) {
+    // Currently uncalled. If this is ever wired up (e.g. session teardown),
+    // the stored callback_refs must be luaL_unref'd against the owning
+    // lua_State first — zeroing the count alone leaks up to
+    // MAX_OSIRIS_LISTENERS registry entries per reset.
     osiris_listener_count = 0;
 }
 
