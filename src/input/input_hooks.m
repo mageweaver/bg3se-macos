@@ -2,8 +2,10 @@
  * input_hooks.m - CGEventTap for Input Capture
  *
  * Uses Core Graphics event tap to intercept keyboard events
- * system-wide. This works with SDL-based games like BG3 that
- * don't use standard Cocoa event handling.
+ * system-wide. BG3 macOS renders through its own Metal window
+ * (native Cocoa/AppKit, not SDL) and consumes input before
+ * standard responder-chain hooks see it, so a system-level
+ * tap is required.
  *
  * Note: Requires Accessibility permissions on macOS.
  */
@@ -16,13 +18,13 @@
 #include "../core/logging.h"
 #include "../lua/lua_events.h"
 #include "../imgui/imgui_metal_backend.h"
+#include "../lua/lua_runtime.h"
 
 // ============================================================================
 // Static State
 // ============================================================================
 
 static bool s_initialized = false;
-static lua_State *s_lua_state = NULL;
 
 // Key state tracking (256 possible key codes)
 static bool s_key_states[256] = {0};
@@ -88,10 +90,6 @@ static void enqueue_key_event(int keyCode, bool pressed, int modifiers, const ch
 void input_poll(lua_State *L) {
     if (!L) return;
     if (!s_initialized) return;
-
-    // Ensure we use the same Lua state pointer the rest of the system expects.
-    // This also avoids dispatching events if Lua was torn down.
-    s_lua_state = L;
 
     // Drain without holding the lock during Lua calls.
     while (1) {
@@ -258,8 +256,10 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         charStr[0] = (char)chars[0];
     }
 
-    // Fire Lua KeyInput event
-    if (s_lua_state && (isDown || isUp)) {
+    // Fire Lua KeyInput event. Input is client-owned (E2.0 audit 1.4);
+    // liveness pre-check only — the tick thread drains the queue under the
+    // Lua gate against the bootstrap (server) VM, so pre-check that VM.
+    if (lua_runtime_state_for(LUA_CONTEXT_SERVER) && (isDown || isUp)) {
         // IMPORTANT: Do not call into Lua from the event tap callback.
         // Queue the event and let the Lua-owning tick thread drain it.
         enqueue_key_event((int)keyCode, isDown, (int)modifiers, charStr);
@@ -416,7 +416,6 @@ void input_shutdown(void) {
         }
     }
     s_hotkey_count = 0;
-    s_lua_state = NULL;
 
     s_initialized = false;
     LOG_INPUT_INFO("Input system shut down");
@@ -534,12 +533,4 @@ void input_inject_key_press(uint16_t keyCode, uint32_t modifiers) {
     input_inject_key_down(keyCode, modifiers);
     usleep(10000);  // 10ms delay
     input_inject_key_up(keyCode, modifiers);
-}
-
-// ============================================================================
-// Lua State Management
-// ============================================================================
-
-void input_set_lua_state(lua_State *L) {
-    s_lua_state = L;
 }

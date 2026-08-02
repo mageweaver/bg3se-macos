@@ -140,10 +140,4 @@ void console_queue_lua_command(const char *command);
  */
 bool console_execute_lua(const char *command);
 
-/**
- * Set the Lua state for direct execution.
- * Called during initialization.
- */
-void console_set_lua_state(lua_State *L);
-
 #endif // CONSOLE_H

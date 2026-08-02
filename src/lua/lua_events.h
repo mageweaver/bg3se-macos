@@ -350,13 +350,12 @@ bool events_fire_log(lua_State *L, const char *level, const char *module, const 
 /**
  * Initialize the Log event callback with the logging system.
  * Must be called after both event system and logging system are initialized.
- *
- * @param L Lua state to use for firing events
+ * Dispatch resolves the server VM through the Lua runtime registry.
  */
-void events_init_log_callback(lua_State *L);
+void events_init_log_callback(void);
 
 /**
- * Unregister the log callback and clear its Lua state pointer.
+ * Disable log dispatch and unregister the logging callback.
  * Call while holding the Lua gate, before lua_close().
  */
 void events_shutdown_log_callback(void);

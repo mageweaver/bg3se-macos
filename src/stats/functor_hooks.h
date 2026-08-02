@@ -9,18 +9,17 @@
 #define FUNCTOR_HOOKS_H
 
 #include <stdbool.h>
-#include <lua.h>
 
 #include "functor_types.h"  // FUNCTOR_ADDRS_VERIFIED_BUILD (install gate in main.c)
 
 /**
  * Initialize the functor hook system.
  * Must be called after Dobby is ready and game module is loaded.
+ * Dispatch resolves the server VM through the Lua runtime registry.
  *
- * @param L Lua state for event dispatch
  * @return true on success
  */
-bool functor_hooks_init(lua_State* L);
+bool functor_hooks_init(void);
 
 /**
  * Shutdown the functor hook system.

@@ -51,16 +51,16 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 516 (307 offline + 209 Lua) |
-| **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 252 — Python harness, no game, CI-safe |
+| **Total tests** | 528 (319 offline + 209 Lua) |
+| **Tier 0 (C unit)** | 65 — native binary, no game, CI-safe |
+| **Tier H (pytest)** | 254 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
 | **Tier 2 (In-Game)** | 96 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
 
-55 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
+65 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
 Tests memory-safety-critical C code without any game process.
 
 ```bash
@@ -74,10 +74,11 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 | osiris_handles | 8 | encode/decode roundtrips, low/high type funcIndex, part4 bit 31 |
 | entity_events | 6 | MAKE_SUB_ID/SUB_ID_TYPE/SUB_ID_INDEX macro roundtrips, all types, max index |
 | mod_paths | 14 | pak stem parsing and Public directory path matching |
+| lua_runtime | 10 | dual-VM registry: latch semantics, generation bumps, coroutine resolution, register/unregister no-op guards, repeated dual cycles |
 
 ### Tier H: Python Harness Tests
 
-252 tests in `tests/harness/`. Run with pytest, no game dependency.
+254 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -88,6 +89,7 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | test_cli | 11 | headless lifecycle, build failures, memory-pressure flags |
 | test_compat | 23 | log scan scoping + honesty, Nexus download hardening, sentinel protocol, enable/quit fail-closed paths, diff |
 | test_component_ops_audit | 5 | ComponentOps registry invariants |
+| test_contract_manifest | 7 | Wave 7 contract manifest schema and scoring invariants |
 | test_component_write_audit | 2 | component write layout guards |
 | test_crashlog | 3 | IPS parsing, crash classification, enabled-mod extraction |
 | test_functor_abi_audit | 1 | functor ABI invariant |
@@ -95,6 +97,7 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | test_headless_graphics | 4 | windowed mode graphics prep and restore |
 | test_launch | 6 | wait_for_socket lifecycle and menu-stall watchdog |
 | test_launch_lifecycle | 51 | process adoption, identity, graphics, Steam, and memory gates |
+| test_lua_state_ownership | 2 | static gate: no file-scope lua_State outside lua_runtime.[ch]; allowlist hygiene |
 | test_menu | 5 | menu detection, click delivery, coordinate geometry |
 | test_mod | 16 | UUID resolution, pak metadata, registry reconciliation, preflight |
 | test_monitor | 8 | process tracking, atomic health writes, graphics restoration |

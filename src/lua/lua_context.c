@@ -6,6 +6,7 @@
  */
 
 #include "lua_context.h"
+#include "lua_runtime.h"
 #include "logging.h"
 
 #include <lauxlib.h>
@@ -76,20 +77,34 @@ const char* lua_context_get_name(LuaContext ctx) {
 // Lua API Implementation
 // ============================================================================
 
+/**
+ * Effective context for a calling state (E2.1/E2.2). A client-VM caller
+ * reports CLIENT by fixed runtime identity. The server VM runs BOTH
+ * bootstrap phases until E2.3 splits them, with g_current_context flipping
+ * between phases — so for it (and for unregistered states) the legacy
+ * phase global stays authoritative. "Both runtimes alive" is NOT the right
+ * dual-VM signal here: E2.2's script-empty client VM registers while
+ * bootstraps are still single-VM.
+ */
+static LuaContext effective_context(lua_State *L) {
+    LuaRuntime *rt = lua_runtime_for_state(L);
+    if (rt && rt->context == LUA_CONTEXT_CLIENT) {
+        return LUA_CONTEXT_CLIENT;
+    }
+    return g_current_context;
+}
+
 int lua_ext_context_isserver(lua_State *L) {
-    (void)L;  // Unused but required by Lua C API signature
-    lua_pushboolean(L, lua_context_is_server());
+    lua_pushboolean(L, effective_context(L) == LUA_CONTEXT_SERVER);
     return 1;
 }
 
 int lua_ext_context_isclient(lua_State *L) {
-    (void)L;  // Unused but required by Lua C API signature
-    lua_pushboolean(L, lua_context_is_client());
+    lua_pushboolean(L, effective_context(L) == LUA_CONTEXT_CLIENT);
     return 1;
 }
 
 int lua_ext_context_getcontext(lua_State *L) {
-    (void)L;  // Unused but required by Lua C API signature
-    lua_pushstring(L, lua_context_get_name(g_current_context));
+    lua_pushstring(L, lua_context_get_name(effective_context(L)));
     return 1;
 }

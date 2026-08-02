@@ -39,8 +39,9 @@ src/
 │   └── level_manager.c/h   # Singleton access, VMT-based physics dispatch
 ├── audio/          # WWise sound engine access
 │   └── audio_manager.c/h   # SoundManager singleton, audio control, PlayExternalSound (STDString ABI)
-├── lua/            # Lua API modules + thread gate
+├── lua/            # Lua API modules + thread gate + runtime ownership
 │   ├── lua_gate.c/h        # Recursive mutex serializing all Lua entry points
+│   ├── lua_runtime.c/h     # LuaRuntime registry: client/server state ownership, generations (E2.0)
 │   └── lua_ext, lua_json, lua_osiris, lua_stats, lua_events, lua_logging, lua_level, lua_audio
 ├── mod/            # Mod detection and loading
 ├── osiris/         # Osiris types, functions, handle encoding, pattern scanning
@@ -49,7 +50,7 @@ src/
 ```
 
 ## Key Files
-- `src/injector/main.c` - Core injection, Dobby hooks, Osi.* namespace, Lua state, OsirisFunctionHandle dispatch
+- `src/injector/main.c` - Core injection, Dobby hooks, Osi.* namespace, Lua runtime bootstrap/registration/shutdown, OsirisFunctionHandle dispatch
 - `src/core/crashlog.c` - Crash-resilient logging (mmap ring buffer, SIGSEGV handler, breadcrumbs)
 - `src/core/mach_exception.c` - Mach exception handler (catches PAC failures before CrashReporter)
 - `src/core/version_detect.c` - Game binary version detection via Info.plist, sentinel address probes for version mismatch tolerance
@@ -61,6 +62,7 @@ src/
 - `src/game/game_state.c` - Game state tracking, state change callbacks
 - `src/game/focus_hack.c` - BaseApp focus force (0x142 bypass for Noesis input gate)
 - `src/lua/lua_gate.c/h` - Recursive pthread mutex serializing all `lua_State` access across threads (see Lua Thread Safety below)
+- `src/lua/lua_runtime.c/h` - Client/server state-ownership registry: every subsystem resolves its `lua_State` through `lua_runtime_state_for(ctx)` instead of caching a raw pointer (docs/dual-vm/E2.0-state-ownership-audit.md)
 - `src/hooks/arm64_hook.c/h` - ARM64 skip-and-redirect inline hooks with MAP_JIT trampoline allocation
 - `ghidra/offsets/` - Modular offset documentation
 
@@ -103,15 +105,15 @@ The Lua VM is single-threaded, but multiple code paths enter it from different t
 | Thread | Entry points | Gate strategy |
 |--------|--------------|---------------|
 | Game / ServerWorker | `fake_Event` tick block, `dispatch_event_to_lua`, `fake_InitGame`, `fake_Load` | `lua_gate_lock()` |
-| GCD console timer | `console_poll` (100ms) | `lua_gate_trylock()` — skip on contention |
-| Metal render thread | `lua_imgui_fire_event`, `lua_imgui_cleanup_refs` | `lua_gate_lock()` |
+| GCD console timer | `console_poll` (100ms) | `lua_gate_trylock()`, then resolve the server runtime under the gate |
+| Metal render thread | `lua_imgui_fire_event` (enqueue-only, no Lua/gate), `lua_imgui_cleanup_refs` (gated) | `lua_gate_lock()` for cleanup_refs |
 | Input hook thread | `lua_hotkey_callback` | `lua_gate_lock()` |
 | Network callbacks | `callback_registry_invoke` | `lua_gate_lock()` |
 | Hooked game execution | functor event dispatch (`functor_hooks.c`) | `lua_gate_lock()` |
 | Any logging thread | `log_event_callback` (Ext.Events Log) | `lua_gate_lock()` |
 | Dylib teardown | Shutdown event, `shutdown_lua` | `lua_gate_lock()` |
 
-**Any new code path that calls into the shared `lua_State` MUST acquire the gate**, and MUST resolve its `lua_State` pointer *under* the gate (shutdown clears the published pointers while holding it, so a blocked waiter re-resolves to NULL instead of entering a freed state). The mutex is recursive (same-thread re-entry is safe for nested dispatch). Implementation: `src/lua/lua_gate.c/h` (pthread_mutex_t with PTHREAD_MUTEX_RECURSIVE, pthread_once init).
+**Any new code path that calls into a `lua_State` MUST acquire the gate**, and MUST resolve its state through the LuaRuntime registry (`lua_runtime_state_for(ctx)`, `src/lua/lua_runtime.c/h`) *under* the gate — never from a cached raw pointer. `shutdown_lua` unregisters the runtimes while holding the gate, so a blocked waiter re-resolves to NULL instead of entering a freed state. A pre-gate `state_for` read is allowed as a cheap liveness pre-check only (the `L` field is `_Atomic`). The static ownership gate (`tests/harness/test_lua_state_ownership.py`) fails CI on any new file-scope `lua_State` cache. The mutex is recursive (same-thread re-entry is safe for nested dispatch). Implementation: `src/lua/lua_gate.c/h` (pthread_mutex_t with PTHREAD_MUTEX_RECURSIVE, pthread_once init).
 
 **Lock order:** Lua gate → logging mutex, never the reverse. The logging system snapshots callbacks under `g_config.mutex` and invokes them only after releasing it (`src/core/logging.c`), so log-to-Lua dispatch can take the gate safely.
 

@@ -20,9 +20,11 @@
 #include "../core/offset_table.h"
 #include "../lua/lua_events.h"
 #include "../lua/lua_gate.h"
+#include "../lua/lua_runtime.h"
 #include "../entity/entity_storage.h"
 
 #include <dobby.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -30,11 +32,17 @@
 // Module State
 // =============================================================================
 
-static lua_State* g_LuaState = NULL;
 static bool g_HooksInstalled = false;
 #define FUNCTOR_HOOK_TARGET_COUNT 10
 static int g_InstalledCount = 0;
 static uint64_t g_EventCount = 0;
+
+// Dispatch barrier (replaces the old g_LuaState null check, E2.0). Dobby hooks
+// stay patched after shutdown, so a hook firing post-shutdown must find the
+// barrier down BEFORE it resolves the still-alive runtime. Cleared first in
+// functor_hooks_shutdown(); checked before and after the gate in each
+// dispatcher.
+static _Atomic(bool) g_DispatchEnabled = false;
 
 // Original function pointers (saved by Dobby)
 static ExecuteFunctorsProc g_OrigAttackTarget = NULL;
@@ -82,22 +90,27 @@ static inline int has_damage_subscribers(void) {
 }
 
 static void fire_execute_functor_event(const StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
-    if (!g_LuaState) return;
+    // Stats functors are server-side (E2.0 audit 1.7) — resolve the server VM.
+    if (!atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) return;
+    if (!lua_runtime_state_for(LUA_CONTEXT_SERVER)) return;
     // Hooked game execution thread entering the shared Lua state — serialize
     // and re-resolve under the gate (see lua_gate.h).
     lua_gate_lock();
-    if (g_LuaState) {
-        events_fire_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
+    lua_State* L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
+    if (L && atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) {
+        events_fire_execute_functor(L, (int)ctxType, (void*)functors, context);
         g_EventCount++;
     }
     lua_gate_unlock();
 }
 
 static void fire_after_execute_functor_event(const StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
-    if (!g_LuaState) return;
+    if (!atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) return;
+    if (!lua_runtime_state_for(LUA_CONTEXT_SERVER)) return;
     lua_gate_lock();
-    if (g_LuaState) {
-        events_fire_after_execute_functor(g_LuaState, (int)ctxType, (void*)functors, context);
+    lua_State* L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
+    if (L && atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) {
+        events_fire_after_execute_functor(L, (int)ctxType, (void*)functors, context);
         g_EventCount++;
     }
     lua_gate_unlock();
@@ -118,11 +131,13 @@ static void fire_damage_event(
     int eventIndex,
     void* interruptEvents
 ) {
-    if (!g_LuaState) return;
+    if (!atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) return;
+    if (!lua_runtime_state_for(LUA_CONTEXT_SERVER)) return;
     lua_gate_lock();
-    if (g_LuaState) {
+    lua_State* L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
+    if (L && atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) {
         events_fire_damage(
-            g_LuaState, event, worldView, (void*)functor, entityHandle,
+            L, event, worldView, (void*)functor, entityHandle,
             position, spellState, damageEffectFlags, ability, spellAttackType,
             dependency1, dependency2, eventIndex, interruptEvents);
         g_EventCount++;
@@ -288,16 +303,19 @@ static void hook_ProcessDealDamageFunctors(
 // Public API
 // =============================================================================
 
-bool functor_hooks_init(lua_State* L) {
+bool functor_hooks_init(void) {
     if (g_HooksInstalled) {
         LOG_HOOKS_WARN("Functor hooks already installed");
         return true;
     }
 
-    g_LuaState = L;
     int success_count = 0;
 
     LOG_HOOKS_INFO("Installing functor execution hooks...");
+
+    // Raise the dispatch barrier before any hook goes live so the first
+    // firing never races the enable.
+    atomic_store_explicit(&g_DispatchEnabled, true, memory_order_release);
 
     // Install AttackTarget hook
     uintptr_t addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET);
@@ -415,23 +433,19 @@ int functor_hooks_get_installed_count(void) {
 void functor_hooks_shutdown(void) {
     if (!g_HooksInstalled) return;
 
-    LOG_HOOKS_INFO("Removing functor hooks...");
+    // Barrier down FIRST: Dobby hooks stay patched, so any hook firing after
+    // this point must bail out before touching the (still-alive) runtime.
+    atomic_store_explicit(&g_DispatchEnabled, false, memory_order_release);
 
-    // Unhook all (Dobby doesn't have unhook, but we can at least clear state)
-    g_OrigAttackTarget = NULL;
-    g_OrigAttackPosition = NULL;
-    g_OrigMove = NULL;
-    g_OrigTarget = NULL;
-    g_OrigNearbyAttacked = NULL;
-    g_OrigNearbyAttacking = NULL;
-    g_OrigEquip = NULL;
-    g_OrigSource = NULL;
-    g_OrigInterrupt = NULL;
-    g_OrigProcessDealDamage = NULL;
+    LOG_HOOKS_INFO("Functor Lua dispatch disabled (hooks stay patched, originals forwarded)");
 
+    // Dobby has no unhook, so the wrappers stay patched into the game for the
+    // life of the process. The g_Orig* pointers are deliberately NOT cleared:
+    // a post-shutdown firing must still forward to the original game function,
+    // or stat functor execution (combat, equipment, spells) silently no-ops.
+    // Only the Lua dispatch barrier above and the bookkeeping come down.
     g_HooksInstalled = false;
     g_InstalledCount = 0;
-    g_LuaState = NULL;
 }
 
 bool functor_hooks_is_active(void) {

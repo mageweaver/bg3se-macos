@@ -20,6 +20,7 @@
 
 #include "lua_imgui.h"
 #include "lua_gate.h"
+#include "lua_runtime.h"
 #include "imgui_metal_backend.h"
 #include "imgui_objects.h"
 #include "logging.h"
@@ -2574,17 +2575,6 @@ void lua_imgui_register(lua_State *L, int ext_idx) {
 // Event Firing System
 // ============================================================================
 
-// Lua state for event callbacks (set during console_poll or game tick)
-static lua_State *s_imgui_lua_state = NULL;
-
-void lua_imgui_set_lua_state(lua_State *L) {
-    s_imgui_lua_state = L;
-}
-
-lua_State *lua_imgui_get_lua_state(void) {
-    return s_imgui_lua_state;
-}
-
 // Deferred IMGUI event queue.
 // IMGUI events fire from render_widget/render_window, which run on the game's
 // RENDER thread (via the Metal present hook). Running Lua callbacks there races
@@ -2680,14 +2670,18 @@ void lua_imgui_process_events(lua_State *L) {
 }
 
 void lua_imgui_cleanup_refs(ImguiHandle handle) {
-    if (!s_imgui_lua_state) {
+    // IMGUI is client-owned (E2.0 audit 1.2), but its refs are created by
+    // mod code running in the bootstrap VM — resolve SERVER until E2.3
+    // splits bootstraps and Category-2 owner tags land, or the refs would
+    // be unref'd against the wrong (script-empty) client VM.
+    if (!lua_runtime_state_for(LUA_CONTEXT_SERVER)) {
         return;
     }
 
     // Reached both from Lua (already gate-admitted; the gate is recursive)
     // and from native ImGui teardown, which must serialize + revalidate.
     lua_gate_lock();
-    lua_State *L = s_imgui_lua_state;
+    lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
     if (!L) {
         lua_gate_unlock();
         return;

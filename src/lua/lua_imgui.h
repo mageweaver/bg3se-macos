@@ -20,21 +20,6 @@
 void lua_imgui_register(lua_State *L, int ext_idx);
 
 /**
- * Set the Lua state for IMGUI event callbacks.
- * Called from console_poll() or other tick functions.
- *
- * @param L Lua state
- */
-void lua_imgui_set_lua_state(lua_State *L);
-
-/**
- * Get the Lua state for IMGUI event callbacks.
- *
- * @return Lua state or NULL if not set
- */
-lua_State *lua_imgui_get_lua_state(void);
-
-/**
  * Fire an IMGUI event callback.
  *
  * @param handle Object handle

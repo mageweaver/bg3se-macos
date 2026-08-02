@@ -11,11 +11,13 @@
 
 #include "lua_events.h"
 #include "lua_gate.h"
+#include "lua_runtime.h"
 #include "../core/logging.h"
 #include "../mod/mod_loader.h"
 #include "../entity/component_registry.h"
 #include "../entity/component_lookup.h"
 
+#include <stdatomic.h>
 #include <string.h>
 #include <mach/mach_time.h>
 
@@ -1216,7 +1218,7 @@ void lua_events_register(lua_State *L, int ext_table_index) {
     LOG_EVENTS_INFO("Ext.Events namespace registered with %d event types", EVENT_MAX);
 
     // Initialize Log event callback with the logging system
-    events_init_log_callback(L);
+    events_init_log_callback();
 }
 
 // ============================================================================
@@ -1983,10 +1985,15 @@ void events_fire_net_listeners(lua_State *L, const char *channel, const char *pa
 // Log Event (Windows BG3SE Parity)
 // ============================================================================
 
-// Static Lua state for log callback (set during init)
-static lua_State *g_log_callback_L = NULL;
 static int g_log_callback_id = -1;
 static bool g_log_event_dispatching = false;  // Prevent recursion
+
+// Dispatch barrier (replaces the old g_log_callback_L null check, E2.0).
+// log_unregister_callback can return while a logging thread still holds a
+// snapshot of the callback; that late invocation must find the barrier down
+// rather than resolve the still-alive runtime. Cleared first in
+// events_shutdown_log_callback(); checked before and after the gate.
+static _Atomic(bool) g_log_dispatch_enabled = false;
 
 /**
  * Fire the Log event with message data.
@@ -2094,7 +2101,10 @@ static void log_event_callback(LogLevel level, LogModule module,
                                const char *message, void *userdata) {
     (void)userdata;
 
-    if (!g_log_callback_L) return;
+    // Log handlers live in the server VM until per-state handler tagging
+    // lands (E2.0 audit 1.8) — resolve through the runtime registry.
+    if (!atomic_load_explicit(&g_log_dispatch_enabled, memory_order_acquire)) return;
+    if (!lua_runtime_state_for(LUA_CONTEXT_SERVER)) return;
     if (g_log_event_dispatching) return;  // Prevent recursion
 
     // Convert level and module to strings
@@ -2106,8 +2116,8 @@ static void log_event_callback(LogLevel level, LogModule module,
     // deadlock-free; re-resolve the state under the gate because shutdown
     // clears it while holding the same gate.
     lua_gate_lock();
-    lua_State *L = g_log_callback_L;
-    if (L) {
+    lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
+    if (L && atomic_load_explicit(&g_log_dispatch_enabled, memory_order_acquire)) {
         events_fire_log(L, level_str, module_str, message);
     }
     lua_gate_unlock();
@@ -2116,13 +2126,15 @@ static void log_event_callback(LogLevel level, LogModule module,
 /**
  * Initialize the Log event callback with the logging system.
  */
-void events_init_log_callback(lua_State *L) {
+void events_init_log_callback(void) {
     if (g_log_callback_id >= 0) {
         // Already registered
         return;
     }
 
-    g_log_callback_L = L;
+    // Barrier up before registration so no callback invocation can race the
+    // enable.
+    atomic_store_explicit(&g_log_dispatch_enabled, true, memory_order_release);
 
     // Register callback with the logging system
     // Only forward messages that pass the current level filter
@@ -2143,11 +2155,13 @@ void events_init_log_callback(lua_State *L) {
  * logging thread can be mid-dispatch into the dying state.
  */
 void events_shutdown_log_callback(void) {
+    // Barrier down FIRST: a logging thread may already hold a snapshot of the
+    // callback and invoke it after log_unregister_callback returns.
+    atomic_store_explicit(&g_log_dispatch_enabled, false, memory_order_release);
     if (g_log_callback_id >= 0) {
         log_unregister_callback(g_log_callback_id);
         g_log_callback_id = -1;
     }
-    g_log_callback_L = NULL;
 }
 
 // ============================================================================

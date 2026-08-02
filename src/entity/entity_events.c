@@ -16,6 +16,7 @@
 #include "entity_events.h"
 #include "component_registry.h"
 #include "../core/logging.h"
+#include "../lua/lua_runtime.h"
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -181,9 +182,12 @@ static bool g_initialized = false;
 static SignalHookInfo *g_signal_hooks = NULL;
 static int g_signal_hooks_capacity = 0;
 
-// Thread-safe Lua state access — signal handlers fire on ServerWorker thread
-// while main thread manages state lifecycle. Use acquire/release ordering.
-static _Atomic(lua_State *) g_lua_state = NULL;
+// Thread-safe dispatch gate — signal handlers fire on ServerWorker thread
+// while main thread manages state lifecycle. Cleanup clears this flag FIRST
+// (release) so handlers exit before hook removal begins; the Lua state
+// itself resolves through the server runtime (E2.0 audit 1.6), whose L
+// field is _Atomic for exactly this cross-thread pre-check.
+static _Atomic(bool) g_dispatch_enabled = false;
 
 // Transition guard — set during game state transitions (new game, load save)
 // to prevent signal handlers from dispatching while state is unstable
@@ -377,9 +381,10 @@ static void signal_storage_move(void *dst, void *src) {
 static void signal_construct_handler(void *self_storage, uint64_t entity_handle,
                                       void *entity_world, void *component) {
     (void)entity_world;  // EntityRef.World — not needed for dispatch
-    // Atomic load with acquire ordering — ensures we see the latest state
-    // written by the main thread. Local copy prevents TOCTOU race.
-    lua_State *L = atomic_load_explicit(&g_lua_state, memory_order_acquire);
+    // Acquire load of the gate flag, then resolve the server VM through the
+    // runtime (atomic L). Local copy prevents TOCTOU race.
+    if (!atomic_load_explicit(&g_dispatch_enabled, memory_order_acquire)) return;
+    lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
     if (!entity_handle || !L) return;
     if (atomic_load_explicit(&g_in_transition, memory_order_acquire)) return;
     // data_[0] at FunctionStorage + 0x18 contains our type_index
@@ -390,7 +395,8 @@ static void signal_construct_handler(void *self_storage, uint64_t entity_handle,
 static void signal_destroy_handler(void *self_storage, uint64_t entity_handle,
                                     void *entity_world, void *component) {
     (void)entity_world;  // EntityRef.World — not needed for dispatch
-    lua_State *L = atomic_load_explicit(&g_lua_state, memory_order_acquire);
+    if (!atomic_load_explicit(&g_dispatch_enabled, memory_order_acquire)) return;
+    lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
     if (!entity_handle || !L) return;
     if (atomic_load_explicit(&g_in_transition, memory_order_acquire)) return;
     uint16_t type_index = (uint16_t)(*(uintptr_t*)((char*)self_storage + 0x18));
@@ -1012,8 +1018,9 @@ bool entity_events_unsubscribe(EntitySubscriptionId id, lua_State *L) {
 void entity_events_fire_deferred(lua_State *L) {
     if (!g_initialized || !L) return;
 
-    // Cache Lua state for signal handlers (updated each tick, atomic release)
-    atomic_store_explicit(&g_lua_state, L, memory_order_release);
+    // Open the signal-handler dispatch gate (re-asserted each tick, atomic
+    // release); handlers resolve the state through the server runtime
+    atomic_store_explicit(&g_dispatch_enabled, true, memory_order_release);
 
     // Flush deferred connection buffer frees — these are old Signal arrays
     // that were replaced during inject_connection(). By now, any ServerWorker
@@ -1073,9 +1080,9 @@ void entity_events_on_destroy(uint16_t type_index, uint64_t entity_handle,
 void entity_events_cleanup(lua_State *L) {
     if (!g_initialized) return;
 
-    // Null g_lua_state FIRST so signal handlers exit immediately if they fire
-    // during hook removal (handlers check g_lua_state before dispatching)
-    atomic_store_explicit(&g_lua_state, NULL, memory_order_release);
+    // Close the dispatch gate FIRST so signal handlers exit immediately if
+    // they fire during hook removal (handlers check it before dispatching)
+    atomic_store_explicit(&g_dispatch_enabled, false, memory_order_release);
 
     // Remove all signal hooks from the game's CCR
     // (before clearing state, while g_bound_world is still valid)
@@ -1127,7 +1134,7 @@ void entity_events_cleanup(lua_State *L) {
     }
 
     g_bound_world = NULL;
-    atomic_store_explicit(&g_lua_state, NULL, memory_order_release);
+    atomic_store_explicit(&g_dispatch_enabled, false, memory_order_release);
 
     // Flush any remaining deferred frees during cleanup
     for (int i = 0; i < g_deferred_free_count; i++) {

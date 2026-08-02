@@ -67,6 +67,7 @@ extern "C" {
 #include "lua_ext.h"
 #include "lua_gate.h"
 #include "lua_context.h"
+#include "lua_runtime.h"
 #include "lua_json.h"
 #include "lua_osiris.h"
 #include "lua_stats.h"
@@ -402,8 +403,6 @@ static void *resolve_osiris_symbol(void *handle, const FunctionPattern *pat) {
     return resolve_by_pattern("libOsiris.dylib", pat);
 }
 
-// Lua state
-static lua_State *L = NULL;
 static dispatch_source_t s_console_poll_timer = NULL;
 
 // Module loading state
@@ -2620,7 +2619,7 @@ static void init_lua(void) {
     uint64_t t_total = (uint64_t)timer_get_monotonic_ms();
     LOG_LUA_INFO("Initializing Lua runtime...");
 
-    L = luaL_newstate();
+    lua_State *L = luaL_newstate();
     if (!L) {
         LOG_LUA_ERROR("Failed to create Lua state");
         return;
@@ -2634,6 +2633,12 @@ static void init_lua(void) {
 
     // Initialize context system (client/server tracking)
     lua_context_init();
+
+    // Publish this state as the server runtime (E2.0). Until E2.3 splits
+    // the bootstraps, the single VM serves both contexts; the legacy
+    // g_current_context fallback in lua_runtime_context_of() preserves
+    // client-context reporting during client-phase execution.
+    lua_runtime_register(LUA_CONTEXT_SERVER, L);
 
     // Initialize entity event system (Subscribe/OnCreate/OnDestroy)
     entity_events_init();
@@ -2692,13 +2697,9 @@ static void init_lua(void) {
         }
         lua_pop(L, 1);  // pop Ext
 
-        // Set Lua state for input event dispatch
-        input_set_lua_state(L);
-
         // Initialize overlay console with Tanit symbol
         overlay_init();
         overlay_set_command_callback(overlay_command_handler);
-        console_set_lua_state(L);
 
         // Register Ctrl+` hotkey to toggle overlay console
         // macOS keyCode 50 = backtick/grave accent key
@@ -2772,6 +2773,31 @@ static void init_lua(void) {
     LOG_LUA_INFO("Lua %s initialized (%llums total)", LUA_VERSION,
                  (unsigned long long)(t_lua_total - t_total));
 
+    // E2.2: second, script-empty client VM behind the same lua_gate.
+    // Bootstraps stay single-VM (all mod code runs in the server VM) until
+    // E2.3, so this state carries only the standard libraries and a minimal
+    // Ext surface — enough to prove dual-VM lifecycle without touching any
+    // subsystem routing. Registering it latches dual-VM mode in the runtime
+    // registry (state_for stops cross-context fallback).
+    lua_State *client_L = luaL_newstate();
+    if (client_L) {
+        luaL_openlibs(client_L);
+        lua_newtable(client_L);
+        lua_pushcfunction(client_L, lua_ext_context_isserver);
+        lua_setfield(client_L, -2, "IsServer");
+        lua_pushcfunction(client_L, lua_ext_context_isclient);
+        lua_setfield(client_L, -2, "IsClient");
+        lua_pushcfunction(client_L, lua_ext_context_getcontext);
+        lua_setfield(client_L, -2, "GetContext");
+        lua_pushcfunction(client_L, lua_global_print);
+        lua_setfield(client_L, -2, "Print");
+        lua_setglobal(client_L, "Ext");
+        lua_runtime_register(LUA_CONTEXT_CLIENT, client_L);
+        LOG_LUA_INFO("Client VM registered (script-empty until E2.3)");
+    } else {
+        LOG_LUA_WARN("Client VM allocation failed — continuing single-VM");
+    }
+
     // Start a GCD timer to poll the console socket independently of Osiris events.
     // Without this, the socket only responds during gameplay (when fake_Event fires).
     dispatch_queue_t poll_queue = dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0);
@@ -2785,22 +2811,34 @@ static void init_lua(void) {
         // and retry on the next 100ms tick instead of stacking GCD threads.
         // Count consecutive misses so sustained starvation (e.g. at the menu,
         // where fake_Event's blocking poll never runs) is diagnosable.
+        // Resolve through the runtime registry, never the init-time capture:
+        // this block outlives init_lua's local L across shutdown/re-init.
         static int poll_misses = 0;
-        if (L && lua_gate_trylock()) {
+        if (lua_runtime_state_for(LUA_CONTEXT_SERVER) && lua_gate_trylock()) {
             poll_misses = 0;
-            if (L) {
+            lua_State *poll_L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
+            if (poll_L) {
                 // Run console commands in SERVER context so Osiris queries/DB
                 // reads match server-side game state (matches how mods run).
                 LuaContext prev = lua_context_get();
                 lua_context_set(LUA_CONTEXT_SERVER);
-                console_poll(L);
+                console_poll(poll_L);
                 lua_context_set(prev);
             }
             lua_gate_unlock();
-        } else if (L) {
+        } else if (lua_runtime_state_for(LUA_CONTEXT_SERVER)) {
             if (++poll_misses == 50) {  // ~5s of continuous contention
                 LOG_CORE_WARN("Console poll starved: 50 consecutive gate misses (~5s)");
                 poll_misses = 0;
+            }
+        } else {
+            // Server runtime is gone but the timer is still firing — normal
+            // shutdown cancels the timer first, so this means the runtime
+            // died some other way. Warn once instead of going silent forever.
+            static bool warned_dead_runtime = false;
+            if (!warned_dead_runtime) {
+                warned_dead_runtime = true;
+                LOG_CORE_WARN("Console poll: server runtime is NULL — poll suspended");
             }
         }
     });
@@ -2817,25 +2855,41 @@ static void shutdown_lua(void) {
         s_console_poll_timer = NULL;
     }
     lua_gate_lock();
-    if (L) {
+    lua_State *L = lua_runtime_server()->L;
+    lua_State *client_L = lua_runtime_client()->L;
+    if (L || client_L) {
         LOG_LUA_INFO("Shutting down Lua runtime...");
 
         // Shutdown input system before closing Lua
         input_shutdown();
 
-        // Clear every published Lua state pointer while holding the gate, so
-        // native callbacks blocked on the lock re-resolve to NULL instead of
-        // entering the freed state (see lua_gate.h).
-        lua_input_clear_state();
-        lua_imgui_set_lua_state(NULL);
+        // Native callbacks resolve their state through the runtime registry
+        // (unregistered below, under this same gate), so a blocked waiter
+        // re-resolves to NULL instead of entering the freed state.
         events_shutdown_log_callback();
         functor_hooks_shutdown();
+        // Entity events: drop the signal dispatch gate, remove CCR signal
+        // hooks, and release Lua callback refs while the registry is alive
+        // (internally NULL-guards L; validates CCR via safe_memory first).
+        entity_events_cleanup(L);
 
         // Clear custom Osiris functions before closing Lua state
-        lua_osiris_reset_custom_functions(L);
+        if (L) {
+            lua_osiris_reset_custom_functions(L);
+        }
 
-        lua_close(L);
-        L = NULL;
+        // Retire both runtimes before the states die (client first, per the
+        // E2.0 shutdown order): generation bumps make any ref tagged with an
+        // old generation recognizably dead.
+        lua_runtime_unregister(LUA_CONTEXT_CLIENT);
+        lua_runtime_unregister(LUA_CONTEXT_SERVER);
+
+        if (client_L) {
+            lua_close(client_L);
+        }
+        if (L) {
+            lua_close(L);
+        }
     }
     lua_gate_unlock();
 }
@@ -2890,6 +2944,7 @@ static void request_deferred_session_init(void) {
  * Returns true if init was completed this tick.
  */
 static bool deferred_session_init_tick(void) {
+    lua_State *L = lua_runtime_server()->L;
     if (s_session_init_state != SESSION_INIT_PENDING) return false;
     if (!L) return false;
 
@@ -3051,6 +3106,7 @@ static void fake_InitGame(void *thisPtr) {
     // Engine hook thread entering the shared Lua state — serialize against
     // the console timer, render, and input threads (see lua_gate.h).
     lua_gate_lock();
+    lua_State *L = lua_runtime_server()->L;
     if (L) {
         luaL_dostring(L, "Ext.Print('Osiris initialized!')");
 
@@ -3108,6 +3164,7 @@ static int fake_Load(void *thisPtr, void *smartBuf) {
     // successful load, so a failed orig_Load cannot strand the tracker in
     // LoadSession with no deferred init armed.
     lua_gate_lock();
+    lua_State *L = lua_runtime_server()->L;
     if (L && result) {
         game_state_on_session_loading(L);
         luaL_dostring(L, "Ext.Print('Story/save data loaded!')");
@@ -3460,9 +3517,11 @@ static int count_osi_args(OsiArgumentDesc *args) {
 static void dispatch_event_to_lua(const char *eventName, int arity,
                                    OsiArgumentDesc *args, const char *timing) {
     (void)arity;  // Currently unused - listener uses its own requested arity
+    lua_State *L = lua_runtime_server()->L;
     if (!L || !eventName) return;
 
     lua_gate_lock();
+    L = lua_runtime_server()->L;
     // Re-check under the gate: shutdown_lua may have closed the state while
     // this thread was blocked on the lock.
     if (!L) {
@@ -3568,15 +3627,16 @@ static void fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
     event_call_count++;
 
     // Poll for console commands and run tick systems
+    lua_State *L = lua_runtime_server()->L;
     if (L) {
         lua_gate_lock();
+        L = lua_runtime_server()->L;
         if (!L) {  // re-check: shutdown may have closed the state while we blocked
             lua_gate_unlock();
             goto after_tick;
         }
         console_poll(L);
         input_poll(L);
-        lua_imgui_set_lua_state(L);  // Set Lua state for IMGUI event callbacks
         timer_update(L);  // Process timer callbacks
         timer_update_persistent(L);  // Process persistent timer callbacks
         persist_tick(L);  // Check for dirty PersistentVars to auto-save
@@ -4158,7 +4218,7 @@ init_subsystems:
                     const char *detected_ver = version_detect_get_version();
                     if (!no_hooks && detected_ver &&
                         strcmp(detected_ver, FUNCTOR_ADDRS_VERIFIED_BUILD) == 0) {
-                        if (functor_hooks_init(L)) {
+                        if (functor_hooks_init()) {
                             LOG_HOOKS_INFO("Functor hooks initialized");
                         } else {
                             LOG_HOOKS_WARN("Functor hooks initialization failed (events won't fire)");
@@ -4482,6 +4542,7 @@ static void bg3se_cleanup(void) {
     // This allows mods to perform cleanup tasks (save state, close resources).
     // Serialized like every other native-to-Lua entry (see lua_gate.h).
     lua_gate_lock();
+    lua_State *L = lua_runtime_server()->L;
     if (L) {
         events_fire(L, EVENT_SHUTDOWN);
     }

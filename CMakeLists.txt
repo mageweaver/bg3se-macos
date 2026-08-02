@@ -154,6 +154,7 @@ add_library(bg3se SHARED
     src/core/mach_exception.c
     src/core/mach_exc_stubs/mach_excServer.c
     src/lua/lua_gate.c
+    src/lua/lua_runtime.c
     src/lua/lua_ext.c
     src/lua/lua_ide_helpers.c
     src/lua/lua_json.c
@@ -352,10 +353,13 @@ if(BUILD_TESTS)
         tests/tier0/test_osiris_handles.c
         tests/tier0/test_entity_events.c
         tests/tier0/test_mod_paths.c
+        tests/tier0/test_lua_runtime.c
         tests/tier0/stub_logging.c
         src/core/safe_memory.c
         src/osiris/pattern_scan.c
         src/mod/mod_paths.c
+        src/lua/lua_runtime.c
+        src/lua/lua_context.c
     )
     target_include_directories(bg3se_test_tier0 PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/tier0
@@ -363,8 +367,10 @@ if(BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/src/osiris
         ${CMAKE_SOURCE_DIR}/src/entity
         ${CMAKE_SOURCE_DIR}/src/mod
+        ${CMAKE_SOURCE_DIR}/src/lua
+        ${LUA_SRC_DIR}
     )
-    target_link_libraries(bg3se_test_tier0 PRIVATE "-framework Foundation")
+    target_link_libraries(bg3se_test_tier0 PRIVATE lua_static "-framework Foundation")
     set_target_properties(bg3se_test_tier0 PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}"

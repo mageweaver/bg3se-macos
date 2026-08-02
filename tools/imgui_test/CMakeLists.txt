@@ -39,6 +39,8 @@ set(BG3SE_IMGUI_SOURCES
 set(BG3SE_LUA_SOURCES
     ${BG3SE_ROOT}/src/lua/lua_imgui.c
     ${BG3SE_ROOT}/src/lua/lua_gate.c
+    ${BG3SE_ROOT}/src/lua/lua_runtime.c
+    ${BG3SE_ROOT}/src/lua/lua_context.c
 )
 
 # Lua Library

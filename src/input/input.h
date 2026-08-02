@@ -185,26 +185,12 @@ void input_inject_key_up(uint16_t keyCode, uint32_t modifiers);
 // ============================================================================
 
 /**
- * Set the Lua state for event dispatch.
- * Key events will fire Ext.Events.KeyInput.
- *
- * @param L Lua state (or NULL to disable)
- */
-void input_set_lua_state(lua_State *L);
-
-/**
  * Register the Ext.Input namespace.
  *
  * @param L               Lua state
  * @param ext_table_index Stack index of Ext table
  */
 void lua_input_register(lua_State *L, int ext_table_index);
-
-/**
- * Clear the hotkey callback Lua state. Call while holding the Lua gate,
- * before lua_close() (see lua_gate.h).
- */
-void lua_input_clear_state(void);
 
 // ============================================================================
 // macOS Virtual Key Codes (common keys)

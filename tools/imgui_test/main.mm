@@ -22,6 +22,7 @@ extern "C" {
 #include "lualib.h"
 #include "imgui_objects.h"
 #include "lua_imgui.h"
+#include "lua_runtime.h"
 
 // Stub implementations for standalone test app
 // These replace the BG3-specific implementations
@@ -310,15 +311,19 @@ static void setup_lua_state(void) {
     // Set global Ext
     lua_setglobal(g_LuaState, "Ext");
 
-    // Set up IMGUI Lua state for callbacks
-    lua_imgui_set_lua_state(g_LuaState);
+    // IMGUI resolves its state through the runtime registry (E2.0). Register
+    // as SERVER: lua_imgui_cleanup_refs resolves the server VM until E2.3
+    // (refs live in the bootstrap VM in production), and registering CLIENT
+    // here would latch dual mode with no server — cleanup would resolve NULL
+    // and leak the callback refs on widget teardown.
+    lua_runtime_register(LUA_CONTEXT_SERVER, g_LuaState);
 
     NSLog(@"Lua state initialized with Ext.IMGUI");
 }
 
 static void cleanup_lua_state(void) {
     if (g_LuaState) {
-        lua_imgui_set_lua_state(NULL);
+        lua_runtime_unregister(LUA_CONTEXT_SERVER);
         lua_close(g_LuaState);
         g_LuaState = NULL;
     }

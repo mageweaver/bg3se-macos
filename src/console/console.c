@@ -11,6 +11,7 @@
 #include "console.h"
 #include "../core/logging.h"
 #include "../lua/lua_events.h"
+#include "../lua/lua_runtime.h"
 #include "../lua/lua_context.h"
 #include "../overlay/overlay.h"
 #include "../lifetime/lifetime.h"
@@ -77,7 +78,6 @@ typedef struct {
 
 static ConsoleCommand s_commands[MAX_CONSOLE_COMMANDS];
 static int s_command_count = 0;
-static lua_State *s_lua_state = NULL;
 
 // ============================================================================
 // Thread-safe Overlay Command Queue (drained from console_poll on Lua thread)
@@ -96,7 +96,7 @@ static void process_line(lua_State *L, char *line, int client_slot);
 /**
  * Drain queued overlay commands and execute on the calling thread.
  */
-static void drain_overlay_command_queue(void) {
+static void drain_overlay_command_queue(lua_State *L) {
     while (1) {
         char *cmd = NULL;
 
@@ -113,7 +113,7 @@ static void drain_overlay_command_queue(void) {
         // Route through process_line so ! commands, multi-line, comments,
         // and server context all work from the overlay console (Issue #66).
         // client_slot=-1 means "overlay console" (no socket client).
-        process_line(s_lua_state, cmd, -1);
+        process_line(L, cmd, -1);
         free(cmd);
     }
 }
@@ -853,10 +853,9 @@ bool console_has_client(void) {
 void console_poll(lua_State *L) {
     if (!L) return;
     if (!s_initialized) console_init();
-    s_lua_state = L;
 
     // Execute any queued overlay commands on this Lua-owning tick thread.
-    drain_overlay_command_queue();
+    drain_overlay_command_queue(L);
 
     // Poll socket clients (higher priority, real-time)
     socket_poll_clients(L);
@@ -868,10 +867,6 @@ void console_poll(lua_State *L) {
 // ============================================================================
 // Direct Lua Execution (for overlay console)
 // ============================================================================
-
-void console_set_lua_state(lua_State *L) {
-    s_lua_state = L;
-}
 
 void console_queue_lua_command(const char *command) {
     if (!command) return;
@@ -900,7 +895,10 @@ void console_queue_lua_command(const char *command) {
 }
 
 bool console_execute_lua(const char *command) {
-    if (!command || !s_lua_state) {
+    // Console routes to the server VM until E2.6 adds context switching
+    // (E2.0 audit 1.5). Caller must hold the Lua gate.
+    lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
+    if (!command || !L) {
         LOG_CONSOLE_WARN("console_execute_lua: no Lua state available");
         return false;
     }
@@ -908,19 +906,19 @@ bool console_execute_lua(const char *command) {
     LOG_CONSOLE_DEBUG("Overlay execute: %s", command);
 
     // Begin lifetime scope for console command
-    LifetimeHandle scope = lifetime_lua_begin_scope(s_lua_state);
+    LifetimeHandle scope = lifetime_lua_begin_scope(L);
     (void)scope;
 
-    int result = luaL_dostring(s_lua_state, command);
+    int result = luaL_dostring(L, command);
     if (result != LUA_OK) {
-        const char *err = lua_tostring(s_lua_state, -1);
+        const char *err = lua_tostring(L, -1);
         console_error("Error: %s", err ? err : "unknown error");
-        lua_pop(s_lua_state, 1);
-        lifetime_lua_end_scope(s_lua_state);
+        lua_pop(L, 1);
+        lifetime_lua_end_scope(L);
         return false;
     }
 
     // End lifetime scope - userdata created during command become invalid
-    lifetime_lua_end_scope(s_lua_state);
+    lifetime_lua_end_scope(L);
     return true;
 }

@@ -13,6 +13,78 @@ Each entry includes:
 
 ---
 
+## [Unreleased] - 2026-08-02 — Wave 7 Phase 1 (E2.0–E2.2): dual-VM state ownership
+
+**Category:** Architecture / Dual-VM foundation | **Plan:** docs/plans/2026-08-01-001-feat-wave-7-terminal-parity-plan.md
+
+### Added
+
+- **`LuaRuntime` ownership registry** (`src/lua/lua_runtime.c/h`) — client and
+  server Lua VMs are now owned objects `{ _Atomic(lua_State *) L, context,
+  generation, alive }` resolved via `lua_runtime_state_for(ctx)`; generations
+  bump on unregister so references to a dead state are recognizably stale.
+  The single-VM fallback is compatibility-only: the first client registration
+  latches dual-VM mode, after which a dead exact-context runtime resolves to
+  NULL instead of routing callbacks into the other VM's registry.
+- **Script-empty client VM (E2.2)** — `init_lua` creates and registers a second
+  Lua state behind the same `lua_gate` with standard libraries and a minimal
+  Ext surface (IsServer/IsClient/GetContext/Print). All mod code stays in the
+  server VM until E2.3 splits bootstraps; `shutdown_lua` retires client-first.
+- **Static ownership gate** (`tests/harness/test_lua_state_ownership.py`) —
+  CI fails on any new file-scope `lua_State` declaration outside
+  `lua_runtime.[ch]`; the audited allowlist is empty and must stay empty.
+- **E2.0 state-ownership audit** (`docs/dual-vm/E2.0-state-ownership-audit.md`)
+  — 36-item inventory across 7 categories with per-item dispositions;
+  Category 1 (raw `lua_State*` caches) fully migrated.
+- **10 new tier-0 tests** (65 total): dual-context reporting, coroutine
+  main-thread resolution, generation bumps, double-register refusal,
+  pre/post-latch `state_for` semantics, repeated dual init/shutdown balance,
+  and register/unregister no-op guards (NULL state, already-dead runtime).
+
+### Changed
+
+- **All eight raw `lua_State*` caches deleted** — main.c's global `L`, IMGUI,
+  hotkeys, CGEventTap input, console, entity events, functor hooks, and the
+  log callback now resolve through the runtime registry (post-gate for Lua
+  entry, atomic pre-check for liveness). IMGUI and hotkey dispatch stay
+  pinned to the bootstrap (server) VM until E2.3 — their refs live there.
+- **Module dispatch barriers** — entity events, functor hooks, and the log
+  callback each gained an atomic dispatch-enabled flag cleared FIRST in their
+  shutdown paths, preserving the old null-the-cache-first teardown ordering
+  (Dobby hooks stay patched; logging threads can hold callback snapshots).
+- **`Ext.IsServer/IsClient/GetContext`** — a client-VM caller reports CLIENT by
+  fixed runtime identity; the server VM keeps the bootstrap phase global until
+  E2.3 (mods see unchanged behavior).
+- **GCD console poll timer** re-resolves the server runtime each tick instead
+  of capturing init-time state (stale-capture fix across shutdown/re-init).
+- **`imgui_test` tool** registers its standalone state as the server runtime
+  (matching where `lua_imgui_cleanup_refs` resolves refs until E2.3;
+  registering CLIENT would latch dual mode with no server and leak refs).
+- **Review fix pass** (four-lens: correctness, silent-failure, tests, docs) —
+  `entity_events_cleanup` is now wired into `shutdown_lua` (CCR signal hooks
+  removed, Lua refs released, dispatch gate dropped — it was previously never
+  called); `functor_hooks_shutdown` no longer NULLs the original-function
+  pointers, so permanently-patched Dobby wrappers keep forwarding to the game
+  post-shutdown instead of silently no-oping stat functors; refused
+  re-registration in `lua_runtime_register` and a dead server runtime in the
+  console poll each warn once instead of failing silently.
+
+### Verification
+
+- Offline gates: tier0 65/65, pytest harness 254/254. Live (build 7209685):
+  Tier1 113/113, Tier2 94/96 — identical to the v0.42.0 baseline (both misses
+  are the documented environment-dependent probes).
+- **Full compat matrix, 2026-08-02**: all 11 manifested scenarios passed every
+  step (mcm 27/27, community_library 25/25, combat_extender 27/27, 5e_spells
+  23/23, transmog_enhanced 21/21, …) with `compat diff` reporting zero
+  regressions against `docs/compat-reports/baseline/` for all 11. Each
+  scenario is a full launch/quit cycle of the dual-VM dylib with the client
+  VM registered. The 3 failures in the 18-entry roster are `mod_check`
+  pre-flights on uninstalled catalog-only entries (bg3_mod_fixer,
+  configurable_enemies, improved_ui) — inventory conditions, not SE behavior.
+
+---
+
 ## [v0.42.0] - 2026-08-01 — Wave 6: Final Audit — truth pass, native prototype getters, parity re-baseline
 
 **Category:** Truth pass / Release | **Parity:** ~94.8% (behavioral accounting, per-function contract diffs) | **Issues:** docs/parity-100/ synthesis

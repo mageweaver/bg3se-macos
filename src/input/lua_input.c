@@ -7,6 +7,7 @@
 #include "input.h"
 #include "../core/logging.h"
 #include "../lua/lua_gate.h"
+#include "../lua/lua_runtime.h"
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -27,22 +28,24 @@ typedef struct {
 
 static LuaHotkey s_lua_hotkeys[MAX_LUA_HOTKEYS];
 static int s_lua_hotkey_count = 0;
-static lua_State *s_hotkey_lua_state = NULL;
 
 /**
  * C callback wrapper that invokes the Lua callback.
+ * Hotkeys are client-owned (E2.0 audit 1.3), but their refs are created by
+ * mod code running in the bootstrap VM — resolve SERVER until E2.3 splits
+ * bootstraps and Category-2 owner tags land.
  */
 static void lua_hotkey_callback(void *userData) {
     int idx = (int)(intptr_t)userData;
     if (idx < 0 || idx >= MAX_LUA_HOTKEYS) return;
-    if (!s_hotkey_lua_state) return;
+    if (!lua_runtime_state_for(LUA_CONTEXT_SERVER)) return;
 
     // May fire from the input hook thread - serialize Lua access (lua_gate.h).
-    // Resolve state and slot only under the gate: shutdown clears
-    // s_hotkey_lua_state while holding it, so a waiter blocked here must
-    // re-check instead of using a captured (possibly freed) state.
+    // Resolve state and slot only under the gate: shutdown unregisters the
+    // runtime while holding it, so a waiter blocked here must re-resolve
+    // instead of using a captured (possibly freed) state.
     lua_gate_lock();
-    lua_State *L = s_hotkey_lua_state;
+    lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
     if (!L || !s_lua_hotkeys[idx].active) {
         lua_gate_unlock();
         return;
@@ -59,15 +62,6 @@ static void lua_hotkey_callback(void *userData) {
         lua_pop(L, 1);
     }
     lua_gate_unlock();
-}
-
-/**
- * Clear the hotkey Lua state. Call while holding the Lua gate, before
- * lua_close(), so a blocked lua_hotkey_callback re-resolves to NULL instead
- * of entering the freed state.
- */
-void lua_input_clear_state(void) {
-    s_hotkey_lua_state = NULL;
 }
 
 // ============================================================================
@@ -300,9 +294,6 @@ static int lua_input_register_hotkey(lua_State *L) {
     if (s_lua_hotkey_count >= MAX_LUA_HOTKEYS) {
         return luaL_error(L, "Maximum hotkey limit reached (%d)", MAX_LUA_HOTKEYS);
     }
-
-    // Store the Lua state for callbacks
-    s_hotkey_lua_state = L;
 
     // Find a free slot
     int idx = -1;

@@ -206,7 +206,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (113 tests, always works). Use `!test_ingame` for Tier 2 tests (96 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 307 offline tests (55 C + 252 pytest) run via CI.
+Use `!test` to run Tier 1 regression tests (113 tests, always works). Use `!test_ingame` for Tier 2 tests (96 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 319 offline tests (65 C + 254 pytest) run via CI.
 
 ## Reverse Engineering
 
