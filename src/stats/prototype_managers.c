@@ -165,6 +165,19 @@ typedef void (*StatusPrototypeInit_fn)(void* prototype,
                                        const uint32_t* status_name_fs_ptr,
                                        bool flags);
 
+// eoc::InterruptPrototypeManager::GetPrototype(FixedString const&) const
+// x1 is a genuine FixedString const* (the function loads through it).
+// Returns &values[index] (stride 0x1f0) or NULL on miss.
+typedef void* (*InterruptGetPrototype_fn)(const void* manager,
+                                          const uint32_t* fs_ptr);
+
+// eoc::Passives::Get(FixedString const&) const
+// The symbol says const&, but the internal-linkage body was LTO arg-promoted:
+// w1 carries the FixedString INDEX BY VALUE (identity hash, key % capacity,
+// chained-node walk). Returns &node->value or NULL on miss. Passing a pointer
+// here would hash the pointer bits and always miss (or walk a bogus bucket).
+typedef void* (*PassivesGet_fn)(const void* passives, uint32_t fs_value);
+
 // ============================================================================
 // Global State
 // ============================================================================
@@ -182,6 +195,8 @@ static void **g_pStatusPrototypeManagerPtr = NULL;
 // Cached function pointers (resolved during init)
 static SpellPrototypeInit_fn g_SpellPrototypeInit = NULL;
 static StatusPrototypeInit_fn g_StatusPrototypeInit = NULL;
+static InterruptGetPrototype_fn g_InterruptGetPrototype = NULL;
+static PassivesGet_fn g_PassivesGet = NULL;
 
 // ============================================================================
 // Helper: Calculate runtime address from Ghidra offset
@@ -268,10 +283,20 @@ bool prototype_managers_init(void *main_binary_base) {
         g_StatusPrototypeInit = (off && off->fn_status_proto_init)
             ? (StatusPrototypeInit_fn)offset_table_fn(off->fn_status_proto_init)
             : NULL;
+        g_InterruptGetPrototype = (off && off->fn_interrupt_proto_get)
+            ? (InterruptGetPrototype_fn)offset_table_fn(off->fn_interrupt_proto_get)
+            : NULL;
+        g_PassivesGet = (off && off->fn_passives_get)
+            ? (PassivesGet_fn)offset_table_fn(off->fn_passives_get)
+            : NULL;
         LOG_STATS_DEBUG("[PrototypeManagers] SpellPrototype::Init at: %p",
                         (void*)g_SpellPrototypeInit);
         LOG_STATS_DEBUG("[PrototypeManagers] StatusPrototype::Init at: %p",
                         (void*)g_StatusPrototypeInit);
+        LOG_STATS_DEBUG("[PrototypeManagers] InterruptPrototypeManager::GetPrototype at: %p",
+                        (void*)g_InterruptGetPrototype);
+        LOG_STATS_DEBUG("[PrototypeManagers] eoc::Passives::Get at: %p",
+                        (void*)g_PassivesGet);
     }
 
     g_Initialized = true;
@@ -429,22 +454,48 @@ void* prototype_get_cached_status(const char *name) {
     return refmap_lookup(manager, fs_key);
 }
 
+// Passive and interrupt lookups go through the native getters, not
+// refmap_lookup. eoc::Passives is a chained-node DEPRECATED_RefMapImpl whose
+// values are stored inline in nodes (not a pointer array), and interrupt
+// storage is a hash table over a contiguous 0x1f0-stride prototype array —
+// refmap_lookup's values-are-pointers read returns interior garbage for both.
+// Fail closed when the native getter is unresolved for this game version.
 void* prototype_get_cached_passive(const char *name) {
     if (!name) return NULL;
+    if (!g_PassivesGet) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_STATS_WARN("[PrototypeManagers] GetCachedPassive disabled: "
+                           "eoc::Passives::Get not resolved for this game version");
+        }
+        return NULL;
+    }
     void *manager = get_passive_prototype_manager();
     if (!manager) return NULL;
     uint32_t fs_key = fixed_string_intern(name, -1);
     if (fs_key == FS_NULL_INDEX || fs_key == 0 || fs_key == 0xFFFFFFFF) return NULL;
-    return refmap_lookup(manager, fs_key);
+    // LTO arg-promoted ABI: the FixedString index goes BY VALUE in w1.
+    return g_PassivesGet(manager, fs_key);
 }
 
 void* prototype_get_cached_interrupt(const char *name) {
     if (!name) return NULL;
+    if (!g_InterruptGetPrototype) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_STATS_WARN("[PrototypeManagers] GetCachedInterrupt disabled: "
+                           "InterruptPrototypeManager::GetPrototype not resolved "
+                           "for this game version");
+        }
+        return NULL;
+    }
     void *manager = get_interrupt_prototype_manager();
     if (!manager) return NULL;
     uint32_t fs_key = fixed_string_intern(name, -1);
     if (fs_key == FS_NULL_INDEX || fs_key == 0 || fs_key == 0xFFFFFFFF) return NULL;
-    return refmap_lookup(manager, fs_key);
+    return g_InterruptGetPrototype(manager, &fs_key);
 }
 
 // ============================================================================

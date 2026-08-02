@@ -532,6 +532,56 @@ InterruptPrototype *InterruptPrototypeManager_GetPrototype(
 The manager `GetPrototype` ABI and `x0` return are additionally confirmed by
 the instruction sequence at `0x101b7adcc`..`0x101b7ae44`.
 
+### `eoc::Passives::Get` ABI — VERIFIED, LTO ARG-PROMOTED (2026-08-01)
+
+`eoc::Passives::Get(ls::FixedString const&) const` at `0x101c0f27c` is a local
+(`t`) symbol whose body does **not** honor the `const&` in its mangled name.
+Full disassembly (16 instructions, ends at `0x101c0f2b8`):
+
+```asm
+; x0 = eoc::Passives*, w1 = FixedString INDEX BY VALUE (arg-promoted)
+0x101c0f27c  mov   x8, x0
+0x101c0f280  ldr   w0, [x0, #0xc]      ; bucket capacity
+0x101c0f284  cbz   w0, miss
+0x101c0f288  mov   x2, x1              ; save key value
+0x101c0f28c  udiv  w9, w1, w0
+0x101c0f290  msub  w9, w9, w0, w1      ; bucket = key % capacity (identity hash)
+0x101c0f294  ldr   x1, [x8, #0x10]     ; bucket array
+0x101c0f298  add   x8, x1, x9, lsl #3
+0x101c0f29c  ldr   x8, [x8]            ; node = bucket[i] / node->next  <-- loop
+0x101c0f2a0  cbz   x8, miss
+0x101c0f2a4  ldr   w9, [x8, #0x8]      ; node->key
+0x101c0f2a8  cmp   w9, w2
+0x101c0f2ac  b.ne  loop
+0x101c0f2b0  b     0x101c0f2bc         ; hit: shared tail in operator[] re-walks,
+                                       ;      returns &node->value (node + 0x10)
+miss:
+0x101c0f2b4  mov   x0, #0
+0x101c0f2b8  ret
+```
+
+Key findings:
+
+- **w1 carries the FixedString index by value.** LLVM arg-promoted the
+  internal-linkage body; there is no load through x1 anywhere. Calling it with
+  a pointer (as the symbol suggests) hashes the pointer bits and misses or
+  walks a bogus bucket. Contrast: `InterruptPrototypeManager::GetPrototype`
+  does `ldr w0, [x1]` — a genuine `FixedString const*`.
+- `eoc::Passives` embeds a chained-node `DEPRECATED_RefMapImpl` (capacity at
+  `this+0xc`, bucket array of node pointers at `this+0x10`; node layout:
+  `next@0x0, key@0x8, PassivePrototype value inline @0x10`). The value is
+  stored **inline in the node**, not behind a pointer — the generic
+  `refmap_lookup` open-addressing walk (keys array + values-as-pointers) is
+  layout-wrong for this container.
+- Hit path branches into the tail of the adjacent RefMap `operator[]`
+  (`0x101c0f2bc`), which re-walks and returns `node + 0x10`; miss returns NULL
+  directly. Effective contract: `PassivePrototype*` or NULL.
+- Consumed by `prototype_get_cached_passive` /
+  `prototype_get_cached_interrupt` via `fn_passives_get` /
+  `fn_interrupt_proto_get` in the offset table (Wave 6).
+- Fat-binary note: the ARM64 slice of the 7209685 universal binary sits at
+  file offset `0xf558000` (from `otool -f`), not the older `0xf534000`.
+
 ## Feasibility verdicts
 
 ### Passive sync — BLOCKED

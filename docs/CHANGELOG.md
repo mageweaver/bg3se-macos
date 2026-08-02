@@ -13,6 +13,95 @@ Each entry includes:
 
 ---
 
+## [v0.42.0] - 2026-08-01 — Wave 6: Final Audit — truth pass, native prototype getters, parity re-baseline
+
+**Category:** Truth pass / Release | **Parity:** ~94.8% (behavioral accounting, per-function contract diffs) | **Issues:** docs/parity-100/ synthesis
+
+### Added
+
+- **Native cached prototype lookups** — `Ext.Stats.GetCachedPassive` and
+  `GetCachedInterrupt` now dispatch through the engine's own getters instead
+  of the generic RefMap walk: `InterruptPrototypeManager::GetPrototype`
+  (`0x101b7adcc`; x1 = FixedString const*, returns `&values[index]`, stride
+  0x1f0) and `eoc::Passives::Get` (`0x101c0f27c`). The passive getter is
+  **LTO arg-promoted** — despite the `const&` in its mangled name, w1 carries
+  the FixedString index by value (instruction-verified; full disassembly in
+  `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). This fixes a latent bug:
+  interrupt storage is a hash table over a contiguous 0x1f0-stride array, and
+  `eoc::Passives` stores prototypes inline in chained nodes — the old
+  values-are-pointers read returned interior garbage for both. Both offsets
+  live in the per-version offset table with nm-audited migration recipes
+  (`tools/offset_manifest.json`); unknown game versions fail closed with a
+  warn-once. Live-verified: interrupt prototype's FixedString at +0x0
+  round-trips the name; unknown names miss to nil.
+- **Tier-2 test `Stats.W6.NativeCachedLookups`** (96 in-game tests).
+- **Wave 7 contract manifest** (`docs/parity-100/CONTRACT.md` + machine-readable
+  `contract.json`) — all 293 Windows-registered contracts inventoried from the
+  registration blocks and proxy metatables (module functions, entity/stats
+  proxy methods, per-context Client/Server modules) with zero unclassified
+  entries: 202 implemented, 77 behavioral gaps, 1 matched upstream TODO,
+  13 excluded = **72.4% function-level behavioral parity**. This is the Wave 7
+  scoring denominator. New `bg3se-harness parity scan --contract` mode scores
+  against it offline; 7 new pytest guards pin the verified per-namespace
+  counts (Entity 14/26, Types 10/13, Net gap = PlayerHasExtender GUID path).
+  516 tests total (55 C + 252 pytest + 113 Tier 1 + 96 Tier 2).
+- **ROADMAP stale-item adjudication** — every unchecked/pending marker
+  classified: 17 verified complete (evidence cited inline), 4 annotated to
+  Wave 7 phases, 8 marked obsolete. Nothing remains silently stale.
+
+### Changed
+
+- **Parity re-baselined to ~94.8% with behavioral accounting and per-function
+  contract diffs** — rows are scored against the Windows registration blocks
+  with admitted fail-closed stubs scoring zero and macOS-only extras earning
+  no credit: Ext.Entity 53.8% (14/26 of Entity.inl:291-325 behavioral — 11
+  registrations missing outright: HandleToUuid, UuidToHandle,
+  GetAllEntitiesWithUuid, GetEntitiesAroundPosition, Create, Destroy,
+  OnSystemUpdate, OnSystemPostUpdate, GetTrace, ClearTrace,
+  GetRegisteredComponentTypes; EnableTracing stubbed), Ext.Stats 94.2%
+  (49/52 — AddAttribute, AddEnumerationValue, ExecuteFunctors partial),
+  Ext.Types 76.9% (10/13 — GetHashSetValueAt, AddCustomFunction,
+  AddCustomProperty missing; the latter two are *functional* on Windows as
+  Lua-side custom-property registration, Types.inl:328/347, not stubs as the
+  deferral registry previously claimed). The prior 97.3% counted name
+  presence; the interim 96.7% missed the function-substitution inflation.
+  Methodology published in ROADMAP.md; analysis in docs/parity-100/.
+- **`Ext.Types.Construct` leaves the parity denominator** — the Windows
+  reference is itself `// TODO; return 0` (Types.inl:286); our nil matches
+  its contract.
+- **Scope-exclusion registry reconciled** — docs/deferrals.md is now the
+  single authority: Ext.UI, DAP, Virtual Textures, and Input Injection are
+  explicit exclusions; entity replication is ruled **non-excludable** (5 of
+  11 vetted mods call `entity:Replicate()`) and stays a scored deferral.
+
+### Fixed
+
+- **Stale FixedString write diagnostic** (`component_property.c`) — interning
+  works via `fixed_string_intern`; the real blocker is old-value
+  DecRef/ownership transfer, and the refusal message now says so.
+- **`GetHashSetValueAt` contract comment** — Windows is 1-based (Lua
+  convention), not 0-based as the stub comment claimed.
+- **`GetReplicationFlags` / `DisableTracing` contract notes** — upstream
+  exposes `EnableTracing(bool)` only and puts `GetReplicationFlags` on the
+  entity proxy; both placements documented in the deferral registry.
+
+### Technical
+
+- New `VersionOffsets` fields `fn_interrupt_proto_get` / `fn_passives_get`
+  (0 = fail closed on 6995620), covered by `test_offset_audit.py` (73 green)
+  and manifest-recipe guards.
+- ARM64 slice of the 7209685 fat binary confirmed at file offset `0xf558000`
+  via `otool -f` (documented; earlier RE notes carried a stale offset).
+- Live gates on build 7209685: Tier 1 113/113; Tier 2 94/96 — the two
+  failures are environment-dependent probes, not regressions:
+  `Stats.DamageEvents.PairedFiring` needs a combat damage tick (BURNING
+  applied out of combat produced no functor call) and
+  `Parity.Level.SweepCylinderAll` sweeps fixed world-origin coordinates that
+  hit no geometry in the current save's level. Offline gates: 55 C + 245
+  pytest green.
+
+---
+
 ## [v0.41.0] - 2026-07-30 — Wave 3: Parity Closure B — physics VMT repair, AiGrid pathfinding, ComponentOps unlock
 
 **Category:** Parity | **Parity:** ~97.3% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)

@@ -51,11 +51,11 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 506 (298 offline + 208 Lua) |
+| **Total tests** | 516 (307 offline + 209 Lua) |
 | **Tier 0 (C unit)** | 55 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 239 — Python harness, no game, CI-safe |
+| **Tier H (pytest)** | 252 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
-| **Tier 2 (In-Game)** | 95 — Lua, require loaded save |
+| **Tier 2 (In-Game)** | 96 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
@@ -77,7 +77,7 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 
 ### Tier H: Python Harness Tests
 
-239 tests in `tests/harness/`. Run with pytest, no game dependency.
+252 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -98,10 +98,10 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | test_menu | 5 | menu detection, click delivery, coordinate geometry |
 | test_mod | 16 | UUID resolution, pak metadata, registry reconciliation, preflight |
 | test_monitor | 8 | process tracking, atomic health writes, graphics restoration |
-| test_offset_audit | 71 | symbol manifest, offset-table, remap, and functor invariants |
+| test_offset_audit | 73 | symbol manifest, offset-table, remap, and functor invariants |
 | test_physics_vmt_audit | 4 | physics VMT index invariants |
 | test_savegames | 10 | fixture snapshot/restore source tracking, backup safety, save-mod marker classification |
-| test_scenarios | 3 | scenario manifest schema, MCM injection, Lua assertion syntax (luac) |
+| test_scenarios | 7 | scenario manifest schema, baseline coverage, catalog stamps, MCM injection, Lua assertion syntax (luac) |
 | test_test_runner | 6 | output parsing and socket error handling |
 
 ### Tier 1+2: Lua In-Game Tests
@@ -154,7 +154,7 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 2: In-Game Tests
 
-95 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
+96 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
@@ -212,7 +212,7 @@ RPGStats system access via `Ext.Stats`.
 - `Stats.Goal23.HonestSurface` — Calls gated mutations and missing treasure lookups, asserting honest results
 - `Stats.Goal23.ModuleLoadOrder` — Executes `GetStatsLoadedMods` / `GetStatsLoadedBefore` and checks prefix semantics
 
-Tier 2 adds `Stats.Goal23.TreasureReads` and `Stats.Goal23.PrototypeSyncHonesty`.
+Tier 2 adds `Stats.Goal23.TreasureReads`, `Stats.Goal23.PrototypeSyncHonesty`, and `Stats.W6.NativeCachedLookups` (GetCachedPassive/GetCachedInterrupt through the native engine getters — asserts the interrupt prototype's FixedString at +0x0 round-trips the name, and that unknown names miss to nil).
 
 ### Timer (8 tests)
 Timer system via `Ext.Timer`.

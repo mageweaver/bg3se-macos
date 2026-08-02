@@ -987,7 +987,9 @@ def main():
     p_parity = sub.add_parser("parity", help="Windows BG3SE parity audit")
     parity_sub = p_parity.add_subparsers(dest="parity_command", required=True)
 
-    parity_sub.add_parser("scan", help="Compare live Ext table vs Windows baseline (requires running game)")
+    p_pscan = parity_sub.add_parser("scan", help="Compare live Ext table vs Windows baseline (requires running game)")
+    p_pscan.add_argument("--contract", action="store_true",
+                         help="Score against the Wave 7 contract manifest (docs/parity-100/contract.json, offline)")
     parity_sub.add_parser("missing", help="List known gaps from baseline (offline)")
 
     p_pv = parity_sub.add_parser("verify", help="Deep-verify a namespace via Lua probes (requires running game)")

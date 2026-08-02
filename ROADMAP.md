@@ -2,13 +2,17 @@
 
 This document tracks the development roadmap for scope-corrected 100% parity with Windows BG3SE (Norbyte's Script Extender): 100% of the supported macOS surface.
 
-## Current Status: v0.41.0
+## Current Status: v0.42.0
 
-**Overall Feature Parity: approximately 97.3%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix))
+**Overall Feature Parity: approximately 94.8%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix), scored with behavioral accounting — see methodology below)
+
+**Scoring methodology (Wave 6 re-baseline + Wave 7 Phase 0, 2026-08-01/02):** per-function behavioral accounting — an admitted fail-closed stub scores zero even when the name is present, macOS-only additions earn no extra credit, and an API the Windows reference itself never implemented (`Ext.Types.Construct` is `// TODO; return 0` at Types.inl:286) leaves the denominator as a matched contract — has so far been applied to the **Entity, Stats, and Types rows** via per-function diffs against the Windows registration blocks. The remaining rows still carry legacy scores measured against the macOS implementation surface, so the 94.8% row-mean is a mixed-methodology number and overstates rows the contract manifest scores lower (e.g. Debug 100% vs 3/8 behavioral, IMGUI 100% vs 2/7, StaticData 100% vs 2/5). The function-level manifest number below is the uniform measure; matrix rows convert to contract scoring as Wave 7 phases close their gaps. The prior 97.3% counted name presence. Full analysis: [docs/parity-100/SYNTHESIS.md](docs/parity-100/SYNTHESIS.md).
+
+**Contract manifest (Wave 7 scoring denominator):** [docs/parity-100/CONTRACT.md](docs/parity-100/CONTRACT.md) inventories all 293 Windows-registered contracts (module functions, entity/stats proxy methods, per-context modules) with zero unclassified entries: 202 implemented, 77 behavioral gaps, 1 matched upstream TODO, 13 excluded — **72.4% function-level behavioral parity** (`bg3se-harness parity scan --contract`). The matrix rows above remain namespace-level behavioral scores; the row-mean (~94.8%) is higher than the function-level number because the manifest surfaces gap clusters inside rows historically scored as complete (entity-proxy replication/subscription methods, Windows Utils/Debug surfaces, per-context Template modules). The Wave 7 campaign works the manifest, not the row-mean.
 
 **Deferral registry:** every intentionally fail-closed API is cataloged with evidence citations and unlock paths in [docs/deferrals.md](docs/deferrals.md).
 
-**Excluded or deferred surfaces:** `Ext.UI`/Noesis is excluded by decision and has a stub layer only. Lua Debugger/DAP, entity replication (`Replicate`, `GetReplicationFlags`, `SetReplicationFlags`), Virtual Textures, and Input Injection are deferred. These surfaces are outside the scope-corrected parity denominator.
+**Excluded surfaces (outside the parity denominator):** `Ext.UI`/Noesis (compatibility stub layer only), Lua Debugger/DAP (Phase 11), Virtual Textures, and Input Injection — all four are explicit scope exclusions recorded in [docs/deferrals.md](docs/deferrals.md). Entity replication (`entity:Replicate`, `GetReplicationFlags`, tracing) is **not** excluded: 5 of 11 vetted mods call `entity:Replicate()`, so it stays inside the scored surface as a deferral and is priced into the `Ext.Entity` row below.
 
 **Working Features:**
 - DYLD injection and Dobby hooking infrastructure
@@ -40,13 +44,13 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 | `Ext.Osiris` | ✅ Full | ✅ RegisterListener + NewCall/NewQuery/NewEvent/RaiseEvent/GetCustomFunctions | **100%** | 1 |
 | `Ext.Json` | ✅ Full (2) | ✅ Parse, Stringify | **100%** | 1 |
 | `Ext.IO` | ✅ Full (4) | ✅ LoadFile, SaveFile, AddPathOverride, GetPathOverride (4) | **100%** | 1 |
-| `Ext.Entity` | ✅ Full (26) | ✅ Get, GetByHandle, **Dual EntityWorld**, components, enumeration, **Entity Events** (Subscribe/OnCreate/OnDestroy + 8 variants, Unsubscribe), **CreateComponent, RemoveComponent, GetEntityType, GetSalt, GetIndex, GetNetId** (30)[^entity-stubs] | **100%** | 2 |
-| `Ext.Stats` | ✅ Full (52) | ✅ **100% function-count parity** — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, ExecuteFunctors, TreasureTable/TreasureCategory (52)[^stats-stubs] | **100%** | 3 |
+| `Ext.Entity` | ✅ Full (26) | ⚠️ 14/26 Windows registrations behavioral (per-function diff vs Entity.inl:291-325, Wave 7 Phase 0): Get, GetAllEntities, GetAllEntitiesWithComponent, Subscribe (+OnChange alias), 8 OnCreate/OnDestroy variants, Unsubscribe. Missing: HandleToUuid, UuidToHandle, GetAllEntitiesWithUuid, GetEntitiesAroundPosition, Create, Destroy, OnSystemUpdate, OnSystemPostUpdate, GetTrace, ClearTrace, GetRegisteredComponentTypes; EnableTracing is a warn-nil stub. Proxy methods (GetByHandle, CreateComponent, GetEntityType/GetSalt/GetIndex/GetNetId) are real but outside this denominator[^entity-stubs] | **53.8%** | 2 |
+| `Ext.Stats` | ✅ Full (52) | ⚠️ 49/52 behavioral — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, TreasureTable/TreasureCategory real; AddAttribute, AddEnumerationValue fail closed, ExecuteFunctors partial (52 registered)[^stats-stubs] | **94.2%** | 3 |
 | `Ext.Events` | ✅ Full (~33) | ✅ 33 events (13 lifecycle + 17 engine + 2 functor + 1 network) + Subscribe/Unsubscribe/Prevent | **100%** | 2.5 |
 | `Ext.Timer` | ✅ Full (13) | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, IsPaused, MonotonicTime, MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, IsGamePaused, +6 persistent (20) | **100%** | 2.3 |
 | `Ext.Debug` | ✅ Full (8) | ✅ Memory introspection (11 macOS-specific) | **100%** | 2.3 |
 | `Ext.Vars` | ✅ Full (8) | ✅ User + Mod Variables (12) | **100%** | 2.6 |
-| `Ext.Types` | ✅ Full (15) | ⚠️ 13/15 functional: GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers, GetValueType, GetFunctionLocation, **Serialize, Unserialize** (component-proxy); Construct and GetHashSetValueAt are deferrals ([docs/deferrals.md](docs/deferrals.md)) | **86.7%** | 7 |
+| `Ext.Types` | ✅ Full (14) | ⚠️ 10/13 behavioral (Windows registers exactly 14 in Types.inl RegisterTypesLib; Construct leaves the denominator as upstream `// TODO; return 0`, Types.inl:286): GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetValueType, GetFunctionLocation, **Serialize, Unserialize**. Missing: GetHashSetValueAt (1-based contract), **AddCustomFunction, AddCustomProperty** (functional on Windows — Lua-side custom-property registry, Types.inl:328,347). GetComponentLayout/GetAllLayouts/GenerateIdeHelpers are macOS extras earning no credit ([docs/deferrals.md](docs/deferrals.md)) | **76.9%** | 7 |
 | `Ext.Enums` | ✅ Full | ✅ 14 enum/bitfield types | **100%** | 7 |
 | `Ext.Math` | ✅ Full (59) | ✅ 59/59 functions (vectors, matrices, 16 quaternions, scalars, Fract, **Smoothstep, IsNaN**) | **100%** | 7.5 |
 | `Ext.Input` | ✅ Full | ✅ CGEventTap capture, hotkeys (8 macOS-specific) | **100%** | 9 |
@@ -54,7 +58,7 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 | `Ext.UI` | ✅ Full (9) | Excluded by decision; compatibility stub layer only | — | 8 |
 | `Ext.IMGUI` | ✅ Full (7+) | ✅ Complete widget system (40 types) - All widgets, events, Metal backend | **100%** | 8 |
 | `Ext.Level` | ✅ Full (21) | ⚠️ 20/25 registered functions engine-backed: TestBox, TestSphere, GetHeightsAt, singleton accessors, all 8 sweeps (incl. **cylinders**, VMT 14/18), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**) — physics dispatch repaired against the audited macOS vtable (9 wrong-by-1 indices fixed). 5 deferrals: RaycastClosest/All/Any (quarantined by-value C++ params), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) | **80%** | 9 |
-| `Ext.Audio` | ✅ Full (17) | ✅ 17/17 functions: PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine exports) | **100%** | 10 |
+| `Ext.Audio` | ✅ Full (16) | ✅ 16/16 Windows-registered functions (GetSoundObjectId + IsReady are macOS extras outside the denominator): PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine exports) | **100%** | 10 |
 | `Ext.Localization` | ✅ Full (2) | ✅ GetLanguage, CreateHandle, **GetTranslatedString, UpdateTranslatedString** (live-verified round trip via corrected TryGet/AddTranslatedString ABIs) (4) | **100%** | 10 |
 | `Ext.StaticData` | ✅ Full (5) | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription), ForceCapture, HashLookup | **100%** | 10 |
 | `Ext.Resource` | ✅ Full (2) | ✅ Get, GetAll, GetTypes, GetCount, IsReady (5) | **100%** | 10 |
@@ -94,12 +98,12 @@ Lazy function lookup matching Windows BG3SE's OsirisBinding pattern:
 - [x] **Function name caching via Signature indirection** - Fixed OsiFunctionDef structure (offset +0x08 is Line, not Name) (v0.10.6)
 
 ### 1.3 Database Operations
-**Status:** ⚠️ Partial
+**Status:** ⚠️ Partial (Get + filtered Get working; Delete is Wave 7 Phase A5)
 
 - [x] `Osi.DB_*:Get(nil)` - Fetch all rows (verified working)
 - [x] `Osi.DB_*(values...)` - Insert rows
-- [ ] `Osi.DB_*:Get(filter, nil, nil)` - Filtered queries (needs verification)
-- [ ] `Osi.DB_*:Delete(...)` - Row deletion (needs verification)
+- [x] `Osi.DB_*:Get(filter, nil, nil)` - Filtered queries (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_osi_db_get in main.c supports non-nil filter args with type conversion)
+- [ ] `Osi.DB_*:Delete(...)` - Row deletion (Wave 7 Phase A5 — main.c:2176 explicitly notes "read-only: Get only, no Delete")
 
 ### 1.4 Custom Osiris Function Registration
 **Status:** ✅ Complete (v0.22.0)
@@ -289,8 +293,8 @@ Features:
 - [x] `entity:GetEntityType()` - Numeric type ID
 - [x] `entity:GetSalt()`, `entity:GetIndex()` - Handle parts
 - [x] `entity:GetNetId()` - Network ID (v23+)
-- [ ] `entity:Replicate(component)` - Network replication
-- [ ] `entity:SetReplicationFlags()`, `entity:GetReplicationFlags()` - Replication control
+- [ ] `entity:Replicate(component)` - Network replication (Wave 7 Phase C, steps 8-9)
+- [ ] `entity:SetReplicationFlags()`, `entity:GetReplicationFlags()` - Replication control (Wave 7 Phase C, steps 4 and 7)
 - [x] **Component property read** via `__index` (IndexedProperties + pools)
 - [x] **Component property write** via `__newindex` (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY; unknown-size layouts refused)
 
@@ -424,7 +428,7 @@ Ext.Vars.ReloadPersistentVars()   -- Force reload from disk
 **Note:** macOS uses file-based persistence instead of savegame hooks (which would require extensive reverse engineering).
 
 ### 2.5 Ext.Events API (Engine Events)
-**Status:** ⚠️ 60% Parity (v0.36.9) - 18 events (10 lifecycle + 8 engine events via one-frame polling)
+**Status:** ✅ Complete (v0.42.0) - 33 events (13 lifecycle + 17 engine + 2 functor + 1 network); matrix row at 100% (obsolete — section body below reflects v0.36.9 snapshot; current event list is in the Feature Parity Matrix and api-status.md)
 
 From API.md: "Subscribing to engine events can be done through the `Ext.Events` table."
 
@@ -562,7 +566,7 @@ Ext.Vars.SyncModVariables()
 - Mod vars: `~/Library/Application Support/BG3SE/modvars.json`
 
 **Not Yet Implemented:**
-- Client/server sync (requires NetChannel API)
+- Client/server sync (Wave 7 Phase E2.5 — requires dual-VM + variable synchronization flags)
 
 ### 2.7 Client Lua State & Context Separation
 **Status:** ✅ Complete (v0.36.4 - Issue #15)
@@ -591,8 +595,8 @@ print("IsClient:", Ext.IsClient())     -- true during BootstrapClient.lua
 ```
 
 **Not Yet Implemented:**
-- True dual Lua state separation (if needed for full isolation)
-- Client-only APIs (Ext.UI, Ext.IMGUI, rendering hooks)
+- True dual Lua state separation (Wave 7 Phases 1 + E2 — dual-VM architecture)
+- Client-only APIs (Ext.UI excluded by scope decision; Ext.IMGUI already complete; rendering hooks not prioritized)
 
 ### 2.8 Object Scopes/Lifetimes
 **Status:** ✅ Complete (v0.29.0 - Issue #28)
@@ -644,7 +648,7 @@ Access and modify game statistics, character builds, and item properties.
 - ✅ **Implemented `fixed_string_resolve()` - 47,326 strings resolved successfully**
 - ✅ **Ext.Stats.GetAll() returns 15,774 stat names** (full names, not indices)
 - ✅ **Ext.Stats.Get(name) retrieves stats by name**
-- [ ] Enable type filtering for GetAll() (ModifierList name resolution pending)
+- [x] Enable type filtering for GetAll() (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_stats_getall accepts optional type param, calls stats_get_count/stats_get_name_at with type filter; also confirmed at line 692 below)
 
 **Implemented API (v0.11.0):**
 ```lua
@@ -696,9 +700,9 @@ end
 - [x] **Property write access** via `__newindex` (`stat.Damage = "2d6"`)
 
 **Pending:**
-- [ ] `stat:Sync()` - Propagate changes to clients
-- [ ] `Ext.Stats.Create(name, type, template)` - Create new stats
-- [ ] **Level scaling** - `Ext.Stats.Get(name, level)` parameter
+- [x] `stat:Sync()` - Propagate changes to clients (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_stats_sync at lua_stats.c:534, registered at line 1360; implemented since v0.32.4)
+- [x] `Ext.Stats.Create(name, type, template)` - Create new stats (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_stats_create at lua_stats.c:548; implemented since v0.32.4)
+- [ ] **Level scaling** - `Ext.Stats.Get(name, level)` parameter (Wave 7 Phase A4 — level arg is accepted but explicitly ignored in lua_stats_get)
 
 **Supported Stat Types (from API.md):**
 - `StatusData`, `SpellData`, `PassiveData`, `Armor`, `Weapon`, `Character`, `Object`
@@ -717,48 +721,22 @@ Ext.Events.ExecuteFunctor:Subscribe(function(e) ... end)
 ```
 
 ### 3.3 Character Stats
-**Status:** ❌ Not Started
+**Status:** ✅ Complete (obsolete — Wave 7 Phase 0 adjudication 2026-08-01: all character stat access is delivered through the entity component property system. entity.Stats has Abilities[7], AbilityModifiers[7], Skills[18], ProficiencyBonus, InitiativeBonus; entity.Armor has ArmorClass; entity.Movement has Speed; entity.BaseStats has BaseAbilities[7]. This section predates the component property system.)
 
-- Ability scores (STR, DEX, CON, INT, WIS, CHA)
-- Skills and proficiencies
-- Armor class, saving throws
-- Movement speed, initiative
+- ~~Ability scores (STR, DEX, CON, INT, WIS, CHA)~~ — entity.Stats.Abilities / entity.BaseStats.BaseAbilities
+- ~~Skills and proficiencies~~ — entity.Stats.Skills / entity.Stats.ProficiencyBonus
+- ~~Armor class, saving throws~~ — entity.Armor.ArmorClass
+- ~~Movement speed, initiative~~ — entity.Movement.Speed / entity.Stats.InitiativeBonus
 
 ---
 
 ## Phase 4: Custom Osiris Functions
 
 ### 4.1 Function Registration
-**Status:** ❌ Not Started
-
-Allow mods to register custom Osiris functions callable from story scripts.
-
-**Target API:**
-```lua
--- Register a custom query
-Ext.Osiris.RegisterQuery("MyMod_IsPlayerNearby", 2, function(x, y)
-    -- Custom logic
-    return distance < 10
-end)
-
--- Register a custom call
-Ext.Osiris.RegisterCall("MyMod_SpawnEffect", 3, function(effect, x, y)
-    -- Spawn visual effect
-end)
-```
-
-**Implementation approach:**
-- Hook Osiris function registration
-- Create bridge functions that invoke Lua callbacks
-- Handle type marshalling between Osiris and Lua
-- Support IN/OUT parameter semantics
+**Status:** ✅ Complete (obsolete — Wave 7 Phase 0 adjudication 2026-08-01: this section is a stale duplicate of Phase 1.4 above. NewCall, NewQuery, NewEvent, RaiseEvent, GetCustomFunctions all implemented since v0.22.0 in lua_osiris.c. See Phase 1.4 for current documentation.)
 
 ### 4.2 Story Script Integration
-**Status:** ❌ Not Started
-
-- Custom events triggerable from Lua
-- Database manipulation (insert/delete/query)
-- Goal completion tracking
+**Status:** ✅ Complete (obsolete — Wave 7 Phase 0 adjudication 2026-08-01: custom events via RaiseEvent (Phase 1.4), database queries via Osi.DB_*:Get() (Phase 1.3), row insertion via Osi.DB_*(values...) (Phase 1.3). Goal completion tracking is Osiris-internal.)
 
 ---
 
@@ -828,7 +806,7 @@ echo '!probe 0x12345678 256' > ~/Library/Application\ Support/BG3SE/commands.txt
 ```
 
 **Not implemented:**
-- Client/server context switching (requires dual Lua states)
+- Client/server context switching (Wave 7 Phase E2.6 — requires dual-VM architecture)
 
 ### 5.2 Custom Console Commands
 **Status:** ✅ Complete (v0.11.0)
@@ -872,9 +850,9 @@ Ext.Debug.FindArrayPattern(base, range)
 Ext.Debug.HexDump(addr, size)
 ```
 
-**Not implemented:**
-- Entity inspector (click to examine)
-- Performance profiler
+**Not implemented (obsolete — not prioritized for parity; Wave 7 Phase 0 adjudication 2026-08-01):**
+- Entity inspector (click to examine) — entity inspection is available via `Ext.Entity.Get(guid)` + component property access
+- Performance profiler — benchmarking available via `harness benchmark` command
 
 ---
 
@@ -996,27 +974,24 @@ end)
 - Faster local client requests (no 1-frame delay)
 
 ### 6.2 Legacy NetMessage API (Deprecated)
-**Status:** ❌ Not Started
+**Status:** ✅ Superseded (obsolete — Wave 7 Phase 0 adjudication 2026-08-01: the legacy `Ext.ServerNet`/`Ext.ClientNet` namespace split is a Windows dual-VM artifact. On macOS, the unified `Ext.Net.*` + `Net.CreateChannel()` API provides all functionality. `Ext.RegisterNetListener` IS implemented (main.c:882, lua_events.c:1909). The NetMessage event fires via the message bus. Separate server/client namespaces will land naturally with Wave 7 Phase E2 dual-VM.)
 
 ```lua
--- Server → Client
-Ext.ServerNet.BroadcastMessage(channel, payload)
-Ext.ServerNet.PostMessageToUser(peerId, channel, payload)
-
--- Client → Server
-Ext.ClientNet.PostMessageToServer(channel, payload)
-
--- Listening
+-- Listening (IMPLEMENTED)
 Ext.RegisterNetListener(channel, function(channel, payload, userID) ... end)
+
+-- Server/Client split namespaces (Wave 7 Phase E2 — requires dual-VM)
+-- Ext.ServerNet.BroadcastMessage(channel, payload)
+-- Ext.ClientNet.PostMessageToServer(channel, payload)
 ```
 
 ### 6.3 State Synchronization
-**Status:** ❌ Not Started
+**Status:** Superseded (obsolete — Wave 7 Phase 0 adjudication 2026-08-01: entity state synchronization is entity replication, covered by Wave 7 Phase C. Network transport complete via Phase 4I. These bullet points described aspirational features from early roadmapping; the actual implementation path is through SyncBuffers/ComponentPools.)
 
-- Automatic entity state sync
-- Conflict resolution
-- Bandwidth optimization
-- Latency handling
+- ~~Automatic entity state sync~~ — Wave 7 Phase C (entity:Replicate + SetReplicationFlags)
+- ~~Conflict resolution~~ — handled by the engine's SyncBuffers dirty-flag system
+- ~~Bandwidth optimization~~ — RakNet backend (Phase 4G-4I)
+- ~~Latency handling~~ — RakNet backend (Phase 4G-4I)
 
 ---
 
@@ -1228,7 +1203,7 @@ Ext.UI.GetDragDrop()       -- v22+
 **Platform Note:** BG3 macOS uses native Cocoa/AppKit (NOT SDL like Windows).
 Input uses CGEventTap → direct io.MousePos (skips ImGui_ImplOSX_NewFrame which overwrote coords).
 
-**Remaining (low priority):**
+**Remaining (obsolete — not prioritized for parity, Wave 7 Phase 0 adjudication 2026-08-01; matrix row at 100%):**
 - Font loading and scaling
 - Texture binding (images)
 - Style enums (GuiStyleVar, GuiColor)
@@ -1302,12 +1277,14 @@ Configuration: `Mods/<ModName>/ScriptExtender/VirtualTextures.json`
 VS Code integration with breakpoints, stepping, watches.
 
 ### 9.5 Mod Info API
-**Status:** ⚠️ Partial
+**Status:** ✅ Complete (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 5 functions in lua_mod.c — IsModLoaded, GetLoadOrder, GetMod, GetBaseMod, GetModManager; tested by Tier 1 Mod.* tests)
 
 ```lua
-Ext.Mod.IsModLoaded(guid)
-Ext.Mod.GetLoadOrder()
-Ext.Mod.GetModInfo(guid)
+Ext.Mod.IsModLoaded(guid)    -- ✅
+Ext.Mod.GetLoadOrder()        -- ✅
+Ext.Mod.GetMod(guid)          -- ✅ (was listed as GetModInfo)
+Ext.Mod.GetBaseMod()          -- ✅
+Ext.Mod.GetModManager()       -- ✅
 ```
 
 ---
@@ -1315,7 +1292,7 @@ Ext.Mod.GetModInfo(guid)
 ## Phase 10: Data Access & Audio
 
 ### 10.1 Ext.StaticData API
-**Status:** ✅ ~85% Complete - [Issue #40](https://github.com/tdimino/bg3se-macos/issues/40)
+**Status:** ✅ Complete (100%) - [Issue #40](https://github.com/tdimino/bg3se-macos/issues/40) (obsolete — Wave 7 Phase 0 adjudication 2026-08-01: all 9 types working via auto-capture + ForceCapture + HashLookup since v0.36.3; section body below is stale)
 
 Access to static game resource types (Feats, Races, Backgrounds, Origins, Gods, Classes).
 
@@ -1375,10 +1352,10 @@ Ext.StaticData.DumpFeatMemory()  -- Diagnostic memory dump
 - [x] Extract feat names from structure (FixedString resolution) ✅
 - [x] Generic config-based infrastructure for multiple types ✅
 - [x] Auto-capture without Frida ✅
-- [ ] Frida capture scripts for Race, Origin, God, Class types
-- [ ] Verify auto-capture works for all resource types
+- [x] Frida capture scripts for Race, Origin, God, Class types (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: superseded by auto-capture via ForceCapture + HashLookup, v0.36.3; Frida no longer needed)
+- [x] Verify auto-capture works for all resource types (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: all 9 types verified — Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription)
 
-Resource types: Feat (✅ complete with auto-capture), Race (🔶 config ready), Background (🔶 no Name field), Origin (🔶), God (🔶), ClassDescription (🔶)
+Resource types: All 9 ✅ complete with auto-capture (v0.36.3)
 
 ### 10.2 Ext.Resource & Ext.Template API
 **Status:** ✅ Complete - [Issue #41](https://github.com/tdimino/bg3se-macos/issues/41)
@@ -1430,7 +1407,7 @@ Ext.Localization.UpdateTranslatedString(handle, "new text")  -- ✅ (Wave 3, liv
 ```
 
 ### 10.4 Ext.Audio API
-**Status:** ✅ 17/17 (100%) — bank management landed in Wave 3 via dlsym'd AK::SoundEngine exports
+**Status:** ✅ 16/16 Windows-registered (100%; GetSoundObjectId + IsReady are macOS extras) — bank management landed in Wave 3 via dlsym'd AK::SoundEngine exports
 
 ```lua
 -- Implemented (17 functions)
@@ -1467,28 +1444,28 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 ## Technical Debt & Infrastructure
 
 ### Pattern Scanning Improvements
-- [ ] Signature database for different game versions
-- [ ] Automatic offset recalculation on game updates
-- [ ] Fallback mechanisms when patterns fail
+- [x] Signature database for different game versions (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: offset_table.c with per-version VersionOffsets + port_offsets.py generate/resolve pipeline, contributed by mikowals PR #91)
+- [x] Automatic offset recalculation on game updates (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: `python3 tools/port_offsets.py resolve` auto-resolves offsets for new builds; version_detect.c sentinel probes detect mismatches)
+- [x] Fallback mechanisms when patterns fail (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: version_detect.c sentinel address probes fail closed on unknown versions; offset_table falls back to hardcoded offsets; GST discovery has multi-strategy retry)
 
 ### Stability
-- [ ] Crash recovery and logging
-- [ ] Memory leak detection
-- [ ] Thread safety audit
-- [ ] Extensive error handling
+- [x] Crash recovery and logging (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: crashlog.c mmap ring buffer survives SIGSEGV; mach_exception.c catches EXC_BAD_ACCESS before CrashReporter; breadcrumbs system; crash.log with backtrace)
+- [ ] Memory leak detection (obsolete — not prioritized; no formal valgrind/leak detection integrated; manual monitoring via Activity Monitor)
+- [x] Thread safety audit (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_gate.c recursive mutex + architecture.md thread entry audit table covering all 8 entry points; lock-order documented)
+- [x] Extensive error handling (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: safe_memory reads, lua_gate contention handling, mach exception ports, breadcrumbs, warn-once flags, protected Lua pcalls throughout)
 - [x] Userdata lifetime scoping (v0.29.0)
 
 ### Testing
-- [ ] Unit tests for Lua bindings
-- [ ] Integration tests with mock game state
-- [ ] Regression test suite
-- [ ] Performance benchmarks
+- [x] Unit tests for Lua bindings (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 113 Tier 1 + 96 Tier 2 in-game tests via BG3SE_AddTest covering all Lua API namespaces)
+- [x] Integration tests with mock game state (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 245 pytest Tier H tests with mock game state, including harness lifecycle, offset audit, physics VMT audit, compat scenarios)
+- [x] Regression test suite (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 516-test four-tier suite — 55 C Tier 0 + 252 pytest Tier H + 113 Tier 1 + 96 Tier 2; see docs/testing.md)
+- [ ] Performance benchmarks (obsolete — not prioritized as a formal suite; `harness benchmark` command available for ad-hoc perf measurement)
 
 ### Documentation
-- [ ] API reference (generated from type definitions)
-- [ ] Migration guide from Windows BG3SE
-- [ ] Mod developer tutorials
-- [ ] Architecture documentation
+- [x] API reference (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: docs/api-reference.md with context annotations; GenerateIdeHelpers produces LuaLS type annotations)
+- [ ] Migration guide from Windows BG3SE (obsolete — not prioritized; most mods work without migration; differences documented in README.md and api-reference.md)
+- [ ] Mod developer tutorials (obsolete — not prioritized; docs/harness.md, api-reference.md, and README.md serve this purpose)
+- [x] Architecture documentation (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: agent_docs/architecture.md + docs/architecture.md with module structure, thread model, injection method, platform notes)
 
 ---
 
@@ -1534,9 +1511,9 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 | D1 | Noesis UI (Ext.UI) | High | Excluded by decision; stub layer only | [#35](https://github.com/tdimino/bg3se-macos/issues/35) |
 | D2 | IMGUI Debug Overlay | High | ✅ Complete (v0.36.21) - All 40 widget types | [#36](https://github.com/tdimino/bg3se-macos/issues/36) |
 | D3 | Physics/Raycasting (Ext.Level) | High | ✅ 20/25 engine-backed (80%); all 8 sweeps, tile queries, pathfinding suite; 5 deferrals (3 raycasts, GetTileDebugInfo, BeginPathfinding — docs/deferrals.md) | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
-| D4 | Audio (Ext.Audio) | Medium | ✅ Complete — 17/17 (100%); LoadBank/UnloadBank/PrepareBank/UnprepareBank via dlsym'd AK::SoundEngine exports (Wave 3) | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
+| D4 | Audio (Ext.Audio) | Medium | ✅ Complete — 16/16 Windows-registered (100%); LoadBank/UnloadBank/PrepareBank/UnprepareBank via dlsym'd AK::SoundEngine exports (Wave 3) | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
 | D5 | Localization (Ext.Localization) | Low | ✅ Complete (GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString + IsReady/DumpInfo diagnostics) | [#39](https://github.com/tdimino/bg3se-macos/issues/39) |
-| D6 | Static Data (Ext.StaticData) | Medium | 🔶 Blocked by #44 | [#40](https://github.com/tdimino/bg3se-macos/issues/40) |
+| D6 | Static Data (Ext.StaticData) | Medium | ✅ Complete — all 9 types (auto-capture, v0.36.3) | [#40](https://github.com/tdimino/bg3se-macos/issues/40) |
 | D7 | Resource/Template Management | Medium | ✅ Complete (v0.36.2) | [#41](https://github.com/tdimino/bg3se-macos/issues/41) |
 | D8 | VS Code Debugger | High | Deferred | [#42](https://github.com/tdimino/bg3se-macos/issues/42) |
 | D9 | Input Injection | Medium | Deferred | - |
@@ -1556,6 +1533,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.42.0 | 2026-08-01 | **Wave 6: Final Audit** — parity re-baselined to ~94.8% under behavioral accounting (stubs score zero; per-function contract diffs against the Windows registration blocks: Entity 53.8% — 14/26 of Entity.inl:291-325 behavioral, 11 registrations missing outright; Types 76.9% — 10/13 with AddCustomFunction/AddCustomProperty recognized as functional Windows surface; Stats 94.2%; Construct removed from the denominator — the Windows reference is itself `// TODO; return 0`); GetCachedPassive/GetCachedInterrupt rebound from the layout-wrong generic RefMap walk to the native getters (`eoc::Passives::Get` 0x101c0f27c — LTO arg-promoted, FixedString index by value; `InterruptPrototypeManager::GetPrototype` 0x101b7adcc — verified 0x1f0-stride return), live-verified with the new `Stats.W6.NativeCachedLookups` Tier 2 test; scope-exclusion registry reconciled (Ext.UI, DAP, Virtual Textures, Input Injection explicit; replication ruled non-excludable — 5 of 11 vetted mods call it); stale FixedString diagnostic and GetHashSetValueAt/GetReplicationFlags/DisableTracing contract notes fixed; Wave 7 contract manifest (293 contracts, 72.4% function-level) + parity scan --contract + ROADMAP adjudication. 516 tests (55 C + 252 pytest + 113 Tier 1 + 96 Tier 2) |
 | v0.41.0 | 2026-07-30 | **Wave 3: Parity Closure B** — physics VMT dispatch repaired (9 wrong-by-1 indices vs the audited macOS vtable; RaycastClosest had been dispatching RemovePhysicsShape); sweep/overlap ABIs corrected, raycasts quarantined; five AiGrid pathfinding/tile APIs implemented from instruction-level RE (GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath, GetEntitiesOnTile); cylinder sweeps (VMT 14/18); Entity:CreateComponent via verified ComponentOps registry (EntityWorld+0x390, vptr slot 5); Ext.Math 59/59, Ext.Audio 17/17 (dlsym'd WWise banks), Ext.Types 13/15 (Serialize/Unserialize), Loca update round trip live-verified; refuted passive singleton replaced (eoc::Passives::m_ptr 0x1089bc228); deferral registry created (docs/deferrals.md). Live: tier 1 113/113, tier 2 93/93 at closeout. Four-lens review fix pass: SweepCylinderAll/GetEntitiesOnTile/GetActivePathfindingRequests return nil (not `{}`) when physics/AiGrid are unavailable, localization_ready hardened with safe_memory, per-reason/per-operation warn-once flags, 2 new Tier 2 tests. 473 tests (55 C + 210 pytest + 113 Tier 1 + 95 Tier 2) |
 | v0.40.0 | 2026-07-29 | **Wave 2: Parity Closure A** — component property writes real (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY, unknown-size layouts refused); ExecuteFunctor/BeforeDealDamage/DealDamage fire live (hidden `result_out` ABI fix across all 9 ExecuteStatsFunctors wrappers, verified 51/51 paired); TreasureTable/TreasureCategory reads + GetStatsLoadedMods real; spell/status prototype sync real (status VMT-copy-before-Init), passive/interrupt honestly false; functor-hook install count surfaced via `Ext.Debug.GetHookStatus`; review-pass hardening from four subagent audits. 429 tests (55 C + 191 pytest + 109 Tier 1 + 74 Tier 2) |
 | v0.39.0 | 2026-07-29 | **Community PR integration (PRs #91, #93, #95)** — per-version offset table + `port_offsets.py` (mikowals); Osiris DB Facts reader with name-index discovery, signature-typed Osi dispatch, per-mod `_ENV` sandbox + module cache + bare `require()`, GameStateChanged EnumValues, deferred IMGUI event queue, local in-process net transport (marcus-sa); four-agent review hardening; MCM vets as working. 385 tests (55 C + 154 pytest + 109 Tier 1 + 67 Tier 2) |
@@ -1690,7 +1668,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
 | **#52 Components** | Coverage Expansion | **80%** | Tools ready: `extract_typeids.py` + stubs |
-| **#48 Ext.Types** | Full Reflection | ✅ **86.7%** | 13/15 functional; Construct and GetHashSetValueAt deferred (docs/deferrals.md) |
+| **#48 Ext.Types** | Full Reflection | ⚠️ **76.9%** | 10/13 behavioral (Wave 6 re-baseline); stale — see matrix row |
 | ~~#51 Ext.Events~~ | Engine Events | ✅ **DONE** | Hook game event dispatch |
 | ~~#53 Stats Functors~~ | ExecuteFunctors | ✅ **DONE** | Windows code portable |
 
@@ -1699,7 +1677,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 |-------|---------|--------------|---------------|
 | ~~#36~~ | IMGUI | ✅ DONE (v0.36.21) |
 | **#42 Debugger** | VS Code DAP | **Deferred** | Excluded from the supported macOS parity surface |
-| **#38 Audio** | WWise Audio | ✅ **DONE (17/17)** | Bank management via dlsym'd AK::SoundEngine exports (Wave 3) |
+| **#38 Audio** | WWise Audio | ✅ **DONE (16/16 Windows-registered)** | Bank management via dlsym'd AK::SoundEngine exports (Wave 3) |
 | ~~#7 IDE Types~~ | LuaLS Annotations | ✅ **DONE** | GenerateIdeHelpers API |
 
 **Complex Integrations (25-50% acceleration, 4+ weeks):**
@@ -1719,7 +1697,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 | ~~#40~~ | StaticData | ✅ DONE (auto-capture) |
 | ~~#41~~ | Resource/Template | ✅ DONE |
 | ~~#7~~ | IDE Types | ✅ DONE (v0.36.17) |
-| #48 | Ext.Types | ⚠️ 9/15 functional (60%) |
+| #48 | Ext.Types | ⚠️ 10/13 behavioral (76.9%) — stale row, see matrix |
 | ~~#51~~ | Ext.Events | ✅ DONE (v0.36.11) |
 | ~~#53~~ | Stats Functors | ✅ DONE (v0.36.15) |
 
@@ -1765,7 +1743,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 
 | Order | Issue | Acceleration | Why This Order |
 |-------|-------|--------------|----------------|
-| 5 | **#48 Ext.Types** | ✅ 13/15 (86.7%) | Serialize/Unserialize real (Wave 3); Construct and GetHashSetValueAt deferred (docs/deferrals.md) |
+| 5 | **#48 Ext.Types** | ⚠️ 10/13 (76.9%) | Serialize/Unserialize real (Wave 3); GetHashSetValueAt + AddCustomFunction/AddCustomProperty missing (Wave 7 Phase 0 contract diff); Construct matches upstream TODO (docs/deferrals.md) |
 | 6 | ~~#51 Ext.Events~~ | ✅ Complete | Unlocks stat functors |
 | 7 | **#52 Components** | 80% | Accelerated workflow exists |
 | 8 | ~~#53 Stats Functors~~ | ✅ Complete | Needs #51 events |
@@ -1775,7 +1753,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 | Order | Issue | Acceleration | Why This Order |
 |-------|-------|--------------|----------------|
 | 9 | ~~#36 Ext.IMGUI~~ | ✅ Complete | All 40 widget types (v0.36.21) |
-| 10 | **#38 Ext.Audio** | ✅ 100% | 17/17; bank management via dlsym'd AK::SoundEngine exports (Wave 3) |
+| 10 | **#38 Ext.Audio** | ✅ 100% | 16/16 Windows-registered (GetSoundObjectId/IsReady are macOS extras); bank management via dlsym'd AK::SoundEngine exports (Wave 3) |
 | 11 | **#42 Debugger** | Deferred | Excluded from the supported macOS parity surface |
 | 12 | ~~#7 IDE Types~~ | ✅ Complete | GenerateIdeHelpers API |
 
@@ -1794,7 +1772,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 4. ✅ **#46 Context Docs** - Context annotations (B/S/C) added to all API tables
 
 **Phase 2 core-expansion status (as of v0.36.16):**
-5. ✅ **#48 Ext.Types** - 13/15 functional (86.7%); Serialize/Unserialize real via component proxies (Wave 3); Construct and GetHashSetValueAt deferred (docs/deferrals.md)
+5. ⚠️ **#48 Ext.Types** - 10/13 behavioral (76.9%); Serialize/Unserialize real via component proxies (Wave 3); GetHashSetValueAt + AddCustomFunction/AddCustomProperty missing (Wave 7 Phase 0 contract diff); Construct matches upstream TODO (docs/deferrals.md)
 6. ✅ **#51 Ext.Events** - 32 engine events with priority/once/prevent patterns
 7. ✅ **#53 Stats Functors** - ExecuteFunctor/AfterExecuteFunctor for damage/heal hooks
 

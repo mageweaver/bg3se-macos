@@ -16,8 +16,10 @@ import sys
 import time
 from pathlib import Path
 
-from .config import CATALOG_DIR
+from .config import CATALOG_DIR, PROJECT_ROOT
 from .console import Console
+
+CONTRACT_PATH = PROJECT_ROOT / "docs/parity-100/contract.json"
 
 # Ext.IO.SaveFile writes under the SE data dir (mirrors Windows UserProfile
 # PathRoot). Console prints flush asynchronously after the prompt returns, so
@@ -181,6 +183,70 @@ def missing():
     }
 
 
+def contract_report():
+    """Offline: score every namespace against the Wave 7 contract manifest.
+
+    The manifest (docs/parity-100/contract.json) classifies every Windows
+    registration as implemented / behavioral_gap / matched_upstream_todo /
+    excluded. Behavioral % per namespace = implemented / (implemented +
+    behavioral_gap); matched-TODO and excluded entries leave the denominator.
+    """
+    if not CONTRACT_PATH.exists():
+        return {"error": f"Contract manifest not found at {CONTRACT_PATH}"}
+    try:
+        with open(CONTRACT_PATH) as f:
+            manifest = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"error": f"Could not parse contract manifest: {exc}"}
+
+    namespaces = {}
+    grand = {"implemented": 0, "behavioral_gap": 0,
+             "matched_upstream_todo": 0, "excluded": 0}
+    unclassified = []
+
+    for ns_name, ns_info in manifest.get("namespaces", {}).items():
+        counts = {"implemented": 0, "behavioral_gap": 0,
+                  "matched_upstream_todo": 0, "excluded": 0}
+        gaps = []
+        for entry in ns_info.get("contracts", []):
+            cls = entry.get("class")
+            if cls not in counts:
+                unclassified.append(f"{ns_name}.{entry.get('name', '?')}")
+                continue
+            counts[cls] += 1
+            grand[cls] += 1
+            if cls == "behavioral_gap":
+                gaps.append(entry.get("name", "?"))
+        scored = counts["implemented"] + counts["behavioral_gap"]
+        namespaces[ns_name] = {
+            **counts,
+            "scored": scored,
+            "behavioral_percent": (
+                round(counts["implemented"] / scored * 100, 1) if scored else None
+            ),
+            "gaps": sorted(gaps),
+            "macos_extras": ns_info.get("macos_extras", []),
+        }
+
+    scored_total = grand["implemented"] + grand["behavioral_gap"]
+    result = {
+        "manifest_version": manifest.get("version"),
+        "generated": manifest.get("generated"),
+        "total_contracts": sum(grand.values()),
+        **grand,
+        "scored_total": scored_total,
+        "behavioral_percent": (
+            round(grand["implemented"] / scored_total * 100, 1)
+            if scored_total else None
+        ),
+        "namespaces": namespaces,
+    }
+    if unclassified:
+        result["error"] = f"{len(unclassified)} unclassified contracts"
+        result["unclassified"] = unclassified
+    return result
+
+
 def verify(namespace):
     """Deep-verify a namespace by running Lua probes.
 
@@ -249,7 +315,7 @@ def cmd_parity(args):
     subcmd = args.parity_command
 
     if subcmd == "scan":
-        result = scan()
+        result = contract_report() if getattr(args, "contract", False) else scan()
         print(json.dumps(result, indent=2))
         return 0 if "error" not in result else 1
 

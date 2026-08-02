@@ -107,6 +107,18 @@
       "symbol": "eoc::StatusPrototype::Init(ls::FixedString const&, bool)"
     },
     {
+      "field": "fn_interrupt_proto_get",
+      "baseline": "0x101b7adcc",
+      "baseline_note": "7209685 address (no 6995620 derivation); ABI: x1 = FixedString const*",
+      "symbol": "eoc::InterruptPrototypeManager::GetPrototype(ls::FixedString const&) const"
+    },
+    {
+      "field": "fn_passives_get",
+      "baseline": "0x101c0f27c",
+      "baseline_note": "7209685 address (no 6995620 derivation); LTO arg-promoted ABI: x1 = FixedString index BY VALUE; re-verify promotion survives any rebuild before migrating",
+      "symbol": "eoc::Passives::Get(ls::FixedString const&) const"
+    },
+    {
       "field": "fn_aigrid_to_tile_pos",
       "baseline": "0x1011619c0",
       "symbol": "eoc::AiGrid::ToTilePos(Vector3f const&, eoc::AiTilePos&, bool) const"

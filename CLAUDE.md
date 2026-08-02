@@ -2,7 +2,7 @@
 
 macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-corrected 100% parity across the supported macOS surface.
 
-**Version:** v0.41.0 | **Parity:** approximately 97.3% from the ROADMAP.md matrix | **Target:** 100% of the supported macOS surface | **Deferral registry:** docs/deferrals.md
+**Version:** v0.42.0 | **Parity:** approximately 94.8% from the ROADMAP.md matrix (behavioral accounting with per-function contract diffs — stubs score zero, macOS-only extras earn no credit) | **Target:** 100% of the supported macOS surface | **Deferral registry:** docs/deferrals.md
 
 ## Stack
 
@@ -67,6 +67,7 @@ PYTHONPATH=tools python3 -m bg3se_harness wiki clear-cache         # Wipe ~/.con
 
 # Parity + compatibility + diagnostics
 PYTHONPATH=tools python3 -m bg3se_harness parity scan       # Compare Ext table vs Windows baseline
+PYTHONPATH=tools python3 -m bg3se_harness parity scan --contract  # Score vs Wave 7 contract manifest (offline)
 PYTHONPATH=tools python3 -m bg3se_harness parity missing    # List gaps (offline)
 PYTHONPATH=tools python3 -m bg3se_harness compat list       # Available test scenarios
 PYTHONPATH=tools python3 -m bg3se_harness compat run mcm --launch --auto-install  # Full autonomous vet: install+launch+assert+quit
@@ -172,7 +173,7 @@ Use `bg3se-macos-ghidra` skill for Ghidra workflows and ARM64 patterns.
 
 ## Current API Status
 
-Approximately 97.3% parity across the supported macOS surface, sourced from the ROADMAP.md matrix. Key namespaces: Osi.* (40+ functions, generic DB_* accessor), Ext.Stats (100% function-count parity, 52 functions)[^stats-stubs], Ext.Entity (1,999 components, CreateComponent via verified ComponentOps registry, GetAllEntities/GetAllEntitiesWithComponent/GetAllComponents archetype walks, GetEntityType/GetSalt/GetIndex/GetNetId)[^entity-stubs], Ext.Events (33 events + ExecuteFunctor hook; BeforeDealDamage/DealDamage fire live, verified 51/51 on build 7209685), Ext.IMGUI (40 widgets), Ext.Net (RakNet backend), Ext.Level (20/25 engine-backed, 80%; all 8 sweeps incl. cylinders, TestBox/TestSphere, GetEntitiesOnTile, pathfinding suite GetPathById/ReleasePath/GetActivePathfindingRequests/FindPath; physics dispatch repaired against the audited macOS vtable; 5 deferrals: raycasts quarantined, GetTileDebugInfo, BeginPathfinding — see docs/deferrals.md), Ext.Audio (17/17, 100%; WWise banks via dlsym'd AK::SoundEngine exports), Ext.Types (13/15, 86.7%; Serialize/Unserialize real; Construct and GetHashSetValueAt deferred), Ext.Math (59/59, 100%), Ext.Localization (GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString — live-verified round trip). Version detection sentinel probes for game update tolerance.
+Approximately 94.8% parity across the supported macOS surface, sourced from the ROADMAP.md matrix (behavioral accounting with per-function contract diffs: fail-closed stubs score zero; Ext.Entity 53.8% — 14/26 Windows registrations, Ext.Stats 94.2%, Ext.Types 76.9% — 10/13). Key namespaces: Osi.* (40+ functions, generic DB_* accessor), Ext.Stats (100% function-count parity, 52 functions)[^stats-stubs], Ext.Entity (1,999 components, CreateComponent via verified ComponentOps registry, GetAllEntities/GetAllEntitiesWithComponent/GetAllComponents archetype walks, GetEntityType/GetSalt/GetIndex/GetNetId; 11 Windows registrations still missing — see ROADMAP matrix)[^entity-stubs], Ext.Events (33 events + ExecuteFunctor hook; BeforeDealDamage/DealDamage fire live, verified 51/51 on build 7209685), Ext.IMGUI (40 widgets), Ext.Net (RakNet backend), Ext.Level (20/25 engine-backed, 80%; all 8 sweeps incl. cylinders, TestBox/TestSphere, GetEntitiesOnTile, pathfinding suite GetPathById/ReleasePath/GetActivePathfindingRequests/FindPath; physics dispatch repaired against the audited macOS vtable; 5 deferrals: raycasts quarantined, GetTileDebugInfo, BeginPathfinding — see docs/deferrals.md), Ext.Audio (16/16 Windows-registered, 100%; GetSoundObjectId/IsReady are macOS extras; WWise banks via dlsym'd AK::SoundEngine exports), Ext.Types (10/13, 76.9%; Serialize/Unserialize real; GetHashSetValueAt + AddCustomFunction/AddCustomProperty missing — the latter two are functional on Windows; Construct matches the Windows reference's unimplemented-TODO contract and leaves the denominator), Ext.Math (59/59, 100%), Ext.Localization (GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString — live-verified round trip). Version detection sentinel probes for game update tolerance.
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
 [^entity-stubs]: EnableTracing, DisableTracing, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c`); `entity:Replicate()` is a no-op. GetAllEntities, GetAllEntitiesWithComponent, and GetAllComponents are real server-world archetype walks (Wave 3). `entity:CreateComponent` dispatches through the verified ComponentOps registry; `entity:RemoveComponent` returns false (734 per-type templates, no generic entry point — `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
@@ -205,7 +206,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (113 tests, always works). Use `!test_ingame` for Tier 2 tests (95 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 298 offline tests (55 C + 243 pytest) run via CI.
+Use `!test` to run Tier 1 regression tests (113 tests, always works). Use `!test_ingame` for Tier 2 tests (96 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 307 offline tests (55 C + 252 pytest) run via CI.
 
 ## Reverse Engineering
 

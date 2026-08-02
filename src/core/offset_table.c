@@ -72,6 +72,8 @@ static const VersionOffsets g_offset_table[] = {
         .fn_storage_tryget       = 0x0636b27c,  // ecs::EntityStorageContainer::TryGet
         .fn_spell_proto_init     = 0x01f72754,  // eoc::SpellPrototype::Init
         .fn_status_proto_init    = 0,           // not derived for this binary vintage
+        .fn_interrupt_proto_get  = 0,           // not derived for this binary vintage
+        .fn_passives_get         = 0,           // not derived for this binary vintage
         .component_data_shift    = -0x8000,     // compiled-in __DATA constants are 7209685;
                                                 // this version's __DATA sits 0x8000 lower
     },
@@ -161,6 +163,12 @@ static const VersionOffsets g_offset_table[] = {
         .fn_storage_tryget       = 0x0635ac94,  // ecs::EntityStorageContainer::TryGet (old 0x0636b27c - 0x105E8)
         .fn_spell_proto_init     = 0x01f56cb4,  // eoc::SpellPrototype::Init (old 0x01f72754 - 0x1baa0)
         .fn_status_proto_init    = 0x01ff7150,  // eoc::StatusPrototype::Init(FixedString const&, bool)
+        .fn_interrupt_proto_get  = 0x01b7adcc,  // eoc::InterruptPrototypeManager::GetPrototype(FixedString const&) const
+                                                // (nm; instruction-verified: x1=FS const*, x0 return,
+                                                // NULL on miss, hit = &array[index], stride 0x1f0)
+        .fn_passives_get         = 0x01c0f27c,  // eoc::Passives::Get(FixedString const&) const
+                                                // (nm; instruction-verified 2026-08-01: LTO ARG-PROMOTED,
+                                                // x1 = FS index BY VALUE, x0 return, NULL on miss)
         .component_data_shift    = 0,           // compiled-in __DATA constants ARE this
                                                 // vintage (nm-audited 7209685) — no shift
     },

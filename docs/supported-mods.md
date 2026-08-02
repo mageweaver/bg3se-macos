@@ -118,26 +118,26 @@ Open an issue with the `mod-compatibility` label, or submit a PR adding the mod 
 
 ## API Coverage
 
-BG3SE-macOS implements approximately 97.3% of the Windows BG3SE API across the supported macOS surface (see the [ROADMAP.md parity matrix](../ROADMAP.md#feature-parity-matrix); intentional deferrals are cataloged in [deferrals.md](deferrals.md)). Mods using these namespaces should work:
+BG3SE-macOS implements approximately 94.8% of the Windows BG3SE API across the supported macOS surface under behavioral accounting — fail-closed stubs score zero even when the function name is present (see the [ROADMAP.md parity matrix](../ROADMAP.md#feature-parity-matrix); intentional deferrals are cataloged in [deferrals.md](deferrals.md)). Mods using these namespaces should work:
 
 | Namespace | Status | Coverage |
 |-----------|--------|----------|
 | Ext.Osiris | Full | 40+ functions, RegisterListener, NewCall/NewQuery/NewEvent |
-| Ext.Entity | Full | GUID lookup, 1,999 components, CreateComponent/RemoveComponent |
-| Ext.Stats | Full | 52 functions, 100% Windows parity |
+| Ext.Entity | 14/26 (53.8%) | GUID lookup, 1,999 components, CreateComponent, entity events; 11 Windows registrations missing (HandleToUuid/UuidToHandle, Create/Destroy, tracing, system-update hooks); Replicate/RemoveComponent fail closed (deferrals.md) |
+| Ext.Stats | 49/52 (94.2%) | Get/Create/Sync/TreasureTable real; AddAttribute/AddEnumerationValue fail closed, ExecuteFunctors partial |
 | Ext.Events | Full | 33 events with priority ordering |
 | Ext.Timer | Full | 20 functions incl. persistent timers |
 | Ext.Vars | Full | PersistentVars, User/Mod variables |
 | Ext.StaticData | Full | All 9 data types |
 | Ext.Resource | Full | 34 resource types |
 | Ext.Template | Full | 14 functions, 10 properties |
-| Ext.Types | 13/15 (86.7%) | Serialize/Unserialize, GenerateIdeHelpers; Construct and GetHashSetValueAt deferred |
+| Ext.Types | 10/13 (76.9%) | Serialize/Unserialize real; GetHashSetValueAt, AddCustomFunction, AddCustomProperty missing (the latter two are functional on Windows); Construct matches the Windows reference's unimplemented TODO |
 | Ext.IMGUI | Full | 40 widget types |
 | Ext.Net | Full | RakNet backend, Request/Reply callbacks |
 | Ext.ModEvents | Full | Cross-mod event system (MCM compat) |
 | Ext.RegisterNetListener | Full | Per-channel network message listener |
 | Ext.Level | 20/25 (80%) | All 8 sweeps incl. cylinders, pathfinding suite; raycasts + GetTileDebugInfo + BeginPathfinding deferred |
-| Ext.Audio | Full (17/17) | PlayExternalSound + LoadBank/UnloadBank/PrepareBank/UnprepareBank |
+| Ext.Audio | Full (16/16 Windows-registered) | PlayExternalSound + LoadBank/UnloadBank/PrepareBank/UnprepareBank; GetSoundObjectId/IsReady are macOS extras |
 | Ext.Localization | Full | GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString |
 | Ext.Math | Full (59/59) | Vector/matrix/quaternion suite incl. Random, Fract, Smoothstep, IsNaN |
 | Ext.Mod | Full | 5 functions |

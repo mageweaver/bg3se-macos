@@ -1030,17 +1030,19 @@ static int lua_types_unserialize(lua_State *L) {
     return 0;
 }
 
-// Ext.Types.Construct(typeName) -> object or nil
-// Constructs a new instance of a registered type. macOS stub: most C++ types
-// are not heap-constructible from Lua without the full C++ runtime, so we
-// return nil with a warning and let callers handle it gracefully.
+// Ext.Types.Construct(typeName) -> nil
+// The Windows reference itself is nonfunctional here: Types.inl:286 is
+// `// TODO; return 0` — it validates the type name and returns nothing.
+// Returning nil therefore MATCHES the reference contract; this is not a
+// parity gap, and arbitrary construction stays out of scope until the
+// reference implements it.
 static int lua_types_construct(lua_State *L) {
     static bool warned = false;
     const char *type_name = luaL_checkstring(L, 1);
     if (!warned) {
         LOG_LUA_WARN(
-            "Ext.Types.Construct('%s'): deferred on macOS; the layout database "
-            "describes fields but has no game allocator, constructor, or destructor",
+            "Ext.Types.Construct('%s'): returns nil — the Windows reference is "
+            "itself an unimplemented TODO (Types.inl), so nil matches its contract",
             type_name);
         warned = true;
     }
@@ -1049,8 +1051,10 @@ static int lua_types_construct(lua_State *L) {
 }
 
 // Ext.Types.GetHashSetValueAt(obj, index) -> value or nil
-// Returns the element at a given 0-based index in a BG3 hash-set proxy.
-// macOS: We don't have the C++ proxy metatables, so return nil gracefully.
+// Windows contract: index is 1-based (Lua convention) into a BG3 hash-set
+// proxy's keys array. macOS: we don't have the C++ proxy metatables, so
+// return nil gracefully; any future implementation must keep the 1-based
+// index semantics.
 static int lua_types_gethashsetvalueat(lua_State *L) {
     static bool warned = false;
     luaL_checkany(L, 1);
@@ -2295,6 +2299,24 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertNotNil(passive, 'temporary PassiveData stat')\n"
         "  AssertEquals(Ext.Stats.Sync(name), false,\n"
         "    'allocator-gated PassivePrototype sync')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Stats.W6.NativeCachedLookups', function()\n"
+        "  local p = Ext.Stats.GetCachedPassive('AttackOfOpportunity')\n"
+        "  AssertNotNil(p, 'cached passive via eoc::Passives::Get')\n"
+        "  AssertType(p.Address, 'number', 'passive prototype address')\n"
+        "  assert(p.Address ~= 0, 'passive prototype address must be nonzero')\n"
+        "  assert(Ext.Debug.IsValidPointer(p.Address),\n"
+        "    'passive prototype must be readable')\n"
+        "  local i = Ext.Stats.GetCachedInterrupt('Interrupt_AttackOfOpportunity')\n"
+        "  AssertNotNil(i, 'cached interrupt via native GetPrototype')\n"
+        "  assert(i.Address ~= 0 and Ext.Debug.IsValidPointer(i.Address),\n"
+        "    'interrupt prototype must be readable')\n"
+        "  AssertEquals(Ext.Debug.ReadFixedString(i.Address),\n"
+        "    'Interrupt_AttackOfOpportunity', 'InterruptPrototype name at +0x0')\n"
+        "  AssertEquals(Ext.Stats.GetCachedPassive('BG3SE_NoSuchPassive_W6'), nil,\n"
+        "    'unknown passive must miss to nil')\n"
+        "  AssertEquals(Ext.Stats.GetCachedInterrupt('BG3SE_NoSuchInterrupt_W6'), nil,\n"
+        "    'unknown interrupt must miss to nil')\n"
         "end)\n";
 
     // Parity behavioral tests (Tier 2 — test actual behavior with loaded save)

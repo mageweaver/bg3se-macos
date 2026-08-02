@@ -8,7 +8,7 @@
 
 A native macOS implementation of the BG3 Script Extender, working toward scope-corrected 100% parity with Norbyte's Windows BG3SE: 100% of the supported macOS surface. Enables mods that require scripting capabilities to work on Mac—including companion mods, gameplay tweaks, UI enhancements, and more.
 
-The supported surface excludes `Ext.UI`/Noesis by decision; only a stub layer is provided. Lua Debugger/DAP, entity replication (`Replicate`, `GetReplicationFlags`, `SetReplicationFlags`), Virtual Textures, and Input Injection are deferred. These exclusions are outside the scope-corrected parity denominator.
+The supported surface excludes four things by explicit decision—`Ext.UI`/Noesis (stub layer only), Lua Debugger/DAP, Virtual Textures, and Input Injection—all recorded in [docs/deferrals.md](docs/deferrals.md) and outside the parity denominator. Entity replication (`entity:Replicate`, `GetReplicationFlags`) is **not** excluded: it has real mod demand, so it stays a scored deferral inside the `Ext.Entity` parity row until implemented.
 
 > **Note:** This is a ground-up rebuild, not a port—the Windows BG3SE uses x86_64 assembly and Windows APIs that don't exist on macOS ARM64. We use the Windows codebase as architectural reference while reverse-engineering the macOS binary via Ghidra.
 
@@ -112,7 +112,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 
 ## Status
 
-**Version:** v0.41.0 | **Feature Parity:** approximately 97.3%, sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
+**Version:** v0.42.0 | **Feature Parity:** approximately 94.8% under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
 
 | Feature | Status |
 |---------|--------|
@@ -129,12 +129,12 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 | Ext.Input | ✅ Hotkeys and input capture; Input Injection is deferred and excluded |
 | Ext.Math | ✅ **59/59 (100%)** — vector/matrix operations, **16 quaternion functions**, scalar utils, Fract, **Smoothstep, IsNaN** |
 | Ext.Enums | ✅ 14 enum/bitfield types |
-| Ext.Types | ⚠️ **13/15 (86.7%)** — reflection API includes **GenerateIdeHelpers** for VS Code IntelliSense, **GetValueType**, **GetFunctionLocation**, and **Serialize/Unserialize** (component-proxy); Construct and GetHashSetValueAt are deferrals ([docs/deferrals.md](docs/deferrals.md)) |
+| Ext.Types | ⚠️ **10/13 (76.9%)** — reflection API with **GetValueType**, **GetFunctionLocation**, and **Serialize/Unserialize** (component-proxy) real; GetHashSetValueAt, AddCustomFunction, and AddCustomProperty are missing (the latter two are functional on Windows), and Construct matches the Windows reference's own unimplemented TODO ([docs/deferrals.md](docs/deferrals.md)) |
 | Ext.StaticData | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription) via ForceCapture |
 | Ext.Resource | ✅ Get, GetAll, GetTypes, GetCount (34 resource types) |
 | Ext.Template | ✅ **Auto-capture**, iteration (Cache/LocalCache), GUID resolution |
 | Ext.Level | ⚠️ **20/25 (80%)** — TestBox, TestSphere, GetHeightsAt, singleton accessors, all 8 sweeps (incl. **cylinders**), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**); physics dispatch repaired against the audited macOS vtable. 5 deferrals: RaycastClosest/All/Any (quarantined), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) |
-| Ext.Audio | ✅ **17/17 (100%)** — PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, SetRTPC, GetRTPC, ResetRTPC, LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine) |
+| Ext.Audio | ✅ **16/16 Windows-registered (100%)** — GetSoundObjectId + IsReady are macOS extras; PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, SetRTPC, GetRTPC, ResetRTPC, LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine) |
 | Ext.Net | ✅ **Phase 4I Complete** - Full RakNet backend, PostMessageToServer/User/Client, BroadcastMessage, IsHost, IsReady, PeerVersion, **Request/Reply Callbacks** |
 | Ext.RegisterNetListener | ✅ Per-channel network message listener (MCM backbone) |
 | Net.CreateChannel | ✅ **Phase 4I Complete** - High-level channel API with SetHandler, **SetRequestHandler**, SendToServer, **RequestToServer with callbacks**, Broadcast |
@@ -147,7 +147,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 55 C (Tier 0) + 243 pytest (Tier H) + 113 `!test` (Tier 1) + 95 `!test_ingame` (Tier 2) = **506 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 55 C (Tier 0) + 252 pytest (Tier H) + 113 `!test` (Tier 1) + 96 `!test_ingame` (Tier 2) = **516 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`; evidence in `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).

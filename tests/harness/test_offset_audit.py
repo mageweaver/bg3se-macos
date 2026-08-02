@@ -168,6 +168,8 @@ TABLE_FIELD_SYMBOLS = {
     "fn_storage_tryget":       "ecs::EntityStorageContainer::TryGet",
     "fn_spell_proto_init":     "eoc::SpellPrototype::Init",
     "fn_status_proto_init":    "eoc::StatusPrototype::Init",
+    "fn_interrupt_proto_get":  "eoc::InterruptPrototypeManager::GetPrototype",
+    "fn_passives_get":         "eoc::Passives::Get",
     "component_data_shift":    None,  # delta, not an address
     "osiris_interface_ptr":    None,  # no symbol — disasm-audited, see
                                       # test_osiris_interface_slot_matches_disasm

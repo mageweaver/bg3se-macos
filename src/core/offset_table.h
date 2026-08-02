@@ -78,6 +78,12 @@ typedef struct {
     uintptr_t fn_storage_tryget;        // ecs::EntityStorageContainer::TryGet(EntityHandle)
     uintptr_t fn_spell_proto_init;      // eoc::SpellPrototype::Init(FixedString const&)
     uintptr_t fn_status_proto_init;     // eoc::StatusPrototype::Init(FixedString const&, bool)
+    uintptr_t fn_interrupt_proto_get;   // eoc::InterruptPrototypeManager::GetPrototype(FixedString const&) const
+                                        // ABI: x1 = FixedString const* (loads through it)
+    uintptr_t fn_passives_get;          // eoc::Passives::Get(FixedString const&) const
+                                        // ABI: LTO arg-promoted — x1 = FixedString INDEX BY VALUE
+                                        // despite the const& in the symbol (instruction-verified,
+                                        // ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md)
     intptr_t component_data_shift;      // signed delta added to compiled-in __DATA Ghidra
                                         // addresses (TypeIds, prototype-manager singletons,
                                         // TranslatedStringRepository::m_ptr) to reach THIS

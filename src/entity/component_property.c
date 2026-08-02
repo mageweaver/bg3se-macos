@@ -524,9 +524,13 @@ bool component_property_write(lua_State *L, void *componentPtr,
         return false;
     }
 
+    // Interning itself works (fixed_string_intern); the unresolved piece is
+    // ownership transfer — swapping an index in place without DecRef'ing the
+    // old entry leaks it, and DecRef's macOS entry point is not yet recovered.
     if (prop->type == FIELD_TYPE_FIXEDSTRING) {
         LOG_ENTITY_DEBUG(
-            "Refusing component write: %s.%s is FixedString and GST interning is unavailable",
+            "Refusing component write: %s.%s is FixedString (old-value DecRef/"
+            "ownership transfer unverified; interning itself is available)",
             layout->componentName, propertyName);
         return false;
     }
