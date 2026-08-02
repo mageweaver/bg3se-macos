@@ -31,6 +31,7 @@ EXPECTED_SCENARIOS = {
     "mcm",
     "more_reactive_companions",
     "party_limit_begone",
+    "transmog_enhanced",
 }
 LUAC = shutil.which("luac")
 

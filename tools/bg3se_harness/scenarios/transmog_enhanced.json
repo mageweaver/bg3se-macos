@@ -1,0 +1,21 @@
+{
+  "description": "Transmog Enhanced Revamped compatibility test. P2 — community nomination (issue #97). Exercises component cloning via Ext.Types.Serialize/Unserialize, entity CreateComponent/Replicate, Tick events, and Osiris item manipulation.",
+  "mods": [
+    "transmog_enhanced"
+  ],
+  "save_fixture": "vetting_base",
+  "requires_save": true,
+  "assertions": [
+    "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
+    "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do if u == '82c1f53b-5ed3-4e2e-95f5-f84ca6ff0c81' then return true end end return false end)(), 'Transmog Enhanced Revamped present in load order')",
+    "assert(type(Mods) == 'table' and Mods.TransmogEnhanced ~= nil, 'TransmogEnhanced ModTable bootstrapped')",
+    "assert(type(Ext.Types.Serialize) == 'function' and type(Ext.Types.Unserialize) == 'function', 'Ext.Types.Serialize/Unserialize exist')",
+    "assert((function() local host=Osi.GetHostCharacter(); if not host then return false end; local e=Ext.Entity.Get(host); if not e then return false end; local c=e.Health or e.DisplayName; if not c then return false end; local ok,s=pcall(Ext.Types.Serialize, c); return ok and type(s) == 'table' end)(), 'component Serialize executes on live host-character component')",
+    "assert((function() local e=Ext.Entity.Get(Osi.GetHostCharacter()); return e ~= nil and type(e.CreateComponent) == 'function' and type(e.Replicate) == 'function' end)(), 'entity CreateComponent and Replicate methods exposed')",
+    "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
+    "assert(type(Ext.Osiris.RegisterListener('RequestProcessed', 3, 'after', function() end)) == 'number', 'RequestProcessed Osiris listener registration executes')",
+    "assert((function() local host=Osi.GetHostCharacter(); return host ~= nil and Osi.GetTemplate(host) ~= nil end)(), 'Osi.GetTemplate resolves on host character')",
+    "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')"
+  ],
+  "notes": "Does not require MCM. entity:Replicate('GameObjectVisual') is a documented macOS no-op (docs/deferrals.md) — presence is asserted, replication behavior is not; visual sync in single-player is driven by the mod's Equip/Unequip cycle."
+}

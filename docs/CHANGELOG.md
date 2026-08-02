@@ -17,6 +17,31 @@ Each entry includes:
 
 **Category:** Parity | **Parity:** ~97.3% | **Issues:** Wave campaign plan (docs/plans/2026-07-28-001)
 
+### Community vetting: Transmog Enhanced Revamped (2026-08-01, same version)
+
+First community nomination from the issue #97 call for targets, vetted
+same-day through the autonomous pipeline: **working**, 20/20 steps, baseline
+saved (`docs/compat-reports/baseline/transmog_enhanced.json`).
+
+- **Catalog + scenario**: `transmog_enhanced` added to `popular_mods.json`
+  (Nexus 20407, v1.3.6, P2, no MCM) with an evidence-based API list read from
+  the extracted PAK; 10-assertion manifest covers the exact-UUID load-order
+  check, a live `Ext.Types.Serialize` roundtrip on a host-character component
+  (the mod's actual cloning path via `Utils.TryToReserializeObject`),
+  ModTable bootstrap, `CreateComponent`/`Replicate` method presence, a Tick
+  subscribe roundtrip, and `RequestProcessed` listener registration.
+- **Honest caveat documented**: the mod calls
+  `entity:Replicate("GameObjectVisual")` — a macOS no-op (docs/deferrals.md).
+  Single-player visuals sync through the mod's own Equip/Unequip cycle;
+  multiplayer visual sync is the untested edge. This is the fifth
+  vetted-corpus mod calling Replicate, reinforcing its top rank on the RE
+  roadmap (docs/parity-100/).
+- **Tests**: `EXPECTED_SCENARIOS` grew to 11; the baseline-coverage and
+  schema guards now include the new scenario (243 pytest, all green).
+- **Docs**: README vetted table and docs/supported-mods.md carry the new row;
+  the nominator's cutscene claim is attributed, not asserted — the pipeline
+  verifies API behavior, not scene rendering.
+
 ### Wave 5 review fix pass (2026-07-30, same version)
 
 Four-lens review (silent-failure, correctness, tests, docs) over the Wave 5

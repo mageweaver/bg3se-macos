@@ -90,7 +90,7 @@ Script Extender (SE) mods are mods that require BG3SE to function—they use Lua
 
 ### Mod Compatibility
 
-Most SE mods designed for the Windows Script Extender will work on macOS. The 10 most popular SE mods have been vetted end-to-end on v0.41.0 with an autonomous test pipeline (launch, load save, assert APIs, scan logs)—all passing:
+Most SE mods designed for the Windows Script Extender will work on macOS. The 10 most popular SE mods plus community nominations have been vetted end-to-end on v0.41.0 with an autonomous test pipeline (launch, load save, assert APIs, scan logs)—all passing:
 
 | Mod | Status | Notes |
 |-----|--------|-------|
@@ -104,6 +104,7 @@ Most SE mods designed for the Windows Script Extender will work on macOS. The 10
 | [Camp Event Notifications](https://www.nexusmods.com/baldursgate3/mods/1879) | ✅ Working | Never miss a camp scene |
 | [Auto Send Food To Camp](https://www.nexusmods.com/baldursgate3/mods/6086) | ✅ Working | Inventory quality-of-life |
 | [Always Show Approvals](https://www.nexusmods.com/baldursgate3/mods/4675) | ✅ Working | Approval visibility |
+| [Transmog Enhanced Revamped](https://www.nexusmods.com/baldursgate3/mods/20407) | ✅ Working | Item appearance transmog—community nomination ([#97](https://github.com/tdimino/bg3se-macos/issues/97)) |
 
 Many more mods work out of the box. See **[docs/supported-mods.md](docs/supported-mods.md)** for the full compatibility list with vetting evidence, testing notes, and known issues.
 

@@ -198,6 +198,27 @@
       "vetted_date": "2026-07-30",
       "vetted_evidence": "20/20 steps"
     },
+    "transmog_enhanced": {
+      "name": "Transmog Enhanced Revamped",
+      "nexus_id": 20407,
+      "author": "GosuDRM",
+      "file_id": 112018,
+      "priority": "P2",
+      "tier": 2,
+      "apis_used": [
+        "Ext.Entity",
+        "Ext.Types",
+        "Ext.Events",
+        "Ext.Osiris",
+        "Ext.Mod"
+      ],
+      "requires_mcm": false,
+      "notes": "Community nomination (issue #97). Clones item components via Ext.Types.Serialize/Unserialize, calls entity:CreateComponent and entity:Replicate('GameObjectVisual'), reads ServerItem.StatusManager; heavy Osi item manipulation (Equip/Unequip/TemplateAddTo/RequestDelete).",
+      "status": "working",
+      "vetted_version": "v0.41.0",
+      "vetted_date": "2026-08-01",
+      "vetted_evidence": "20/20 steps"
+    },
     "ai_allies": {
       "name": "AI Allies",
       "nexus_id": 7780,
