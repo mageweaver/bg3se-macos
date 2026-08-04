@@ -639,65 +639,203 @@ static void* find_rpgenumeration_by_name(const char *name) {
     return NULL;
 }
 
-// RPGEnumeration.Values is a LegacyMap<FixedString, int32_t>
-// LegacyMap layout on ARM64 (from BG3SE Common.h):
-//   Node** HashTable (8)
-//   uint32_t HashSize (4)
-//   uint32_t pad (4)
-//   uint32_t Count (4) ... etc
-// But the simpler approach: iterate through the HashMap embedded in CNEM.
-// Actually, RPGEnumeration is NOT a CNEM — it's a standalone struct.
-// The Values field is a LegacyMap with separate key/value storage.
-//
-// Probed layout assumption:
-//   +0x00: FixedString Name (4 bytes)
-//   +0x04: padding (4 bytes to align)
-//   +0x08: LegacyMap Values start
-// LegacyMap<FixedString, int32_t>:
-//   +0x08: Node** HashBuckets (8)
-//   +0x10: uint32_t HashSize (4)
-//   +0x14: uint32_t pad
-//   +0x18: Keys array ptr (FixedString* - 8)
-//   +0x20: pad
-//   +0x28: Values array ptr (int32_t* - 8)
-//   +0x30: uint32_t ItemCount
-//
-// We'll use a safe iteration approach: read the Values.Keys and Values.Values arrays
-// by finding them relative to the enumeration pointer.
-// If the layout is wrong, the runtime probe in stats_manager_on_session_loaded will catch it.
+#define VALUELIST_OFFSET_BUCKET_COUNT 0x08
+#define VALUELIST_OFFSET_BUCKETS      0x10
+#define VALUELIST_OFFSET_ITEM_COUNT   0x18
+#define VALUELIST_NODE_OFFSET_NEXT    0x00
+#define VALUELIST_NODE_OFFSET_KEY     0x08
+#define VALUELIST_NODE_OFFSET_VALUE   0x0C
+#define VALUELIST_MAX_BUCKETS         1048576U
+#define VALUELIST_MAX_ITEMS           1048576U
+#define VALUELIST_INSERT_ADDRESS      0x101c44920ULL
 
-// Read the Values map entry count from RPGEnumeration
-// Try offsets near the enumeration struct to find the count
-static int rpgenum_get_count(void *enumeration) {
-    if (!enumeration) return 0;
+typedef enum {
+    STATS_VALUELIST_ERROR = -1,
+    STATS_VALUELIST_NOT_FOUND = 0,
+    STATS_VALUELIST_FOUND = 1
+} StatsValueListLookup;
 
-    // The LegacyMap doesn't have a simple count field like CNEM.
-    // Instead we'll probe for a reasonable structure.
-    // RPGEnumeration is actually a CNEM itself in the Windows code:
-    // It inherits from CNamedElementManager, so it HAS the same layout!
-    // Name at +0x5C (like ModifierList), Values as the managed array.
-    // Wait — looking at Windows Stats.h line 28-40:
-    //   struct RPGEnumeration : public CNamedElementManager<EnumInfo> { ... }
-    // So RPGEnumeration IS a CNamedElementManager! Same layout as ModifierLists.
-    // The "Values" are EnumInfo entries in the CNEM's Values array.
-    // Each EnumInfo has: {FixedString key, int32_t value}
+typedef void (*StatsValueListInsertFn)(void *value_list,
+                                       const uint32_t *label,
+                                       int32_t value);
 
-    // Since it's a CNEM, use CNEM_OFFSET_VALUES_SIZE
-    uint32_t size = 0;
-    if (!safe_read_u32((char*)enumeration + CNEM_OFFSET_VALUES_SIZE, &size)) {
-        return 0;
+static bool stats_valuelist_shape(void *value_list, uint32_t *bucket_count,
+                                  void **buckets, uint32_t *item_count) {
+    uint32_t buckets_read = 0;
+    uint32_t items_read = 0;
+    void *bucket_array = NULL;
+
+    if (!value_list ||
+        !safe_read_u32((char*)value_list + VALUELIST_OFFSET_BUCKET_COUNT,
+                       &buckets_read) ||
+        !safe_read_ptr((char*)value_list + VALUELIST_OFFSET_BUCKETS,
+                       &bucket_array) ||
+        !safe_read_u32((char*)value_list + VALUELIST_OFFSET_ITEM_COUNT,
+                       &items_read) ||
+        buckets_read == 0 || buckets_read > VALUELIST_MAX_BUCKETS ||
+        items_read > VALUELIST_MAX_ITEMS || !bucket_array) {
+        return false;
     }
-    return (int)size;
+
+    if (bucket_count) *bucket_count = buckets_read;
+    if (buckets) *buckets = bucket_array;
+    if (item_count) *item_count = items_read;
+    return true;
 }
 
-// The EnumInfo struct inside RPGEnumeration values array:
-// struct EnumInfo { FixedString Label; int32_t Value; }
-// On ARM64: Label(4) + Value(4) = 8 bytes? Or Label(4) + pad(4) + Value(4) + pad(4)?
-// Actually the CNEM stores pointers to EnumInfo, so each element is EnumInfo*.
-// EnumInfo is likely: { FixedString Label (+0x00), int32_t Value (+0x04 or +0x08) }
-// For FixedString at +0x00 and int32_t at +0x04, total 8 bytes, no padding needed.
-#define ENUMINFO_OFFSET_LABEL 0x00
-#define ENUMINFO_OFFSET_VALUE 0x04
+static StatsValueListLookup stats_valuelist_find_key(void *value_list,
+                                                      uint32_t key,
+                                                      int32_t *out_value) {
+    uint32_t bucket_count = 0;
+    uint32_t item_count = 0;
+    void *buckets = NULL;
+    if (!stats_valuelist_shape(value_list, &bucket_count, &buckets,
+                               &item_count)) {
+        return STATS_VALUELIST_ERROR;
+    }
+
+    void *node = NULL;
+    uint32_t bucket = key % bucket_count;
+    if (!safe_read_ptr((char*)buckets + (size_t)bucket * sizeof(void*),
+                       &node)) {
+        return STATS_VALUELIST_ERROR;
+    }
+
+    uint32_t visited = 0;
+    while (node) {
+        uint32_t node_key = FS_NULL_INDEX;
+        int32_t node_value = -1;
+        void *next = NULL;
+        if (visited++ >= item_count ||
+            !safe_read_u32((char*)node + VALUELIST_NODE_OFFSET_KEY,
+                           &node_key) ||
+            !safe_read_i32((char*)node + VALUELIST_NODE_OFFSET_VALUE,
+                           &node_value) ||
+            !safe_read_ptr((char*)node + VALUELIST_NODE_OFFSET_NEXT, &next)) {
+            return STATS_VALUELIST_ERROR;
+        }
+
+        if (node_key == key) {
+            if (out_value) *out_value = node_value;
+            return STATS_VALUELIST_FOUND;
+        }
+        node = next;
+    }
+
+    return STATS_VALUELIST_NOT_FOUND;
+}
+
+static StatsValueListLookup stats_valuelist_find_value(void *value_list,
+                                                        int32_t value,
+                                                        uint32_t *out_key) {
+    uint32_t bucket_count = 0;
+    uint32_t item_count = 0;
+    void *buckets = NULL;
+    if (!stats_valuelist_shape(value_list, &bucket_count, &buckets,
+                               &item_count)) {
+        return STATS_VALUELIST_ERROR;
+    }
+
+    uint32_t visited = 0;
+    for (uint32_t bucket = 0; bucket < bucket_count; bucket++) {
+        void *node = NULL;
+        if (!safe_read_ptr((char*)buckets + (size_t)bucket * sizeof(void*),
+                           &node)) {
+            return STATS_VALUELIST_ERROR;
+        }
+
+        while (node) {
+            uint32_t node_key = FS_NULL_INDEX;
+            int32_t node_value = -1;
+            void *next = NULL;
+            if (visited++ >= item_count ||
+                !safe_read_u32((char*)node + VALUELIST_NODE_OFFSET_KEY,
+                               &node_key) ||
+                !safe_read_i32((char*)node + VALUELIST_NODE_OFFSET_VALUE,
+                               &node_value) ||
+                !safe_read_ptr((char*)node + VALUELIST_NODE_OFFSET_NEXT,
+                               &next)) {
+                return STATS_VALUELIST_ERROR;
+            }
+
+            if (node_value == value) {
+                if (out_key) *out_key = node_key;
+                return STATS_VALUELIST_FOUND;
+            }
+            node = next;
+        }
+    }
+
+    return visited == item_count
+        ? STATS_VALUELIST_NOT_FOUND : STATS_VALUELIST_ERROR;
+}
+
+static StatsValueListLookup stats_valuelist_find_label(void *value_list,
+                                                        const char *label,
+                                                        int32_t *out_value) {
+    uint32_t bucket_count = 0;
+    uint32_t item_count = 0;
+    void *buckets = NULL;
+    if (!label ||
+        !stats_valuelist_shape(value_list, &bucket_count, &buckets,
+                               &item_count)) {
+        return STATS_VALUELIST_ERROR;
+    }
+
+    uint32_t visited = 0;
+    for (uint32_t bucket = 0; bucket < bucket_count; bucket++) {
+        void *node = NULL;
+        if (!safe_read_ptr((char*)buckets + (size_t)bucket * sizeof(void*),
+                           &node)) {
+            return STATS_VALUELIST_ERROR;
+        }
+
+        while (node) {
+            uint32_t node_key = FS_NULL_INDEX;
+            int32_t node_value = -1;
+            void *next = NULL;
+            if (visited++ >= item_count ||
+                !safe_read_u32((char*)node + VALUELIST_NODE_OFFSET_KEY,
+                               &node_key) ||
+                !safe_read_i32((char*)node + VALUELIST_NODE_OFFSET_VALUE,
+                               &node_value) ||
+                !safe_read_ptr((char*)node + VALUELIST_NODE_OFFSET_NEXT,
+                               &next)) {
+                return STATS_VALUELIST_ERROR;
+            }
+
+            const char *node_label = fixed_string_resolve(node_key);
+            if (node_label && strcmp(node_label, label) == 0) {
+                if (out_value) *out_value = node_value;
+                return STATS_VALUELIST_FOUND;
+            }
+            node = next;
+        }
+    }
+
+    return visited == item_count
+        ? STATS_VALUELIST_NOT_FOUND : STATS_VALUELIST_ERROR;
+}
+
+static bool stats_valuelist_is_non_enumeration(const char *name) {
+    static const char *const names[] = {
+        "ConstantInt", "ConstantFloat", "FixedString", "StatusIDs",
+        "Guid", "StatsFunctors", "Conditions", "TargetConditions",
+        "UseConditions", "RollConditions", "Requirements",
+        "MemorizationRequirements", "TranslatedString", "AttributeFlags",
+        "WeaponFlags", "ResistanceFlags", "PassiveFlags", "SpellFlagList",
+        "StatusEvent", "StatusPropertyFlags", "ProficiencyGroupFlags",
+        "CinematicArenaFlags", "LineOfSightFlags", "SpellCategoryFlags",
+        "StatsFunctorContext", "StatusGroupFlags", "InterruptContext",
+        "InterruptContextScope", "InterruptDefaultValue",
+        "InterruptFlagsList", "AuraFlags", "AbilityFlags"
+    };
+
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (strcmp(name, names[i]) == 0) return true;
+    }
+    return false;
+}
 
 const char* stats_enum_index_to_label(const char *enum_name, int32_t index) {
     if (!enum_name || !stats_manager_ready()) return NULL;
@@ -705,19 +843,10 @@ const char* stats_enum_index_to_label(const char *enum_name, int32_t index) {
     void *enumeration = find_rpgenumeration_by_name(enum_name);
     if (!enumeration) return NULL;
 
-    int count = rpgenum_get_count(enumeration);
-    for (int i = 0; i < count; i++) {
-        void *entry = get_manager_element(enumeration, i);
-        if (!entry) continue;
-
-        int32_t value = 0;
-        if (!safe_read_u32((char*)entry + ENUMINFO_OFFSET_VALUE, (uint32_t*)&value)) continue;
-
-        if (value == index) {
-            return read_fixed_string((char*)entry + ENUMINFO_OFFSET_LABEL);
-        }
-    }
-    return NULL;
+    uint32_t key = FS_NULL_INDEX;
+    return stats_valuelist_find_value(enumeration, index, &key) ==
+            STATS_VALUELIST_FOUND
+        ? fixed_string_resolve(key) : NULL;
 }
 
 int32_t stats_enum_label_to_index(const char *enum_name, const char *label) {
@@ -726,20 +855,98 @@ int32_t stats_enum_label_to_index(const char *enum_name, const char *label) {
     void *enumeration = find_rpgenumeration_by_name(enum_name);
     if (!enumeration) return -1;
 
-    int count = rpgenum_get_count(enumeration);
-    for (int i = 0; i < count; i++) {
-        void *entry = get_manager_element(enumeration, i);
-        if (!entry) continue;
+    int32_t value = -1;
+    return stats_valuelist_find_label(enumeration, label, &value) ==
+            STATS_VALUELIST_FOUND
+        ? value : -1;
+}
 
-        const char *entry_label = read_fixed_string((char*)entry + ENUMINFO_OFFSET_LABEL);
-        if (entry_label && strcmp(entry_label, label) == 0) {
-            int32_t value = 0;
-            if (safe_read_u32((char*)entry + ENUMINFO_OFFSET_VALUE, (uint32_t*)&value)) {
-                return value;
-            }
-        }
+bool stats_add_enumeration_value(const char *enum_name, const char *label) {
+    if (!enum_name || !label || !stats_manager_ready() || !g_MainBinaryBase) {
+        return false;
     }
-    return -1;
+
+#if !defined(__aarch64__) && !defined(__arm64__)
+    LOG_STATS_WARN("ValueList::Insert is only verified for ARM64");
+    return false;
+#endif
+
+    const char *version = version_detect_get_version();
+    if (!version || strcmp(version, BG3_KNOWN_VERSION) != 0) {
+        LOG_STATS_WARN("ValueList::Insert disabled for unaudited game version");
+        return false;
+    }
+
+    void *value_list = find_rpgenumeration_by_name(enum_name);
+    if (!value_list) {
+        LOG_STATS_WARN("No stats enumeration named '%s'", enum_name);
+        return false;
+    }
+
+    uint32_t old_count = 0;
+    if (!stats_valuelist_shape(value_list, NULL, NULL, &old_count) ||
+        old_count == 0 || old_count > INT32_MAX ||
+        stats_valuelist_is_non_enumeration(enum_name)) {
+        LOG_STATS_WARN("Stats value list '%s' is not a mutable enumeration or "
+                       "has an invalid layout", enum_name);
+        return false;
+    }
+
+    StatsValueListLookup existing =
+        stats_valuelist_find_label(value_list, label, NULL);
+    if (existing != STATS_VALUELIST_NOT_FOUND) {
+        if (existing == STATS_VALUELIST_FOUND) {
+            LOG_STATS_WARN("Stats enumeration '%s' already contains '%s'",
+                           enum_name, label);
+        }
+        return false;
+    }
+
+    if (!fixed_string_intern_ready()) {
+        LOG_STATS_WARN("Cannot add '%s' to '%s': FixedString interning unavailable",
+                       label, enum_name);
+        return false;
+    }
+
+    uint32_t label_fs = fixed_string_intern(label, -1);
+    if (label_fs == FS_NULL_INDEX ||
+        stats_valuelist_find_key(value_list, label_fs, NULL) !=
+            STATS_VALUELIST_NOT_FOUND) {
+        return false;
+    }
+
+    uint32_t pre_call_count = 0;
+    if (!stats_valuelist_shape(value_list, NULL, NULL, &pre_call_count) ||
+        pre_call_count != old_count) {
+        return false;
+    }
+
+    StatsValueListInsertFn insert = (StatsValueListInsertFn)(
+        (uintptr_t)g_MainBinaryBase +
+        (VALUELIST_INSERT_ADDRESS - GHIDRA_BASE_ADDRESS));
+    int32_t inserted_value = (int32_t)old_count;
+    insert(value_list, &label_fs, inserted_value);
+
+    uint32_t post_count = 0;
+    int32_t forward_value = -1;
+    uint32_t reverse_key = FS_NULL_INDEX;
+    const char *reverse_label = NULL;
+    if (!stats_valuelist_shape(value_list, NULL, NULL, &post_count) ||
+        post_count != old_count + 1 ||
+        stats_valuelist_find_key(value_list, label_fs, &forward_value) !=
+            STATS_VALUELIST_FOUND ||
+        forward_value != inserted_value ||
+        stats_valuelist_find_value(value_list, inserted_value, &reverse_key) !=
+            STATS_VALUELIST_FOUND ||
+        reverse_key != label_fs ||
+        !(reverse_label = fixed_string_resolve(reverse_key)) ||
+        strcmp(reverse_label, label) != 0) {
+        LOG_STATS_WARN("ValueList::Insert readback failed for '%s'.'%s'",
+                       enum_name, label);
+        return false;
+    }
+
+    return true;
 }
 
 // Get modifier attributes by name

@@ -198,11 +198,12 @@ def test_physics_vmt_constants_match_audited_indices():
 
 
 def test_quarantined_raycast_bindings_warn_once_and_fail_closed():
+    # RaycastClosest/All remain deferred; RaycastAny is implemented in Wave 7 B4b
+    # (real VMT-slot-10 binding, gated) and is covered by the contract below.
     source = LUA_LEVEL_C.read_text()
     contracts = {
         "lua_level_raycast_closest": ("RaycastClosest", "lua_pushnil(L)"),
         "lua_level_raycast_all": ("RaycastAll", "lua_pushnil(L)"),
-        "lua_level_raycast_any": ("RaycastAny", "lua_pushboolean(L, 0)"),
     }
     for function, (api_name, result_statement) in contracts.items():
         body = _function_body(source, function)
@@ -212,13 +213,21 @@ def test_quarantined_raycast_bindings_warn_once_and_fail_closed():
         assert result_statement in body
         assert f"level_{function.removeprefix('lua_level_')}(" not in body
 
+    # RaycastAny is no longer a deferred stub: it must dispatch its real helper
+    # and must NOT warn-once or fail-closed unconditionally.
+    any_body = _function_body(source, "lua_level_raycast_any")
+    assert "level_raycast_any(" in any_body
+    assert "warn_deferred_once(" not in any_body
+
     tier2 = LUA_EXT_C.read_text()
     assert "Parity.Level.RaycastClosestDeferred" in tier2
     assert "deferred RaycastClosest must return nil" in tier2
     assert "Parity.Level.RaycastAllDeferred" in tier2
     assert "deferred RaycastAll must return nil" in tier2
-    assert "Parity.Level.RaycastAnyDeferred" in tier2
-    assert "deferred RaycastAny must return false" in tier2
+    # RaycastAny deferral test retired; the real binding is exercised by
+    # Wave7.Level.RaycastAny (callable + returns boolean without crashing).
+    assert "Parity.Level.RaycastAnyDeferred" not in tier2
+    assert "Wave7.Level.RaycastAny" in tier2
 
 
 def test_repaired_query_calls_use_arm64_reference_shapes():
@@ -235,11 +244,32 @@ def test_repaired_query_calls_use_arm64_reference_shapes():
     assert "return test(physics, pos, extents, out," in source
     assert "return test(physics, pos, radius, out," in source
 
-    for function in (
-            "level_raycast_closest", "level_raycast_all",
-            "level_raycast_any"):
+    # Closest/All are still deferred stubs and must not dispatch a VMT entry.
+    # RaycastAny (Wave 7 B4b) is intentionally excluded: it dispatches the real
+    # VMT slot 10 and is validated by test_raycast_any_binding_is_gated below.
+    for function in ("level_raycast_closest", "level_raycast_all"):
         body = _function_body(source, function)
         assert "read_vmt_entry" not in body
+
+
+def test_raycast_any_binding_is_gated():
+    """Wave 7 B4b: the real RaycastAny binding must dispatch VMT slot 10 (never a
+    hardcoded worker address), be arm64-only, and fail closed unless BOTH the game
+    version and the audited Mach-O UUID match (RAYCAST_ABI_B4A.md)."""
+    source = LEVEL_MANAGER_C.read_text()
+    body = _function_body(source, "level_raycast_any")
+
+    # Dispatches via the VMT slot constant, not a literal address.
+    assert "read_vmt_entry(" in body
+    assert "PHYSICS_VMT_RAYCAST_ANY" in body
+
+    # Version + UUID gate; arm64-only with an x86_64 fail-closed fallback.
+    assert "version_detect_matches()" in source
+    assert "9a, 0x64, 0x73, 0x11" in source  # audited LC_UUID gate bytes
+    assert "#if defined(__aarch64__)" in source
+
+    # The audited RaycastAny VMT index is slot 10.
+    assert _parse_physics_indices()["PHYSICS_VMT_RAYCAST_ANY"] == 10
 
 
 def test_installed_arm64_physxscene_vtable_dispatch():

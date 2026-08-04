@@ -48,6 +48,8 @@ struct lua_State;
  */
 typedef uint64_t EntitySubscriptionId;
 
+typedef void (*EntityEventsObserver)(uint64_t entity_handle, uint32_t event);
+
 // Subscription type tags (upper 32 bits)
 #define SUB_TYPE_REPLICATION  1
 #define SUB_TYPE_COMPONENT    2
@@ -177,6 +179,12 @@ bool entity_events_is_bound(void);
  * and false after transition completes (e.g., in entity_on_session_loaded).
  */
 void entity_events_set_transition(bool in_transition);
+
+/**
+ * Set the process-wide observer invoked for create/destroy notifications.
+ * Pass NULL to remove the observer. The callback may run on a worker thread.
+ */
+void entity_events_set_observer(EntityEventsObserver observer);
 
 /**
  * Register Ext.Entity event functions with Lua state.

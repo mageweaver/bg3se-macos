@@ -51,11 +51,11 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 528 (319 offline + 209 Lua) |
+| **Total tests** | 544 (320 offline + 224 Lua) |
 | **Tier 0 (C unit)** | 65 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 254 — Python harness, no game, CI-safe |
-| **Tier 1 (General)** | 113 — Lua, run anytime, no save needed |
-| **Tier 2 (In-Game)** | 96 — Lua, require loaded save |
+| **Tier H (pytest)** | 255 — Python harness, no game, CI-safe |
+| **Tier 1 (General)** | 114 — Lua, run anytime, no save needed |
+| **Tier 2 (In-Game)** | 110 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
@@ -78,7 +78,7 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 
 ### Tier H: Python Harness Tests
 
-254 tests in `tests/harness/`. Run with pytest, no game dependency.
+255 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -102,7 +102,7 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | test_mod | 16 | UUID resolution, pak metadata, registry reconciliation, preflight |
 | test_monitor | 8 | process tracking, atomic health writes, graphics restoration |
 | test_offset_audit | 73 | symbol manifest, offset-table, remap, and functor invariants |
-| test_physics_vmt_audit | 4 | physics VMT index invariants |
+| test_physics_vmt_audit | 5 | physics VMT index invariants + RaycastAny gating guard |
 | test_savegames | 10 | fixture snapshot/restore source tracking, backup safety, save-mod marker classification |
 | test_scenarios | 7 | scenario manifest schema, baseline coverage, catalog stamps, MCM injection, Lua assertion syntax (luac) |
 | test_test_runner | 6 | output parsing and socket error handling |
@@ -134,7 +134,7 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 1: General Tests
 
-113 tests that run without a loaded save. Test API registration and behavior, including 24 parity tests.
+114 tests that run without a loaded save. Test API registration and behavior, including 25 parity tests.
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
@@ -153,11 +153,11 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 | Vars | 2 | Exists, ReloadPersistentVars |
 | Osi | 4 | Exists, SafeCall, MetatableExists, IndexReturnsFunction |
 | MCM | 10 | ModEventsExists, SubscribeExists, ThrowExists, UnsubscribeExists, EventRoundtrip, RegisterNetListener, NetCreateChannel, PostMessageToServer, OsirisRegisterListener, OsirisNewCall |
-| Parity | 24 | Behavioral compatibility assertions, including functor event subscription lifecycles and Audio/Types/Math/Loca surface checks |
+| Parity | 25 | Behavioral compatibility assertions, including custom Types properties, functor event subscription lifecycles, and Audio/Types/Math/Loca surface checks |
 
 ### Tier 2: In-Game Tests
 
-96 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
+110 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|
@@ -169,8 +169,11 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 | StaticData | 2 | IsReady, GetTypes |
 | Osi | 13 | Dispatch (GetHostCharacter, MetatableIndex, IsInCombat, NonexistentSafe, CacheConsistency, GetLevel, GetHitpoints, IsAlive) + edge cases (WrongArgCount, WrongArgType, NilArg, TooManyArgs, LongStringArg) |
 | EntityEvents | 5 | SubscribeExists, OnCreateExists, OnDestroyExists, SubscribeReturnsHandle, UnsubscribeWorks |
-| Stats | 3 | Goal 2.3 treasure reads and prototype sync honesty |
-| Parity | 41 | Loaded-save compatibility: damage event lifecycles, sweep/overlap dispatch, AiGrid pathfinding contracts, CreateComponent/RemoveComponent guards |
+| Stats | 4 | Goal 2.3 treasure reads and prototype sync honesty, plus native cached lookups |
+| Parity | 42 | Loaded-save compatibility: damage event lifecycles, sweep/overlap dispatch, AiGrid pathfinding contracts, CreateComponent/RemoveComponent guards, PlayerHasExtender |
+| Wave7 | 8 | Four Entity contracts plus DB Delete, AddEnumerationValue, tracing, and OnSystemUpdate |
+| Diagnostic | 1 | `Diagnostic.Level.TileRawDebugInfo` — raw tile surface with confirmed MinHeight (+0x0a) |
+| Parity.Level | 3 | `Parity.Level.GetHeightsAt.*` — real multi-subgrid walk: host non-empty, tile-range cross-check, out-of-bounds empty |
 | Wave3 | 6 | GetAllEntities walk, GetAllComponents, Serialize roundtrip, Loca update roundtrip, live path lookup dispatch, audio bank dispatch smoke |
 
 ---
@@ -215,7 +218,7 @@ RPGStats system access via `Ext.Stats`.
 - `Stats.Goal23.HonestSurface` — Calls gated mutations and missing treasure lookups, asserting honest results
 - `Stats.Goal23.ModuleLoadOrder` — Executes `GetStatsLoadedMods` / `GetStatsLoadedBefore` and checks prefix semantics
 
-Tier 2 adds `Stats.Goal23.TreasureReads`, `Stats.Goal23.PrototypeSyncHonesty`, and `Stats.W6.NativeCachedLookups` (GetCachedPassive/GetCachedInterrupt through the native engine getters — asserts the interrupt prototype's FixedString at +0x0 round-trips the name, and that unknown names miss to nil).
+Tier 2 adds `Stats.Goal23.TreasureReads`, `Stats.Goal23.PrototypeSyncHonesty`, and `Stats.W6.NativeCachedLookups` (GetCachedPassive/GetCachedInterrupt through the native engine getters — asserts the interrupt prototype's FixedString at +0x0 round-trips the name, and that unknown names miss to nil). `Wave7.Stats.AddEnumerationValue` verifies insertion, duplicate rejection, and unknown-enum rejection.
 
 ### Timer (8 tests)
 Timer system via `Ext.Timer`.
@@ -348,9 +351,9 @@ Entity event subscription system.
 ### Console Commands
 
 ```lua
-!test                    -- Run all 113 Tier 1 tests
+!test                    -- Run all 114 Tier 1 tests
 !test Stats              -- Filter: only Stats.* tests
-!test_ingame             -- Run all 95 Tier 2 tests (needs save)
+!test_ingame             -- Run all 110 Tier 2 tests (needs save)
 !test_ingame Osi         -- Filter: only Osi.* Tier 2 tests
 !test_ingame EntityEvents -- Filter: Entity Events tests
 ```
@@ -380,14 +383,14 @@ echo '!test' | nc -U /tmp/bg3se.sock > /tmp/test_results.txt 2>&1
 ## Test Output Format
 
 ```
-=== BG3SE General Tests (113 tests) ===
+=== BG3SE General Tests (114 tests) ===
 
 --- Stats ---
-  PASS: Stats.Get (175ms) [16/113]
-  PASS: Stats.GetAllFiltered (4276ms) [SLOW 4276ms] [21/113]
-  FAIL: Stats.Example (0ms) - assertion failed: expected X [22/113]
+  PASS: Stats.Get (175ms) [16/114]
+  PASS: Stats.GetAllFiltered (4276ms) [SLOW 4276ms] [21/114]
+  FAIL: Stats.Example (0ms) - assertion failed: expected X [22/114]
 
-=== Results: 112/113 passed, 1 failed, 0 skipped (9443ms) ===
+=== Results: 113/114 passed, 1 failed, 0 skipped (9443ms) ===
 Failures:
   * Stats.Example: assertion failed: expected X
 SOME TESTS FAILED
@@ -517,4 +520,4 @@ grep -E "(ms|initialized|complete)" "/Users/tomdimino/Library/Application Suppor
 
 ### Test Registration Overhead
 
-All 208 test definitions (113 Tier 1 + 95 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.
+All 224 test definitions (114 Tier 1 + 110 Tier 2) are compiled at Lua init via `luaL_dostring()`. This adds ~10-30ms to startup (visible in init timing as `console_cmds`). Tests themselves only execute when `!test` / `!test_ingame` is invoked.

@@ -136,7 +136,7 @@ BG3SE-macOS implements approximately 94.8% of the Windows BG3SE API across the s
 | Ext.Net | Full | RakNet backend, Request/Reply callbacks |
 | Ext.ModEvents | Full | Cross-mod event system (MCM compat) |
 | Ext.RegisterNetListener | Full | Per-channel network message listener |
-| Ext.Level | 20/25 (80%) | All 8 sweeps incl. cylinders, pathfinding suite; raycasts + GetTileDebugInfo + BeginPathfinding deferred |
+| Ext.Level | 20/25 (80%) | All 8 sweeps incl. cylinders, pathfinding suite, real GetHeightsAt; raycasts + GetTileDebugInfo + BeginPathfinding deferred |
 | Ext.Audio | Full (16/16 Windows-registered) | PlayExternalSound + LoadBank/UnloadBank/PrepareBank/UnprepareBank; GetSoundObjectId/IsReady are macOS extras |
 | Ext.Localization | Full | GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString |
 | Ext.Math | Full (59/59) | Vector/matrix/quaternion suite incl. Random, Fract, Smoothstep, IsNaN |

@@ -45,6 +45,8 @@ extern "C" {
 // Entity Component System
 #include "entity_system.h"
 #include "entity_events.h"
+#include "entity_tracing.h"
+#include "ecs_system_update.h"
 
 // Core modules
 #include "version.h"
@@ -106,6 +108,7 @@ extern "C" {
 #include "global_switches.h"
 #include "video_skip.h"
 #include "focus_hack.h"
+#include "savegame_hook.h"
 
 // Input system
 #include "input.h"
@@ -1107,22 +1110,11 @@ static void register_ext_api(lua_State *L) {
     // NOTE: entity_events_register_lua() moved after entity_register_lua() below
     // (Ext.Entity table must exist before we can register event functions on it)
 
-    // Remaining entity stubs that don't have real implementations yet
-    luaL_dostring(L,
-        "do\n"
-        "  local function entity_stub(name)\n"
-        "    return function(...)\n"
-        "      Ext.Log.Warn('Lua', 'Ext.Entity.' .. name .. ' is not yet implemented on macOS')\n"
-        "      return nil\n"
-        "    end\n"
-        "  end\n"
-        "  local stubs = {'EnableTracing', 'DisableTracing',\n"
-        "    'GetReplicationFlags'}\n"
-        "  for _, name in ipairs(stubs) do\n"
-        "    Ext.Entity[name] = Ext.Entity[name] or entity_stub(name)\n"
-        "  end\n"
-        "end\n"
-    );
+    // Wave 7 C step 2: GetReplicationFlags is now a real read-only method on the
+    // entity proxy (entity:GetReplicationFlags), matching the Windows surface
+    // (LuaEntityProxy.inl:415). The former Ext.Entity.GetReplicationFlags
+    // namespace warn-stub was a macOS-only invention with no Windows counterpart
+    // and has been removed — no entity namespace stubs remain.
 
     // Register global helper functions (must be after Ext is set as global)
     lua_ext_register_global_helpers(L);
@@ -1466,6 +1458,126 @@ static void osi_push_typed_value(lua_State *L, mach_vm_address_t tv) {
  *   inline at the tuple base when cap < 9, else *(tuple+0x00) is a heap
  *   pointer. Column i COsiTypedValue @ values + i*0x10.
  */
+/* Resolve a database def -> (RETE fact node, CReteDBase, column count).
+ * Shared by the Facts reader and the Wave 7 A5 delete path. Returns false
+ * (with warn logs) on any validation or layout-drift check failure. */
+static bool osi_db_resolve(void *def, void **outNode, void **outDb,
+                           uint8_t *outColCount) {
+    if (!def || !g_pOsiFunctionMan) return false;
+    uintptr_t base = (uintptr_t)g_pOsiFunctionMan - 0x9f348;
+
+    void *factory = NULL, *dbmgr = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x9f338), &factory) || !factory) return false;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x9f5b0), &dbmgr) || !dbmgr) return false;
+
+    uint32_t nodeId = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)def + 0x20, &nodeId) || nodeId == 0) return false;
+
+    /* def -> node via node factory vector (id-1 index, bounds-checked against
+     * the vector end pointer at +0x10; validate node id). */
+    void *fbegin = NULL, *fend = NULL, *node = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)factory + 0x08, &fbegin) || !fbegin) return false;
+    safe_memory_read_pointer((mach_vm_address_t)factory + 0x10, &fend);
+    if (fend && (uintptr_t)nodeId > ((uintptr_t)fend - (uintptr_t)fbegin) / 8) {
+        LOG_OSIRIS_WARN("Osi DB: node id %u beyond factory vector", nodeId);
+        return false;
+    }
+    if (!safe_memory_read_pointer((mach_vm_address_t)fbegin + (uintptr_t)(nodeId - 1) * 8, &node) || !node) return false;
+    uint32_t nodeChk = 0;
+    safe_memory_read_u32((mach_vm_address_t)node + 0x08, &nodeChk);
+    if (nodeChk != nodeId) {
+        LOG_OSIRIS_WARN("Osi DB: node id mismatch (%u != %u) — stale def or "
+                        "layout drift after game update", nodeChk, nodeId);
+        return false;
+    }
+
+    uint32_t dbId = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)node + 0x18, &dbId) || dbId == 0) return false;
+
+    /* node -> CReteDBase via databases vector (id-1 index; validate db id). */
+    void *dbegin = NULL, *dend = NULL, *db = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)dbmgr + 0x08, &dbegin) || !dbegin) return false;
+    safe_memory_read_pointer((mach_vm_address_t)dbmgr + 0x10, &dend);
+    if (dend && (uintptr_t)dbId > ((uintptr_t)dend - (uintptr_t)dbegin) / 8) {
+        LOG_OSIRIS_WARN("Osi DB: db id %u beyond dbase vector", dbId);
+        return false;
+    }
+    if (!safe_memory_read_pointer((mach_vm_address_t)dbegin + (uintptr_t)(dbId - 1) * 8, &db) || !db) return false;
+    uint32_t dbChk = 0;
+    safe_memory_read_u32((mach_vm_address_t)db + 0x00, &dbChk);
+    if (dbChk != dbId) {
+        LOG_OSIRIS_WARN("Osi DB: database id mismatch (%u != %u) — stale def or "
+                        "layout drift after game update", dbChk, dbId);
+        return false;
+    }
+
+    uint8_t colCount = 0;
+    safe_memory_read_u8((mach_vm_address_t)db + 0x40, &colCount);
+    if (colCount == 0 || colCount > 32) {
+        LOG_OSIRIS_WARN("Osi DB: implausible column count %u — layout drift "
+                        "after game update?", colCount);
+        return false;
+    }
+
+    *outNode = node;
+    *outDb = db;
+    *outColCount = colCount;
+    return true;
+}
+
+/* Locate the value array of a stored fact. CTuple (inline at listnode+0x10)
+ * is a COsiSOOList<COsiTypedValue,8>: size @ +0x80, cap @ +0x84; values are
+ * stored INLINE at the tuple base when cap < 9, else the tuple base holds a
+ * heap pointer. Returns 0 on read failure. */
+static mach_vm_address_t osi_db_tuple_values(mach_vm_address_t listNode,
+                                             uint32_t *outSize) {
+    mach_vm_address_t tuple = listNode + 0x10;
+    uint32_t tsize = 0, tcap = 0;
+    safe_memory_read_u32(tuple + 0x80, &tsize);
+    safe_memory_read_u32(tuple + 0x84, &tcap);
+    *outSize = tsize;
+    if (tcap >= 9) {
+        void *heap = NULL;
+        safe_memory_read_pointer(tuple, &heap);
+        return (mach_vm_address_t)heap;
+    }
+    return tuple;
+}
+
+/* Compare Lua stack slots 2..(1+nfilter) against a stored value array.
+ * nil slots are wildcards. Numbers compare by column type (REAL vs integer
+ * widths), strings via the resolved string handle. Returns 1 on match. */
+static int osi_db_tuple_matches(lua_State *L, mach_vm_address_t values,
+                                uint8_t colCount, int nfilter) {
+    for (int i = 0; i < nfilter; i++) {
+        int slot = 2 + i;
+        if (lua_isnil(L, slot)) continue;      /* wildcard */
+        if ((uint32_t)i >= colCount) return 0;
+        mach_vm_address_t tv = values + (mach_vm_address_t)i * 0x10;
+        uint16_t colType = 0;
+        safe_memory_read(tv + 0x08, &colType, sizeof(colType));
+        if (lua_type(L, slot) == LUA_TNUMBER) {
+            if (colType == OSI_TYPE_REAL) {
+                uint32_t v = 0; safe_memory_read_u32(tv, &v);
+                float f; memcpy(&f, &v, sizeof(f));
+                if ((lua_Number)f != lua_tonumber(L, slot)) return 0;
+            } else {
+                int64_t want = (int64_t)lua_tointeger(L, slot), got;
+                if (colType == OSI_TYPE_INTEGER) { uint32_t v = 0; safe_memory_read_u32(tv, &v); got = (int32_t)v; }
+                else { uint64_t v = 0; safe_memory_read_u64(tv, &v); got = (int64_t)v; }
+                if (got != want) return 0;
+            }
+        } else {
+            const char *want = lua_tostring(L, slot);
+            uint64_t handle = 0; char buf[256]; buf[0] = '\0';
+            safe_memory_read_u64(tv, &handle);
+            osi_resolve_string_handle(handle, buf, sizeof(buf));
+            if (!want || strcmp(buf, want) != 0) return 0;
+        }
+    }
+    return 1;
+}
+
 static int osi_db_read_facts(lua_State *L, void *def) {
     int nfilter = lua_gettop(L) - 1;      /* filter args at stack 2..top */
     if (nfilter < 0) nfilter = 0;
@@ -1474,61 +1586,9 @@ static int osi_db_read_facts(lua_State *L, void *def) {
     int resultIdx = lua_gettop(L);
     int rowCount = 0;
 
-    if (!def || !g_pOsiFunctionMan) return 1;
-    uintptr_t base = (uintptr_t)g_pOsiFunctionMan - 0x9f348;
-
-    void *factory = NULL, *dbmgr = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x9f338), &factory) || !factory) return 1;
-    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x9f5b0), &dbmgr) || !dbmgr) return 1;
-
-    uint32_t nodeId = 0;
-    if (!safe_memory_read_u32((mach_vm_address_t)def + 0x20, &nodeId) || nodeId == 0) return 1;
-
-    /* def -> node via node factory vector (id-1 index, bounds-checked against
-     * the vector end pointer at +0x10; validate node id). */
-    void *fbegin = NULL, *fend = NULL, *node = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)factory + 0x08, &fbegin) || !fbegin) return 1;
-    safe_memory_read_pointer((mach_vm_address_t)factory + 0x10, &fend);
-    if (fend && (uintptr_t)nodeId > ((uintptr_t)fend - (uintptr_t)fbegin) / 8) {
-        LOG_OSIRIS_WARN("Osi DB: node id %u beyond factory vector", nodeId);
-        return 1;
-    }
-    if (!safe_memory_read_pointer((mach_vm_address_t)fbegin + (uintptr_t)(nodeId - 1) * 8, &node) || !node) return 1;
-    uint32_t nodeChk = 0;
-    safe_memory_read_u32((mach_vm_address_t)node + 0x08, &nodeChk);
-    if (nodeChk != nodeId) {
-        LOG_OSIRIS_WARN("Osi DB: node id mismatch (%u != %u) — stale def or "
-                        "layout drift after game update", nodeChk, nodeId);
-        return 1;
-    }
-
-    uint32_t dbId = 0;
-    if (!safe_memory_read_u32((mach_vm_address_t)node + 0x18, &dbId) || dbId == 0) return 1;
-
-    /* node -> CReteDBase via databases vector (id-1 index; validate db id). */
-    void *dbegin = NULL, *dend = NULL, *db = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)dbmgr + 0x08, &dbegin) || !dbegin) return 1;
-    safe_memory_read_pointer((mach_vm_address_t)dbmgr + 0x10, &dend);
-    if (dend && (uintptr_t)dbId > ((uintptr_t)dend - (uintptr_t)dbegin) / 8) {
-        LOG_OSIRIS_WARN("Osi DB: db id %u beyond dbase vector", dbId);
-        return 1;
-    }
-    if (!safe_memory_read_pointer((mach_vm_address_t)dbegin + (uintptr_t)(dbId - 1) * 8, &db) || !db) return 1;
-    uint32_t dbChk = 0;
-    safe_memory_read_u32((mach_vm_address_t)db + 0x00, &dbChk);
-    if (dbChk != dbId) {
-        LOG_OSIRIS_WARN("Osi DB: database id mismatch (%u != %u) — stale def or "
-                        "layout drift after game update", dbChk, dbId);
-        return 1;
-    }
-
+    void *node = NULL, *db = NULL;
     uint8_t colCount = 0;
-    safe_memory_read_u8((mach_vm_address_t)db + 0x40, &colCount);
-    if (colCount == 0 || colCount > 32) {
-        LOG_OSIRIS_WARN("Osi DB: implausible column count %u — layout drift "
-                        "after game update?", colCount);
-        return 1;
-    }
+    if (!osi_db_resolve(def, &node, &db, &colCount)) return 1;
 
     /* Walk the fact list (std::list<CTuple> sentinel @ db+0x10). */
     mach_vm_address_t sentinel = (mach_vm_address_t)db + 0x10;
@@ -1539,49 +1599,10 @@ static int osi_db_read_facts(lua_State *L, void *def) {
     while (cur && (mach_vm_address_t)cur != sentinel && rowCount < 100000 && guard < 500000) {
         guard++;
 
-        /* CTuple (inline at node+0x10) is a COsiSOOList<COsiTypedValue,8>:
-         * size @ +0x80, cap @ +0x84; values are stored INLINE at the tuple
-         * base when cap < 9, else the tuple base holds a heap pointer. */
-        mach_vm_address_t tuple = (mach_vm_address_t)cur + 0x10;
-        uint32_t tsize = 0, tcap = 0;
-        safe_memory_read_u32(tuple + 0x80, &tsize);
-        safe_memory_read_u32(tuple + 0x84, &tcap);
-        mach_vm_address_t values = 0;
-        if (tcap >= 9) {
-            void *heap = NULL;
-            safe_memory_read_pointer(tuple, &heap);
-            values = (mach_vm_address_t)heap;
-        } else {
-            values = tuple;
-        }
-
-        int match = (values != 0 && tsize >= colCount);
-        for (int i = 0; i < nfilter && match; i++) {
-            int slot = 2 + i;
-            if (lua_isnil(L, slot)) continue;      /* wildcard */
-            if ((uint32_t)i >= colCount) { match = 0; break; }
-            mach_vm_address_t tv = values + (mach_vm_address_t)i * 0x10;
-            uint16_t colType = 0;
-            safe_memory_read(tv + 0x08, &colType, sizeof(colType));
-            if (lua_type(L, slot) == LUA_TNUMBER) {
-                if (colType == OSI_TYPE_REAL) {
-                    uint32_t v = 0; safe_memory_read_u32(tv, &v);
-                    float f; memcpy(&f, &v, sizeof(f));
-                    if ((lua_Number)f != lua_tonumber(L, slot)) match = 0;
-                } else {
-                    int64_t want = (int64_t)lua_tointeger(L, slot), got;
-                    if (colType == OSI_TYPE_INTEGER) { uint32_t v = 0; safe_memory_read_u32(tv, &v); got = (int32_t)v; }
-                    else { uint64_t v = 0; safe_memory_read_u64(tv, &v); got = (int64_t)v; }
-                    if (got != want) match = 0;
-                }
-            } else {
-                const char *want = lua_tostring(L, slot);
-                uint64_t handle = 0; char buf[256]; buf[0] = '\0';
-                safe_memory_read_u64(tv, &handle);
-                osi_resolve_string_handle(handle, buf, sizeof(buf));
-                if (!want || strcmp(buf, want) != 0) match = 0;
-            }
-        }
+        uint32_t tsize = 0;
+        mach_vm_address_t values = osi_db_tuple_values((mach_vm_address_t)cur, &tsize);
+        int match = (values != 0 && tsize >= colCount)
+                    && osi_db_tuple_matches(L, values, colCount, nfilter);
 
         if (match) {
             lua_newtable(L);                        /* row */
@@ -1600,6 +1621,171 @@ static int osi_db_read_facts(lua_State *L, void *def) {
 
     LOG_OSIRIS_DEBUG("Osi DB (Facts): %d rows, %u cols", rowCount, colCount);
     return 1;
+}
+
+// ============================================================================
+// Wave 7 A5: Osi.DB_*:Delete — engine-native tuple deletion
+// ============================================================================
+//
+// Replicates CReteStartNode::Del(COsipParameterList*) (libOsiris arm64
+// 0x5f42c), whose disassembled sequence is:
+//   1. build a compact search CTuple { COsiTypedValue *values; uint64 size;
+//      uint32 cap = 0 } — each value slot 16 bytes, default-initialized to
+//      { value = 0, dword @ +0x8 = 0x01ff0000 } and then Assign()'d;
+//   2. CReteDBase::erase(CTuple const&) — find + unlink + destroy the row
+//      (returns nonzero on success);
+//   3. on success, node->ForwardDelToken(CTuple const&) — vtable slot 16
+//      (vptr + 0x80) — RETE delete propagation so NOT-condition rules fire.
+// All entry points are exported T symbols in libOsiris.dylib; resolved via
+// dlsym on first use. Search-tuple values are Assign()'d from the matched
+// stored row (owned refcounted copies, released via the COsiTypedValueBase
+// dtor) — this sidesteps type construction and string-handle interning
+// entirely: if no stored row matches, deletion is an engine no-op anyway.
+
+typedef uint64_t (*OsiDBaseEraseFn)(void *db, const void *tuple);
+typedef void *(*OsiTypedValueAssignFn)(void *dst, const void *src);
+typedef void (*OsiTypedValueDtorFn)(void *tv);
+
+static OsiDBaseEraseFn s_osi_dbase_erase = NULL;
+static OsiTypedValueAssignFn s_osi_tv_assign = NULL;
+static OsiTypedValueDtorFn s_osi_tv_dtor = NULL;
+
+/* Resolve the three exported libOsiris entry points once. Failure is sticky
+ * (logged once); Delete then fail-closes with a warn instead of retrying
+ * dlopen on every call. */
+static bool osi_db_delete_resolve_symbols(void) {
+    static bool attempted = false;
+    if (s_osi_dbase_erase && s_osi_tv_assign && s_osi_tv_dtor) return true;
+    if (attempted) return false;
+    attempted = true;
+
+    void *h = dlopen("@rpath/libOsiris.dylib", RTLD_NOLOAD);
+    if (!h) h = dlopen("@executable_path/../Frameworks/libOsiris.dylib", RTLD_NOW);
+    if (!h) {
+        LOG_OSIRIS_WARN("Osi DB Delete: libOsiris.dylib not resolvable via dlopen");
+        return false;
+    }
+    s_osi_dbase_erase = (OsiDBaseEraseFn)dlsym(h, "_ZN10CReteDBase5eraseERK6CTuple");
+    s_osi_tv_assign = (OsiTypedValueAssignFn)dlsym(h, "_ZN14COsiTypedValue6AssignERKS_");
+    s_osi_tv_dtor = (OsiTypedValueDtorFn)dlsym(h, "_ZN18COsiTypedValueBaseD2Ev");
+    if (!s_osi_dbase_erase || !s_osi_tv_assign || !s_osi_tv_dtor) {
+        LOG_OSIRIS_WARN("Osi DB Delete: missing libOsiris exports (erase=%p assign=%p dtor=%p)",
+                        (void *)s_osi_dbase_erase, (void *)s_osi_tv_assign,
+                        (void *)s_osi_tv_dtor);
+        s_osi_dbase_erase = NULL;
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Osi.DB_<name>:Delete(v1, v2, ...) — delete one exactly-matching row.
+ *
+ * Windows contract (OsirisBinding: DeleteTuple): exact arity required —
+ * "Incorrect number of arguments" error otherwise — no nil wildcards, zero
+ * return values, and deleting a non-existent row is an engine no-op.
+ *
+ * The matched stored row's values are Assign()'d into a compact search
+ * tuple, CReteDBase::erase unlinks and destroys the row, and on success
+ * ForwardDelToken propagates the RETE delete so NOT-condition rules fire.
+ */
+static int lua_osi_db_delete(lua_State *L) {
+    lua_getfield(L, 1, "DBName");
+    const char *db_name = lua_tostring(L, -1);
+    lua_pop(L, 1);
+    if (!db_name || !*db_name) {
+        LOG_OSIRIS_WARN("Osi.DB_<?>:Delete() called but DBName is missing");
+        return 0;
+    }
+
+    void *def = osi_db_lookup(db_name);
+    if (!def) {
+        LOG_OSIRIS_WARN("Osi.%s:Delete() — not a discovered Osiris database", db_name);
+        return 0;
+    }
+
+    void *node = NULL, *db = NULL;
+    uint8_t colCount = 0;
+    if (!osi_db_resolve(def, &node, &db, &colCount)) return 0;
+
+    int nargs = lua_gettop(L) - 1;
+    if (nargs != (int)colCount) {
+        return luaL_error(L, "Incorrect number of arguments for '%s'; expected %d, got %d",
+                          db_name, (int)colCount, nargs);
+    }
+    for (int i = 0; i < nargs; i++) {
+        if (lua_isnil(L, 2 + i)) {
+            return luaL_error(L, "Osi.%s:Delete() does not accept nil arguments "
+                                 "(no wildcard deletion)", db_name);
+        }
+    }
+
+    if (!osi_db_delete_resolve_symbols()) {
+        LOG_OSIRIS_WARN("Osi.%s:Delete() — libOsiris delete entry points unavailable", db_name);
+        return 0;
+    }
+
+    /* Find the first stored row matching all columns exactly. */
+    mach_vm_address_t sentinel = (mach_vm_address_t)db + 0x10;
+    void *cur = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)db + 0x18, &cur)) return 0;
+
+    mach_vm_address_t matched = 0;
+    int guard = 0;
+    while (cur && (mach_vm_address_t)cur != sentinel && guard < 500000) {
+        guard++;
+        uint32_t tsize = 0;
+        mach_vm_address_t values = osi_db_tuple_values((mach_vm_address_t)cur, &tsize);
+        if (values != 0 && tsize >= colCount
+            && osi_db_tuple_matches(L, values, colCount, nargs)) {
+            matched = values;
+            break;
+        }
+        void *nxt = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)cur + 0x08, &nxt)) break;
+        cur = nxt;
+    }
+    if (!matched) {
+        LOG_OSIRIS_DEBUG("Osi.%s:Delete() — no matching row (no-op)", db_name);
+        return 0;
+    }
+
+    /* Build the compact search tuple from the matched row (Del's exact
+     * sequence: zeroed 16-byte slots, dword @ +0x8 = 0x01ff0000, Assign). */
+    uint8_t *slots = calloc(colCount, 0x10);
+    if (!slots) return 0;
+    for (uint32_t i = 0; i < colCount; i++) {
+        *(uint32_t *)(slots + i * 0x10 + 0x8) = 0x01ff0000;
+        s_osi_tv_assign(slots + i * 0x10, (const void *)(uintptr_t)(matched + (mach_vm_address_t)i * 0x10));
+    }
+    struct {
+        void *values;
+        uint64_t size;
+        uint32_t cap;
+        uint32_t pad;
+    } ctuple = { slots, colCount, 0, 0 };
+
+    uint64_t erased = s_osi_dbase_erase(db, &ctuple);
+    if (erased) {
+        /* ForwardDelToken (CReteFact vtable slot 16, vptr + 0x80). */
+        void *vptr = NULL, *fwd = NULL;
+        safe_memory_read_pointer((mach_vm_address_t)node, &vptr);
+        if (vptr) safe_memory_read_pointer((mach_vm_address_t)vptr + 0x80, &fwd);
+        if (fwd) {
+            ((void (*)(void *, const void *))fwd)(node, &ctuple);
+        } else {
+            LOG_OSIRIS_WARN("Osi.%s:Delete() — row erased but ForwardDelToken "
+                            "unreadable; RETE rules may not see the delete", db_name);
+        }
+    }
+
+    for (uint32_t i = 0; i < colCount; i++) {
+        s_osi_tv_dtor(slots + i * 0x10);
+    }
+    free(slots);
+
+    LOG_OSIRIS_DEBUG("Osi.%s:Delete() — %s", db_name, erased ? "row deleted" : "erase declined");
+    return 0;
 }
 
 /**
@@ -1736,6 +1922,8 @@ static void osi_push_db_accessor(lua_State *L, const char *db_name) {
     lua_setfield(L, -2, "DBName");
     lua_pushcfunction(L, lua_osi_db_get);
     lua_setfield(L, -2, "Get");
+    lua_pushcfunction(L, lua_osi_db_delete);
+    lua_setfield(L, -2, "Delete");
 }
 
 // ============================================================================
@@ -2747,6 +2935,19 @@ static void init_lua(void) {
     // Register Ext.Entity event functions (Subscribe, OnCreate, OnDestroy, etc.)
     // Must be after entity_register_lua() which creates the Ext.Entity table
     entity_events_register_lua(L);
+
+    // Wave 7 A8: tracing prototype — EnableTracing/DisableTracing/GetTrace/
+    // ClearTrace over the entity-events observer (flat bounded log; partial
+    // vs the Windows trace tree pending C3-4 replication).
+    lua_getglobal(L, "Ext");
+    lua_getfield(L, -1, "Entity");
+    if (lua_istable(L, -1)) {
+        entity_tracing_register_lua(L, lua_gettop(L));
+        // Wave 7 B6: OnSystemUpdate/OnSystemPostUpdate via the writable
+        // SystemTypeEntry::UpdateProc registry (ECS_SYSTEM_UPDATE_RECON.md).
+        ecs_system_update_register_lua(L, lua_gettop(L));
+    }
+    lua_pop(L, 2);
 
     // Run a test script (context is NONE at init, before mod loading sets it)
     const char *test_script =
@@ -4209,6 +4410,13 @@ init_subsystems:
                         LOG_CORE_INFO("VideoSkip SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
                     }
 
+                    // Wave 7 E1.1: savegame observation spike. No-op unless
+                    // BG3SE_SAVEGAME_SPIKE=1 AND build verifies (it patches
+                    // code, so it also honors BG3SE_NO_HOOKS).
+                    if (!no_hooks) {
+                        savegame_hook_init();
+                    }
+
                     // Initialize functor hooks (ExecuteFunctor/AfterExecuteFunctor events)
                     // IMPORTANT: Functor hooks use Dobby to patch CODE at nm-visible
                     // local symbols. nm proves the addresses but not the wrapper ABIs,
@@ -4556,6 +4764,9 @@ static void bg3se_cleanup(void) {
     // Log function cache summary
     LOG_OSIRIS_INFO("Osiris functions: %d cached, %d unique IDs observed",
                 osi_func_get_cache_count(), osi_func_get_seen_count());
+
+    // Uninstall the E1.1 savegame observation hook (no-op when disarmed)
+    savegame_hook_shutdown();
 
     // Remove network hooks (ExtenderProtocol from ProtocolList)
     net_hooks_remove();

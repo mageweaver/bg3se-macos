@@ -24,6 +24,7 @@
 #include "../lifetime/lifetime.h"
 
 #include <limits.h>
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -457,6 +458,10 @@ static size_t component_property_field_size(const ComponentPropertyDef *prop) {
             if (prop->arraySize == 0) return 0;
             return (size_t)prop->arraySize * sizeof(int32_t);
 
+        case FIELD_TYPE_FLOAT_ARRAY:
+            if (prop->arraySize == 0) return 0;
+            return (size_t)prop->arraySize * sizeof(float);
+
         default:
             return 0;
     }
@@ -634,6 +639,39 @@ bool component_property_write(lua_State *L, void *componentPtr,
             break;
         }
 
+        case FIELD_TYPE_FLOAT_ARRAY: {
+            // Mirrors the INT32_ARRAY contract: exact length, per-element
+            // validation (NaN/infinity refused — the engine treats both as
+            // corrupt data), staged buffer, one atomic write. Wave 7 A7:
+            // no verified layout carries this type yet, so the path is
+            // exercised only once a real field lands (ls::EffectComponent::
+            // OverrideFadeCapacity is the verification candidate).
+            int absoluteIndex = lua_absindex(L, valueIndex);
+            luaL_checktype(L, absoluteIndex, LUA_TTABLE);
+            size_t suppliedSize = lua_rawlen(L, absoluteIndex);
+            if (suppliedSize != prop->arraySize) {
+                luaL_error(L, "Value for %s.%s must contain exactly %u elements",
+                           layout->componentName, propertyName, prop->arraySize);
+                return false;
+            }
+
+            float values[UINT8_MAX];
+            for (uint8_t i = 0; i < prop->arraySize; i++) {
+                lua_rawgeti(L, absoluteIndex, (lua_Integer)i + 1);
+                double raw = (double)luaL_checknumber(L, -1);
+                if (isnan(raw) || isinf(raw)) {
+                    luaL_error(L, "Element %u for %s.%s is NaN or infinity",
+                               (unsigned)i + 1, layout->componentName, propertyName);
+                    return false;
+                }
+                values[i] = (float)raw;
+                lua_pop(L, 1);
+            }
+
+            wrote = safe_memory_write(address, values, fieldSize);
+            break;
+        }
+
         default:
             /* component_property_field_size() rejects every other type. */
             break;
@@ -660,6 +698,102 @@ typedef struct {
     const ComponentLayoutDef *layout;
     LifetimeHandle lifetime;
 } ComponentProxy;
+
+// Custom properties currently extend component proxies only; StatsObject and
+// other userdata keep their existing metatable behavior.
+static bool component_proxy_push_custom_type(lua_State *L,
+                                             const char *component_name) {
+    int base = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, BG3SE_CUSTOM_PROPS_REGISTRY_KEY);
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, base);
+        return false;
+    }
+
+    lua_getfield(L, -1, component_name);
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, base);
+        return false;
+    }
+
+    lua_remove(L, base + 1);
+    return true;
+}
+
+static int component_proxy_custom_index(lua_State *L,
+                                        const char *component_name,
+                                        const char *key) {
+    int base = lua_gettop(L);
+    if (!component_proxy_push_custom_type(L, component_name)) {
+        return 0;
+    }
+
+    lua_getfield(L, -1, "functions");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, key);
+        if (lua_isfunction(L, -1)) {
+            lua_replace(L, base + 1);
+            lua_settop(L, base + 1);
+            return 1;
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "properties");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, key);
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "getter");
+            if (lua_isfunction(L, -1)) {
+                lua_replace(L, base + 1);
+                lua_settop(L, base + 1);
+                lua_pushvalue(L, 1);
+                lua_call(L, 1, 1);
+                return 1;
+            }
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
+
+    lua_settop(L, base);
+    return 0;
+}
+
+static int component_proxy_custom_newindex(lua_State *L,
+                                           const char *component_name,
+                                           const char *key) {
+    int base = lua_gettop(L);
+    if (!component_proxy_push_custom_type(L, component_name)) {
+        return 0;
+    }
+
+    lua_getfield(L, -1, "properties");
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, base);
+        return 0;
+    }
+
+    lua_getfield(L, -1, key);
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, base);
+        return 0;
+    }
+
+    lua_getfield(L, -1, "setter");
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, base);
+        return luaL_error(L, "Property '%s' is read-only", key);
+    }
+
+    lua_replace(L, base + 1);
+    lua_settop(L, base + 1);
+    lua_pushvalue(L, 1);
+    lua_pushvalue(L, 3);
+    lua_call(L, 2, 0);
+    return 1;
+}
 
 static int component_proxy_index(lua_State *L) {
     ComponentProxy *proxy = (ComponentProxy *)luaL_checkudata(L, 1, COMPONENT_PROXY_METATABLE);
@@ -688,6 +822,12 @@ static int component_proxy_index(lua_State *L) {
         return result;
     }
 
+    result = component_proxy_custom_index(
+        L, proxy->layout->componentName, key);
+    if (result > 0) {
+        return result;
+    }
+
     // Property not found
     lua_pushnil(L);
     return 1;
@@ -700,13 +840,22 @@ static int component_proxy_newindex(lua_State *L) {
     }
     const char *key = luaL_checkstring(L, 2);
 
+    const ComponentPropertyDef *property = find_property(proxy->layout, key);
+    if (!property) {
+        int result = component_proxy_custom_newindex(
+            L, proxy->layout->componentName, key);
+        if (result > 0) {
+            return 0;
+        }
+    }
+
     /*
      * Norbyte's Windows LightObjectProxyMetatable::NewIndex translates every
      * non-Success property-map result into luaL_error (including read-only and
      * unsupported types).  Keep the same UX: never silently ignore a refused
      * game-memory write.
      */
-    if (!component_property_write(
+    if (!property || !component_property_write(
             L, proxy->componentPtr, proxy->layout, key, 3)) {
         return luaL_error(L, "Cannot set component property %s.%s",
                           proxy->layout->componentName, key);

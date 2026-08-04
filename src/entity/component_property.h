@@ -16,6 +16,8 @@
 struct lua_State;
 typedef struct lua_State lua_State;
 
+#define BG3SE_CUSTOM_PROPS_REGISTRY_KEY "BG3SE_CustomProps"
+
 // ============================================================================
 // Field Types
 // ============================================================================

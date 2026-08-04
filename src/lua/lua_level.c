@@ -15,6 +15,7 @@
  *   Ext.Level.SweepCylinderAll(src, dst, extents, ...) -> array of hit tables
  *   Ext.Level.GetHeightsAt(x, z) -> array of heights
  *   Ext.Level.GetEntitiesOnTile(pos) -> copied EntityHandle array
+ *   Ext.Level.GetTileRawDebugInfo(x, z) -> copied raw tile diagnostics or nil
  *   Ext.Level.GetPathById(pathId) -> copied path state or nil
  *   Ext.Level.GetActivePathfindingRequests() -> copied path-state array
  *   Ext.Level.FindPath(pathId, immediate?) -> copied path result or false
@@ -229,12 +230,23 @@ static int lua_level_raycast_all(lua_State *L) {
  *   Returns: boolean (true if any hit)
  */
 static int lua_level_raycast_any(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "RaycastAny",
-        "the complete audited ARM64 trailing argument ABI is not proven; "
-        "returning false");
-    lua_pushboolean(L, 0);
+    float src[3], dst[3];
+    if (!read_vec3(L, 1, src)) {
+        return luaL_error(
+            L, "Ext.Level.RaycastAny: src must be a {x,y,z} table");
+    }
+    if (!read_vec3(L, 2, dst)) {
+        return luaL_error(
+            L, "Ext.Level.RaycastAny: dst must be a {x,y,z} table");
+    }
+
+    uint32_t physics_type = (uint32_t)luaL_optinteger(L, 3, 1);
+    uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
+    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
+    int context = (int)luaL_optinteger(L, 6, 0);
+
+    lua_pushboolean(L, level_raycast_any(
+        src, dst, physics_type, include_group, exclude_group, context));
     return 1;
 }
 
@@ -567,14 +579,16 @@ static int lua_level_get_heights_at(lua_State *L) {
     float x = (float)luaL_checknumber(L, 1);
     float z = (float)luaL_checknumber(L, 2);
 
-    float heights[4];
-    int count = level_get_heights_at(x, z, heights, 4);
+    float *heights = NULL;
+    size_t count = 0;
+    (void)level_get_heights_at(x, z, &heights, &count);
 
-    lua_newtable(L);
-    for (int i = 0; i < count; i++) {
+    lua_createtable(L, (int)count, 0);
+    for (size_t i = 0; i < count; i++) {
         lua_pushnumber(L, heights[i]);
-        lua_rawseti(L, -2, i + 1);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
     }
+    level_free_heights(heights);
 
     return 1;
 }
@@ -616,6 +630,39 @@ static int lua_level_get_tile_debug_info(lua_State *L) {
         "AIGRID_PATHFINDING.md leaves AiGridTile::MinHeight at +0x0a OPEN "
         "and the public cloud-surface enum conversion PROVISIONAL; returning nil");
     lua_pushnil(L);
+    return 1;
+}
+
+/**
+ * Ext.Level.GetTileRawDebugInfo(x, z) -> raw diagnostic table or nil
+ *
+ * RawFlags is the complete native AiFlags word. GroundMask and CloudMask are
+ * unconverted 8-bit fields; this surface intentionally claims no Windows
+ * GetTileDebugInfo parity.
+ */
+static int lua_level_get_tile_raw_debug_info(lua_State *L) {
+    float x = (float)luaL_checknumber(L, 1);
+    float z = (float)luaL_checknumber(L, 2);
+
+    LevelAiTileRawDebugInfo info;
+    if (!level_aigrid_get_tile_raw_debug_info(x, z, &info)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_createtable(L, 0, 7);
+    lua_pushboolean(L, 1);
+    lua_setfield(L, -2, "Raw");
+    lua_pushinteger(L, (lua_Integer)info.raw_flags);
+    lua_setfield(L, -2, "RawFlags");
+    lua_pushinteger(L, info.ground_mask);
+    lua_setfield(L, -2, "GroundMask");
+    lua_pushinteger(L, info.cloud_mask);
+    lua_setfield(L, -2, "CloudMask");
+    lua_pushnumber(L, info.min_height);
+    lua_setfield(L, -2, "MinHeight");
+    lua_pushnumber(L, info.max_height);
+    lua_setfield(L, -2, "MaxHeight");
     return 1;
 }
 
@@ -721,6 +768,7 @@ static const struct luaL_Reg level_functions[] = {
     {"TestSphere",           lua_level_test_sphere},
     {"GetHeightsAt",         lua_level_get_heights_at},
     {"GetEntitiesOnTile",     lua_level_get_entities_on_tile},
+    {"GetTileRawDebugInfo",   lua_level_get_tile_raw_debug_info},
     {"GetTileDebugInfo",      lua_level_get_tile_debug_info},
     {"BeginPathfinding",      lua_level_begin_pathfinding},
     {"FindPath",              lua_level_find_path},

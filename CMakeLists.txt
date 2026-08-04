@@ -170,6 +170,8 @@ add_library(bg3se SHARED
     src/osiris/custom_functions.c
     src/pak/pak_reader.c
     src/entity/entity_system.c
+    src/entity/replication_flags.h
+    src/entity/replication_flags.c
     src/entity/guid_lookup.c
     src/entity/arm64_call.c
     src/entity/component_registry.c
@@ -178,6 +180,10 @@ add_library(bg3se SHARED
     src/entity/component_typeid.c
     src/entity/component_property.c
     src/entity/entity_events.c
+    src/entity/ecs_system_update.h
+    src/entity/ecs_system_update.c
+    src/entity/entity_tracing.h
+    src/entity/entity_tracing.c
     src/stats/stats_manager.c
     src/stats/prototype_managers.c
     src/stats/functor_hooks.c
@@ -194,6 +200,8 @@ add_library(bg3se SHARED
     src/lua/lua_events.c
     src/game/game_state.c
     src/game/global_switches.c
+    src/game/savegame_hook.h
+    src/game/savegame_hook.c
     src/game/video_skip.c
     src/game/focus_hack.c
     src/input/input_hooks.m

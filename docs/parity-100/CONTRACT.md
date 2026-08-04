@@ -1,11 +1,12 @@
 # Wave 7 Contract Manifest
 
 Per-function inventory of every Windows-registered Lua contract classified
-against the macOS port. Zero unclassified entries.
+against the macOS port, plus the supplemental dynamic `Osi.DB_*:Delete`
+contract. Zero unclassified entries.
 
-- **macOS version:** v0.42.0
+- **macOS version:** v0.43.0
 - **Windows ref:** `v28.0-34-g1ae33289-dirty`
-- **Generated:** 2026-08-01
+- **Generated:** 2026-08-03
 - **Structured data:** `contract.json` (same directory)
 
 ## Classification Key
@@ -14,7 +15,7 @@ against the macOS port. Zero unclassified entries.
 |--------|---------|
 | implemented | macOS registers the function and it produces real results |
 | behavioral_gap | Function is absent, or present as a warn-once stub returning nil/false |
-| matched_upstream_todo | Windows itself is unimplemented (// TODO); macOS matches that contract |
+| matched_upstream_todo | macOS matches Windows behavior and the contract leaves the scored denominator; the enum name is historical |
 | excluded | Outside the parity denominator by scope decision (see deferrals.md) |
 
 ## Scope Exclusions
@@ -35,13 +36,13 @@ Source: `BG3Extender/Lua/Libs/Entity.inl:RegisterEntityLib()` (context: Both)
 
 | # | Function | Status | Note |
 |---|----------|--------|------|
-| 1 | HandleToUuid | behavioral_gap | Absent. Uuid-Handle mapping component captured; portable engineering. Wave 7 A1. |
-| 2 | UuidToHandle | behavioral_gap | Absent. Same as HandleToUuid. Wave 7 A1. |
+| 1 | HandleToUuid | implemented | Behavioral GUID lookup through the captured Uuid-Handle mapping component. Wave 7 A1. |
+| 2 | UuidToHandle | implemented | Behavioral reverse lookup through the captured mapping component. Wave 7 A1. |
 | 3 | Get | implemented | GUID lookup via entity_system.c |
-| 4 | GetAllEntitiesWithUuid | behavioral_gap | Absent. Filter over existing archetype walks. Wave 7 A1. |
+| 4 | GetAllEntitiesWithUuid | implemented | UUID-filtered archetype walk. Wave 7 A1. |
 | 5 | GetAllEntitiesWithComponent | implemented | Server-world archetype walk |
 | 6 | GetAllEntities | implemented | Server-world archetype walk |
-| 7 | GetEntitiesAroundPosition | behavioral_gap | Absent. Position-filtered walk. Wave 7 A1. |
+| 7 | GetEntitiesAroundPosition | implemented | Windows 2D XZ-circle contract; Y ignored; includeCharacters/includeItems default true. Uses CharacterComponent/item-marker archetype walks plus TransformComponent because ARM64 GridStructure is unrecovered. Full behavior met. Wave 7 A1. |
 | 8 | Create | behavioral_gap | Absent. Entity allocator + handle mint not recovered. Wave 7 D4. |
 | 9 | Destroy | behavioral_gap | Absent. Same allocator gap. Wave 7 D4. |
 | 10 | Subscribe | implemented | entity_events.c:1331 |
@@ -54,15 +55,15 @@ Source: `BG3Extender/Lua/Libs/Entity.inl:RegisterEntityLib()` (context: Both)
 | 17 | OnDestroyDeferred | implemented | entity_events.c:1338 |
 | 18 | OnDestroyOnce | implemented | entity_events.c:1339 |
 | 19 | OnDestroyDeferredOnce | implemented | entity_events.c:1340 |
-| 20 | OnSystemUpdate | behavioral_gap | Absent. ECS system-update dispatch not located. Wave 7 B6. |
-| 21 | OnSystemPostUpdate | behavioral_gap | Absent. Same ECS gap. Wave 7 B6. |
+| 20 | OnSystemUpdate | behavioral_gap | Absent pending implementation. B6 recon proved the swappable `SystemTypeEntry::UpdateProc` at +0x18. See `ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md`. |
+| 21 | OnSystemPostUpdate | behavioral_gap | Absent pending implementation. Same implementation-ready B6 dispatch evidence. |
 | 22 | Unsubscribe | implemented | entity_events.c:1341 |
 | 23 | EnableTracing | behavioral_gap | Warn-once stub returning nil. No tracing infrastructure. |
 | 24 | GetTrace | behavioral_gap | Absent. Wave 7 A8. |
 | 25 | ClearTrace | behavioral_gap | Absent. Wave 7 A8. |
-| 26 | GetRegisteredComponentTypes | behavioral_gap | Absent. Dump over existing registry. Wave 7 A1. |
+| 26 | GetRegisteredComponentTypes | implemented | Component-registry enumeration with mapped and oneFrame filters. Wave 7 A1. |
 
-**Subtotal:** 14 implemented, 12 behavioral_gap
+**Subtotal:** 19 implemented, 7 behavioral_gap
 
 ---
 
@@ -74,7 +75,7 @@ Source: `BG3Extender/Lua/Shared/Proxies/LuaEntityProxy.inl:StaticInitialize()` (
 |---|--------|--------|------|
 | 1 | CreateComponent | implemented | Verified ComponentOps registry |
 | 2 | RemoveComponent | behavioral_gap | Returns false. 734 per-type templates, no generic entry. |
-| 3 | GetComponent | implemented | Via __index |
+| 3 | GetComponent | implemented | Via __index. FLOAT_ARRAY writer code is present, but A7 remains non-credited pending ARM64 offset verification. |
 | 4 | HasRawComponent | behavioral_gap | Absent. Raw presence check without proxy construction. |
 | 5 | GetAllComponents | implemented | |
 | 6 | GetAllComponentNames | implemented | |
@@ -108,7 +109,7 @@ Source: `BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib()` (context: Both)
 | 2 | GetModifierAttributes | implemented | |
 | 3 | GetStats | implemented | |
 | 4 | GetStatsLoadedBefore | implemented | |
-| 5 | Get | implemented | |
+| 5 | Get | implemented | Wave 7 A4: Windows also ignores level. Stats.inl:479-508 calls StatFindObject(statName, warnOnError) name-only; the docstring is a DOS2 vestige. |
 | 6 | GetCachedSpell | implemented | |
 | 7 | GetCachedStatus | implemented | |
 | 8 | GetCachedPassive | implemented | Native getter at 0x101c0f27c (Wave 6) |
@@ -119,12 +120,12 @@ Source: `BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib()` (context: Both)
 | 13 | EnumIndexToLabel | implemented | |
 | 14 | EnumLabelToIndex | implemented | |
 | 15 | AddAttribute | behavioral_gap | Returns false. Modifier-list mutation unverified. |
-| 16 | AddEnumerationValue | behavioral_gap | Returns false. Same gap. |
+| 16 | AddEnumerationValue | implemented | Wave 7 B1. Calls engine `ValueList::Insert` at `0x101c44920` with an interned FixedString label, then verifies forward/reverse readback and one count increment. Duplicates and unknown enums return false. See `ghidra/offsets/VALUELIST_INSERT.md`. |
 | 17 | ExecuteFunctors | behavioral_gap | Partial. Full param-block unverified for all types. |
 | 18 | ExecuteFunctor | implemented | Single-functor dispatch via Dobby hook |
 | 19 | PrepareFunctorParams | implemented | |
 
-**Subtotal:** 16 implemented, 3 behavioral_gap
+**Subtotal:** 17 implemented, 2 behavioral_gap
 
 ### Ext.Stats.TreasureTable
 
@@ -150,7 +151,7 @@ Source: `BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib()` (context: Both)
 | 3 | CopyFrom | implemented | |
 | 4 | SetRawAttribute | implemented | |
 
-**Stats combined:** 25 implemented, 3 behavioral_gap (across Stats, TreasureTable, TreasureCategory, and proxy)
+**Stats combined:** 26 implemented, 2 behavioral_gap (across Stats, TreasureTable, TreasureCategory, and proxy)
 
 ---
 
@@ -169,7 +170,7 @@ Source: `BG3Extender/Lua/Libs/Types.inl:RegisterTypesLib()` (context: Both)
 | 7 | Validate | implemented | |
 | 8 | Serialize | implemented | Component-proxy serialization |
 | 9 | Unserialize | implemented | |
-| 10 | Construct | matched_upstream_todo | Windows Types.inl:286 is `// TODO; return 0`. Removed from denominator. |
+| 10 | Construct | matched_upstream_todo | Wave 7 A3 exactly matches Windows Types.inl:286-302 errors: `Unknown type name '%s'`, `Unable to construct non-object type '%s'`, and `Type '%s' is not constructible`. Object types reach the shared upstream TODO and return 0 values. Removed from denominator. |
 | 11 | GetHashSetValueAt | behavioral_gap | Warn-once stub. No hash-set proxy. Windows index is 1-based. |
 | 12 | GetFunctionLocation | implemented | |
 | 13 | AddCustomFunction | behavioral_gap | Warn-once stub. Property-map layer missing. |
@@ -191,9 +192,24 @@ Source: `BG3Extender/Lua/Libs/ClientNet.inl` + `ServerNet.inl` (context: merged 
 | 4 | BroadcastMessage | implemented | Server context |
 | 5 | Version | implemented | |
 | 6 | IsHost | implemented | |
-| 7 | PlayerHasExtender | behavioral_gap | Windows contract is GUID-only (ServerNet.inl:78 — resolves esv::Character UserID); macOS GUID path returns nil unconditionally (lua_net.c:259, GUID→UserID resolution missing). The userId overload is a macOS extra. Wave 7 Phase A6 |
+| 7 | PlayerHasExtender | implemented | Wave 7 A6: GUID branch resolves via peer_manager_find_by_guid; unknown characters and unassigned users return nil, otherwise returns peer_manager_can_send_extender. Matches ServerNet.inl:78-86. |
 
-**Subtotal:** 6 implemented, 1 behavioral gap
+**Subtotal:** 7 implemented, 0 behavioral gaps
+
+---
+
+## Osi.DB_* Dynamic Accessor
+
+Source: `OsirisBinding` dynamic database accessor (context: Server)
+
+This supplemental contract is dynamic rather than part of a fixed Windows
+registration block.
+
+| # | Method | Status | Note |
+|---|--------|--------|------|
+| 1 | Delete | implemented | Wave 7 A5. Exact-match deletion via CReteDBase::erase plus ForwardDelToken RETE propagation. `Wave7.Osi.DBDelete` covers arity errors, nil rejection, and no-op invariance; destructive deletion is live-verified manually. |
+
+**Subtotal:** 1 implemented
 
 ---
 
@@ -229,7 +245,7 @@ Source: `BG3Extender/Lua/Libs/Level.inl:RegisterLevelLib()` (context: Both)
 |---|----------|--------|------|
 | 1 | GetEntitiesOnTile | implemented | |
 | 2 | GetTileDebugInfo | behavioral_gap | Warn-once stub. MinHeight open; flag decoders provisional. |
-| 3 | GetHeightsAt | implemented | |
+| 3 | GetHeightsAt | implemented | Wave 7: B3 exposed the old binding as a stub; the real multi-subgrid walk (Ai.inl:262/406 contract) landed the same day over CONFIRMED subgrid world-bounds offsets (AIGRID_PATHFINDING.md); live verify pending |
 | 4 | BeginPathfinding | behavioral_gap | Warn-once stub. Incomplete field population. |
 | 5 | BeginPathfindingImmediate | behavioral_gap | Absent. Same underlying gap. |
 | 6 | FindPath | implemented | |
@@ -584,24 +600,25 @@ above are the ones macOS registers and fires.
 
 | Classification | Count |
 |----------------|-------|
-| implemented | 202 |
-| behavioral_gap | 77 |
+| implemented | 210 |
+| behavioral_gap | 70 |
 | matched_upstream_todo | 1 |
 | excluded | 13 |
-| **Total contracts** | **293** |
+| **Total contracts** | **294** |
 
 ### Per-namespace breakdown
 
 | Namespace | Impl | Gap | Todo | Excl | Total |
 |-----------|------|-----|------|------|-------|
-| Ext.Entity | 14 | 12 | 0 | 0 | 26 |
+| Ext.Entity | 19 | 7 | 0 | 0 | 26 |
 | entity_proxy | 7 | 14 | 0 | 0 | 21 |
-| Ext.Stats | 16 | 3 | 0 | 0 | 19 |
+| Ext.Stats | 17 | 2 | 0 | 0 | 19 |
 | Stats.TreasureTable | 3 | 0 | 0 | 0 | 3 |
 | Stats.TreasureCategory | 2 | 0 | 0 | 0 | 2 |
 | stats_proxy | 4 | 0 | 0 | 0 | 4 |
 | Ext.Types | 10 | 3 | 1 | 0 | 14 |
-| Ext.Net | 6 | 1 | 0 | 0 | 7 |
+| Ext.Net | 7 | 0 | 0 | 0 | 7 |
+| Osi.DB_* | 1 | 0 | 0 | 0 | 1 |
 | Ext.Timer | 13 | 0 | 0 | 0 | 13 |
 | Ext.Level | 14 | 6 | 0 | 0 | 20 |
 | Ext.Audio | 16 | 0 | 0 | 0 | 16 |
@@ -630,5 +647,6 @@ above are the ones macOS registers and fires.
   subsystems) and not exhaustively enumerated.
 - **Ext.Osiris:** Dynamic metatable (`__index` / `__newindex`); no fixed
   registration block to inventory. Osi.* dispatch, RegisterListener,
-  NewCall/NewQuery/NewEvent, and DB_* accessor are implemented. Not
-  enumerable as individual contracts.
+  NewCall/NewQuery/NewEvent, and DB_* Get are implemented. Wave 7 A5's
+  DB_* Delete method is included above as a supplemental dynamic contract;
+  the remaining dynamic surface is not enumerable as individual contracts.

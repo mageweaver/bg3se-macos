@@ -13,6 +13,50 @@ Each entry includes:
 
 ---
 
+## [Unreleased] - 2026-08-04 — Live verification session + game update to 4.1.1.7398727
+
+**Category:** Verification / Truth pass | **Evidence:** docs/parity-100/LIVE-VERIFICATION-2026-08-04.md
+
+### Verified (live, build 7209685 — the final session on that build)
+
+- **Tier 1: 113/114, Tier 2: 104/110.** All Wave 5 targets passed:
+  `Wave7.Entity.GetReplicationFlags`, `Wave7.Level.RaycastAny` (through **real
+  VMT-slot-10 dispatch** — LC_UUID + version gates provably open),
+  `Wave7.Entity.OnSystemUpdate`, `Parity.Level.GetHeightsAt.*` (×3),
+  `Diagnostic.Level.TileRawDebugInfo`, `Wave7.Osi.DBDelete`. No parity credit
+  moves: the GetReplicationFlags live-probe checklist and the RaycastAny stress
+  ladder remain outstanding — both stay `behavioral_gap`.
+
+### Fixed
+
+- **Stale Tier-1 test** `Stats.Goal23.HonestSurface` — asserted the pre-B1
+  `AddEnumerationValue == nil` contract; now asserts unknown-enum fail-closed
+  (`false`) without touching a real enum.
+- **Over-strict Tier-2 test** `Parity.Level.SweepCylinderAll` — now accepts the
+  legitimate no-hit `nil` like its `Closest` companion.
+- **`version.h` lag** — `BG3SE_VERSION` bumped 0.42.0 → 0.43.0 to match the
+  documented release.
+
+### Discovered (real defects, filed as follow-ups)
+
+- **`HandleToUuid` emits the engine-internal swizzled GUID byte order**
+  (`UuidToHandle` is correct) — fails `Wave7.Entity.UuidRoundtrip` and
+  `GetAllEntitiesWithUuid`.
+- **Enum/ValueList registry resolution is broken live** — every enum name
+  resolves NULL (read and write paths) despite an open version gate;
+  contradicts the B1 "live-verified" record, suspect the 2026-07-28 migration
+  missed the value-list root. Fails `Wave7.Stats.AddEnumerationValue`.
+- **Host component-proxy nil reads** (`Transform`, `Uuid`) — downstream failure
+  of `Wave7.Entity.GetEntitiesAroundPosition`.
+
+### Changed (environment)
+
+- **Steam updated BG3 to 4.1.1.7398727** (arm64 LC_UUID
+  `0C51CAED-6D60-3DCD-9299-8519C92631B0`) at 01:36 EDT, wiping the injection
+  patch. All 68 `test_offset_audit.py` tests now fail **by design** and every
+  runtime version/UUID gate fails closed until offsets are re-migrated
+  (metathesis plan, `docs/plans/2026-05-13-003`).
+
 ## [Unreleased] - 2026-08-02 — Wave 7 Phase 1 (E2.0–E2.2): dual-VM state ownership
 
 **Category:** Architecture / Dual-VM foundation | **Plan:** docs/plans/2026-08-01-001-feat-wave-7-terminal-parity-plan.md
@@ -82,6 +126,145 @@ Each entry includes:
   VM registered. The 3 failures in the 18-entry roster are `mod_check`
   pre-flights on uninstalled catalog-only entries (bg3_mod_fixer,
   configurable_enemies, improved_ui) — inventory conditions, not SE behavior.
+
+---
+
+## [v0.43.0] - 2026-08-03 — Wave 7 A/B-series
+
+**Category:** Entity / Stats / Types / Net / Osiris | **Parity:** pending live-verification recomputation | **Issues:** Wave 7 A1/A3/A4/A5/A6/A7/B1/B2/B6
+
+### Added
+
+- **A1 — five `Ext.Entity` registrations** — `HandleToUuid`, `UuidToHandle`,
+  `GetAllEntitiesWithUuid`, `GetRegisteredComponentTypes` (including
+  `mapped`/`oneFrame` filters), and `GetEntitiesAroundPosition` are behavioral.
+  Entity registration parity moves from 14/26 to **19/26 (73.1%)**.
+- **A5 — `Osi.DB_*:Delete(...)`** — exact-match row deletion through
+  `CReteDBase::erase`, followed by `ForwardDelToken` RETE propagation. Symbols
+  resolve from `libOsiris.dylib` exports. Exact-arity errors match Windows;
+  neither platform supports wildcards, and deleting a missing row is a no-op.
+  Tier-2 `Wave7.Osi.DBDelete` covers arity errors, nil rejection, and no-op
+  invariance. Destructive deletion is live-verified manually.
+- **B1 — `Ext.Stats.AddEnumerationValue`** — implemented through engine
+  `ValueList::Insert` at `0x101c44920`. Runtime labels use the existing
+  engine-backed `fixed_string_intern()` path. The call succeeds only when
+  forward label-to-index and reverse index-to-label readback agree and the
+  count grows exactly once. Duplicate labels and unknown enums return false.
+- **B3 — `Ext.Level.GetTileRawDebugInfo(x, z)`** — raw tile diagnostic surface
+  (no parity credit): native `AiFlags` word, raw ground/cloud mask bytes, and
+  world-space Min/MaxHeight. `AiGridTile::MinHeight` at `+0x0a` is **confirmed**
+  via two independent accessor sites (`ToClosestTilePos`, `ToTilePos`) sharing
+  the `/50` scaling; reads are tear-checked double-reads through the verified
+  subgrid map with static asserts pinning the layout.
+- **B5 — `Ext.Types.GetHashSetValueAt`** — full implementation against the
+  proven `ls::HashSet` layout with the Windows 1-based contract
+  (Types.inl:310-318). No current surface produces a live HashSet proxy, so the
+  function validates its type-tagged userdata argument and rejects everything
+  else deterministically; the metatable reserves the contract for the future
+  FIELD_TYPE_HASHSET component-property surface.
+- **B6 — `Ext.Entity.OnSystemUpdate` / `OnSystemPostUpdate`** — named ECS
+  system-update subscriptions via the writable `SystemTypeEntry::UpdateProc`
+  registry (entry `+0x18`, stride `0xf8` — `ECS_SYSTEM_UPDATE_RECON.md`). The
+  replacement installs only on first subscribe, verifies the original pointer
+  lies inside executable `__TEXT`, always calls the original, and restores it on
+  last unsubscribe, world transition, and teardown. All 73 Windows
+  `ExtSystemType` names mapped; callbacks run under the Lua gate with
+  runtime-resolved state. Unsupported builds fail closed. Live firing remains
+  pending in-game verification.
+- **C step 2 — `entity:GetReplicationFlags(component[,qword])`** — a real
+  **read-only** method on the entity proxy (matching the Windows placement,
+  `LuaEntityProxy.inl:415`), replacing the former `Ext.Entity` warn-and-nil
+  namespace stub (which was a macOS-only invention Windows never had). It
+  traverses the CONFIRMED SyncBuffers → HashMap → DynamicBitSet chain
+  (`REPLICATION_SYNCBUFFERS.md`) with fully guarded reads and no mutation
+  (`src/entity/replication_flags.c`), resolving the 9 confirmed replicated-type
+  globals; version-gated and fail-closed. Earns **no parity credit** until the
+  live-probe checklist validates the runtime int32 indices in-game (step 2 of
+  the 9-step Phase C plan).
+- **B4b — `Ext.Level.RaycastAny`** — the zeroed by-value
+  `ls::Optional<PhysicsSceneScopedReadLock&>` ABI is proven GO
+  (`RAYCAST_ABI_B4A.md`), and a real binding now dispatches physics VMT slot 10,
+  selecting the worker's internal `lockRead → raycast → unlockRead` path
+  (`src/level/level_manager.c`, `src/lua/lua_level.c`). It is arm64-only and
+  fail-closed unless BOTH `version_detect_matches()` and the audited Mach-O UUID
+  match. The prior quarantined warn-once stub and its `Parity.Level.RaycastAnyDeferred`
+  test are retired. Ships with **no parity credit** until the live stress ladder
+  (no-hit / one / multiple / mask-exclusion / thousands-of-calls / level reload)
+  passes; Ext.Level stays **20/25**.
+- **Wave 7 test coverage** — the measured suite is now **114 Tier 1** and
+  **110 Tier 2**. B/C-series adds Tier-1 `Parity.Types.CustomProps` and
+  `Parity.Types.GetHashSetValueAt` (upgraded from an existence check to the
+  full validation contract) plus Tier-2 `Wave7.Osi.DBDelete`,
+  `Wave7.Stats.AddEnumerationValue`, `Wave7.Entity.Tracing`,
+  `Wave7.Entity.OnSystemUpdate`, `Diagnostic.Level.TileRawDebugInfo`,
+  `Wave7.Entity.GetReplicationFlags`, and `Wave7.Level.RaycastAny` (net +1 after
+  retiring `Parity.Level.RaycastAnyDeferred`). A new Tier-H guard
+  (`test_raycast_any_binding_is_gated`) asserts the RaycastAny binding dispatches
+  VMT slot 10 and is arch+UUID+version gated. The four-tier total is **544**: 65
+  Tier 0, 255 pytest, 114 Tier 1, and 110 Tier 2.
+
+### Changed
+
+- **A3 — `Ext.Types.Construct` exact Windows error surface** — invalid calls
+  now raise `Unknown type name '%s'`,
+  `Unable to construct non-object type '%s'`, or
+  `Type '%s' is not constructible`. Object types pass all checks and reach the
+  same upstream TODO at Types.inl:286-302, returning 0 values. The contract is
+  matched upstream and remains outside the scored denominator.
+- **A4 — `Ext.Stats.Get(name, level)` adjudicated as matched upstream** —
+  Windows Stats.inl:479-508 also ignores `level`, calling
+  `StatFindObject(statName, warnOnError)` by name only. The docstring is a DOS2
+  vestige; macOS behavior was already at parity, so no code change was needed.
+- **A6 — `Ext.Net.PlayerHasExtender(guid)`** — the GUID branch now resolves a
+  peer through `peer_manager_find_by_guid`. Unknown characters and unassigned
+  users return nil; assigned peers return
+  `peer_manager_can_send_extender`, matching ServerNet.inl:78-86.
+- **Truth correction + fix — `Ext.Level.GetHeightsAt` made real** — Wave 7 B3
+  exposed that the binding routed through a stub
+  (`src/level/level_manager.c:1636`) that always returned an empty table,
+  despite the manifest and docs listing it as engine-backed. The same day, the
+  real multi-subgrid walk landed matching Windows Ai.inl:262/406 exactly:
+  half-open subgrid bounds, `floor((world - origin) / CellSize)` tile mapping,
+  blocker-skip (flags bit 0), and `Translate.y + MaxHeight/50` heights only.
+  All required offsets CONFIRMED by static disasm (Translate.x/y/z at
+  `+0x08/+0x0c/+0x10`, CellSize `+0x14` = 0.5f, encoded world bounds
+  `+0x40..+0x4c` — AIGRID_PATHFINDING.md). Reads are tear-checked and
+  fail-closed; the old four-height cap is gone. Ext.Level stays **20/25
+  (80%)**; Tier-2 `Parity.Level.GetHeightsAt.*` (3 tests) covers host
+  non-empty, tile-range cross-check, and out-of-bounds.
+- **Contract manifest** — `AddEnumerationValue` moves from behavioral gap to
+  implemented. Tallies are now 210 implemented, 70 behavioral gaps, 1 matched
+  upstream TODO, and 13 excluded across 294 contracts: **75.0% function-level
+  behavioral parity**.
+
+### Technical
+
+- **A1 spatial-query backend** — `GetEntitiesAroundPosition` honors the
+  Windows 2D XZ-circle contract: Y is ignored and `includeCharacters` /
+  `includeItems` default true. It walks
+  `eoc::character::CharacterComponent` and the item marker component, then
+  reads `ls::TransformComponent`, because the ARM64 spatial-grid
+  `GridStructure` layout remains unrecovered. Full contract behavior is met.
+- **A7 — FLOAT_ARRAY component writer** — mirrors INT32_ARRAY with exact-length
+  validation, NaN/Inf rejection, a staged buffer, and atomic commit. It earns
+  no parity credit yet: the only candidate field,
+  `ls::EffectComponent::OverrideFadeCapacity`, has unverified ARM64 offsets
+  because the Ghidra bridge was down.
+- **B2 — passive sync reconstruction** — `Passives::Parse` requires no
+  loader-private state, but only resolves names to existing prototypes.
+  Existing-entry scalar/description refresh and all three functor-list
+  refreshes are statically safe. `Boosts` remains blocked on an LTO closure
+  ABI. The map chain is decoded as a `0x220` node containing an inline `0x210`
+  prototype. Verdict: PARTIAL-GO for a five-step future milestone;
+  `sync_passive_prototype()` remains false. Evidence:
+  `ghidra/offsets/PASSIVES_PARSE_RECON.md`.
+- **B6 — ECS system-update reconstruction** — `ExecuteWTKernel` dispatches
+  through the swappable `SystemTypeEntry::UpdateProc` at `+0x18`; entries have
+  stride `0xf8`, and the `EntityWorld` array/buffer are at `+0x28`/`+0x30`.
+  The central executor at `0x1063788cc` is a diagnostic fallback. Verdict:
+  implementation-ready; `OnSystemUpdate` and `OnSystemPostUpdate` remain
+  behavioral gaps until the separate implementation lands. Evidence:
+  `ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md`.
 
 ---
 

@@ -2,13 +2,13 @@
 
 This document tracks the development roadmap for scope-corrected 100% parity with Windows BG3SE (Norbyte's Script Extender): 100% of the supported macOS surface.
 
-## Current Status: v0.42.0
+## Current Status: v0.43.0
 
 **Overall Feature Parity: approximately 94.8%** (unweighted mean of the supported-surface percentages in the [Feature Parity Matrix](#feature-parity-matrix), scored with behavioral accounting — see methodology below)
 
-**Scoring methodology (Wave 6 re-baseline + Wave 7 Phase 0, 2026-08-01/02):** per-function behavioral accounting — an admitted fail-closed stub scores zero even when the name is present, macOS-only additions earn no extra credit, and an API the Windows reference itself never implemented (`Ext.Types.Construct` is `// TODO; return 0` at Types.inl:286) leaves the denominator as a matched contract — has so far been applied to the **Entity, Stats, and Types rows** via per-function diffs against the Windows registration blocks. The remaining rows still carry legacy scores measured against the macOS implementation surface, so the 94.8% row-mean is a mixed-methodology number and overstates rows the contract manifest scores lower (e.g. Debug 100% vs 3/8 behavioral, IMGUI 100% vs 2/7, StaticData 100% vs 2/5). The function-level manifest number below is the uniform measure; matrix rows convert to contract scoring as Wave 7 phases close their gaps. The prior 97.3% counted name presence. Full analysis: [docs/parity-100/SYNTHESIS.md](docs/parity-100/SYNTHESIS.md).
+**Scoring methodology (Wave 6 re-baseline + Wave 7 Phase 0/B-series, 2026-08-01/03):** per-function behavioral accounting — an admitted fail-closed stub scores zero even when the name is present, macOS-only additions earn no extra credit, and an API the Windows reference itself never implemented (`Ext.Types.Construct` is `// TODO; return 0` at Types.inl:286) leaves the denominator as a matched contract — has so far been applied to the **Entity, Stats, and Types rows** via per-function diffs against the Windows registration blocks. The remaining rows still carry legacy scores measured against the macOS implementation surface, so the 94.8% row-mean is a mixed-methodology number and overstates rows the contract manifest scores lower (e.g. Debug 100% vs 3/8 behavioral, IMGUI 100% vs 2/7, StaticData 100% vs 2/5). The function-level manifest number below is the uniform measure; matrix rows convert to contract scoring as Wave 7 phases close their gaps. The prior 97.3% counted name presence. Full analysis: [docs/parity-100/SYNTHESIS.md](docs/parity-100/SYNTHESIS.md).
 
-**Contract manifest (Wave 7 scoring denominator):** [docs/parity-100/CONTRACT.md](docs/parity-100/CONTRACT.md) inventories all 293 Windows-registered contracts (module functions, entity/stats proxy methods, per-context modules) with zero unclassified entries: 202 implemented, 77 behavioral gaps, 1 matched upstream TODO, 13 excluded — **72.4% function-level behavioral parity** (`bg3se-harness parity scan --contract`). The matrix rows above remain namespace-level behavioral scores; the row-mean (~94.8%) is higher than the function-level number because the manifest surfaces gap clusters inside rows historically scored as complete (entity-proxy replication/subscription methods, Windows Utils/Debug surfaces, per-context Template modules). The Wave 7 campaign works the manifest, not the row-mean.
+**Contract manifest (Wave 7 scoring denominator):** [docs/parity-100/CONTRACT.md](docs/parity-100/CONTRACT.md) inventories 293 fixed Windows registrations plus the supplemental dynamic `Osi.DB_*:Delete` contract, with zero unclassified entries: 210 implemented, 70 behavioral gaps, 1 matched-upstream TODO, 13 excluded — **75.0% function-level behavioral parity** (`bg3se-harness parity scan --contract`). The matrix rows above remain namespace-level behavioral scores; the row-mean (~94.8%) is higher than the function-level number because the manifest surfaces gap clusters inside rows historically scored as complete (entity-proxy replication/subscription methods, Windows Utils/Debug surfaces, per-context Template modules). Recompute the overall row-mean after Wave 7 live verification.
 
 **Deferral registry:** every intentionally fail-closed API is cataloged with evidence citations and unlock paths in [docs/deferrals.md](docs/deferrals.md).
 
@@ -40,24 +40,24 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 
 | Namespace | Windows BG3SE | bg3se-macos | Parity | Phase |
 |-----------|---------------|-------------|--------|-------|
-| `Osi.*` | ✅ Full | ✅ Dynamic metatable | **95%** | 1 |
+| `Osi.*` | ✅ Full | ✅ Dynamic metatable with DB Get + exact-match Delete (Wave 7 A5; RETE propagation, Windows arity/no-wildcard behavior) | **100%** | 1 |
 | `Ext.Osiris` | ✅ Full | ✅ RegisterListener + NewCall/NewQuery/NewEvent/RaiseEvent/GetCustomFunctions | **100%** | 1 |
 | `Ext.Json` | ✅ Full (2) | ✅ Parse, Stringify | **100%** | 1 |
 | `Ext.IO` | ✅ Full (4) | ✅ LoadFile, SaveFile, AddPathOverride, GetPathOverride (4) | **100%** | 1 |
-| `Ext.Entity` | ✅ Full (26) | ⚠️ 14/26 Windows registrations behavioral (per-function diff vs Entity.inl:291-325, Wave 7 Phase 0): Get, GetAllEntities, GetAllEntitiesWithComponent, Subscribe (+OnChange alias), 8 OnCreate/OnDestroy variants, Unsubscribe. Missing: HandleToUuid, UuidToHandle, GetAllEntitiesWithUuid, GetEntitiesAroundPosition, Create, Destroy, OnSystemUpdate, OnSystemPostUpdate, GetTrace, ClearTrace, GetRegisteredComponentTypes; EnableTracing is a warn-nil stub. Proxy methods (GetByHandle, CreateComponent, GetEntityType/GetSalt/GetIndex/GetNetId) are real but outside this denominator[^entity-stubs] | **53.8%** | 2 |
-| `Ext.Stats` | ✅ Full (52) | ⚠️ 49/52 behavioral — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, TreasureTable/TreasureCategory real; AddAttribute, AddEnumerationValue fail closed, ExecuteFunctors partial (52 registered)[^stats-stubs] | **94.2%** | 3 |
+| `Ext.Entity` | ✅ Full (26) | ⚠️ **19/26 Windows registrations behavioral**: Wave 7 A1 added HandleToUuid, UuidToHandle, GetAllEntitiesWithUuid, GetEntitiesAroundPosition, and GetRegisteredComponentTypes (`mapped`/`oneFrame` filters). Remaining gaps: Create, Destroy, OnSystemUpdate, OnSystemPostUpdate, GetTrace, ClearTrace, and the EnableTracing warn-nil stub. B6 made both system-update callbacks implementation-ready by proving the swappable `UpdateProc` boundary; they remain gaps until implementation lands. Proxy methods (GetByHandle, CreateComponent, GetEntityType/GetSalt/GetIndex/GetNetId) are real but outside this denominator[^entity-stubs] | **73.1%** | 2 |
+| `Ext.Stats` | ✅ Full (52) | ⚠️ **50/52 behavioral** — Get, GetAll, Create, Sync, CopyFrom, SetRawAttribute, AddEnumerationValue, and TreasureTable/TreasureCategory are real; AddAttribute fails closed and ExecuteFunctors is partial (52 registered)[^stats-stubs] | **96.2%** | 3 |
 | `Ext.Events` | ✅ Full (~33) | ✅ 33 events (13 lifecycle + 17 engine + 2 functor + 1 network) + Subscribe/Unsubscribe/Prevent | **100%** | 2.5 |
 | `Ext.Timer` | ✅ Full (13) | ✅ WaitFor, WaitForRealtime, Cancel, Pause, Resume, IsPaused, MonotonicTime, MicrosecTime, ClockEpoch, ClockTime, GameTime, DeltaTime, Ticks, IsGamePaused, +6 persistent (20) | **100%** | 2.3 |
 | `Ext.Debug` | ✅ Full (8) | ✅ Memory introspection (11 macOS-specific) | **100%** | 2.3 |
 | `Ext.Vars` | ✅ Full (8) | ✅ User + Mod Variables (12) | **100%** | 2.6 |
-| `Ext.Types` | ✅ Full (14) | ⚠️ 10/13 behavioral (Windows registers exactly 14 in Types.inl RegisterTypesLib; Construct leaves the denominator as upstream `// TODO; return 0`, Types.inl:286): GetAllTypes, GetObjectType, GetTypeInfo, Validate, TypeOf, IsA, GetValueType, GetFunctionLocation, **Serialize, Unserialize**. Missing: GetHashSetValueAt (1-based contract), **AddCustomFunction, AddCustomProperty** (functional on Windows — Lua-side custom-property registry, Types.inl:328,347). GetComponentLayout/GetAllLayouts/GenerateIdeHelpers are macOS extras earning no credit ([docs/deferrals.md](docs/deferrals.md)) | **76.9%** | 7 |
+| `Ext.Types` | ✅ Full (14) | ⚠️ **10/13 behavioral**. Wave 7 A3 gives Construct the exact Windows Types.inl:286-302 error surface (`Unknown type name`, `Unable to construct non-object type`, `Type ... is not constructible`); object types reach the shared upstream TODO and return 0 values, so it remains matched upstream outside the denominator. Missing: GetHashSetValueAt, AddCustomFunction, AddCustomProperty. GetComponentLayout/GetAllLayouts/GenerateIdeHelpers are macOS extras earning no credit ([docs/deferrals.md](docs/deferrals.md)) | **76.9%** | 7 |
 | `Ext.Enums` | ✅ Full | ✅ 14 enum/bitfield types | **100%** | 7 |
 | `Ext.Math` | ✅ Full (59) | ✅ 59/59 functions (vectors, matrices, 16 quaternions, scalars, Fract, **Smoothstep, IsNaN**) | **100%** | 7.5 |
 | `Ext.Input` | ✅ Full | ✅ CGEventTap capture, hotkeys (8 macOS-specific) | **100%** | 9 |
-| `Ext.Net` | ✅ Full | ✅ Phase 4I Complete (handshake, version negotiation, full multiplayer transport) | **95%** | 6 |
+| `Ext.Net` | ✅ Full (7) | ✅ **7/7 Windows registrations behavioral**. Wave 7 A6 PlayerHasExtender(guid) resolves peers by GUID; unknown/unassigned users return nil, otherwise the peer capability boolean. RakNet transport, handshake, IsReady, and PeerVersion extend the surface | **100%** | 6 |
 | `Ext.UI` | ✅ Full (9) | Excluded by decision; compatibility stub layer only | — | 8 |
 | `Ext.IMGUI` | ✅ Full (7+) | ✅ Complete widget system (40 types) - All widgets, events, Metal backend | **100%** | 8 |
-| `Ext.Level` | ✅ Full (21) | ⚠️ 20/25 registered functions engine-backed: TestBox, TestSphere, GetHeightsAt, singleton accessors, all 8 sweeps (incl. **cylinders**, VMT 14/18), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**) — physics dispatch repaired against the audited macOS vtable (9 wrong-by-1 indices fixed). 5 deferrals: RaycastClosest/All/Any (quarantined by-value C++ params), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) | **80%** | 9 |
+| `Ext.Level` | ✅ Full (21) | ⚠️ 20/25 registered functions engine-backed: TestBox, TestSphere, GetHeightsAt (real multi-subgrid walk, Wave 7), singleton accessors, all 8 sweeps (incl. **cylinders**, VMT 14/18), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**) — physics dispatch repaired against the audited macOS vtable (9 wrong-by-1 indices fixed). 5 deferrals: RaycastClosest/All/Any (quarantined by-value C++ params), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) | **80%** | 9 |
 | `Ext.Audio` | ✅ Full (16) | ✅ 16/16 Windows-registered functions (GetSoundObjectId + IsReady are macOS extras outside the denominator): PostEvent, Stop, PauseAll, ResumeAll, SetSwitch, SetState, RTPC (set/get/reset), LoadEvent, UnloadEvent, PlayExternalSound (STDString ABI), **LoadBank, UnloadBank, PrepareBank, UnprepareBank** (dlsym'd AK::SoundEngine exports) | **100%** | 10 |
 | `Ext.Localization` | ✅ Full (2) | ✅ GetLanguage, CreateHandle, **GetTranslatedString, UpdateTranslatedString** (live-verified round trip via corrected TryGet/AddTranslatedString ABIs) (4) | **100%** | 10 |
 | `Ext.StaticData` | ✅ Full (5) | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription), ForceCapture, HashLookup | **100%** | 10 |
@@ -70,8 +70,8 @@ This document tracks the development roadmap for scope-corrected 100% parity wit
 
 ---
 
-[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute and AddEnumerationValue return false; ExecuteFunctors is partial; passive and interrupt prototype sync honestly return false (their build-7209685 loader population paths are inlined/unmapped, and neither prototype has a top-level vptr, `src/stats/prototype_managers.c`; evidence in `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data (Wave 2).
-[^entity-stubs]: EnableTracing, DisableTracing, and GetReplicationFlags are warn-and-nil stubs (`src/injector/main.c`); `entity:Replicate()` is a no-op. GetAllEntities, GetAllEntitiesWithComponent, and GetAllComponents are real server-world archetype walks (Wave 3). `entity:CreateComponent` dispatches through the verified ComponentOps registry; `entity:RemoveComponent` returns false (734 per-type templates, no generic entry point — `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md`). Component property reads work; writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY fields and are refused (return false) for unknown-size layouts and unsupported field types (`src/entity/component_property.c`).
+[^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute returns false and ExecuteFunctors is partial. AddEnumerationValue uses engine `ValueList::Insert` at `0x101c44920` with FixedString interning and verified forward/reverse readback ([VALUELIST_INSERT.md](ghidra/offsets/VALUELIST_INSERT.md)). Passive sync remains false after PARTIAL-GO recon: scalar/description and three functor-list refreshes are statically safe, but `Boosts` is blocked on an LTO closure ABI ([PASSIVES_PARSE_RECON.md](ghidra/offsets/PASSIVES_PARSE_RECON.md)). Interrupt sync remains false. TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data.
+[^entity-stubs]: EnableTracing and DisableTracing are warn-and-nil stubs (`src/injector/main.c`); `entity:Replicate()` is a no-op. `entity:GetReplicationFlags(component[,qword])` is now a real **read-only** proxy method (W7-C step 2, SyncBuffers chain, `ghidra/offsets/REPLICATION_SYNCBUFFERS.md`) — fail-closed, version-gated, no parity credit until the live-probe checklist validates the runtime chain. GetAllEntities, GetAllEntitiesWithComponent, GetAllEntitiesWithUuid, GetAllComponents, and GetEntitiesAroundPosition are real archetype walks. GetEntitiesAroundPosition matches the Windows XZ-circle behavior using CharacterComponent/item-marker walks plus TransformComponent because the ARM64 GridStructure layout is unrecovered. `entity:CreateComponent` dispatches through the verified ComponentOps registry; `entity:RemoveComponent` returns false. `OnSystemUpdate`/`OnSystemPostUpdate` remain gaps, but B6 proved `SystemTypeEntry::UpdateProc +0x18`, the `0xf8` entry stride, `EntityWorld +0x28/+0x30`, and the central executor fallback at `0x1063788cc` ([ECS_SYSTEM_UPDATE_RECON.md](ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md)). Component property writes are real for INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY. FLOAT_ARRAY code is present, but A7 earns no parity credit until `ls::EffectComponent::OverrideFadeCapacity` ARM64 offsets are verified.
 
 ## Phase 1: Core Osiris Integration (Complete)
 
@@ -98,12 +98,12 @@ Lazy function lookup matching Windows BG3SE's OsirisBinding pattern:
 - [x] **Function name caching via Signature indirection** - Fixed OsiFunctionDef structure (offset +0x08 is Line, not Name) (v0.10.6)
 
 ### 1.3 Database Operations
-**Status:** ⚠️ Partial (Get + filtered Get working; Delete is Wave 7 Phase A5)
+**Status:** ✅ Complete (Get + filtered Get + Delete, Wave 7 A5)
 
 - [x] `Osi.DB_*:Get(nil)` - Fetch all rows (verified working)
 - [x] `Osi.DB_*(values...)` - Insert rows
 - [x] `Osi.DB_*:Get(filter, nil, nil)` - Filtered queries (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_osi_db_get in main.c supports non-nil filter args with type conversion)
-- [ ] `Osi.DB_*:Delete(...)` - Row deletion (Wave 7 Phase A5 — main.c:2176 explicitly notes "read-only: Get only, no Delete")
+- [x] `Osi.DB_*:Delete(...)` - Exact-match row deletion via `CReteDBase::erase` + `ForwardDelToken` RETE propagation (Wave 7 A5); exact-arity errors match Windows, wildcards are unsupported on both platforms, and deleting a missing row is a no-op
 
 ### 1.4 Custom Osiris Function Registration
 **Status:** ✅ Complete (v0.22.0)
@@ -294,7 +294,7 @@ Features:
 - [x] `entity:GetSalt()`, `entity:GetIndex()` - Handle parts
 - [x] `entity:GetNetId()` - Network ID (v23+)
 - [ ] `entity:Replicate(component)` - Network replication (Wave 7 Phase C, steps 8-9)
-- [ ] `entity:SetReplicationFlags()`, `entity:GetReplicationFlags()` - Replication control (Wave 7 Phase C, steps 4 and 7)
+- [~] `entity:GetReplicationFlags()` — read-only reader landed on the entity proxy (Wave 7 Phase C step 2, SyncBuffers chain, fail-closed + version-gated; no parity credit until the live-probe checklist runs). `entity:SetReplicationFlags()` still pending (Phase C step 7)
 - [x] **Component property read** via `__index` (IndexedProperties + pools)
 - [x] **Component property write** via `__newindex` (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY; unknown-size layouts refused)
 
@@ -702,7 +702,7 @@ end
 **Pending:**
 - [x] `stat:Sync()` - Propagate changes to clients (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_stats_sync at lua_stats.c:534, registered at line 1360; implemented since v0.32.4)
 - [x] `Ext.Stats.Create(name, type, template)` - Create new stats (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: lua_stats_create at lua_stats.c:548; implemented since v0.32.4)
-- [ ] **Level scaling** - `Ext.Stats.Get(name, level)` parameter (Wave 7 Phase A4 — level arg is accepted but explicitly ignored in lua_stats_get)
+- [x] **Level scaling** - `Ext.Stats.Get(name, level)` parameter — **matched upstream (Wave 7 A4, 2026-08-02)**: the Windows reference ignores `level` too. `Stats.inl:479-508` accepts it as `std::optional<int>` but `Get` only calls `StatFindObject(statName, warnOnError)` (`Stats.cpp:625-641`), which is a name lookup; no scaling function exists in the BG3 codebase (the docstring is a DOS2 vestige). macOS ignoring the argument IS the Windows behavior — not a gap.
 
 **Supported Stat Types (from API.md):**
 - `StatusData`, `SpellData`, `PassiveData`, `Armor`, `Weapon`, `Character`, `Object`
@@ -1230,7 +1230,7 @@ Ext.Input.GetInputManager()  -- v23+
 ```
 
 ### 9.2 Physics Queries (Ext.Level)
-**Status:** ✅ 20/25 engine-backed (80%); 5 deferrals cataloged in [docs/deferrals.md](docs/deferrals.md)
+**Status:** ✅ 20/25 engine-backed (80%); 5 deferrals cataloged in [docs/deferrals.md](docs/deferrals.md) (GetHeightsAt: stub exposed by the Wave 7 B3 truth pass, then implemented as the real multi-subgrid walk the same day)
 
 ```lua
 -- Raycast (all 3 DEFERRED — by-value ls::Function/ls::Optional C++ params
@@ -1456,9 +1456,9 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 - [x] Userdata lifetime scoping (v0.29.0)
 
 ### Testing
-- [x] Unit tests for Lua bindings (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 113 Tier 1 + 96 Tier 2 in-game tests via BG3SE_AddTest covering all Lua API namespaces)
-- [x] Integration tests with mock game state (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 245 pytest Tier H tests with mock game state, including harness lifecycle, offset audit, physics VMT audit, compat scenarios)
-- [x] Regression test suite (verified complete, Wave 7 Phase 0 adjudication 2026-08-01: 516-test four-tier suite — 55 C Tier 0 + 252 pytest Tier H + 113 Tier 1 + 96 Tier 2; see docs/testing.md)
+- [x] Unit tests for Lua bindings (Wave 7 A/B/C-series, 2026-08-03: 114 Tier 1 + 110 Tier 2 in-game tests via BG3SE_AddTest; B/C-series adds `Parity.Types.CustomProps`, `Parity.Types.GetHashSetValueAt`, `Wave7.Osi.DBDelete`, `Wave7.Stats.AddEnumerationValue`, `Wave7.Entity.Tracing`, `Wave7.Entity.OnSystemUpdate`, `Diagnostic.Level.TileRawDebugInfo`, `Wave7.Entity.GetReplicationFlags`, and `Wave7.Level.RaycastAny`)
+- [x] Integration tests with mock game state (255 pytest Tier H tests, including harness lifecycle, offset audit, physics VMT audit + RaycastAny gating guard, and compat scenarios)
+- [x] Regression test suite (Wave 7 A/B/C-series, 2026-08-03: 544-test four-tier suite — 65 C Tier 0 + 255 pytest Tier H + 114 Tier 1 + 110 Tier 2; see docs/testing.md)
 - [ ] Performance benchmarks (obsolete — not prioritized as a formal suite; `harness benchmark` command available for ad-hoc perf measurement)
 
 ### Documentation
@@ -1510,7 +1510,7 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 |----|---------|--------|--------|-------|
 | D1 | Noesis UI (Ext.UI) | High | Excluded by decision; stub layer only | [#35](https://github.com/tdimino/bg3se-macos/issues/35) |
 | D2 | IMGUI Debug Overlay | High | ✅ Complete (v0.36.21) - All 40 widget types | [#36](https://github.com/tdimino/bg3se-macos/issues/36) |
-| D3 | Physics/Raycasting (Ext.Level) | High | ✅ 20/25 engine-backed (80%); all 8 sweeps, tile queries, pathfinding suite; 5 deferrals (3 raycasts, GetTileDebugInfo, BeginPathfinding — docs/deferrals.md) | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
+| D3 | Physics/Raycasting (Ext.Level) | High | ✅ 20/25 engine-backed (80%); all 8 sweeps, tile queries incl. real GetHeightsAt, pathfinding suite; 5 deferrals (3 raycasts, GetTileDebugInfo, BeginPathfinding — docs/deferrals.md) | [#37](https://github.com/tdimino/bg3se-macos/issues/37) |
 | D4 | Audio (Ext.Audio) | Medium | ✅ Complete — 16/16 Windows-registered (100%); LoadBank/UnloadBank/PrepareBank/UnprepareBank via dlsym'd AK::SoundEngine exports (Wave 3) | [#38](https://github.com/tdimino/bg3se-macos/issues/38) |
 | D5 | Localization (Ext.Localization) | Low | ✅ Complete (GetLanguage, CreateHandle, GetTranslatedString, UpdateTranslatedString + IsReady/DumpInfo diagnostics) | [#39](https://github.com/tdimino/bg3se-macos/issues/39) |
 | D6 | Static Data (Ext.StaticData) | Medium | ✅ Complete — all 9 types (auto-capture, v0.36.3) | [#40](https://github.com/tdimino/bg3se-macos/issues/40) |
@@ -1533,6 +1533,7 @@ See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for detailed version history with
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.43.0 | 2026-08-03 | **Wave 7 A/B-series** — five Ext.Entity registrations move the block to 19/26 (73.1%); Construct matches the exact Windows error surface; Stats.Get level-ignore behavior is confirmed upstream; Osi.DB_* Delete adds exact-match RETE deletion; PlayerHasExtender reaches 7/7 Net registrations; AddEnumerationValue calls the verified engine insertion path and moves Stats to 50/52 (96.2%). Passive sync is PARTIAL-GO for a future milestone but stays false; B6 makes OnSystemUpdate/PostUpdate implementation-ready while both remain gaps. Tier 1: 113→114; Tier 2: 96→104; four-tier total: 528→537. Overall row parity awaits post-wave live-verification recomputation. |
 | v0.42.0 | 2026-08-01 | **Wave 6: Final Audit** — parity re-baselined to ~94.8% under behavioral accounting (stubs score zero; per-function contract diffs against the Windows registration blocks: Entity 53.8% — 14/26 of Entity.inl:291-325 behavioral, 11 registrations missing outright; Types 76.9% — 10/13 with AddCustomFunction/AddCustomProperty recognized as functional Windows surface; Stats 94.2%; Construct removed from the denominator — the Windows reference is itself `// TODO; return 0`); GetCachedPassive/GetCachedInterrupt rebound from the layout-wrong generic RefMap walk to the native getters (`eoc::Passives::Get` 0x101c0f27c — LTO arg-promoted, FixedString index by value; `InterruptPrototypeManager::GetPrototype` 0x101b7adcc — verified 0x1f0-stride return), live-verified with the new `Stats.W6.NativeCachedLookups` Tier 2 test; scope-exclusion registry reconciled (Ext.UI, DAP, Virtual Textures, Input Injection explicit; replication ruled non-excludable — 5 of 11 vetted mods call it); stale FixedString diagnostic and GetHashSetValueAt/GetReplicationFlags/DisableTracing contract notes fixed; Wave 7 contract manifest (293 contracts, 72.4% function-level) + parity scan --contract + ROADMAP adjudication. 516 tests (55 C + 252 pytest + 113 Tier 1 + 96 Tier 2) |
 | v0.41.0 | 2026-07-30 | **Wave 3: Parity Closure B** — physics VMT dispatch repaired (9 wrong-by-1 indices vs the audited macOS vtable; RaycastClosest had been dispatching RemovePhysicsShape); sweep/overlap ABIs corrected, raycasts quarantined; five AiGrid pathfinding/tile APIs implemented from instruction-level RE (GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath, GetEntitiesOnTile); cylinder sweeps (VMT 14/18); Entity:CreateComponent via verified ComponentOps registry (EntityWorld+0x390, vptr slot 5); Ext.Math 59/59, Ext.Audio 17/17 (dlsym'd WWise banks), Ext.Types 13/15 (Serialize/Unserialize), Loca update round trip live-verified; refuted passive singleton replaced (eoc::Passives::m_ptr 0x1089bc228); deferral registry created (docs/deferrals.md). Live: tier 1 113/113, tier 2 93/93 at closeout. Four-lens review fix pass: SweepCylinderAll/GetEntitiesOnTile/GetActivePathfindingRequests return nil (not `{}`) when physics/AiGrid are unavailable, localization_ready hardened with safe_memory, per-reason/per-operation warn-once flags, 2 new Tier 2 tests. 473 tests (55 C + 210 pytest + 113 Tier 1 + 95 Tier 2) |
 | v0.40.0 | 2026-07-29 | **Wave 2: Parity Closure A** — component property writes real (INT32/UINT8/BOOL/FLOAT/INT32_ARRAY, unknown-size layouts refused); ExecuteFunctor/BeforeDealDamage/DealDamage fire live (hidden `result_out` ABI fix across all 9 ExecuteStatsFunctors wrappers, verified 51/51 paired); TreasureTable/TreasureCategory reads + GetStatsLoadedMods real; spell/status prototype sync real (status VMT-copy-before-Init), passive/interrupt honestly false; functor-hook install count surfaced via `Ext.Debug.GetHookStatus`; review-pass hardening from four subagent audits. 429 tests (55 C + 191 pytest + 109 Tier 1 + 74 Tier 2) |
@@ -1683,7 +1684,7 @@ See `agent_docs/acceleration.md` for detailed methodology |
 **Complex Integrations (25-50% acceleration, 4+ weeks):**
 | Issue | Feature | Acceleration | Key Technique |
 |-------|---------|--------------|---------------|
-| **#37 Ext.Level** | Physics/Raycast | **80%** | 20/25 engine-backed; all 8 sweeps + tile queries + pathfinding (Wave 3); 5 deferrals in docs/deferrals.md |
+| **#37 Ext.Level** | Physics/Raycast | **80%** | 20/25 engine-backed; all 8 sweeps + tile queries + pathfinding (Wave 3) + real GetHeightsAt (Wave 7); 5 deferrals in docs/deferrals.md |
 | **#35 Ext.UI** | Noesis UI | **Excluded** | Compatibility stub layer only |
 
 **Completed:**
@@ -1761,7 +1762,7 @@ FeatManager::GetFeats prologue @ 0x101b752b4:
 
 | Order | Issue | Acceleration | Why Last |
 |-------|-------|--------------|----------|
-| 13 | **#37 Ext.Level** | 80% | 20/25 engine-backed; all 8 sweeps + GetEntitiesOnTile + pathfinding suite (Wave 3); 5 deferrals in docs/deferrals.md |
+| 13 | **#37 Ext.Level** | 80% | 20/25 engine-backed; all 8 sweeps + GetEntitiesOnTile + pathfinding suite (Wave 3) + real GetHeightsAt (Wave 7); 5 deferrals in docs/deferrals.md |
 | 14 | **#35 Ext.UI** | Excluded | Compatibility stub layer only |
 | 15 | ~~#6 Ext.Net~~ | ⚠️ Phase 1 DONE | Phase 2-3 pending |
 

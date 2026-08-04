@@ -457,3 +457,228 @@ Only narrow targeted checks remain:
 
 Until those checks are complete, the OPEN fields above should remain absent
 from runtime bindings rather than being guessed from the Windows layout.
+
+## 2026-08-03 — MinHeight +0x0a recon — Wave 7 B3
+
+### Method
+
+The Ghidra HTTP bridge at `127.0.0.1:8080` did not respond, so this pass used
+the installed universal Mach-O and static `llvm-objdump` disassembly only. The
+fat header reports the ARM64 slice offset as decimal `257261568`, which is
+`0xf558000`, confirming the file-offset correction already recorded above:
+
+```text
+file_offset = 0xf558000 + (vaddr - 0x100000000)
+```
+
+The Windows reference pairs `AiGridTile::MaxHeight` at `+0x08` and
+`MinHeight` at `+0x0a`, with both using a `1/50` scale. The macOS search first
+rechecked the known max-height accessor, then inspected tile-selection
+routines for a sibling `+0x0a` load with the same conversion.
+
+### Disassembly evidence
+
+`eoc::AiGrid::GetHeightAtTile` independently retains the known max-height
+load and conversion:
+
+```asm
+101140b6c  ldr    s0, [x8, #0xc]       ; subgrid Translate.y
+101140b70  add    x8, x9, w10, sxtw #4 ; 0x10-byte tile stride
+101140b74  ldr    h1, [x8, #0x8]       ; tile MaxHeight
+101140b78  ucvtf  s1, s1
+101140b7c  fadd   s1, s1, s1
+101140b80  mov    w8, #0x42c80000      ; 100.0f
+101140b88  fdiv   s1, s1, s2           ; 2 * raw / 100 = raw / 50
+101140b8c  fadd   s0, s0, s1
+```
+
+`eoc::AiGrid::ToClosestTilePos` reads both members from the same tile and
+applies the identical scale:
+
+```asm
+101139978  add    x16, x17, x1, lsl #4 ; 0x10-byte tile stride
+10113997c  ldr    h20, [x16, #0x8]     ; MaxHeight
+101139980  ucvtf  s20, s20
+101139984  fadd   s20, s20, s20
+10113998c  fdiv   s20, s20, s21        ; divide by 100.0f
+101139990  fadd   s19, s19, s20        ; Translate.y + MaxHeight/50
+1011399a0  fsub   s20, s19, s20        ; recover Translate.y
+1011399a4  ldr    h21, [x16, #0xa]     ; MinHeight
+1011399a8  ucvtf  s21, s21
+1011399ac  fadd   s21, s21, s21
+1011399b4  fdiv   s21, s21, s22        ; divide by 100.0f
+1011399b8  fadd   s20, s20, s21        ; Translate.y + MinHeight/50
+```
+
+`eoc::AiGrid::ToTilePos` supplies a second independent paired site:
+
+```asm
+101161e0c  ldr    h7, [x15, #0x8]      ; MaxHeight
+101161e10  ucvtf  s7, s7
+101161e14  fadd   s7, s7, s7
+101161e1c  fdiv   s7, s7, s17
+101161e20  fadd   s16, s16, s7
+101161e2c  fsub   s7, s16, s7          ; recover Translate.y
+101161e30  ldr    h16, [x15, #0xa]     ; MinHeight
+101161e34  ucvtf  s16, s16
+101161e38  fadd   s16, s16, s16
+101161e40  fdiv   s16, s16, s17
+101161e44  fadd   s7, s7, s16          ; Translate.y + MinHeight/50
+```
+
+### Verdict and API consequence
+
+**CONFIRMED / VERIFIED:** `AiGridTile +0x0a` is `uint16_t MinHeight`, paired
+with `uint16_t MaxHeight` at `+0x08`; both convert to world height as
+`subgrid->Translate.y + raw / 50.0f`.
+
+The diagnostic `Ext.Level.GetTileRawDebugInfo(x, z)` may therefore expose
+both `MinHeight` and `MaxHeight`. Full Windows-compatible
+`Ext.Level.GetTileDebugInfo` remains deferred: public base/material/extra flag
+conversion and the cloud-surface enum adjustment are still not fully confirmed
+on macOS. This finding does not grant parity credit to the raw diagnostic.
+
+## 2026-08-03, Subgrid world bounds — GetHeightsAt
+
+### Windows contract
+
+The Lua binding constructs an `AiWorldPos` from `(x, 0, z)` and delegates
+directly to `AiGrid::GetHeightsAt` (`BG3Extender/Lua/Libs/Level.inl:162-166`).
+The implementation obtains the patch's candidate subgrid-ID span, iterates it
+in stored span order, resolves each ID through `Subgrids`, rejects candidates
+whose `WorldToTilePos` bounds test fails, and skips blocker tiles
+(`BG3Extender/GameDefinitions/Ai.inl:406-422`). For every remaining subgrid it
+appends exactly one value:
+
+```cpp
+subgrid->Translate.y + tile->GetLocalMaxHeight()
+```
+
+It does not append `MinHeight`, sort, or deduplicate. The observable result
+order is therefore the `SubgridsAtPatch` candidate-array order. `WorldToTilePos`
+uses a half-open tile rectangle (`0 <= x < SizeX`, `0 <= z < SizeY`) at
+`BG3Extender/GameDefinitions/Ai.inl:262-280`. The tile is selected with
+`floor((world - origin) / CellSize)`, and the tile address is
+`Tiles[x + y * Width]` (`BG3Extender/GameDefinitions/Ai.inl:311-315`). The
+Windows declarations place `Translate`, `CellSize`, and sizes consecutively
+and define `HeightScale = 1/50` (`BG3Extender/GameDefinitions/Ai.h:150-177`).
+
+### Static method
+
+The Ghidra HTTP bridge did not respond. `otool -f` re-confirmed the installed
+universal binary's ARM64 slice offset as decimal `257261568` (`0xf558000`). A
+thin ARM64 slice was produced in a temporary directory and disassembled with
+Xcode `llvm-objdump`; the equivalent direct-read relationship remains:
+
+```text
+file_offset = 0xf558000 + (vaddr - 0x100000000)
+```
+
+No game process was launched.
+
+### Creation layout: Translate, CellSize, and encoded origin
+
+`eoc::AiGrid::CreateSubgrid` receives the origin `Vector3f const&` in `x3`.
+Here `x24` is `subgrid + 0x08`; the paired and scalar copies establish the
+three consecutive `Translate` members:
+
+```asm
+10115d7c8  ldr    x9, [x27]          ; input origin x/y
+10115d7cc  str    x9, [x24]          ; subgrid +0x08/+0x0c
+10115d7d0  ldr    w9, [x27, #0x8]   ; input origin z
+10115d7d4  str    w9, [x24, #0x8]   ; subgrid +0x10
+```
+
+The same constructor fixes the cell size at `0.5f` and stores the supplied
+tile dimensions. `x25` is `subgrid + 0x70`, making the two negative offsets
+`+0x14` and `+0x18`:
+
+```asm
+10115d71c  stp    w23, w22, [x25, #-0x58] ; SizeX/SizeY +0x18/+0x1c
+10115d72c  mov    w9, #0x3f000000          ; 0.5f
+10115d73c  stur   w9, [x25, #-0x5c]        ; CellSize +0x14
+```
+
+`CreateSubgrid` also decomposes origin x/z into global half-cell coordinates
+and local remainders, then stores both pairs:
+
+```asm
+10115d7a4  fadd.2s  v0, v2, v2       ; origin x/z * 2
+10115d7a8  frintm.2s v0, v0           ; floor
+10115d7ac  fcvtzs.2s v8, v0           ; WorldPos global x/z
+10115d7b4  fmul.2s  v0, v0, v1       ; * -0.5
+10115d7b8  fadd.2s  v0, v2, v0       ; WorldPos local remainders
+10115d7c0  stp      d8, d0, [x19, #0x40]
+```
+
+Thus `+0x40/+0x44` are the signed global x/z pair and `+0x48/+0x4c` are the
+float local x/z pair.
+
+### Native world-to-tile bounds test
+
+`eoc::AiGrid::ToTilePos(Vector3f const&, AiTilePos&, bool) const` at
+`0x1011619c0` uses the encoded origin—not direct `Translate.x/z` loads—for its
+actual containment test. Its zero-local fast path subtracts the global origin
+and applies the already verified sizes:
+
+```asm
+101161ae8  ldr    d3, [x10, #0x48]    ; origin local x/z
+101161aec  fabs.2s v4, v3
+101161b0c  ldr    d3, [x10, #0x40]    ; origin global x/z
+101161b10  sub.2s v3, v2, v3          ; tile x/z
+101161b2c  ldr    w13, [x10, #0x18]   ; SizeX
+101161b38  ldr    w12, [x10, #0x1c]   ; SizeY
+```
+
+The general path reads `CellSize`, reconstructs world coordinates, subtracts
+the local origin, divides and floors, then subtracts the global origin:
+
+```asm
+101161b48  ldr      s4, [x10, #0x14]  ; CellSize
+101161b58  fmla.2s  v7, v5, v4[0]     ; global * CellSize + local
+101161b5c  fsub.2s  v3, v7, v3        ; subtract origin local x/z
+101161b60  fdiv.2s  v3, v3, v6
+101161b64  frintm.2s v3, v3
+101161b68  fcvtzs.2s v3, v3
+101161b6c  ldr      d4, [x10, #0x40]  ; origin global x/z
+101161b70  sub.2s   v3, v3, v4
+```
+
+`AiGrid::ToClosestTilePos` independently repeats the same field accesses at
+`0x101139668-0x101139740` and `0x1011398a0-0x101139920`. Algebraically, the
+encoded calculation is `floor((world - Translate.xz) / CellSize)` because the
+constructor derives both representations from the same origin, but matching
+the native `AiWorldPos` path avoids relying on that algebraic invariant after
+creation. At the confirmed `0.5f` cell size, each tile spans 0.5 world units;
+subgrid bounds are origin-inclusive and `(origin + size * 0.5)`-exclusive.
+
+Finally, the multi-candidate loop rejects the tile when flags bit zero is set:
+
+```asm
+101161df8  ldrb   w1, [x16, x1]       ; low byte of AiGridTile::Flags
+101161dfc  tbnz   w1, #0x0, 0x101161cc8 ; blocker: skip candidate
+```
+
+The independent `ToClosestTilePos` loop has the same test at
+`0x101139968-0x101139970`.
+
+### Offset verdicts and implementation consequence
+
+| Offset/value | Verdict | Evidence |
+|---:|---|---|
+| `AiSubgrid +0x08` `Translate.x` | **CONFIRMED** | `CreateSubgrid` copies input origin x to the first word at `+0x08`. |
+| `AiSubgrid +0x0c` `Translate.y` | **CONFIRMED** | Creation copy above plus the previously verified height consumers. |
+| `AiSubgrid +0x10` `Translate.z` | **CONFIRMED** | `CreateSubgrid` copies input origin z to `+0x10`. |
+| `AiSubgrid +0x14` `CellSize` | **CONFIRMED** | Initialized to `0.5f`; independently read by both tile-position routines. |
+| `AiSubgrid +0x40/+0x44` world globals | **CONFIRMED** | Constructed from `floor(origin * 2)` and consumed independently by both position routines. |
+| `AiSubgrid +0x48/+0x4c` world locals | **CONFIRMED** | Constructed as the half-cell remainder and consumed independently by both position routines. |
+| tile world width/depth | **CONFIRMED: `0.5f`** | Constructor's `CellSize`; native conversion divides by the stored value. |
+| `AiGridTile::Flags` bit 0 blocker | **CONFIRMED** | Independent `tbnz #0` rejection sites in both position routines. |
+
+All offsets needed for a fail-closed multi-subgrid walk are confirmed. The
+macOS implementation may snapshot the bounded subgrid map, apply the exact
+native bounds mapping to every entry, skip blocker tiles, and append only
+`Translate.y + MaxHeight/50`. Bucket traversal supplies deterministic map
+order; Windows exposes its patch candidate-array order and performs no
+height-based sorting, so callers must not infer vertical sorting from either
+result.

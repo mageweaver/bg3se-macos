@@ -253,10 +253,18 @@ static int lua_net_player_has_extender(lua_State *L) {
     }
 
     if (lua_isstring(L, 1)) {
-        // GUID string — would need entity component lookup for UserID
-        // For now, return nil (unknown) since we can't resolve GUID→UserID yet
-        // TODO: Add entity_get_user_id_by_guid() when component read is available
-        lua_pushnil(L);
+        // GUID string: resolve to the peer's user id via the peer registry
+        // (populated during the extender handshake). Windows resolves through
+        // esv::Character->UserID (ServerNet.inl:78-86) and returns nil when
+        // the character is unknown or has no assigned user — an unmatched
+        // GUID here maps to the same nil.
+        const char *guid = lua_tostring(L, 1);
+        int32_t user_id = peer_manager_find_by_guid(guid);
+        if (user_id < 0) {
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_pushboolean(L, peer_manager_can_send_extender(user_id));
         return 1;
     }
 

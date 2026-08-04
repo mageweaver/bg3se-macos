@@ -466,7 +466,10 @@ static int lua_stats_object_set_raw_attribute(lua_State *L) {
 // Ext.Stats.Get(name, level?, warnOnError?, byRef?) -> StatsObject or nil
 static int lua_stats_get(lua_State *L) {
     const char *name = luaL_checkstring(L, 1);
-    // level (arg 2): ignored on macOS (no level scaling support yet)
+    // level (arg 2): ignored — matching Windows, whose Get also discards it
+    // (Stats.inl:479-508 takes optional<int> level but only calls
+    // StatFindObject(statName, warnOnError); the level docstring is a DOS2
+    // vestige — no scaling path exists in the BG3 reference)
     // warnOnError (arg 3): if true, log warning when stat not found
     bool warn_on_error = false;
     if (lua_gettop(L) >= 3 && lua_isboolean(L, 3)) {
@@ -801,22 +804,13 @@ static int lua_stats_add_attribute(lua_State *L) {
     return 1;
 }
 
-// Ext.Stats.AddEnumerationValue(typeName, enumLabel) -> int or nil
-// Deliberately gated for the same allocator/container-ABI reason as
-// AddAttribute; a raw write to RPGEnumeration.Values would corrupt its map.
+// Ext.Stats.AddEnumerationValue(typeName, enumLabel) -> bool
 static int lua_stats_add_enumeration_value(lua_State *L) {
     const char *type_name = luaL_checkstring(L, 1);
     const char *enum_label = luaL_checkstring(L, 2);
 
-    static bool warned = false;
-    if (!warned) {
-        LOG_STATS_WARN("Ext.Stats.AddEnumerationValue('%s', '%s') disabled: "
-                       "RPGEnumeration map allocation/insertion ABI is not "
-                       "safely derivable from 4.1.1.7209685 nm symbols",
-                       type_name, enum_label);
-        warned = true;
-    }
-    lua_pushnil(L);
+    lua_pushboolean(L,
+                    stats_add_enumeration_value(type_name, enum_label));
     return 1;
 }
 
@@ -1356,7 +1350,7 @@ static const luaL_Reg stats_functions[] = {
     {"EnumLabelToIndex", lua_stats_enum_label_to_index},
     {"GetModifierAttributes", lua_stats_get_modifier_attributes},
     {"AddAttribute", lua_stats_add_attribute},  // Explicitly allocator-gated
-    {"AddEnumerationValue", lua_stats_add_enumeration_value},  // Explicitly allocator-gated
+    {"AddEnumerationValue", lua_stats_add_enumeration_value},
     {"Sync", lua_stats_sync},
     {"Create", lua_stats_create},
     {"IsReady", lua_stats_isready},

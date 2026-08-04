@@ -335,6 +335,12 @@ const char* stats_enum_index_to_label(const char *enum_name, int32_t index);
  */
 int32_t stats_enum_label_to_index(const char *enum_name, const char *label);
 
+/**
+ * Add a label to a stats enumeration through the engine ValueList map.
+ * Returns true only when both lookup directions verify the insertion.
+ */
+bool stats_add_enumeration_value(const char *enum_name, const char *label);
+
 // ============================================================================
 // Modifier Attributes
 // ============================================================================

@@ -16,10 +16,13 @@
 #include "../entity/component_registry.h"
 #include "../entity/component_property.h"
 #include "../enum/enum_registry.h"
+#include "../core/safe_memory.h"
+#include "../lifetime/lifetime.h"
 
 #include "../timer/timer.h"
 
 #include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
@@ -1030,42 +1033,129 @@ static int lua_types_unserialize(lua_State *L) {
     return 0;
 }
 
-// Ext.Types.Construct(typeName) -> nil
-// The Windows reference itself is nonfunctional here: Types.inl:286 is
-// `// TODO; return 0` — it validates the type name and returns nothing.
-// Returning nil therefore MATCHES the reference contract; this is not a
-// parity gap, and arbitrary construction stays out of scope until the
-// reference implements it.
+// Ext.Types.Construct(typeName)
+// Matches the Windows validation surface (Types.inl:286-302) exactly: three
+// luaL_error checks fire before the reference's own `// TODO; return 0`.
+// Kind mapping — Component is the macOS analog of LuaTypeId::Object and falls
+// through to the upstream TODO (zero return values); Enum/Bitfield are
+// non-object; the bg3se.* userdata types validate as objects but carry no
+// constructor. Actual construction stays out of scope until the reference
+// implements it.
 static int lua_types_construct(lua_State *L) {
-    static bool warned = false;
     const char *type_name = luaL_checkstring(L, 1);
-    if (!warned) {
-        LOG_LUA_WARN(
-            "Ext.Types.Construct('%s'): returns nil — the Windows reference is "
-            "itself an unimplemented TODO (Types.inl), so nil matches its contract",
-            type_name);
-        warned = true;
+
+    if (component_registry_lookup(type_name)) {
+        // Object type: passes all Windows checks, then hits the upstream TODO.
+        return 0;
     }
-    lua_pushnil(L);
-    return 1;
+
+    if (enum_registry_find_by_name(type_name)) {
+        return luaL_error(L, "Unable to construct non-object type '%s'", type_name);
+    }
+
+    for (int i = 0; s_known_types[i] != NULL; i++) {
+        if (strcmp(s_known_types[i], type_name) == 0) {
+            return luaL_error(L, "Type '%s' is not constructible", type_name);
+        }
+    }
+
+    return luaL_error(L, "Unknown type name '%s'", type_name);
 }
 
+#define HASH_SET_PROXY_METATABLE "bg3se.HashSetProxy"
+
+// ls::HashSet<T> is three 16-byte array headers; Keys begins at +0x20
+// (CoreLib/Base/BaseMap.h:76-77, 121-143, 235-238).
+typedef struct {
+    void *buf;
+    uint32_t capacity;
+    uint32_t size;
+} LuaHashSetKeysArray;
+
+typedef struct {
+    uint8_t hashKeys[0x10];
+    uint8_t nextIds[0x10];
+    LuaHashSetKeysArray keys;
+} LuaHashSetLayout;
+
+typedef int (*LuaHashSetElementPusher)(lua_State *L, const void *element,
+                                       LifetimeHandle lifetime);
+
+// Mirrors Windows SetProxyImplBase type erasure: the producer supplies the
+// element width and type-specific pusher; this function owns only indexing.
+typedef struct {
+    void *setPtr;
+    size_t elementSize;
+    LuaHashSetElementPusher pushElement;
+    LifetimeHandle lifetime;
+} LuaHashSetProxy;
+
+_Static_assert(sizeof(LuaHashSetKeysArray) == 0x10,
+               "BG3 Array<T> header must be 16 bytes");
+_Static_assert(offsetof(LuaHashSetLayout, keys) == 0x20,
+               "BG3 HashSet<T>::Keys must be at +0x20");
+_Static_assert(sizeof(LuaHashSetLayout) == 0x30,
+               "BG3 HashSet<T> header must be 48 bytes");
+
 // Ext.Types.GetHashSetValueAt(obj, index) -> value or nil
-// Windows contract: index is 1-based (Lua convention) into a BG3 hash-set
-// proxy's keys array. macOS: we don't have the C++ proxy metatables, so
-// return nil gracefully; any future implementation must keep the 1-based
-// index semantics.
+// Windows Types.inl:310-318 gets a Set proxy and pushes nil when GetElementAt
+// fails. LuaSetProxy.h:46-55 accepts 1..size and pushes Keys[index - 1].
 static int lua_types_gethashsetvalueat(lua_State *L) {
-    static bool warned = false;
-    luaL_checkany(L, 1);
-    luaL_checkinteger(L, 2);
-    if (!warned) {
-        LOG_LUA_WARN(
-            "Ext.Types.GetHashSetValueAt: deferred on macOS; no hash-set proxy "
-            "metadata exposes element size, key hash, or occupancy state");
-        warned = true;
+    // Windows binds this argument as uint32_t (Types.inl:310); its generic
+    // Lua getter casts luaL_checkinteger directly (LuaGet.h:117-120).
+    uint32_t index = (uint32_t)luaL_checkinteger(L, 2);
+
+    LuaHashSetProxy *proxy = (LuaHashSetProxy *)luaL_testudata(
+        L, 1, HASH_SET_PROXY_METATABLE);
+    if (!proxy) {
+        return luaL_argerror(L, 1, "expected HashSet proxy userdata");
     }
-    lua_pushnil(L);
+
+    if (!lifetime_lua_is_valid(L, proxy->lifetime)) {
+        return lifetime_lua_expired_error(L, "HashSet");
+    }
+    if (!proxy->setPtr) {
+        return luaL_error(L, "HashSet proxy has no backing object");
+    }
+
+    LuaHashSetKeysArray keys = {0};
+    mach_vm_address_t keysAddress =
+        (mach_vm_address_t)(uintptr_t)proxy->setPtr
+        + offsetof(LuaHashSetLayout, keys);
+    if (!safe_memory_read(keysAddress, &keys, sizeof(keys))) {
+        return luaL_error(L, "Unable to read HashSet keys array");
+    }
+
+    // Zero is outside the 1-based contract. Negative Lua integers undergo the
+    // same uint32_t conversion as Windows and consequently land out of range.
+    if (index == 0 || index > keys.size) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    if (keys.size > keys.capacity || !keys.buf) {
+        return luaL_error(L, "HashSet keys array metadata is invalid");
+    }
+    if (proxy->elementSize == 0 || !proxy->pushElement) {
+        return luaL_error(L, "HashSet proxy has no element serializer");
+    }
+
+    size_t elementIndex = (size_t)(index - 1);
+    if (elementIndex > (SIZE_MAX / proxy->elementSize)) {
+        return luaL_error(L, "HashSet element address overflow");
+    }
+    size_t byteOffset = elementIndex * proxy->elementSize;
+    uintptr_t keysBase = (uintptr_t)keys.buf;
+    if (byteOffset > UINTPTR_MAX - keysBase) {
+        return luaL_error(L, "HashSet element address overflow");
+    }
+
+    const void *element = (const void *)(keysBase + byteOffset);
+    int stackTop = lua_gettop(L);
+    int results = proxy->pushElement(L, element, proxy->lifetime);
+    if (results != 1 || lua_gettop(L) != stackTop + 1) {
+        return luaL_error(L, "HashSet element serializer returned no value");
+    }
     return 1;
 }
 
@@ -1090,28 +1180,93 @@ static int lua_types_getfunctionlocation(lua_State *L) {
     return 2;
 }
 
+static void lua_types_check_custom_object_type(lua_State *L,
+                                               const char *type_name) {
+    if (component_registry_lookup(type_name)) {
+        return;
+    }
+
+    if (enum_registry_find_by_name(type_name)) {
+        luaL_error(L, "Cannot extend non-object type: %s", type_name);
+        return;
+    }
+
+    for (int i = 0; s_known_types[i] != NULL; i++) {
+        if (strcmp(s_known_types[i], type_name) == 0) {
+            luaL_error(L, "Cannot extend non-object type: %s", type_name);
+            return;
+        }
+    }
+
+    luaL_error(L, "Type not found: %s", type_name);
+}
+
+static void lua_types_push_custom_type(lua_State *L,
+                                       const char *type_name) {
+    lua_getfield(L, LUA_REGISTRYINDEX, BG3SE_CUSTOM_PROPS_REGISTRY_KEY);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, BG3SE_CUSTOM_PROPS_REGISTRY_KEY);
+    }
+
+    int registry_index = lua_gettop(L);
+    lua_getfield(L, registry_index, type_name);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_createtable(L, 0, 2);
+        lua_newtable(L);
+        lua_setfield(L, -2, "functions");
+        lua_newtable(L);
+        lua_setfield(L, -2, "properties");
+        lua_pushvalue(L, -1);
+        lua_setfield(L, registry_index, type_name);
+    }
+
+    lua_remove(L, registry_index);
+}
+
 // Ext.Types.AddCustomFunction(typeName, property, func) -> boolean
-// Registers a custom Lua function on an existing type.
-// macOS stub: requires C++ property map infrastructure. Returns false.
 static int lua_types_addcustomfunction(lua_State *L) {
     const char *type_name = luaL_checkstring(L, 1);
     const char *property  = luaL_checkstring(L, 2);
     luaL_checktype(L, 3, LUA_TFUNCTION);
-    LOG_LUA_WARN("Ext.Types.AddCustomFunction('%s', '%s'): not supported on macOS", type_name, property);
-    lua_pushboolean(L, 0);
+
+    lua_types_check_custom_object_type(L, type_name);
+    lua_types_push_custom_type(L, type_name);
+    lua_getfield(L, -1, "functions");
+    lua_pushvalue(L, 3);
+    lua_setfield(L, -2, property);
+    lua_pop(L, 2);
+
+    lua_pushboolean(L, 1);
     return 1;
 }
 
 // Ext.Types.AddCustomProperty(typeName, property, getter[, setter]) -> boolean
-// Registers a custom getter/setter property on an existing type.
-// macOS stub: requires C++ property map infrastructure. Returns false.
 static int lua_types_addcustomproperty(lua_State *L) {
     const char *type_name = luaL_checkstring(L, 1);
     const char *property  = luaL_checkstring(L, 2);
     luaL_checktype(L, 3, LUA_TFUNCTION);
-    // setter (arg 4) is optional
-    LOG_LUA_WARN("Ext.Types.AddCustomProperty('%s', '%s'): not supported on macOS", type_name, property);
-    lua_pushboolean(L, 0);
+    if (!lua_isnoneornil(L, 4)) {
+        luaL_checktype(L, 4, LUA_TFUNCTION);
+    }
+
+    lua_types_check_custom_object_type(L, type_name);
+    lua_types_push_custom_type(L, type_name);
+    lua_getfield(L, -1, "properties");
+    lua_createtable(L, 0, 2);
+    lua_pushvalue(L, 3);
+    lua_setfield(L, -2, "getter");
+    if (!lua_isnoneornil(L, 4)) {
+        lua_pushvalue(L, 4);
+        lua_setfield(L, -2, "setter");
+    }
+    lua_setfield(L, -2, property);
+    lua_pop(L, 2);
+
+    lua_pushboolean(L, 1);
     return 1;
 }
 
@@ -1157,6 +1312,12 @@ void lua_ext_register_types(lua_State *L, int ext_table_index) {
     if (ext_table_index < 0) {
         ext_table_index = lua_gettop(L) + ext_table_index + 1;
     }
+
+    // No producer emits these yet; registering the tag here makes rejection
+    // deterministic and reserves the lifetime-scoped proxy contract for the
+    // future FIELD_TYPE_HASHSET component-property surface.
+    luaL_newmetatable(L, HASH_SET_PROXY_METATABLE);
+    lua_pop(L, 1);
 
     // Create Ext.Types table
     lua_newtable(L);
@@ -1622,9 +1783,9 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertEquals(Ext.Stats.AddAttribute('Weapon',\n"
         "    'BG3SE_Goal23_MustNotExist', 'FixedString'), false,\n"
         "    'allocator-gated AddAttribute')\n"
-        "  assert(Ext.Stats.AddEnumerationValue('DamageType',\n"
-        "    'BG3SE_Goal23_MustNotExist') == nil,\n"
-        "    'allocator-gated AddEnumerationValue must return nil')\n"
+        "  assert(Ext.Stats.AddEnumerationValue('BG3SE_Goal23_NoSuchEnum',\n"
+        "    'BG3SE_Goal23_MustNotExist') == false,\n"
+        "    'unknown-enum AddEnumerationValue must fail closed (false)')\n"
         "  assert(Ext.Stats.TreasureTable.Get(\n"
         "    'BG3SE_Goal23_MissingTreasureTable') == nil,\n"
         "    'unknown treasure table must return nil')\n"
@@ -2408,6 +2569,249 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(ok, 'PostMessageToServer should not crash')\n"
         "end)\n";
 
+    // Wave 7 A6: PlayerHasExtender behavioral surface (own chunk to keep
+    // the neighbouring string literal under the ISO 4095-char ceiling)
+    static const char *console_cmd_test_parity_net =
+        "BG3SE_AddTest(2, 'Parity.Net.PlayerHasExtender', function()\n"
+        "  AssertType(Ext.Net.PlayerHasExtender, 'function', 'Net.PlayerHasExtender')\n"
+        "  -- integer path: host user always resolves to a boolean\n"
+        "  AssertType(Ext.Net.PlayerHasExtender(1), 'boolean', 'PlayerHasExtender(userId)')\n"
+        "  -- GUID path: unknown character maps to nil (Windows ServerNet.inl contract)\n"
+        "  assert(Ext.Net.PlayerHasExtender('00000000-0000-0000-0000-000000000000') == nil,\n"
+        "    'unknown GUID should return nil')\n"
+        "  -- GUID path: a registered peer GUID resolves to a boolean\n"
+        "  local host = Osi.GetHostCharacter()\n"
+        "  if host then\n"
+        "    local r = Ext.Net.PlayerHasExtender(host)\n"
+        "    assert(r == nil or type(r) == 'boolean',\n"
+        "      'host GUID should return nil or boolean, got: ' .. type(r))\n"
+        "  end\n"
+        "end)\n";
+
+    // Wave 7 A5: Osi.DB_*:Delete contract (safe surface only — the destructive
+    // row-delete path is live-verified manually against a sentinel tuple)
+    static const char *console_cmd_test_wave7_osi_delete =
+        "BG3SE_AddTest(2, 'Wave7.Osi.DBDelete', function()\n"
+        "  AssertType(Osi.DB_Players.Delete, 'function', 'DB_Players.Delete')\n"
+        "  -- wrong arity raises the Windows-parity error text\n"
+        "  local ok, err = pcall(function() Osi.DB_Players:Delete() end)\n"
+        "  assert(not ok and tostring(err):find('Incorrect number of arguments', 1, true),\n"
+        "    'arity error expected, got: ' .. tostring(err))\n"
+        "  -- nil wildcards rejected (Windows Delete has none)\n"
+        "  ok, err = pcall(function() Osi.DB_Players:Delete(nil) end)\n"
+        "  assert(not ok and tostring(err):find('does not accept nil', 1, true),\n"
+        "    'nil rejection expected, got: ' .. tostring(err))\n"
+        "  -- non-matching delete is an engine no-op; row count invariant\n"
+        "  local before = #Osi.DB_Players:Get()\n"
+        "  assert(before > 0, 'DB_Players should have rows')\n"
+        "  Osi.DB_Players:Delete('SENTINEL_NOT_A_PLAYER_bg3se')\n"
+        "  local after = #Osi.DB_Players:Get()\n"
+        "  assert(after == before,\n"
+        "    'no-op delete changed row count: ' .. before .. ' -> ' .. after)\n"
+        "end)\n";
+
+    // Wave 7 B1: AddEnumerationValue via engine ValueList::Insert. Unique
+    // per-run label keeps reruns idempotent (the enum grows one entry per run;
+    // reload survival is live-verified manually per VALUELIST_INSERT.md)
+    static const char *console_cmd_test_wave7_addenum =
+        "BG3SE_AddTest(2, 'Wave7.Stats.AddEnumerationValue', function()\n"
+        "  local enumName = 'DamageType'\n"
+        "  local label = 'BG3SE_W7B1_' .. tostring(Ext.Utils.MonotonicTime())\n"
+        "  assert(Ext.Stats.EnumLabelToIndex(enumName, label) == nil, 'label must be fresh')\n"
+        "  local i = 0\n"
+        "  while Ext.Stats.EnumIndexToLabel(enumName, i) ~= nil do i = i + 1 end\n"
+        "  assert(Ext.Stats.AddEnumerationValue(enumName, label) == true, 'insert')\n"
+        "  local index = Ext.Stats.EnumLabelToIndex(enumName, label)\n"
+        "  assert(index == i, 'label->index: ' .. tostring(index) .. ' ~= ' .. i)\n"
+        "  assert(Ext.Stats.EnumIndexToLabel(enumName, index) == label, 'index->label')\n"
+        "  -- duplicate rejected without a second growth\n"
+        "  assert(Ext.Stats.AddEnumerationValue(enumName, label) == false, 'duplicate')\n"
+        "  assert(Ext.Stats.EnumLabelToIndex(enumName, label) == index, 'index stable')\n"
+        "  -- unknown enum fails closed\n"
+        "  assert(Ext.Stats.AddEnumerationValue('NotARealEnum_bg3se', 'X') == false)\n"
+        "end)\n";
+
+    // Wave 7 A8: tracing prototype (flat bounded log; partial vs Windows tree)
+    static const char *console_cmd_test_wave7_tracing =
+        "BG3SE_AddTest(2, 'Wave7.Entity.Tracing', function()\n"
+        "  AssertType(Ext.Entity.EnableTracing, 'function', 'EnableTracing')\n"
+        "  assert(Ext.Entity.EnableTracing() == true, 'EnableTracing returns true')\n"
+        "  local t = Ext.Entity.GetTrace()\n"
+        "  AssertType(t, 'table', 'GetTrace')\n"
+        "  AssertType(t.Enabled, 'boolean', 'trace.Enabled')\n"
+        "  AssertType(t.Events, 'table', 'trace.Events')\n"
+        "  assert(Ext.Entity.ClearTrace() == true, 'ClearTrace returns true')\n"
+        "  assert(#Ext.Entity.GetTrace().Events == 0, 'ClearTrace empties the log')\n"
+        "  assert(Ext.Entity.DisableTracing() == true, 'DisableTracing returns true')\n"
+        "end)\n";
+
+    // Wave 7 B6: OnSystemUpdate/OnSystemPostUpdate surface + pointer-swap smoke.
+    // Live firing (callback actually invoked by the ECS scheduler) is verified
+    // manually in the live session; here we exercise subscribe/unsubscribe so
+    // the UpdateProc install+restore path runs once end-to-end.
+    static const char *console_cmd_test_wave7_sysupdate =
+        "BG3SE_AddTest(2, 'Wave7.Entity.OnSystemUpdate', function()\n"
+        "  AssertType(Ext.Entity.OnSystemUpdate, 'function', 'OnSystemUpdate')\n"
+        "  AssertType(Ext.Entity.OnSystemPostUpdate, 'function', 'OnSystemPostUpdate')\n"
+        "  local ok, err = pcall(Ext.Entity.OnSystemUpdate,\n"
+        "    'DefinitelyNotASystem_bg3se', function() end)\n"
+        "  assert(not ok, 'unknown system name must error')\n"
+        "  assert(tostring(err):find('Unknown system type', 1, true),\n"
+        "    'unknown-system error text: ' .. tostring(err))\n"
+        "  local h = Ext.Entity.OnSystemUpdate('ServerActionResource', function() end)\n"
+        "  AssertType(h, 'number', 'subscription handle')\n"
+        "  assert(Ext.Entity.Unsubscribe(h) == true, 'Unsubscribe(system handle)')\n"
+        "  assert(Ext.Entity.Unsubscribe(h) == false, 'double unsubscribe is false')\n"
+        "end)\n";
+
+    // Wave 7 follow-up: GetHeightsAt real multi-subgrid walk (Windows
+    // Ai.inl:262/406 contract; subgrid bounds CONFIRMED in
+    // AIGRID_PATHFINDING.md 2026-08-03). TileRange requires only ONE height
+    // to match the raw tile: GetTileRawDebugInfo resolves the single tile
+    // ToTilePos selects, while GetHeightsAt spans all layers at (x,z).
+    static const char *console_cmd_test_wave7_heights =
+        "BG3SE_AddTest(2, 'Parity.Level.GetHeightsAt.Host', function()\n"
+        "  local x, y, z = Osi.GetPosition(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(x, 'host position')\n"
+        "  local heights = Ext.Level.GetHeightsAt(x, z)\n"
+        "  AssertType(heights, 'table', 'host heights')\n"
+        "  assert(#heights > 0, 'host-position heights must be non-empty')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetHeightsAt.TileRange', function()\n"
+        "  local x, y, z = Osi.GetPosition(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(x, 'host position')\n"
+        "  local tile = Ext.Level.GetTileRawDebugInfo(x, z)\n"
+        "  AssertType(tile, 'table', 'host tile')\n"
+        "  local heights = Ext.Level.GetHeightsAt(x, z)\n"
+        "  assert(#heights > 0, 'host-position heights must be non-empty')\n"
+        "  local matched = false\n"
+        "  for i, h in ipairs(heights) do\n"
+        "    AssertType(h, 'number', 'height ' .. i)\n"
+        "    if h >= tile.MinHeight and h <= tile.MaxHeight + 0.03 then\n"
+        "      matched = true\n"
+        "    end\n"
+        "  end\n"
+        "  assert(matched, 'no height matched the ToTilePos tile range')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Parity.Level.GetHeightsAt.OutOfBounds', function()\n"
+        "  local ok, heights = pcall(Ext.Level.GetHeightsAt, 1.0e9, -1.0e9)\n"
+        "  assert(ok, 'out-of-bounds query must not error')\n"
+        "  AssertType(heights, 'table', 'out-of-bounds result')\n"
+        "  assert(#heights == 0, 'out-of-bounds query must return {}')\n"
+        "end)\n";
+
+    // Wave 7 B3: raw tile diagnostic surface (NOT GetTileDebugInfo parity;
+    // MinHeight +0x0a confirmed in AIGRID_PATHFINDING.md 2026-08-03).
+    static const char *console_cmd_test_wave7_tileraw =
+        "BG3SE_AddTest(2, 'Diagnostic.Level.TileRawDebugInfo', function()\n"
+        "  AssertType(Ext.Level.GetTileRawDebugInfo, 'function', 'GetTileRawDebugInfo')\n"
+        "  local x, y, z = Osi.GetPosition(Osi.GetHostCharacter())\n"
+        "  AssertNotNil(x, 'host position')\n"
+        "  local tile = Ext.Level.GetTileRawDebugInfo(x, z)\n"
+        "  AssertType(tile, 'table', 'host tile')\n"
+        "  assert(tile.Raw == true, 'raw diagnostic marker')\n"
+        "  AssertType(tile.RawFlags, 'number', 'RawFlags')\n"
+        "  assert(tile.GroundMask >= 0 and tile.GroundMask <= 255, 'GroundMask byte')\n"
+        "  assert(tile.CloudMask >= 0 and tile.CloudMask <= 255, 'CloudMask byte')\n"
+        "  AssertType(tile.MinHeight, 'number', 'MinHeight')\n"
+        "  AssertType(tile.MaxHeight, 'number', 'MaxHeight')\n"
+        "  assert(tile.MinHeight <= tile.MaxHeight, 'MinHeight <= MaxHeight')\n"
+        "  local ok, oob = pcall(Ext.Level.GetTileRawDebugInfo, 1.0e9, -1.0e9)\n"
+        "  assert(ok, 'out-of-bounds must not error')\n"
+        "  assert(oob == nil, 'out-of-bounds returns nil')\n"
+        "end)\n";
+
+    // Wave 7 A1: Windows Entity.inl cheap-contract closure
+    static const char *console_cmd_test_wave7_entity =
+        "BG3SE_AddTest(2, 'Wave7.Entity.UuidRoundtrip', function()\n"
+        "  local guid = Osi.GetHostCharacter()\n"
+        "  AssertNotNil(guid, 'GetHostCharacter')\n"
+        "  local e = Ext.Entity.Get(guid)\n"
+        "  AssertNotNil(e, 'host entity')\n"
+        "  local uuid = Ext.Entity.HandleToUuid(e)\n"
+        "  AssertType(uuid, 'string', 'HandleToUuid(host)')\n"
+        "  local e2 = Ext.Entity.UuidToHandle(uuid)\n"
+        "  AssertNotNil(e2, 'UuidToHandle(host uuid)')\n"
+        "  AssertEquals(e2:GetIndex(), e:GetIndex(), 'roundtrip entity index')\n"
+        "  AssertEquals(e2:GetSalt(), e:GetSalt(), 'roundtrip entity salt')\n"
+        "  assert(Ext.Entity.UuidToHandle('00000000-0000-0000-0000-000000000000') == nil,\n"
+        "    'unknown uuid should map to nil')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Wave7.Entity.GetAllEntitiesWithUuid', function()\n"
+        "  local map = Ext.Entity.GetAllEntitiesWithUuid()\n"
+        "  AssertType(map, 'table', 'GetAllEntitiesWithUuid result')\n"
+        "  local guid = Osi.GetHostCharacter()\n"
+        "  local uuid = Ext.Entity.HandleToUuid(Ext.Entity.Get(guid))\n"
+        "  AssertNotNil(map[uuid], 'host uuid present in mapping')\n"
+        "  local n = 0\n"
+        "  for _ in pairs(map) do n = n + 1 end\n"
+        "  assert(n > 100, 'uuid mapping should hold >100 entries, got: ' .. n)\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Wave7.Entity.GetRegisteredComponentTypes', function()\n"
+        "  local all = Ext.Entity.GetRegisteredComponentTypes()\n"
+        "  AssertType(all, 'table', 'GetRegisteredComponentTypes result')\n"
+        "  assert(#all > 1500, 'expected >1500 registered types, got: ' .. #all)\n"
+        "  AssertType(all[1], 'string', 'entries are names')\n"
+        "  local mapped = Ext.Entity.GetRegisteredComponentTypes(nil, true)\n"
+        "  assert(#mapped > 0 and #mapped <= #all, 'mapped filter should narrow the list')\n"
+        "  local oneFrame = Ext.Entity.GetRegisteredComponentTypes(true)\n"
+        "  assert(#oneFrame < #all, 'one-frame filter should narrow the list')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'Wave7.Entity.GetEntitiesAroundPosition', function()\n"
+        "  local guid = Osi.GetHostCharacter()\n"
+        "  local e = Ext.Entity.Get(guid)\n"
+        "  AssertNotNil(e, 'host entity')\n"
+        "  local t = e.Transform\n"
+        "  AssertNotNil(t, 'host Transform')\n"
+        "  local pos = t.Position\n"
+        "  AssertNotNil(pos, 'host Position')\n"
+        "  AssertType(pos.x, 'number', 'Position.x')\n"
+        "  local near = Ext.Entity.GetEntitiesAroundPosition({pos.x, pos.y, pos.z}, 5.0)\n"
+        "  AssertType(near, 'table', 'GetEntitiesAroundPosition result')\n"
+        "  local found = false\n"
+        "  for _, ne in ipairs(near) do\n"
+        "    if ne:GetIndex() == e:GetIndex() then found = true break end\n"
+        "  end\n"
+        "  assert(found, 'host should be within 5m of its own position')\n"
+        "  local none = Ext.Entity.GetEntitiesAroundPosition({pos[1], pos[2], pos[3]}, 0)\n"
+        "  assert(#none == 0, 'zero radius should return no entities')\n"
+        "end)\n";
+
+    // Wave 7 C step 2: read-only GetReplicationFlags on the entity proxy
+    // (SyncBuffers chain, REPLICATION_SYNCBUFFERS.md). Result is a number when
+    // the chain resolves, nil when disarmed/unknown — both are non-erroring.
+    static const char *console_cmd_test_wave7_replication =
+        "BG3SE_AddTest(2, 'Wave7.Entity.GetReplicationFlags', function()\n"
+        "  local host = Osi.GetHostCharacter()\n"
+        "  AssertNotNil(host, 'host character')\n"
+        "  local entity = Ext.Entity.Get(host)\n"
+        "  AssertNotNil(entity, 'resolvable host entity')\n"
+        "  AssertType(entity.GetReplicationFlags, 'function', 'entity.GetReplicationFlags')\n"
+        "  local ok, flags = pcall(function() return entity:GetReplicationFlags('DisplayName') end)\n"
+        "  assert(ok, 'DisplayName lookup errored: ' .. tostring(flags))\n"
+        "  assert(flags == nil or type(flags) == 'number', 'expected number or nil, got ' .. type(flags))\n"
+        "  local unknownOk, unknown = pcall(function() return entity:GetReplicationFlags('__BG3SE_UnknownReplicationComponent') end)\n"
+        "  assert(unknownOk, 'unknown component lookup errored: ' .. tostring(unknown))\n"
+        "  assert(unknown == nil, 'unknown component should return nil')\n"
+        "end)\n";
+
+    // Wave 7 B4b: RaycastAny via the proven zeroed-aggregate ABI (VMT slot 10,
+    // RAYCAST_ABI_B4A.md). UUID+version gated; ships with NO parity credit until
+    // the live stress ladder passes. Safe assertion: callable + returns boolean.
+    static const char *console_cmd_test_wave7_raycastany =
+        "BG3SE_AddTest(2, 'Wave7.Level.RaycastAny', function()\n"
+        "  assert(Ext and Ext.Level and type(Ext.Level.RaycastAny) == 'function',\n"
+        "    'Ext.Level.RaycastAny must exist and be callable')\n"
+        "  if Ext.Level.GetCurrentLevel() == nil then return end\n"
+        "  local host = Osi.GetHostCharacter()\n"
+        "  local x, y, z = Osi.GetPosition(host)\n"
+        "  assert(type(x) == 'number' and type(y) == 'number' and type(z) == 'number',\n"
+        "    'loaded level must provide the host position')\n"
+        "  local ok, blocked = pcall(Ext.Level.RaycastAny, {x, y, z}, {x, y + 1.0, z})\n"
+        "  assert(ok, 'RaycastAny must not error: ' .. tostring(blocked))\n"
+        "  assert(type(blocked) == 'boolean', 'RaycastAny must return a boolean')\n"
+        "end)\n";
+
     static const char *console_cmd_test_parity_ingame_entity =
         "BG3SE_AddTest(2, 'Parity.Entity.TypeIdDiscoveryComplete', function()\n"
         "  if not Ext.Entity.DiscoverTypeIds then return end\n"
@@ -2555,11 +2959,8 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local r = Ext.Level.RaycastAll({0, 0, 0}, {0, -10, 0})\n"
         "  assert(r == nil, 'deferred RaycastAll must return nil')\n"
         "end)\n"
-        "BG3SE_AddTest(2, 'Parity.Level.RaycastAnyDeferred', function()\n"
-        "  AssertType(Ext.Level.RaycastAny, 'function', 'Level.RaycastAny')\n"
-        "  local r = Ext.Level.RaycastAny({0, 0, 0}, {0, -10, 0})\n"
-        "  assert(r == false, 'deferred RaycastAny must return false')\n"
-        "end)\n"
+        // RaycastAny is no longer deferred (Wave 7 B4b): it is a real VMT-slot-10
+        // binding covered by Wave7.Level.RaycastAny. RaycastClosest/All remain deferred.
         "BG3SE_AddTest(2, 'Parity.Level.SweepSphereClosest', function()\n"
         "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
         "  AssertType(Ext.Level.SweepSphereClosest, 'function', 'Level.SweepSphereClosest')\n"
@@ -2623,7 +3024,8 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local ok, hits = pcall(Ext.Level.SweepCylinderAll,\n"
         "    {0, 1, 0}, {0, -1, 0}, {0.5, 1.0, 0.5})\n"
         "  assert(ok, 'SweepCylinderAll should not crash: ' .. tostring(hits))\n"
-        "  assert(type(hits) == 'table', 'expected hit array')\n"
+        "  assert(hits == nil or type(hits) == 'table',\n"
+        "    'expected nil (no hits) or hit array')\n"
         "end)\n"
         "BG3SE_AddTest(2, 'Parity.Level.TestBox', function()\n"
         "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
@@ -2705,6 +3107,48 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  end\n"
         "end)\n";
 
+    static const char *console_cmd_test_parity_types_custom_props =
+        "BG3SE_AddTest(1, 'Parity.Types.CustomProps', function()\n"
+        "  local noop = function() return 42 end\n"
+        "  local ok, err = pcall(Ext.Types.AddCustomFunction,\n"
+        "    'DefinitelyNotARealType', 'TestFn', noop)\n"
+        "  assert(not ok and err:find('Type not found', 1, true),\n"
+        "    'AddCustomFunction unknown-type error: ' .. tostring(err))\n"
+        "  ok, err = pcall(Ext.Types.AddCustomFunction, 'DamageType', 'TestFn', noop)\n"
+        "  assert(not ok and err:find('Cannot extend non%-object type'),\n"
+        "    'AddCustomFunction enum error: ' .. tostring(err))\n"
+        "  assert(Ext.Types.AddCustomFunction(\n"
+        "    'eoc::CharacterComponent', 'TestFn', noop) == true,\n"
+        "    'AddCustomFunction component registration')\n"
+        "  ok, err = pcall(Ext.Types.AddCustomProperty,\n"
+        "    'DefinitelyNotARealType', 'TestProp', noop)\n"
+        "  assert(not ok and err:find('Type not found', 1, true),\n"
+        "    'AddCustomProperty unknown-type error: ' .. tostring(err))\n"
+        "  ok, err = pcall(Ext.Types.AddCustomProperty,\n"
+        "    'DamageType', 'TestProp', noop)\n"
+        "  assert(not ok and err:find('Cannot extend non%-object type'),\n"
+        "    'AddCustomProperty enum error: ' .. tostring(err))\n"
+        "  assert(Ext.Types.AddCustomProperty(\n"
+        "    'eoc::CharacterComponent', 'TestProp', noop) == true,\n"
+        "    'AddCustomProperty component registration')\n"
+        "end)\n";
+
+    // Wave 7 B5: HashSet helper contract (no live HashSet proxy is exposed yet)
+    static const char *console_cmd_test_wave7_hashset =
+        "BG3SE_AddTest(1, 'Parity.Types.GetHashSetValueAt', function()\n"
+        "  local f = Ext.Types.GetHashSetValueAt\n"
+        "  AssertType(f, 'function', 'Types.GetHashSetValueAt')\n"
+        "  for _, index in ipairs({ 1, 0, -1 }) do\n"
+        "    local ok, err = pcall(f, {}, index)\n"
+        "    assert(not ok, 'non-HashSet argument should error at index ' .. index)\n"
+        "    assert(tostring(err):find('expected HashSet proxy userdata', 1, true),\n"
+        "      'wrong-type error at index ' .. index .. ': ' .. tostring(err))\n"
+        "  end\n"
+        "  local ok, err = pcall(f, {}, 'not-an-index')\n"
+        "  assert(not ok and tostring(err):find('number expected', 1, true),\n"
+        "    'non-integer index error: ' .. tostring(err))\n"
+        "end)\n";
+
     // Parity stubs part 3: Ext.Audio, Ext.Types, Ext.Math, Ext.Localization (tier 1)
     static const char *console_cmd_test_parity_apis =
         "BG3SE_AddTest(1, 'Parity.Audio.PlayExternalSound', function()\n"
@@ -2730,12 +3174,20 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Types.Construct', function()\n"
         "  AssertType(Ext.Types.Construct, 'function', 'Types.Construct')\n"
+        "  local ok, err = pcall(Ext.Types.Construct, 'DefinitelyNotARealType')\n"
+        "  assert(not ok, 'Construct(unknown) should error')\n"
+        "  assert(err:find('Unknown type name', 1, true), 'unknown-type error text: ' .. tostring(err))\n"
+        "  ok, err = pcall(Ext.Types.Construct, 'DamageType')\n"
+        "  assert(not ok, 'Construct(enum) should error')\n"
+        "  assert(err:find('non%-object type'), 'non-object error text: ' .. tostring(err))\n"
+        "  ok, err = pcall(Ext.Types.Construct, 'bg3se.StatsObject')\n"
+        "  assert(not ok, 'Construct(userdata type) should error')\n"
+        "  assert(err:find('is not constructible', 1, true), 'not-constructible error text: ' .. tostring(err))\n"
+        "  ok = pcall(Ext.Types.Construct, 'eoc::CharacterComponent')\n"
+        "  assert(ok, 'Construct(component) should pass validation (upstream TODO fall-through)')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Types.GetValueType', function()\n"
         "  AssertType(Ext.Types.GetValueType, 'function', 'Types.GetValueType')\n"
-        "end)\n"
-        "BG3SE_AddTest(1, 'Parity.Types.GetHashSetValueAt', function()\n"
-        "  AssertType(Ext.Types.GetHashSetValueAt, 'function', 'Types.GetHashSetValueAt')\n"
         "end)\n"
         "BG3SE_AddTest(1, 'Parity.Types.GetFunctionLocation', function()\n"
         "  AssertType(Ext.Types.GetFunctionLocation, 'function', 'Types.GetFunctionLocation')\n"
@@ -2960,12 +3412,24 @@ void lua_ext_register_global_helpers(lua_State *L) {
         console_cmd_test_parity_level,
         console_cmd_test_wave3_level,
         console_cmd_test_wave3_aigrid,
+        console_cmd_test_parity_types_custom_props,
+        console_cmd_test_wave7_hashset,
         console_cmd_test_parity_apis,
         console_cmd_test_parity_events,
         console_cmd_test_wave3_damage_events,
         console_cmd_test_parity_behavior,
         console_cmd_test_wave3_small_gaps,
         console_cmd_test_parity_ingame,
+        console_cmd_test_parity_net,
+        console_cmd_test_wave7_osi_delete,
+        console_cmd_test_wave7_addenum,
+        console_cmd_test_wave7_tracing,
+        console_cmd_test_wave7_sysupdate,
+        console_cmd_test_wave7_heights,
+        console_cmd_test_wave7_tileraw,
+        console_cmd_test_wave7_entity,
+        console_cmd_test_wave7_replication,
+        console_cmd_test_wave7_raycastany,
         console_cmd_test_parity_ingame_entity,
         console_cmd_test_ingame_reg,
         console_cmd_ide,

@@ -67,18 +67,23 @@ def test_upstream_todo_is_only_construct(manifest):
 
 
 def test_entity_contract_counts(manifest):
-    """Pin the Phase 0 per-function diff: 26 Windows Entity registrations."""
+    """Pin the per-function diff: 26 Windows Entity registrations, 19
+    behavioral after Wave 7 A1 (HandleToUuid, UuidToHandle,
+    GetAllEntitiesWithUuid, GetRegisteredComponentTypes,
+    GetEntitiesAroundPosition). The tracing quartet stays a gap: the A8
+    prototype is a flat bounded log, not the Windows trace tree."""
     ns = manifest["namespaces"].get("Ext.Entity")
     assert ns is not None, "Ext.Entity missing from manifest"
     contracts = ns["contracts"]
     assert len(contracts) == 26, f"Entity block should have 26 entries, got {len(contracts)}"
     implemented = {e["name"] for e in contracts if e["class"] == "implemented"}
-    assert len(implemented) == 14, sorted(implemented)
+    assert len(implemented) == 19, sorted(implemented)
+    for name in ("HandleToUuid", "UuidToHandle", "GetAllEntitiesWithUuid",
+                 "GetRegisteredComponentTypes", "GetEntitiesAroundPosition"):
+        assert name in implemented, f"{name} should be implemented (Wave 7 A1)"
     gaps = {e["name"] for e in contracts if e["class"] == "behavioral_gap"}
-    for missing in ("HandleToUuid", "UuidToHandle", "Create", "Destroy",
-                    "GetTrace", "ClearTrace", "GetRegisteredComponentTypes",
-                    "EnableTracing"):
-        assert missing in gaps, f"{missing} should be a behavioral gap"
+    assert gaps == {"Create", "Destroy", "EnableTracing", "GetTrace",
+                    "ClearTrace", "OnSystemUpdate", "OnSystemPostUpdate"}, sorted(gaps)
 
 
 def test_types_contract_counts(manifest):
@@ -93,7 +98,8 @@ def test_types_contract_counts(manifest):
     assert report["namespaces"]["Ext.Types"]["behavioral_percent"] == 76.9
 
 
-def test_net_gap_is_player_has_extender(manifest):
+def test_net_has_no_gaps(manifest):
+    """Wave 7 A6 closed PlayerHasExtender's GUID branch — Net is gap-free."""
     gaps = [
         e["name"]
         for ns_name, ns in manifest["namespaces"].items()
@@ -101,4 +107,7 @@ def test_net_gap_is_player_has_extender(manifest):
         for e in ns["contracts"]
         if e["class"] == "behavioral_gap"
     ]
-    assert gaps == ["PlayerHasExtender"], gaps
+    assert gaps == [], gaps
+    net = manifest["namespaces"]["Ext.Net"]["contracts"]
+    phe = next(e for e in net if e["name"] == "PlayerHasExtender")
+    assert phe["class"] == "implemented"

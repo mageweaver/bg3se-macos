@@ -99,7 +99,9 @@ bool level_raycast_all(const float src[3], const float dst[3],
                        int context);
 
 /**
- * Fail-closed internal shim. The macOS optional read-lock ABI is not proven.
+ * Dispatch RaycastAny through the verified macOS ARM64 VMT slot with a
+ * disengaged optional read lock. Fails closed off ARM64 or when the verified
+ * game version and Mach-O UUID gates do not both match.
  */
 bool level_raycast_any(const float src[3], const float dst[3],
                        uint32_t physics_type,
@@ -208,11 +210,12 @@ bool level_test_sphere(const float pos[3], float radius,
 // ============================================================================
 
 /**
- * Get ground heights at a position.
- * @param out_heights Output array (caller provides, max 4 entries)
- * @return Number of heights written
+ * Copy every non-blocker AiGrid MaxHeight layer at world x/z.
+ * The caller owns the returned array and releases it with level_free_heights().
  */
-int level_get_heights_at(float x, float z, float *out_heights, int max_heights);
+bool level_get_heights_at(float x, float z,
+                          float **out_heights, size_t *out_count);
+void level_free_heights(float *heights);
 
 // ============================================================================
 // AiGrid Pathfinding and Tile Snapshots
@@ -253,6 +256,15 @@ typedef struct {
     size_t nodes_count;
 } LevelAiPathResult;
 
+/** Lua-safe raw diagnostic snapshot of one verified AiGridTile. */
+typedef struct {
+    uint64_t raw_flags;
+    uint8_t ground_mask;
+    uint8_t cloud_mask;
+    float min_height;
+    float max_height;
+} LevelAiTileRawDebugInfo;
+
 /** Resolve path_id only through AiGrid::PathMap and copy its public state. */
 bool level_aigrid_get_path_by_id(int32_t path_id, LevelAiPathState *out_state);
 
@@ -283,5 +295,12 @@ void level_aigrid_free_path_result(LevelAiPathResult *result);
 bool level_aigrid_get_entities_on_tile(
     const float world_pos[3], uint64_t **out_handles, size_t *out_count);
 void level_aigrid_free_entity_handles(uint64_t *handles);
+
+/**
+ * Copy raw tile diagnostics at world x/z. This is intentionally distinct
+ * from Windows-compatible GetTileDebugInfo flag conversion.
+ */
+bool level_aigrid_get_tile_raw_debug_info(
+    float x, float z, LevelAiTileRawDebugInfo *out_info);
 
 #endif // LEVEL_MANAGER_H

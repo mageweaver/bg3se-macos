@@ -12,6 +12,7 @@
 #include "component_typeid.h"
 #include "component_property.h"
 #include "arm64_call.h"
+#include "replication_flags.h"
 #include "logging.h"
 #include "../core/version_detect.h"
 #include "../core/offset_table.h"
@@ -1875,6 +1876,33 @@ static int lua_entity_replicate(lua_State *L) {
     return 0;
 }
 
+// entity:GetReplicationFlags(component_name, qword?) -> number|nil
+static int lua_entity_get_replication_flags(lua_State *L) {
+    EntityUserdata *ud =
+        (EntityUserdata*)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    const char *component = luaL_checkstring(L, 2);
+    lua_Integer qword_arg = luaL_optinteger(L, 3, 0);
+    if (qword_arg < 0 || (lua_Unsigned)qword_arg > UINT32_MAX) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    void *server_world = entity_get_world_for_context(true);
+    uint64_t flags = 0;
+    if (!replication_flags_get(server_world, (uint64_t)ud->handle, component,
+                               (uint32_t)qword_arg, &flags)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_pushinteger(L, (lua_Integer)flags);
+    return 1;
+}
+
 // ============================================================================
 // GetAllComponents / GetAllComponentNames
 // ============================================================================
@@ -2059,6 +2087,10 @@ static int lua_entity_index(lua_State *L) {
     }
     if (strcmp(key, "Replicate") == 0) {
         lua_pushcfunction(L, lua_entity_replicate);
+        return 1;
+    }
+    if (strcmp(key, "GetReplicationFlags") == 0) {
+        lua_pushcfunction(L, lua_entity_get_replication_flags);
         return 1;
     }
 
@@ -2603,6 +2635,257 @@ static int lua_entity_count_with_component(lua_State *L) {
 }
 
 // ============================================================================
+// Wave 7 A1: Entity cheap-contract closure (Windows Entity.inl parity)
+// ============================================================================
+
+// Extract a 64-bit entity handle from argument `idx`: accepts a BG3Entity
+// userdata or a raw integer handle (the numeric form GetByHandle consumes).
+static bool entity_arg_to_handle(lua_State *L, int idx, uint64_t *out) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_testudata(L, idx, "BG3Entity");
+    if (ud) {
+        *out = ud->handle;
+        return true;
+    }
+    if (lua_isinteger(L, idx)) {
+        *out = (uint64_t)lua_tointeger(L, idx);
+        return true;
+    }
+    return false;
+}
+
+// Resolve the uuid marker component for an entity, trying the generated
+// runtime name first and the legacy alias second.
+static void *entity_get_uuid_component(uint64_t handle) {
+    if (!g_EntityWorld) return NULL;
+    void *comp = component_get_by_name(g_EntityWorld, handle, "ls::uuid::Component");
+    if (!comp) {
+        comp = component_get_by_name(g_EntityWorld, handle, "eoc::UuidComponent");
+    }
+    return comp;
+}
+
+// Ext.Entity.HandleToUuid(entity) -> uuid string or nil
+// Windows Entity.inl:4-12 — reads UuidComponent::EntityUuid; nil when the
+// entity carries no uuid component.
+static int lua_entity_handle_to_uuid(lua_State *L) {
+    uint64_t handle = 0;
+    if (!entity_arg_to_handle(L, 1, &handle)) {
+        return luaL_argerror(L, 1, "expected entity userdata or handle integer");
+    }
+
+    void *comp = entity_get_uuid_component(handle);
+    if (!comp) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    // ls::uuid::Component: Guid EntityUuid at offset 0x00 (16 bytes)
+    Guid uuid;
+    memcpy(&uuid, comp, sizeof(Guid));
+    char uuidStr[40];
+    guid_to_string(&uuid, uuidStr);
+    lua_pushstring(L, uuidStr);
+    return 1;
+}
+
+// Ext.Entity.UuidToHandle(uuid) -> entity or nil
+// Windows Entity.inl:14-17 — an unmatched uuid yields a null EntityHandle,
+// which surfaces in Lua as nil.
+static int lua_entity_uuid_to_handle(lua_State *L) {
+    const char *uuid_str = luaL_checkstring(L, 1);
+
+    EntityHandle handle = entity_get_by_guid(uuid_str);
+    if (handle == ENTITY_HANDLE_INVALID) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    EntityUserdata *ud = (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
+    ud->handle = handle;
+    ud->lifetime = lifetime_lua_get_current(L);
+    luaL_getmetatable(L, "BG3Entity");
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+// Ext.Entity.GetAllEntitiesWithUuid() -> { [uuid] = entity, ... }
+// Windows Entity.inl:72-81 — the UuidToHandleMappingComponent's Mappings
+// HashMap serialized as a uuid-string -> entity table.
+static int lua_entity_get_all_with_uuid(lua_State *L) {
+    lua_newtable(L);
+
+    if (!g_EntityWorld) return 1;
+
+    void *mapping = g_UuidMappingComponent;
+    if (!mapping && g_TryGetUuidMappingSingleton) {
+        mapping = call_try_get_singleton_with_x8(g_TryGetUuidMappingSingleton,
+                                                 g_EntityWorld);
+    }
+    if (!mapping) return 1;
+
+    HashMapGuidEntityHandle *hashmap = (HashMapGuidEntityHandle *)mapping;
+    if (!hashmap->Keys.buf || !hashmap->Values.buf ||
+        hashmap->Keys.size != hashmap->Values.size) {
+        return 1;
+    }
+
+    LifetimeHandle currentLifetime = lifetime_lua_get_current(L);
+    for (uint32_t i = 0; i < hashmap->Keys.size; i++) {
+        char uuidStr[40];
+        guid_to_string(&hashmap->Keys.buf[i], uuidStr);
+
+        EntityUserdata *ud =
+            (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
+        ud->handle = hashmap->Values.buf[i];
+        ud->lifetime = currentLifetime;
+        luaL_getmetatable(L, "BG3Entity");
+        lua_setmetatable(L, -2);
+        lua_setfield(L, -2, uuidStr);
+    }
+
+    return 1;
+}
+
+// Iterator context for GetRegisteredComponentTypes
+typedef struct {
+    lua_State *L;
+    int index;
+    bool filterOneFrame;
+    bool oneFrame;
+    bool filterMapped;
+    bool mapped;
+} RegisteredTypesContext;
+
+static bool add_registered_type(const ComponentInfo *info, void *userdata) {
+    RegisteredTypesContext *ctx = (RegisteredTypesContext *)userdata;
+    if (!info || !info->name) return true;
+    if (ctx->filterOneFrame && info->is_one_frame != ctx->oneFrame) return true;
+    // "mapped" on Windows means the type has an ExtComponentType mapping; the
+    // macOS analog is a runtime-resolved TypeIndex (discovered).
+    bool is_mapped = info->discovered && info->index != COMPONENT_INDEX_UNDEFINED;
+    if (ctx->filterMapped && is_mapped != ctx->mapped) return true;
+    lua_pushstring(ctx->L, info->name);
+    lua_rawseti(ctx->L, -2, ctx->index++);
+    return true;
+}
+
+// Ext.Entity.GetRegisteredComponentTypes([oneFrame], [mapped]) -> { name, ... }
+// Windows Entity.inl:270-289 — component-name array with two optional filters.
+static int lua_entity_get_registered_component_types(lua_State *L) {
+    RegisteredTypesContext ctx = { L, 1, false, false, false, false };
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        luaL_checktype(L, 1, LUA_TBOOLEAN);
+        ctx.filterOneFrame = true;
+        ctx.oneFrame = lua_toboolean(L, 1);
+    }
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        luaL_checktype(L, 2, LUA_TBOOLEAN);
+        ctx.filterMapped = true;
+        ctx.mapped = lua_toboolean(L, 2);
+    }
+
+    lua_newtable(L);
+    component_registry_iterate(add_registered_type, &ctx);
+    return 1;
+}
+
+// Read a {x, y, z} table argument (same convention as Ext.Level)
+static bool entity_read_vec3(lua_State *L, int idx, float out[3]) {
+    if (!lua_istable(L, idx)) return false;
+    for (int i = 0; i < 3; i++) {
+        lua_rawgeti(L, idx, i + 1);
+        if (!lua_isnumber(L, -1)) {
+            lua_pop(L, 1);
+            return false;
+        }
+        out[i] = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+    }
+    return true;
+}
+
+// Append entities of one archetype whose Transform position lies within
+// `radius` of (x, z) — Windows measures a flat XZ circle, ignoring Y
+// (Ai.inl:502-537). Returns the updated array index.
+static int entity_collect_around(lua_State *L, const char *componentName,
+                                 float x, float z, float radiusSq,
+                                 LifetimeHandle lifetime, int luaIndex) {
+    const ComponentInfo *info = component_registry_lookup(componentName);
+    if (!info || info->index == COMPONENT_INDEX_UNDEFINED) return luaIndex;
+
+    static uint64_t handles[65536];
+    int count = component_lookup_get_all_with_component(info->index, handles, 65536);
+
+    for (int i = 0; i < count; i++) {
+        void *transform = component_get_by_name(g_EntityWorld, handles[i],
+                                                "ls::TransformComponent");
+        if (!transform) continue;
+
+        float pos[3];
+        memcpy(pos, (const uint8_t *)transform + 0x10, sizeof(pos));
+        float dx = pos[0] - x;
+        float dz = pos[2] - z;
+        if (dx * dx + dz * dz >= radiusSq) continue;
+
+        EntityUserdata *ud =
+            (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
+        ud->handle = handles[i];
+        ud->lifetime = lifetime;
+        luaL_getmetatable(L, "BG3Entity");
+        lua_setmetatable(L, -2);
+        lua_rawseti(L, -2, luaIndex++);
+    }
+    return luaIndex;
+}
+
+// Ext.Entity.GetEntitiesAroundPosition(pos, radius, [includeCharacters],
+//   [includeItems]) -> { entity, ... }
+// Windows Entity.inl:144-155 walks the eoc::spatial_grid cells; macOS walks
+// the character/item archetypes and filters by Transform position — same
+// contract (2D XZ radius, both include flags defaulting true), different
+// index. The spatial-grid GridStructure ARM64 layout is unrecovered, so the
+// O(N) walk is the honest implementation until it is.
+static int lua_entity_get_entities_around_position(lua_State *L) {
+    float pos[3];
+    if (!entity_read_vec3(L, 1, pos)) {
+        return luaL_argerror(L, 1, "expected position table {x, y, z}");
+    }
+    float radius = (float)luaL_checknumber(L, 2);
+    bool includeCharacters = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3);
+    bool includeItems = lua_isnoneornil(L, 4) ? true : lua_toboolean(L, 4);
+
+    lua_newtable(L);
+    if (!component_lookup_ready() || !g_EntityWorld || radius <= 0.0f) {
+        return 1;
+    }
+
+    LifetimeHandle lifetime = lifetime_lua_get_current(L);
+    float radiusSq = radius * radius;
+    int luaIndex = 1;
+
+    if (includeCharacters) {
+        luaIndex = entity_collect_around(L, "eoc::character::CharacterComponent",
+                                         pos[0], pos[2], radiusSq, lifetime,
+                                         luaIndex);
+    }
+    if (includeItems) {
+        // Prefer the sub-namespaced runtime marker; fall back to the legacy
+        // alias only when the preferred one never resolved a TypeIndex —
+        // walking both would double-count entities carrying both markers.
+        const ComponentInfo *itemInfo =
+            component_registry_lookup("eoc::item::ItemComponent");
+        const char *itemComponent =
+            (itemInfo && itemInfo->index != COMPONENT_INDEX_UNDEFINED)
+                ? "eoc::item::ItemComponent"
+                : "eoc::ItemComponent";
+        luaIndex = entity_collect_around(L, itemComponent, pos[0], pos[2],
+                                         radiusSq, lifetime, luaIndex);
+    }
+
+    return 1;
+}
+
+// ============================================================================
 // Client EntityWorld Discovery API (Runtime Probing)
 // ============================================================================
 
@@ -2872,6 +3155,22 @@ void entity_register_lua(lua_State *L) {
 
     lua_pushcfunction(L, lua_entity_count_with_component);
     lua_setfield(L, -2, "CountEntitiesWithComponent");
+
+    // Wave 7 A1: Windows Entity.inl cheap contracts
+    lua_pushcfunction(L, lua_entity_handle_to_uuid);
+    lua_setfield(L, -2, "HandleToUuid");
+
+    lua_pushcfunction(L, lua_entity_uuid_to_handle);
+    lua_setfield(L, -2, "UuidToHandle");
+
+    lua_pushcfunction(L, lua_entity_get_all_with_uuid);
+    lua_setfield(L, -2, "GetAllEntitiesWithUuid");
+
+    lua_pushcfunction(L, lua_entity_get_registered_component_types);
+    lua_setfield(L, -2, "GetRegisteredComponentTypes");
+
+    lua_pushcfunction(L, lua_entity_get_entities_around_position);
+    lua_setfield(L, -2, "GetEntitiesAroundPosition");
 
     // Dual EntityWorld API (Server + Client)
     lua_pushcfunction(L, lua_entity_get_server_world);

@@ -1,73 +1,48 @@
 {
-  "task": "Wave 3 Builder G: CreateComponent unlock and passive-singleton correction",
+  "task": "Implement Wave 7 B6 Ext.Entity.OnSystemUpdate / OnSystemPostUpdate",
   "status": "done",
-  "started_at": "2026-07-30T05:23:15Z",
+  "started_at": "2026-08-03T00:00:00Z",
   "features": [
     {
-      "name": "Inspect verified ComponentOps and prototype-manager evidence",
+      "name": "Implement build-gated ECS system update subscriptions",
       "status": "completed",
       "files": [
-        "ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md",
-        "src/entity/entity_system.c",
-        "src/stats/prototype_managers.c",
-        "src/lua/lua_ext.c"
+        "src/entity/ecs_system_update.c",
+        "src/entity/ecs_system_update.h"
       ],
-      "completed_at": "2026-07-30T05:23:15Z"
+      "started_at": "2026-08-03T00:00:00Z",
+      "completed_at": "2026-08-03T00:10:00Z"
     },
     {
-      "name": "Implement version-gated Entity:CreateComponent ComponentOps dispatch",
+      "name": "Wire world transition restoration through entity events lifecycle",
       "status": "completed",
       "files": [
-        "src/entity/entity_system.c"
+        "src/entity/entity_events.c"
       ],
-      "started_at": "2026-07-30T05:23:15Z",
-      "completed_at": "2026-07-30T05:27:00Z"
+      "completed_at": "2026-08-03T00:10:00Z"
     },
     {
-      "name": "Preserve and document Entity:RemoveComponent deferral",
+      "name": "Add ECS system update module to dylib target",
       "status": "completed",
       "files": [
-        "src/entity/entity_system.c"
+        "CMakeLists.txt"
       ],
-      "completed_at": "2026-07-30T05:27:00Z"
+      "completed_at": "2026-08-03T00:10:00Z"
     },
     {
-      "name": "Correct passive singleton and fail-closed prototype sync claims",
-      "status": "completed",
-      "files": [
-        "CLAUDE.md",
-        "ghidra/offsets/STATS.md",
-        "src/stats/prototype_managers.c",
-        "src/stats/prototype_managers.h"
-      ],
-      "completed_at": "2026-07-30T05:27:30Z"
-    },
-    {
-      "name": "Add contract tests and Builder G report",
-      "status": "completed",
-      "files": [
-        "src/lua/lua_ext.c",
-        "tests/harness/test_component_ops_audit.py",
-        "tests/harness/test_offset_audit.py",
-        "docs/bugs/wave3-builder-g-componentops-report.md"
-      ],
-      "completed_at": "2026-07-30T05:29:17Z"
-    },
-    {
-      "name": "Run clean build, tier0, and harness pytest gates",
+      "name": "Verify touched translation units compile",
       "status": "completed",
       "files": [],
-      "completed_at": "2026-07-30T05:29:17Z"
+      "completed_at": "2026-08-03T00:20:00Z"
     }
   ],
   "verification": {
     "build": true,
-    "build_result": "clean universal ARM64/x86_64 build passed; optional app-bundle copy sandbox-denied",
-    "tier0": true,
-    "tier0_result": "55/55 passed",
-    "harness": true,
-    "harness_result": "210 passed",
-    "diff_check": true
+    "build_result": "cmake --build build -j2 passed; universal x86_64/arm64 libbg3se.dylib linked (app-bundle copy sandbox-denied after successful link)",
+    "tests": true,
+    "tests_result": "Tier-0: 65/65 passed; Lua state ownership gate passed",
+    "lint": true,
+    "lint_result": "git diff --check passed"
   },
-  "completed_at": "2026-07-30T05:29:17Z"
+  "completed_at": "2026-08-03T00:20:00Z"
 }

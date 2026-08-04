@@ -153,22 +153,22 @@ echo '!help' > ~/Library/Application\ Support/BG3SE/commands.txt
 | `!status` | Show BG3SE status (socket, clients, commands) |
 | `!typeids` | Show TypeId resolution status |
 | `!probe_osidef [N]` | Hex dump OsiFunctionDef layout for N functions (default 5) |
-| `!test [filter]` | Run Tier 1 regression tests (113 tests, always works). Optional filter: `!test Stats`, `!test Parity` |
-| `!test_ingame [filter]` | Run Tier 2 tests (96 tests, needs loaded save). Tests Entity, Stats, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity, Wave3 |
+| `!test [filter]` | Run Tier 1 regression tests (114 tests, always works). Optional filter: `!test Stats`, `!test Parity` |
+| `!test_ingame [filter]` | Run Tier 2 tests (110 tests, needs loaded save). Tests Entity, Stats, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity, Wave3, Wave7 |
 | `!identity` | JSON identity/readiness handshake: pid, version, game_state, session_init, stats_ready, dylib image. Verify before trusting live test results |
 
-### Test Suite (528 tests)
+### Test Suite (544 tests)
 
-Four tiers, 528 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
+Four tiers, 544 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
 
 | Tier | Command | Tests | Requires |
 |------|---------|-------|----------|
 | 0 | `./build/bin/bg3se_test_tier0` | 65 | None (CI-safe) |
-| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 254 | Python 3.12 (CI-safe) |
-| 1 | `!test` | 113 | Console only (no save needed) |
-| 2 | `!test_ingame` | 96 | Loaded save game |
+| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 255 | Python 3.12 (CI-safe) |
+| 1 | `!test` | 114 | Console only (no save needed) |
+| 2 | `!test_ingame` | 110 | Loaded save game |
 
-**Categories (Tier 1):** Core (6), Json (4), Helpers (5), Stats (16), Timer (8), Events (5), Debug (10), Types (6), Enums (3), IO (3), Memory (3), Mod (4), Vars (2), Osi (4), MCM (10), **Parity (24)**
+**Categories (Tier 1):** Core (6), Json (4), Helpers (5), Stats (16), Timer (8), Events (5), Debug (10), Types (6), Enums (3), IO (3), Memory (3), Mod (4), Vars (2), Osi (4), MCM (10), **Parity (25)**
 
 **Categories (Tier 2):** Entity (10), Stats (4), Level (5), Audio (4), Net (4), IMGUI (2), StaticData (2), Osi dispatch + edge cases (13), EntityEvents (5), **Parity (41)**, **Wave3 (6)**
 

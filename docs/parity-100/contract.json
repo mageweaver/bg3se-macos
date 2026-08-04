@@ -1,2094 +1,2106 @@
 {
- "version": 1,
- "windows_ref": "v28.0-34-g1ae33289-dirty",
- "generated": "2026-08-01",
- "scope_exclusions": [
-  "Ext.UI (Noesis)",
-  "Lua Debugger / DAP",
-  "Virtual Textures",
-  "Ext.Input synthetic injection"
- ],
- "namespaces": {
-  "Ext.Entity": {
-   "source": "BG3Extender/Lua/Libs/Entity.inl:RegisterEntityLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "HandleToUuid",
-     "note": "Absent. Uuid<->Handle mapping component captured; portable engineering. Wave 7 Phase A1.",
-     "class": "behavioral_gap",
-     "kind": "function"
+  "version": 1,
+  "windows_ref": "v28.0-34-g1ae33289-dirty",
+  "generated": "2026-08-03",
+  "scope_exclusions": [
+    "Ext.UI (Noesis)",
+    "Lua Debugger / DAP",
+    "Virtual Textures",
+    "Ext.Input synthetic injection"
+  ],
+  "namespaces": {
+    "Ext.Entity": {
+      "source": "BG3Extender/Lua/Libs/Entity.inl:RegisterEntityLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "HandleToUuid",
+          "note": "Wave 7 A1. Behavioral GUID lookup through the captured Uuid<->Handle mapping component.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "UuidToHandle",
+          "note": "Wave 7 A1. Behavioral reverse lookup through the captured Uuid<->Handle mapping component.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Get",
+          "note": "GUID lookup via entity_system.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllEntitiesWithUuid",
+          "note": "Wave 7 A1. Behavioral UUID-filtered archetype walk.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllEntitiesWithComponent",
+          "note": "Server-world archetype walk. entity_system.c:2866.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllEntities",
+          "note": "Server-world archetype walk. entity_system.c:2863.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetEntitiesAroundPosition",
+          "note": "Wave 7 A1. Matches the Windows 2D XZ-circle contract: Y is ignored and includeCharacters/includeItems default true. Uses CharacterComponent/item-marker archetype walks plus TransformComponent because the ARM64 GridStructure layout remains unrecovered; full contract behavior is met.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Create",
+          "note": "Absent. Engine entity lifecycle (allocator + handle mint) not recovered. Wave 7 Phase D4.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Destroy",
+          "note": "Absent. Same allocator gap as Create. Wave 7 Phase D4.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Subscribe",
+          "note": "entity_events.c:1331. Salted pool, deferred queue, per-entity hooks.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnChange",
+          "note": "Alias for Subscribe. entity_events.c:1332.",
+          "class": "implemented",
+          "kind": "alias"
+        },
+        {
+          "name": "OnCreate",
+          "note": "entity_events.c:1333.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnCreateDeferred",
+          "note": "entity_events.c:1334.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnCreateOnce",
+          "note": "entity_events.c:1335.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnCreateDeferredOnce",
+          "note": "entity_events.c:1336.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnDestroy",
+          "note": "entity_events.c:1337.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnDestroyDeferred",
+          "note": "entity_events.c:1338.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnDestroyOnce",
+          "note": "entity_events.c:1339.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnDestroyDeferredOnce",
+          "note": "entity_events.c:1340.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OnSystemUpdate",
+          "note": "Absent pending implementation. Wave 7 B6 recon is implementation-ready: SystemTypeEntry::UpdateProc is a swappable pointer at +0x18; ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "OnSystemPostUpdate",
+          "note": "Absent pending implementation. Same implementation-ready B6 dispatch evidence as OnSystemUpdate; ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Unsubscribe",
+          "note": "entity_events.c:1341.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "EnableTracing",
+          "note": "Warn-once stub returning nil. No tracing infrastructure recovered. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetTrace",
+          "note": "Absent. Tracing infrastructure not built. Wave 7 Phase A8.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "ClearTrace",
+          "note": "Absent. Same tracing gap. Wave 7 Phase A8.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetRegisteredComponentTypes",
+          "note": "Wave 7 A1. Behavioral component-registry enumeration with mapped and oneFrame filters.",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "UuidToHandle",
-     "note": "Absent. Same as HandleToUuid. Wave 7 Phase A1.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "entity_proxy": {
+      "source": "BG3Extender/Lua/Shared/Proxies/LuaEntityProxy.inl:StaticInitialize()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "CreateComponent",
+          "note": "Verified ComponentOps registry. entity_system.c:2044.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "RemoveComponent",
+          "note": "Returns false. 734 per-type templates, no generic entry point. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "GetComponent",
+          "note": "entity_system.c:2040, plus direct component name access via __index. Wave 7 A7 adds a FLOAT_ARRAY writer mirroring INT32_ARRAY, but it earns no parity credit until ls::EffectComponent::OverrideFadeCapacity ARM64 offsets are verified.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "HasRawComponent",
+          "note": "Absent. Windows checks raw component presence without proxy construction.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "GetAllComponents",
+          "note": "entity_system.c:2052.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "GetAllComponentNames",
+          "note": "entity_system.c:2055.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "IsAlive",
+          "note": "entity_system.c:2016.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "GetNetId",
+          "note": "entity_system.c:2036.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "GetReplicationFlags",
+          "note": "Warn-once stub returning nil. No replication infrastructure. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "SetReplicationFlags",
+          "note": "Absent. Replication infrastructure not recovered.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "Replicate",
+          "note": "No-op. Highest-demand deferral (5/11 vetted mods). deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnCreate",
+          "note": "Absent from entity proxy. Per-entity OnCreate hooks exist on Ext.Entity but not on entity instances.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnCreateDeferred",
+          "note": "Absent from entity proxy. Same as OnCreate.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnCreateDeferredOnce",
+          "note": "Absent from entity proxy.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnCreateOnce",
+          "note": "Absent from entity proxy.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnDestroy",
+          "note": "Absent from entity proxy.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnDestroyDeferred",
+          "note": "Absent from entity proxy.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnDestroyDeferredOnce",
+          "note": "Absent from entity proxy.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnDestroyOnce",
+          "note": "Absent from entity proxy.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "OnChanged",
+          "note": "Absent from entity proxy. Windows entity:OnChanged dispatches per-entity component-change subscriptions.",
+          "class": "behavioral_gap",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "Vars",
+          "note": "entity_system.c:2073. Returns user-variable proxy.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        }
+      ]
     },
-    {
-     "name": "Get",
-     "note": "GUID lookup via entity_system.c",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Stats": {
+      "source": "BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "GetStatsManager",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetModifierAttributes",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetStats",
+          "note": "lua_stats.c (as GetAllStats and GetStats)",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetStatsLoadedBefore",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Get",
+          "note": "Wave 7 A4: behavioral parity incl. the level parameter — Windows Stats.inl:479-508 accepts level but calls StatFindObject(statName, warnOnError) name-only; macOS also ignores it. The level docstring is a DOS2 vestige on both platforms.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetCachedSpell",
+          "note": "lua_stats.c. Rebound to native getter (Wave 6).",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetCachedStatus",
+          "note": "lua_stats.c. Rebound to native getter (Wave 6).",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetCachedPassive",
+          "note": "lua_stats.c. Native eoc::Passives::Get at 0x101c0f27c (Wave 6).",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetCachedInterrupt",
+          "note": "lua_stats.c. Native InterruptPrototypeManager::GetPrototype at 0x101b7adcc (Wave 6).",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Create",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Sync",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SetPersistence",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "EnumIndexToLabel",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "EnumLabelToIndex",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "AddAttribute",
+          "note": "Returns false. Runtime modifier-list mutation unverified. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "AddEnumerationValue",
+          "note": "Wave 7 B1. Calls engine ValueList::Insert at 0x101c44920 with an interned FixedString label, then verifies forward and reverse readback plus a single count increment. Duplicate labels and unknown enums return false. ghidra/offsets/VALUELIST_INSERT.md.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ExecuteFunctors",
+          "note": "Partial. Full param-block construction unverified for all functor types. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "ExecuteFunctor",
+          "note": "lua_stats.c. Single-functor dispatch via Dobby hook.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PrepareFunctorParams",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "GetAllEntitiesWithUuid",
-     "note": "Absent. Filter over existing archetype walks. Wave 7 Phase A1.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Stats.TreasureTable": {
+      "source": "BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib() submodule",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Get",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetLegacy",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Update",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "GetAllEntitiesWithComponent",
-     "note": "Server-world archetype walk. entity_system.c:2866.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Stats.TreasureCategory": {
+      "source": "BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib() submodule",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "GetLegacy",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Update",
+          "note": "lua_stats.c",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "GetAllEntities",
-     "note": "Server-world archetype walk. entity_system.c:2863.",
-     "class": "implemented",
-     "kind": "function"
+    "stats_proxy": {
+      "source": "macOS lua_stats.c metatable; Windows StatAttributes.inl/StatMisc.inl (inline in StatsObject proxy)",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Sync",
+          "note": "lua_stats.c stats proxy metatable",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "SetPersistence",
+          "note": "lua_stats.c stats proxy metatable",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "CopyFrom",
+          "note": "lua_stats.c stats proxy metatable",
+          "class": "implemented",
+          "kind": "proxy_method"
+        },
+        {
+          "name": "SetRawAttribute",
+          "note": "lua_stats.c stats proxy metatable",
+          "class": "implemented",
+          "kind": "proxy_method"
+        }
+      ]
     },
-    {
-     "name": "GetEntitiesAroundPosition",
-     "note": "Absent. Position-filtered walk over existing machinery. Wave 7 Phase A1.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Types": {
+      "source": "BG3Extender/Lua/Libs/Types.inl:RegisterTypesLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "GetValueType",
+          "note": "lua_ext.c:1191",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetObjectType",
+          "note": "lua_ext.c:1164",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetTypeInfo",
+          "note": "lua_ext.c:1170",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "TypeOf",
+          "note": "lua_ext.c:1176",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "IsA",
+          "note": "lua_ext.c:1179",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllTypes",
+          "note": "lua_ext.c:1173",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Validate",
+          "note": "lua_ext.c:1167",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Serialize",
+          "note": "lua_ext.c:1194. Component-proxy serialization.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Unserialize",
+          "note": "lua_ext.c:1197",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Construct",
+          "note": "Wave 7 A3. Error surface exactly matches Windows Types.inl:286-302: Unknown type name '%s'; Unable to construct non-object type '%s'; Type '%s' is not constructible. Object types pass all checks and reach the shared upstream TODO, returning 0 values. Removed from parity denominator.",
+          "class": "matched_upstream_todo",
+          "kind": "function"
+        },
+        {
+          "name": "GetHashSetValueAt",
+          "note": "Warn-once stub returning nil. No hash-set proxy on macOS. Contract: Windows index is 1-based. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetFunctionLocation",
+          "note": "lua_ext.c:1206",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "AddCustomFunction",
+          "note": "Warn-once stub returning false. Windows implements via property-map layer; macOS lacks it. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "AddCustomProperty",
+          "note": "Warn-once stub returning false. Same property-map gap. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "Create",
-     "note": "Absent. Engine entity lifecycle (allocator + handle mint) not recovered. Wave 7 Phase D4.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Net": {
+      "source": "BG3Extender/Lua/Libs/ClientNet.inl + ServerNet.inl (split by context)",
+      "context": "Both (merged)",
+      "contracts": [
+        {
+          "name": "PostMessageToServer",
+          "note": "lua_net.c:318. Client context.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PostMessageToUser",
+          "note": "lua_net.c:321. Server context.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PostMessageToClient",
+          "note": "lua_net.c:324. Server context.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BroadcastMessage",
+          "note": "lua_net.c:327. Server context.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Version",
+          "note": "lua_net.c:330.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "IsHost",
+          "note": "lua_net.c:333.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PlayerHasExtender",
+          "note": "Wave 7 A6. GUID branch resolves the peer via peer_manager_find_by_guid; unknown characters and unassigned users return nil, otherwise returns peer_manager_can_send_extender. Matches ServerNet.inl:78-86. The userId overload remains a macOS extra.",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "Destroy",
-     "note": "Absent. Same allocator gap as Create. Wave 7 Phase D4.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Osi.DB_*": {
+      "source": "OsirisBinding dynamic database accessor",
+      "context": "Server",
+      "contracts": [
+        {
+          "name": "Delete",
+          "note": "Wave 7 A5. Exact-match row deletion through CReteDBase::erase with ForwardDelToken RETE propagation, resolved from libOsiris.dylib exports. Tier-2 Wave7.Osi.DBDelete covers arity errors, nil rejection, and no-op invariance; destructive deletion is live-verified manually.",
+          "class": "implemented",
+          "kind": "proxy_method"
+        }
+      ]
     },
-    {
-     "name": "Subscribe",
-     "note": "entity_events.c:1331. Salted pool, deferred queue, per-entity hooks.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Timer": {
+      "source": "BG3Extender/Lua/Libs/Timer.inl:RegisterTimerLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "MonotonicTime",
+          "note": "lua_timer.c:485",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "MicrosecTime",
+          "note": "lua_timer.c:488",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GameTime",
+          "note": "lua_timer.c:497",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ClockEpoch",
+          "note": "lua_timer.c:491",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ClockTime",
+          "note": "lua_timer.c:494",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "WaitFor",
+          "note": "lua_timer.c:467",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "WaitForPersistent",
+          "note": "lua_timer.c:516",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "WaitForRealtime",
+          "note": "lua_timer.c:470",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "RegisterPersistentHandler",
+          "note": "lua_timer.c:510",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Pause",
+          "note": "lua_timer.c:476",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Resume",
+          "note": "lua_timer.c:479",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "IsPaused",
+          "note": "lua_timer.c:482",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Cancel",
+          "note": "lua_timer.c:473",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnChange",
-     "note": "Alias for Subscribe. entity_events.c:1332.",
-     "class": "implemented",
-     "kind": "alias"
+    "Ext.Level": {
+      "source": "BG3Extender/Lua/Libs/Level.inl:RegisterLevelLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "GetEntitiesOnTile",
+          "note": "lua_level.c:723",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetTileDebugInfo",
+          "note": "Warn-once stub returning nil. MinHeight open; flag decoders provisional. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetHeightsAt",
+          "note": "Wave 7 follow-up: real multi-subgrid walk matching Windows Ai.inl:262/406 (half-open subgrid bounds, floor((world-origin)/CellSize), blocker-skip, Translate.y + MaxHeight/50 only). All subgrid world-bounds offsets CONFIRMED via static disasm (AIGRID_PATHFINDING.md 2026-08-03: Translate.x/y/z +0x08/+0x0c/+0x10, CellSize +0x14 = 0.5f, encoded world bounds +0x40..+0x4c). Replaces the stub the same-day B3 truth pass exposed. Live verification pending (Tier-2 Parity.Level.GetHeightsAt.*).",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BeginPathfinding",
+          "note": "Warn-once stub returning nil. Incomplete field population. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "BeginPathfindingImmediate",
+          "note": "Absent. Not registered on macOS; same underlying gap as BeginPathfinding.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "FindPath",
+          "note": "lua_level.c:726",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ReleasePath",
+          "note": "lua_level.c:727",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetPathById",
+          "note": "lua_level.c:728",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetActivePathfindingRequests",
+          "note": "lua_level.c:729",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "RaycastClosest",
+          "note": "Warn-once stub returning nil. By-value ls::Function ABI unverified. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "RaycastAny",
+          "note": "Warn-once stub returning false. By-value optional lock ABI unverified. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "RaycastAll",
+          "note": "Warn-once stub returning nil. Same ABI gap. deferrals.md.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "SweepSphereClosest",
+          "note": "lua_level.c:712",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SweepCapsuleClosest",
+          "note": "lua_level.c:714",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SweepBoxClosest",
+          "note": "lua_level.c:716",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SweepSphereAll",
+          "note": "lua_level.c:713",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SweepCapsuleAll",
+          "note": "lua_level.c:715",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SweepBoxAll",
+          "note": "lua_level.c:717",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "TestBox",
+          "note": "lua_level.c:720",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "TestSphere",
+          "note": "lua_level.c:721",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnCreate",
-     "note": "entity_events.c:1333.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Audio": {
+      "source": "BG3Extender/Lua/Libs/ClientAudio.inl:RegisterAudioLib()",
+      "context": "Client",
+      "contracts": [
+        {
+          "name": "SetSwitch",
+          "note": "lua_audio.c:274",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SetState",
+          "note": "lua_audio.c:275",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SetRTPC",
+          "note": "lua_audio.c:276",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetRTPC",
+          "note": "lua_audio.c:277",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ResetRTPC",
+          "note": "lua_audio.c:278",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Stop",
+          "note": "lua_audio.c:271",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PauseAllSounds",
+          "note": "lua_audio.c:272",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ResumeAllSounds",
+          "note": "lua_audio.c:273",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PostEvent",
+          "note": "lua_audio.c:270",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "LoadEvent",
+          "note": "lua_audio.c:279",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "UnloadEvent",
+          "note": "lua_audio.c:280",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PlayExternalSound",
+          "note": "lua_audio.c:281. STDString ABI.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "LoadBank",
+          "note": "lua_audio.c:282. dlsym'd AK::SoundEngine.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "UnloadBank",
+          "note": "lua_audio.c:283",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PrepareBank",
+          "note": "lua_audio.c:284",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "UnprepareBank",
+          "note": "lua_audio.c:285",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnCreateDeferred",
-     "note": "entity_events.c:1334.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Mod": {
+      "source": "BG3Extender/Lua/Libs/Mod.inl:RegisterModLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "IsModLoaded",
+          "note": "lua_mod.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetLoadOrder",
+          "note": "lua_mod.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetMod",
+          "note": "lua_mod.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetBaseMod",
+          "note": "lua_mod.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetModManager",
+          "note": "lua_mod.c",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnCreateOnce",
-     "note": "entity_events.c:1335.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Vars": {
+      "source": "BG3Extender/Lua/Libs/Vars.inl:RegisterVarsLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "RegisterUserVariable",
+          "note": "Implemented — src/vars/user_variables.c:754 — full options table (Server/Persistent/etc.). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SyncUserVariables",
+          "note": "Implemented — src/vars/user_variables.c:846. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "DirtyUserVariables",
+          "note": "Implemented — src/vars/user_variables.c:855. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetEntitiesWithVariable",
+          "note": "Implemented — src/vars/user_variables.c:837. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "RegisterModVariable",
+          "note": "Implemented — src/vars/user_variables.c:1360. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetModVariables",
+          "note": "Implemented — src/vars/user_variables.c:1402. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SyncModVariables",
+          "note": "Implemented — src/vars/user_variables.c:1417. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "DirtyModVariables",
+          "note": "Implemented — src/vars/user_variables.c:1426. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnCreateDeferredOnce",
-     "note": "entity_events.c:1336.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.IO": {
+      "source": "BG3Extender/Lua/Libs/IO.inl:RegisterIOLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "LoadFile",
+          "note": "lua_ext.c:531",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SaveFile",
+          "note": "lua_ext.c:533",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "AddPathOverride",
+          "note": "lua_ext.c:535",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetPathOverride",
+          "note": "lua_ext.c:537",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnDestroy",
-     "note": "entity_events.c:1337.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Json": {
+      "source": "BG3Extender/Lua/Libs/Json.inl:RegisterJsonLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Parse",
+          "note": "lua_json.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Stringify",
+          "note": "lua_json.c",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnDestroyDeferred",
-     "note": "entity_events.c:1338.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Math": {
+      "source": "BG3Extender/Lua/Libs/Math.inl:RegisterMathLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Add",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Sub",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Mul",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Div",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Reflect",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Angle",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Cross",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Distance",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Dot",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Length",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Normalize",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Perpendicular",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Project",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Determinant",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Inverse",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Transpose",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "OuterProduct",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Rotate",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Translate",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Scale",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ExtractEulerAngles",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildFromEulerAngles3",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildFromEulerAngles4",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Decompose",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "ExtractAxisAngle",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildFromAxisAngle3",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildFromAxisAngle4",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildRotation3",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildRotation4",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildTranslation",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "BuildScale",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatFromEuler",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatFromToRotation",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatDot",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatSlerp",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatToMat3",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatToMat4",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Mat3ToQuat",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Mat4ToQuat",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatNormalize",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatInverse",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatRotate",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatRotateAxisAngle",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatLength",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "QuatMul",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Random",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Round",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Fract",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Trunc",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Sign",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Clamp",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Smoothstep",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Lerp",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Asin",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Acos",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Atan",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "Atan2",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "IsNaN",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "IsInf",
+          "note": "lua_math.c",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnDestroyOnce",
-     "note": "entity_events.c:1339.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Debug": {
+      "source": "BG3Extender/Lua/Libs/Debug.inl:RegisterDebugLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "DumpStack",
+          "note": "Absent. Windows Lua stack introspection utility not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "DebugDumpLifetimes",
+          "note": "Absent. Windows lifetime tracking dump not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GenerateIdeHelpers",
+          "note": "Registered under Ext.Types.GenerateIdeHelpers (lua_ext.c:1188).",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "DebugBreak",
+          "note": "Absent. DAP integration excluded by scope.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "IsDeveloperMode",
+          "note": "Implemented — src/lua/lua_debug.c:942 (MCM compat, Issue #68). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "SetEntityRuntimeCheckLevel",
+          "note": "Absent. Windows entity validation level not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Crash",
+          "note": "Absent. Intentional crash trigger not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Reset",
+          "note": "Implemented — src/lua/lua_debug.c:945. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnDestroyDeferredOnce",
-     "note": "entity_events.c:1340.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.Utils": {
+      "source": "BG3Extender/Lua/Libs/Utils.inl:RegisterUtilsLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Version",
+          "note": "main.c:1023. Aliased in Ext.Utils table.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GameVersion",
+          "note": "Absent. macOS has Ext.GetVersion() but not GameVersion (engine build string).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Include",
+          "note": "Absent. Windows mod-script include facility not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "LoadString",
+          "note": "Absent. Windows Lua chunk loader not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetValueType",
+          "note": "Registered under Ext.Types.GetValueType.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "IsValidHandle",
+          "note": "Absent. Windows entity handle validation not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "HandleToInteger",
+          "note": "Absent. Windows handle serialization helper not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "IntegerToHandle",
+          "note": "Absent. Windows handle deserialization helper not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "ShowErrorAndExitGame",
+          "note": "Absent. Windows error dialog not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "ShowError",
+          "note": "Absent. Same dialog gap.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetGlobalSwitches",
+          "note": "Absent. GlobalSwitches struct not recovered on macOS.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetCommandLineParams",
+          "note": "Absent. Windows command-line parser not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetDialogManager",
+          "note": "Absent. Dialog system access not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetGameState",
+          "note": "main.c:1025. Aliased in Ext.Utils table.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetMemoryUsage",
+          "note": "Absent. Lua allocator tracking not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "ProfileBegin",
+          "note": "Absent. Optick profiler integration (Windows-only #ifdef).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "ProfileEnd",
+          "note": "Absent. Same Optick gap.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnSystemUpdate",
-     "note": "Absent. ECS system-update phase dispatch not located. Wave 7 Phase B6.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Log": {
+      "source": "BG3Extender/Lua/Libs/Log.inl:RegisterLogLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Print",
+          "note": "main.c:1017, also via Ext.Print.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PrintError",
+          "note": "main.c:1021.",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "PrintWarning",
+          "note": "main.c:1019.",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "OnSystemPostUpdate",
-     "note": "Absent. Same ECS gap as OnSystemUpdate. Wave 7 Phase B6.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Loca": {
+      "source": "BG3Extender/Lua/Libs/Localization.inl:RegisterLocalizationLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "GetTranslatedString",
+          "note": "lua_localization.c:87",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "UpdateTranslatedString",
+          "note": "lua_localization.c:90",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "Unsubscribe",
-     "note": "entity_events.c:1341.",
-     "class": "implemented",
-     "kind": "function"
+    "Ext.StaticData": {
+      "source": "BG3Extender/Lua/Libs/StaticData.inl:RegisterStaticDataLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Get",
+          "note": "lua_staticdata.c:447",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAll",
+          "note": "lua_staticdata.c:446",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetSources",
+          "note": "Absent. Windows resource-source enumeration not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetByModId",
+          "note": "Absent. Windows per-mod GUID resource filter not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "Create",
+          "note": "Absent. Windows GUID resource creation not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "EnableTracing",
-     "note": "Warn-once stub returning nil. No tracing infrastructure recovered. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Resource": {
+      "source": "BG3Extender/Lua/Libs/StaticData.inl:RegisterResourceLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Get",
+          "note": "lua_resource.c:244",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAll",
+          "note": "lua_resource.c:247",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "GetTrace",
-     "note": "Absent. Tracing infrastructure not built. Wave 7 Phase A8.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.Table": {
+      "source": "BG3Extender/Lua/Libs/Table.inl:RegisterTableLib()",
+      "context": "Both",
+      "contracts": [
+        {
+          "name": "Find",
+          "note": "Absent. Windows Lua table search utility not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "ClearTrace",
-     "note": "Absent. Same tracing gap. Wave 7 Phase A8.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.IMGUI": {
+      "source": "BG3Extender/Lua/Libs/ClientIMGUI.inl:RegisterIMGUILib()",
+      "context": "Client",
+      "contracts": [
+        {
+          "name": "NewWindow",
+          "note": "lua_imgui.c:2214",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "EnableDemo",
+          "note": "Absent. ImGui demo window toggle not registered.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "LoadFont",
+          "note": "Absent. Custom font loading not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "SetScale",
+          "note": "Absent. Global UI scale not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "SetUIScaleMultiplier",
+          "note": "Absent. UI scale multiplier not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "SetFontScaleMultiplier",
+          "note": "Absent. Font scale multiplier not ported.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetViewportSize",
+          "note": "lua_imgui.c:2215",
+          "class": "implemented",
+          "kind": "function"
+        }
+      ]
     },
-    {
-     "name": "GetRegisteredComponentTypes",
-     "note": "Absent. Dump over component registry that already exists. Wave 7 Phase A1.",
-     "class": "behavioral_gap",
-     "kind": "function"
+    "Ext.ClientInput": {
+      "source": "BG3Extender/Lua/Libs/ClientInput.inl:RegisterInputLib()",
+      "context": "Client",
+      "contracts": [
+        {
+          "name": "InjectKeyPress",
+          "note": "Scope exclusion: Ext.Input synthetic injection. macOS uses CGEventTap capture.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "InjectKeyDown",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "InjectKeyUp",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "GetInputManager",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        }
+      ]
+    },
+    "Ext.ClientTemplate": {
+      "source": "BG3Extender/Lua/Libs/ClientTemplate.inl:RegisterClientTemplateLib()",
+      "context": "Client",
+      "contracts": [
+        {
+          "name": "GetTemplate",
+          "note": "lua_template.c:365 (unified Get covers client + server)",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllRootTemplates",
+          "note": "GetAllRootTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ClientTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetRootTemplate",
+          "note": "GetRootTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ClientTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        }
+      ]
+    },
+    "Ext.ServerTemplate": {
+      "source": "BG3Extender/Lua/Libs/ServerTemplate.inl:RegisterServerTemplateLib()",
+      "context": "Server",
+      "contracts": [
+        {
+          "name": "GetTemplate",
+          "note": "lua_template.c:365 (unified Get)",
+          "class": "implemented",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllRootTemplates",
+          "note": "GetAllRootTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetRootTemplate",
+          "note": "GetRootTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllLocalTemplates",
+          "note": "GetAllLocalTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetLocalTemplate",
+          "note": "Absent.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllCacheTemplates",
+          "note": "GetAllCacheTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetCacheTemplate",
+          "note": "GetCacheTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetAllLocalCacheTemplates",
+          "note": "GetAllLocalCacheTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
+          "class": "behavioral_gap",
+          "kind": "function"
+        },
+        {
+          "name": "GetLocalCacheTemplate",
+          "note": "Absent.",
+          "class": "behavioral_gap",
+          "kind": "function"
+        }
+      ]
+    },
+    "Ext.ClientUI": {
+      "source": "BG3Extender/Lua/Libs/ClientUI/Module.inl:RegisterUILib()",
+      "context": "Client",
+      "contracts": [
+        {
+          "name": "GetRoot",
+          "note": "Scope exclusion: Ext.UI (Noesis).",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "GetStateMachine",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "SetState",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "RegisterType",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "Instantiate",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "GetPickingHelper",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "GetCursorControl",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "GetDragDrop",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        },
+        {
+          "name": "EnableErrorReporting",
+          "note": "Same scope exclusion.",
+          "class": "excluded",
+          "kind": "function"
+        }
+      ]
     }
-   ]
   },
-  "entity_proxy": {
-   "source": "BG3Extender/Lua/Shared/Proxies/LuaEntityProxy.inl:StaticInitialize()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "CreateComponent",
-     "note": "Verified ComponentOps registry. entity_system.c:2044.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "RemoveComponent",
-     "note": "Returns false. 734 per-type templates, no generic entry point. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "GetComponent",
-     "note": "entity_system.c:2040, plus direct component name access via __index.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "HasRawComponent",
-     "note": "Absent. Windows checks raw component presence without proxy construction.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "GetAllComponents",
-     "note": "entity_system.c:2052.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "GetAllComponentNames",
-     "note": "entity_system.c:2055.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "IsAlive",
-     "note": "entity_system.c:2016.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "GetNetId",
-     "note": "entity_system.c:2036.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "GetReplicationFlags",
-     "note": "Warn-once stub returning nil. No replication infrastructure. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "SetReplicationFlags",
-     "note": "Absent. Replication infrastructure not recovered.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "Replicate",
-     "note": "No-op. Highest-demand deferral (5/11 vetted mods). deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnCreate",
-     "note": "Absent from entity proxy. Per-entity OnCreate hooks exist on Ext.Entity but not on entity instances.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnCreateDeferred",
-     "note": "Absent from entity proxy. Same as OnCreate.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnCreateDeferredOnce",
-     "note": "Absent from entity proxy.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnCreateOnce",
-     "note": "Absent from entity proxy.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnDestroy",
-     "note": "Absent from entity proxy.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnDestroyDeferred",
-     "note": "Absent from entity proxy.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnDestroyDeferredOnce",
-     "note": "Absent from entity proxy.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnDestroyOnce",
-     "note": "Absent from entity proxy.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "OnChanged",
-     "note": "Absent from entity proxy. Windows entity:OnChanged dispatches per-entity component-change subscriptions.",
-     "class": "behavioral_gap",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "Vars",
-     "note": "entity_system.c:2073. Returns user-variable proxy.",
-     "class": "implemented",
-     "kind": "proxy_method"
-    }
-   ]
+  "events_inventory": {
+    "note": "Best-effort inventory. Windows events defined in EventDeclarations.h and EventDefinitions.h. macOS events defined in lua_events.c event name table and functor_hooks.c.",
+    "events": [
+      {
+        "name": "SessionLoading",
+        "status": "implemented"
+      },
+      {
+        "name": "SessionLoaded",
+        "status": "implemented"
+      },
+      {
+        "name": "ModuleLoading",
+        "status": "implemented"
+      },
+      {
+        "name": "ModuleLoadStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "ModuleResume",
+        "status": "implemented"
+      },
+      {
+        "name": "StatsLoaded",
+        "status": "implemented"
+      },
+      {
+        "name": "StatsStructureLoaded",
+        "status": "implemented"
+      },
+      {
+        "name": "GameStateChanged",
+        "status": "implemented"
+      },
+      {
+        "name": "Tick",
+        "status": "implemented"
+      },
+      {
+        "name": "ResetCompleted",
+        "status": "implemented"
+      },
+      {
+        "name": "LevelGameplayStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "LevelUnloading",
+        "status": "implemented"
+      },
+      {
+        "name": "TurnStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "TurnEnded",
+        "status": "implemented"
+      },
+      {
+        "name": "CombatStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "CombatEnded",
+        "status": "implemented"
+      },
+      {
+        "name": "CombatRoundStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "TeleportedToCamp",
+        "status": "implemented"
+      },
+      {
+        "name": "ReturnedFromCamp",
+        "status": "implemented"
+      },
+      {
+        "name": "DialogStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "DialogEnded",
+        "status": "implemented"
+      },
+      {
+        "name": "ShortRest",
+        "status": "implemented"
+      },
+      {
+        "name": "LongRest",
+        "status": "implemented"
+      },
+      {
+        "name": "TradeStarted",
+        "status": "implemented"
+      },
+      {
+        "name": "TradeEnded",
+        "status": "implemented"
+      },
+      {
+        "name": "GainedControl",
+        "status": "implemented"
+      },
+      {
+        "name": "LostControl",
+        "status": "implemented"
+      },
+      {
+        "name": "DownedChanged",
+        "status": "implemented"
+      },
+      {
+        "name": "DyingChanged",
+        "status": "implemented"
+      },
+      {
+        "name": "StatusApplied",
+        "status": "implemented"
+      },
+      {
+        "name": "StatusRemoved",
+        "status": "implemented"
+      },
+      {
+        "name": "NetMessage",
+        "status": "implemented"
+      },
+      {
+        "name": "Log",
+        "status": "implemented"
+      },
+      {
+        "name": "BeforeDealDamage",
+        "status": "implemented",
+        "note": "ExecuteFunctor Dobby hook. Verified 51/51 paired on build 7209685."
+      },
+      {
+        "name": "DealDamage",
+        "status": "implemented",
+        "note": "Same Dobby hook."
+      }
+    ]
   },
-  "Ext.Stats": {
-   "source": "BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "GetStatsManager",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetModifierAttributes",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetStats",
-     "note": "lua_stats.c (as GetAllStats and GetStats)",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetStatsLoadedBefore",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Get",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetCachedSpell",
-     "note": "lua_stats.c. Rebound to native getter (Wave 6).",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetCachedStatus",
-     "note": "lua_stats.c. Rebound to native getter (Wave 6).",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetCachedPassive",
-     "note": "lua_stats.c. Native eoc::Passives::Get at 0x101c0f27c (Wave 6).",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetCachedInterrupt",
-     "note": "lua_stats.c. Native InterruptPrototypeManager::GetPrototype at 0x101b7adcc (Wave 6).",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Create",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Sync",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SetPersistence",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "EnumIndexToLabel",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "EnumLabelToIndex",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "AddAttribute",
-     "note": "Returns false. Runtime modifier-list mutation unverified. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "AddEnumerationValue",
-     "note": "Returns false. Same modifier-list gap. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "ExecuteFunctors",
-     "note": "Partial. Full param-block construction unverified for all functor types. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "ExecuteFunctor",
-     "note": "lua_stats.c. Single-functor dispatch via Dobby hook.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PrepareFunctorParams",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
+  "summary": {
+    "total_contracts": 294,
+    "implemented": 210,
+    "behavioral_gap": 70,
+    "matched_upstream_todo": 1,
+    "excluded": 13
   },
-  "Ext.Stats.TreasureTable": {
-   "source": "BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib() submodule",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Get",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetLegacy",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Update",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Stats.TreasureCategory": {
-   "source": "BG3Extender/Lua/Libs/Stats.inl:RegisterStatsLib() submodule",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "GetLegacy",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Update",
-     "note": "lua_stats.c",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "stats_proxy": {
-   "source": "macOS lua_stats.c metatable; Windows StatAttributes.inl/StatMisc.inl (inline in StatsObject proxy)",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Sync",
-     "note": "lua_stats.c stats proxy metatable",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "SetPersistence",
-     "note": "lua_stats.c stats proxy metatable",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "CopyFrom",
-     "note": "lua_stats.c stats proxy metatable",
-     "class": "implemented",
-     "kind": "proxy_method"
-    },
-    {
-     "name": "SetRawAttribute",
-     "note": "lua_stats.c stats proxy metatable",
-     "class": "implemented",
-     "kind": "proxy_method"
-    }
-   ]
-  },
-  "Ext.Types": {
-   "source": "BG3Extender/Lua/Libs/Types.inl:RegisterTypesLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "GetValueType",
-     "note": "lua_ext.c:1191",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetObjectType",
-     "note": "lua_ext.c:1164",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetTypeInfo",
-     "note": "lua_ext.c:1170",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "TypeOf",
-     "note": "lua_ext.c:1176",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "IsA",
-     "note": "lua_ext.c:1179",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetAllTypes",
-     "note": "lua_ext.c:1173",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Validate",
-     "note": "lua_ext.c:1167",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Serialize",
-     "note": "lua_ext.c:1194. Component-proxy serialization.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Unserialize",
-     "note": "lua_ext.c:1197",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Construct",
-     "note": "Windows Types.inl:286 is '// TODO; return 0'. macOS warns + returns nil. Removed from parity denominator.",
-     "class": "matched_upstream_todo",
-     "kind": "function"
-    },
-    {
-     "name": "GetHashSetValueAt",
-     "note": "Warn-once stub returning nil. No hash-set proxy on macOS. Contract: Windows index is 1-based. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetFunctionLocation",
-     "note": "lua_ext.c:1206",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "AddCustomFunction",
-     "note": "Warn-once stub returning false. Windows implements via property-map layer; macOS lacks it. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "AddCustomProperty",
-     "note": "Warn-once stub returning false. Same property-map gap. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Net": {
-   "source": "BG3Extender/Lua/Libs/ClientNet.inl + ServerNet.inl (split by context)",
-   "context": "Both (merged)",
-   "contracts": [
-    {
-     "name": "PostMessageToServer",
-     "note": "lua_net.c:318. Client context.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PostMessageToUser",
-     "note": "lua_net.c:321. Server context.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PostMessageToClient",
-     "note": "lua_net.c:324. Server context.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BroadcastMessage",
-     "note": "lua_net.c:327. Server context.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Version",
-     "note": "lua_net.c:330.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "IsHost",
-     "note": "lua_net.c:333.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PlayerHasExtender",
-     "note": "Windows contract is GUID-only (ServerNet.inl:78 \u2014 resolves esv::Character UserID); macOS GUID path returns nil unconditionally (lua_net.c:259, GUID\u2192UserID resolution missing). The userId overload is a macOS extra. Wave 7 Phase A6.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Timer": {
-   "source": "BG3Extender/Lua/Libs/Timer.inl:RegisterTimerLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "MonotonicTime",
-     "note": "lua_timer.c:485",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "MicrosecTime",
-     "note": "lua_timer.c:488",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GameTime",
-     "note": "lua_timer.c:497",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ClockEpoch",
-     "note": "lua_timer.c:491",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ClockTime",
-     "note": "lua_timer.c:494",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "WaitFor",
-     "note": "lua_timer.c:467",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "WaitForPersistent",
-     "note": "lua_timer.c:516",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "WaitForRealtime",
-     "note": "lua_timer.c:470",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "RegisterPersistentHandler",
-     "note": "lua_timer.c:510",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Pause",
-     "note": "lua_timer.c:476",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Resume",
-     "note": "lua_timer.c:479",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "IsPaused",
-     "note": "lua_timer.c:482",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Cancel",
-     "note": "lua_timer.c:473",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Level": {
-   "source": "BG3Extender/Lua/Libs/Level.inl:RegisterLevelLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "GetEntitiesOnTile",
-     "note": "lua_level.c:723",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetTileDebugInfo",
-     "note": "Warn-once stub returning nil. MinHeight open; flag decoders provisional. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetHeightsAt",
-     "note": "lua_level.c:722",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BeginPathfinding",
-     "note": "Warn-once stub returning nil. Incomplete field population. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "BeginPathfindingImmediate",
-     "note": "Absent. Not registered on macOS; same underlying gap as BeginPathfinding.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "FindPath",
-     "note": "lua_level.c:726",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ReleasePath",
-     "note": "lua_level.c:727",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetPathById",
-     "note": "lua_level.c:728",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetActivePathfindingRequests",
-     "note": "lua_level.c:729",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "RaycastClosest",
-     "note": "Warn-once stub returning nil. By-value ls::Function ABI unverified. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "RaycastAny",
-     "note": "Warn-once stub returning false. By-value optional lock ABI unverified. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "RaycastAll",
-     "note": "Warn-once stub returning nil. Same ABI gap. deferrals.md.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "SweepSphereClosest",
-     "note": "lua_level.c:712",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SweepCapsuleClosest",
-     "note": "lua_level.c:714",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SweepBoxClosest",
-     "note": "lua_level.c:716",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SweepSphereAll",
-     "note": "lua_level.c:713",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SweepCapsuleAll",
-     "note": "lua_level.c:715",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SweepBoxAll",
-     "note": "lua_level.c:717",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "TestBox",
-     "note": "lua_level.c:720",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "TestSphere",
-     "note": "lua_level.c:721",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Audio": {
-   "source": "BG3Extender/Lua/Libs/ClientAudio.inl:RegisterAudioLib()",
-   "context": "Client",
-   "contracts": [
-    {
-     "name": "SetSwitch",
-     "note": "lua_audio.c:274",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SetState",
-     "note": "lua_audio.c:275",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SetRTPC",
-     "note": "lua_audio.c:276",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetRTPC",
-     "note": "lua_audio.c:277",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ResetRTPC",
-     "note": "lua_audio.c:278",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Stop",
-     "note": "lua_audio.c:271",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PauseAllSounds",
-     "note": "lua_audio.c:272",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ResumeAllSounds",
-     "note": "lua_audio.c:273",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PostEvent",
-     "note": "lua_audio.c:270",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "LoadEvent",
-     "note": "lua_audio.c:279",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "UnloadEvent",
-     "note": "lua_audio.c:280",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PlayExternalSound",
-     "note": "lua_audio.c:281. STDString ABI.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "LoadBank",
-     "note": "lua_audio.c:282. dlsym'd AK::SoundEngine.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "UnloadBank",
-     "note": "lua_audio.c:283",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PrepareBank",
-     "note": "lua_audio.c:284",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "UnprepareBank",
-     "note": "lua_audio.c:285",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Mod": {
-   "source": "BG3Extender/Lua/Libs/Mod.inl:RegisterModLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "IsModLoaded",
-     "note": "lua_mod.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetLoadOrder",
-     "note": "lua_mod.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetMod",
-     "note": "lua_mod.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetBaseMod",
-     "note": "lua_mod.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetModManager",
-     "note": "lua_mod.c",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Vars": {
-   "source": "BG3Extender/Lua/Libs/Vars.inl:RegisterVarsLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "RegisterUserVariable",
-     "note": "Implemented \u2014 src/vars/user_variables.c:754 \u2014 full options table (Server/Persistent/etc.). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SyncUserVariables",
-     "note": "Implemented \u2014 src/vars/user_variables.c:846. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "DirtyUserVariables",
-     "note": "Implemented \u2014 src/vars/user_variables.c:855. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetEntitiesWithVariable",
-     "note": "Implemented \u2014 src/vars/user_variables.c:837. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "RegisterModVariable",
-     "note": "Implemented \u2014 src/vars/user_variables.c:1360. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetModVariables",
-     "note": "Implemented \u2014 src/vars/user_variables.c:1402. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SyncModVariables",
-     "note": "Implemented \u2014 src/vars/user_variables.c:1417. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "DirtyModVariables",
-     "note": "Implemented \u2014 src/vars/user_variables.c:1426. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.IO": {
-   "source": "BG3Extender/Lua/Libs/IO.inl:RegisterIOLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "LoadFile",
-     "note": "lua_ext.c:531",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SaveFile",
-     "note": "lua_ext.c:533",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "AddPathOverride",
-     "note": "lua_ext.c:535",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetPathOverride",
-     "note": "lua_ext.c:537",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Json": {
-   "source": "BG3Extender/Lua/Libs/Json.inl:RegisterJsonLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Parse",
-     "note": "lua_json.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Stringify",
-     "note": "lua_json.c",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Math": {
-   "source": "BG3Extender/Lua/Libs/Math.inl:RegisterMathLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Add",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Sub",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Mul",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Div",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Reflect",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Angle",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Cross",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Distance",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Dot",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Length",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Normalize",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Perpendicular",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Project",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Determinant",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Inverse",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Transpose",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "OuterProduct",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Rotate",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Translate",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Scale",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ExtractEulerAngles",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildFromEulerAngles3",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildFromEulerAngles4",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Decompose",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "ExtractAxisAngle",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildFromAxisAngle3",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildFromAxisAngle4",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildRotation3",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildRotation4",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildTranslation",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "BuildScale",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatFromEuler",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatFromToRotation",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatDot",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatSlerp",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatToMat3",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatToMat4",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Mat3ToQuat",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Mat4ToQuat",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatNormalize",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatInverse",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatRotate",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatRotateAxisAngle",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatLength",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "QuatMul",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Random",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Round",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Fract",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Trunc",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Sign",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Clamp",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Smoothstep",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Lerp",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Asin",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Acos",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Atan",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "Atan2",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "IsNaN",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "IsInf",
-     "note": "lua_math.c",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Debug": {
-   "source": "BG3Extender/Lua/Libs/Debug.inl:RegisterDebugLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "DumpStack",
-     "note": "Absent. Windows Lua stack introspection utility not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "DebugDumpLifetimes",
-     "note": "Absent. Windows lifetime tracking dump not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GenerateIdeHelpers",
-     "note": "Registered under Ext.Types.GenerateIdeHelpers (lua_ext.c:1188).",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "DebugBreak",
-     "note": "Absent. DAP integration excluded by scope.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "IsDeveloperMode",
-     "note": "Implemented \u2014 src/lua/lua_debug.c:942 (MCM compat, Issue #68). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "SetEntityRuntimeCheckLevel",
-     "note": "Absent. Windows entity validation level not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "Crash",
-     "note": "Absent. Intentional crash trigger not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "Reset",
-     "note": "Implemented \u2014 src/lua/lua_debug.c:945. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Utils": {
-   "source": "BG3Extender/Lua/Libs/Utils.inl:RegisterUtilsLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Version",
-     "note": "main.c:1023. Aliased in Ext.Utils table.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GameVersion",
-     "note": "Absent. macOS has Ext.GetVersion() but not GameVersion (engine build string).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "Include",
-     "note": "Absent. Windows mod-script include facility not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "LoadString",
-     "note": "Absent. Windows Lua chunk loader not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetValueType",
-     "note": "Registered under Ext.Types.GetValueType.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "IsValidHandle",
-     "note": "Absent. Windows entity handle validation not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "HandleToInteger",
-     "note": "Absent. Windows handle serialization helper not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "IntegerToHandle",
-     "note": "Absent. Windows handle deserialization helper not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "ShowErrorAndExitGame",
-     "note": "Absent. Windows error dialog not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "ShowError",
-     "note": "Absent. Same dialog gap.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetGlobalSwitches",
-     "note": "Absent. GlobalSwitches struct not recovered on macOS.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetCommandLineParams",
-     "note": "Absent. Windows command-line parser not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetDialogManager",
-     "note": "Absent. Dialog system access not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetGameState",
-     "note": "main.c:1025. Aliased in Ext.Utils table.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetMemoryUsage",
-     "note": "Absent. Lua allocator tracking not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "ProfileBegin",
-     "note": "Absent. Optick profiler integration (Windows-only #ifdef).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "ProfileEnd",
-     "note": "Absent. Same Optick gap.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Log": {
-   "source": "BG3Extender/Lua/Libs/Log.inl:RegisterLogLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Print",
-     "note": "main.c:1017, also via Ext.Print.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PrintError",
-     "note": "main.c:1021.",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "PrintWarning",
-     "note": "main.c:1019.",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Loca": {
-   "source": "BG3Extender/Lua/Libs/Localization.inl:RegisterLocalizationLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "GetTranslatedString",
-     "note": "lua_localization.c:87",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "UpdateTranslatedString",
-     "note": "lua_localization.c:90",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.StaticData": {
-   "source": "BG3Extender/Lua/Libs/StaticData.inl:RegisterStaticDataLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Get",
-     "note": "lua_staticdata.c:447",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetAll",
-     "note": "lua_staticdata.c:446",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetSources",
-     "note": "Absent. Windows resource-source enumeration not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetByModId",
-     "note": "Absent. Windows per-mod GUID resource filter not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "Create",
-     "note": "Absent. Windows GUID resource creation not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Resource": {
-   "source": "BG3Extender/Lua/Libs/StaticData.inl:RegisterResourceLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Get",
-     "note": "lua_resource.c:244",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetAll",
-     "note": "lua_resource.c:247",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.Table": {
-   "source": "BG3Extender/Lua/Libs/Table.inl:RegisterTableLib()",
-   "context": "Both",
-   "contracts": [
-    {
-     "name": "Find",
-     "note": "Absent. Windows Lua table search utility not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.IMGUI": {
-   "source": "BG3Extender/Lua/Libs/ClientIMGUI.inl:RegisterIMGUILib()",
-   "context": "Client",
-   "contracts": [
-    {
-     "name": "NewWindow",
-     "note": "lua_imgui.c:2214",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "EnableDemo",
-     "note": "Absent. ImGui demo window toggle not registered.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "LoadFont",
-     "note": "Absent. Custom font loading not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "SetScale",
-     "note": "Absent. Global UI scale not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "SetUIScaleMultiplier",
-     "note": "Absent. UI scale multiplier not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "SetFontScaleMultiplier",
-     "note": "Absent. Font scale multiplier not ported.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetViewportSize",
-     "note": "lua_imgui.c:2215",
-     "class": "implemented",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.ClientInput": {
-   "source": "BG3Extender/Lua/Libs/ClientInput.inl:RegisterInputLib()",
-   "context": "Client",
-   "contracts": [
-    {
-     "name": "InjectKeyPress",
-     "note": "Scope exclusion: Ext.Input synthetic injection. macOS uses CGEventTap capture.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "InjectKeyDown",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "InjectKeyUp",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "GetInputManager",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.ClientTemplate": {
-   "source": "BG3Extender/Lua/Libs/ClientTemplate.inl:RegisterClientTemplateLib()",
-   "context": "Client",
-   "contracts": [
-    {
-     "name": "GetTemplate",
-     "note": "lua_template.c:365 (unified Get covers client + server)",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetAllRootTemplates",
-     "note": "GetAllRootTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ClientTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetRootTemplate",
-     "note": "GetRootTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ClientTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.ServerTemplate": {
-   "source": "BG3Extender/Lua/Libs/ServerTemplate.inl:RegisterServerTemplateLib()",
-   "context": "Server",
-   "contracts": [
-    {
-     "name": "GetTemplate",
-     "note": "lua_template.c:365 (unified Get)",
-     "class": "implemented",
-     "kind": "function"
-    },
-    {
-     "name": "GetAllRootTemplates",
-     "note": "GetAllRootTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetRootTemplate",
-     "note": "GetRootTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetAllLocalTemplates",
-     "note": "GetAllLocalTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetLocalTemplate",
-     "note": "Absent.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetAllCacheTemplates",
-     "note": "GetAllCacheTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetCacheTemplate",
-     "note": "GetCacheTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetAllLocalCacheTemplates",
-     "note": "GetAllLocalCacheTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) \u2014 Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-     "class": "behavioral_gap",
-     "kind": "function"
-    },
-    {
-     "name": "GetLocalCacheTemplate",
-     "note": "Absent.",
-     "class": "behavioral_gap",
-     "kind": "function"
-    }
-   ]
-  },
-  "Ext.ClientUI": {
-   "source": "BG3Extender/Lua/Libs/ClientUI/Module.inl:RegisterUILib()",
-   "context": "Client",
-   "contracts": [
-    {
-     "name": "GetRoot",
-     "note": "Scope exclusion: Ext.UI (Noesis).",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "GetStateMachine",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "SetState",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "RegisterType",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "Instantiate",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "GetPickingHelper",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "GetCursorControl",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "GetDragDrop",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    },
-    {
-     "name": "EnableErrorReporting",
-     "note": "Same scope exclusion.",
-     "class": "excluded",
-     "kind": "function"
-    }
-   ]
-  }
- },
- "events_inventory": {
-  "note": "Best-effort inventory. Windows events defined in EventDeclarations.h and EventDefinitions.h. macOS events defined in lua_events.c event name table and functor_hooks.c.",
-  "events": [
-   {
-    "name": "SessionLoading",
-    "status": "implemented"
-   },
-   {
-    "name": "SessionLoaded",
-    "status": "implemented"
-   },
-   {
-    "name": "ModuleLoading",
-    "status": "implemented"
-   },
-   {
-    "name": "ModuleLoadStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "ModuleResume",
-    "status": "implemented"
-   },
-   {
-    "name": "StatsLoaded",
-    "status": "implemented"
-   },
-   {
-    "name": "StatsStructureLoaded",
-    "status": "implemented"
-   },
-   {
-    "name": "GameStateChanged",
-    "status": "implemented"
-   },
-   {
-    "name": "Tick",
-    "status": "implemented"
-   },
-   {
-    "name": "ResetCompleted",
-    "status": "implemented"
-   },
-   {
-    "name": "LevelGameplayStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "LevelUnloading",
-    "status": "implemented"
-   },
-   {
-    "name": "TurnStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "TurnEnded",
-    "status": "implemented"
-   },
-   {
-    "name": "CombatStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "CombatEnded",
-    "status": "implemented"
-   },
-   {
-    "name": "CombatRoundStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "TeleportedToCamp",
-    "status": "implemented"
-   },
-   {
-    "name": "ReturnedFromCamp",
-    "status": "implemented"
-   },
-   {
-    "name": "DialogStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "DialogEnded",
-    "status": "implemented"
-   },
-   {
-    "name": "ShortRest",
-    "status": "implemented"
-   },
-   {
-    "name": "LongRest",
-    "status": "implemented"
-   },
-   {
-    "name": "TradeStarted",
-    "status": "implemented"
-   },
-   {
-    "name": "TradeEnded",
-    "status": "implemented"
-   },
-   {
-    "name": "GainedControl",
-    "status": "implemented"
-   },
-   {
-    "name": "LostControl",
-    "status": "implemented"
-   },
-   {
-    "name": "DownedChanged",
-    "status": "implemented"
-   },
-   {
-    "name": "DyingChanged",
-    "status": "implemented"
-   },
-   {
-    "name": "StatusApplied",
-    "status": "implemented"
-   },
-   {
-    "name": "StatusRemoved",
-    "status": "implemented"
-   },
-   {
-    "name": "NetMessage",
-    "status": "implemented"
-   },
-   {
-    "name": "Log",
-    "status": "implemented"
-   },
-   {
-    "name": "BeforeDealDamage",
-    "status": "implemented",
-    "note": "ExecuteFunctor Dobby hook. Verified 51/51 paired on build 7209685."
-   },
-   {
-    "name": "DealDamage",
-    "status": "implemented",
-    "note": "Same Dobby hook."
-   }
-  ]
- },
- "summary": {
-  "total_contracts": 293,
-  "implemented": 202,
-  "behavioral_gap": 77,
-  "matched_upstream_todo": 1,
-  "excluded": 13
- },
- "project_version": "0.42.0"
+  "project_version": "0.43.0"
 }

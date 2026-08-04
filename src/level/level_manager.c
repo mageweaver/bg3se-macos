@@ -17,7 +17,11 @@
 #include "../core/safe_memory.h"
 #include "../core/offset_table.h"
 #include "../core/version_detect.h"
+#include <math.h>
 #include <limits.h>
+#if defined(__aarch64__)
+#include <mach-o/loader.h>
+#endif
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +45,7 @@
  */
 #define AIGRID_PATH_MAP_OFFSET              0xf0
 #define AIGRID_ACTIVE_PATHS_OFFSET          0x100
+#define AIGRID_SUBGRID_MAP_OFFSET           0x68
 
 #define AIPATH_MOVING_BOUND_OFFSET          0x20
 #define AIPATH_STANDING_BOUND_OFFSET        0x24
@@ -50,9 +55,29 @@
 
 #define AIMETADATA_ENTITIES_OFFSET          0x00
 
+#define AISUBGRID_TRANSLATE_X_OFFSET        0x08
+#define AISUBGRID_TRANSLATE_Y_OFFSET        0x0c
+#define AISUBGRID_TRANSLATE_Z_OFFSET        0x10
+#define AISUBGRID_CELL_SIZE_OFFSET          0x14
+#define AISUBGRID_SIZE_X_OFFSET             0x18
+#define AISUBGRID_SIZE_Y_OFFSET             0x1c
+#define AISUBGRID_TILE_GRID_OFFSET          0x30
+#define AISUBGRID_WORLD_GLOBAL_OFFSET       0x40
+#define AISUBGRID_WORLD_LOCAL_OFFSET        0x48
+
+#define AITILEGRID_WIDTH_OFFSET             0x08
+#define AITILEGRID_TILES_OFFSET             0x10
+#define AIGRID_TILE_STRIDE                  0x10
+#define AIGRID_TILE_BLOCKER_FLAG            UINT64_C(0x1)
+#define AIGRID_WORLD_COORD_LIMIT            9999999.0f
+#define AIGRID_WORLD_LOCAL_EPSILON          0.00000011920929f
+
 #define AIGRID_INVALID_PATH_ID              (-1337)
 #define AIGRID_MAX_PATH_MAP_NODES           65536
 #define AIGRID_MAX_PATH_MAP_BUCKETS         1048576
+#define AIGRID_MAX_SUBGRIDS                 65536
+#define AIGRID_MAX_SUBGRID_MAP_BUCKETS      1048576
+#define AIGRID_MAX_TILE_DIMENSION            32768
 #define AIGRID_MAX_ACTIVE_PATHS             65536
 #define AIGRID_MAX_PATH_NODES               65536
 #define AIGRID_MAX_TILE_ENTITIES            65536
@@ -74,6 +99,13 @@
 #define PHYSICS_VMT_SWEEP_SHAPE_ALL         19   /* Verified, not exposed in Lua */
 #define PHYSICS_VMT_TEST_BOX                 20
 #define PHYSICS_VMT_TEST_SPHERE              24
+
+#if defined(__aarch64__)
+static const uint8_t s_raycast_any_verified_uuid[16] = {
+    0x9a, 0x64, 0x73, 0x11, 0xe2, 0x63, 0x3f, 0xf2,
+    0xaf, 0x98, 0x11, 0x1c, 0xed, 0xcb, 0x30, 0x34,
+};
+#endif
 
 // ============================================================================
 // Verified AiGrid Native Layouts and Function Types
@@ -124,6 +156,56 @@ typedef struct {
     int32_t subgrid_id;
 } NativeAiTilePos;
 
+typedef struct {
+    int32_t node_count;
+    int32_t bucket_count;
+    void **buckets;
+} NativeSubgridMapHeader;
+
+typedef struct {
+    void *next;
+    uint32_t subgrid_id;
+    uint32_t padding_0c;
+    void *subgrid;
+} NativeSubgridMapNode;
+
+typedef struct {
+    void *node_address;
+    NativeSubgridMapNode node;
+} NativeSubgridMapEntry;
+
+typedef struct {
+    void *vmt;
+    float translate_x;
+    float translate_y;
+    float translate_z;
+    float cell_size;
+    int32_t size_x;
+    int32_t size_y;
+    void *some_guid;
+    void *level_allocator;
+    void *tile_grid;
+    void *internal_tile_grid;
+    int32_t world_global_x;
+    int32_t world_global_z;
+    float world_local_x;
+    float world_local_z;
+} NativeAiSubgridBounds;
+
+typedef enum {
+    SUBGRID_TILE_INVALID = -1,
+    SUBGRID_TILE_OUTSIDE = 0,
+    SUBGRID_TILE_FOUND = 1
+} SubgridTileReadResult;
+
+typedef struct {
+    uint64_t flags;
+    uint16_t max_height;
+    uint16_t min_height;
+    uint16_t metadata_index;
+    uint16_t surface_metadata_index;
+} NativeAiGridTile;
+
 _Static_assert(sizeof(NativeDynamicArray) == 0x10,
                "DynamicArray header must be 0x10 bytes");
 _Static_assert(sizeof(NativePathMapHeader) == 0x10,
@@ -146,6 +228,47 @@ _Static_assert(offsetof(NativeAiPathNode, flags) == 0x20,
                "AiPathNode Flags must be at +0x20");
 _Static_assert(sizeof(NativeAiTilePos) == 0x08,
                "AiTilePos must be 0x08 bytes");
+_Static_assert(sizeof(NativeSubgridMapHeader) == 0x10,
+               "Subgrid map header must be 0x10 bytes");
+_Static_assert(sizeof(NativeSubgridMapNode) == 0x18,
+               "Subgrid map node must be 0x18 bytes");
+_Static_assert(offsetof(NativeSubgridMapNode, subgrid) == 0x10,
+               "Subgrid map node value must be at +0x10");
+_Static_assert(sizeof(NativeAiSubgridBounds) == 0x50,
+               "AiSubgrid bounds prefix must be 0x50 bytes");
+_Static_assert(offsetof(NativeAiSubgridBounds, translate_x) ==
+                   AISUBGRID_TRANSLATE_X_OFFSET,
+               "AiSubgrid Translate.x must be at +0x08");
+_Static_assert(offsetof(NativeAiSubgridBounds, translate_y) ==
+                   AISUBGRID_TRANSLATE_Y_OFFSET,
+               "AiSubgrid Translate.y must be at +0x0c");
+_Static_assert(offsetof(NativeAiSubgridBounds, translate_z) ==
+                   AISUBGRID_TRANSLATE_Z_OFFSET,
+               "AiSubgrid Translate.z must be at +0x10");
+_Static_assert(offsetof(NativeAiSubgridBounds, cell_size) ==
+                   AISUBGRID_CELL_SIZE_OFFSET,
+               "AiSubgrid CellSize must be at +0x14");
+_Static_assert(offsetof(NativeAiSubgridBounds, size_x) ==
+                   AISUBGRID_SIZE_X_OFFSET,
+               "AiSubgrid SizeX must be at +0x18");
+_Static_assert(offsetof(NativeAiSubgridBounds, size_y) ==
+                   AISUBGRID_SIZE_Y_OFFSET,
+               "AiSubgrid SizeY must be at +0x1c");
+_Static_assert(offsetof(NativeAiSubgridBounds, tile_grid) ==
+                   AISUBGRID_TILE_GRID_OFFSET,
+               "AiSubgrid TileGrid must be at +0x30");
+_Static_assert(offsetof(NativeAiSubgridBounds, world_global_x) ==
+                   AISUBGRID_WORLD_GLOBAL_OFFSET,
+               "AiSubgrid WorldPos globals must be at +0x40");
+_Static_assert(offsetof(NativeAiSubgridBounds, world_local_x) ==
+                   AISUBGRID_WORLD_LOCAL_OFFSET,
+               "AiSubgrid WorldPos locals must be at +0x48");
+_Static_assert(sizeof(NativeAiGridTile) == AIGRID_TILE_STRIDE,
+               "AiGridTile must be 0x10 bytes");
+_Static_assert(offsetof(NativeAiGridTile, max_height) == 0x08,
+               "AiGridTile MaxHeight must be at +0x08");
+_Static_assert(offsetof(NativeAiGridTile, min_height) == 0x0a,
+               "AiGridTile MinHeight must be at +0x0a");
 
 typedef bool (*AiGridToTilePosFn)(void *this_, const float world_pos[3],
                                   NativeAiTilePos *out_tile_pos, bool unknown);
@@ -437,6 +560,409 @@ static bool aigrid_bindings_available(void) {
     return g_level.initialized
         && g_level.aigrid_layout_verified
         && version_detect_addresses_safe();
+}
+
+static bool read_subgrid_map_header(
+    void *aigrid, NativeSubgridMapHeader *out_header) {
+    if (!aigrid || !out_header
+        || !safe_read_at(aigrid, AIGRID_SUBGRID_MAP_OFFSET,
+                         out_header, sizeof(*out_header))) {
+        return false;
+    }
+
+    if (out_header->node_count < 0
+        || out_header->node_count > AIGRID_MAX_SUBGRIDS
+        || out_header->bucket_count <= 0
+        || out_header->bucket_count > AIGRID_MAX_SUBGRID_MAP_BUCKETS
+        || !out_header->buckets) {
+        return false;
+    }
+
+    size_t bucket_bytes = 0;
+    return checked_array_bytes(out_header->bucket_count, sizeof(void *),
+                               &bucket_bytes)
+        && readable_range((mach_vm_address_t)out_header->buckets,
+                          bucket_bytes);
+}
+
+/* Snapshot bucket-order entries and fail closed if the map tears. */
+static bool snapshot_subgrid_map(void *aigrid,
+                                 NativeSubgridMapEntry **out_entries,
+                                 size_t *out_count) {
+    if (!out_entries || !out_count) return false;
+    *out_entries = NULL;
+    *out_count = 0;
+
+    for (int attempt = 0; attempt < 2; attempt++) {
+        NativeSubgridMapHeader before = {0};
+        NativeSubgridMapHeader after = {0};
+        if (!read_subgrid_map_header(aigrid, &before)) return false;
+
+        NativeSubgridMapEntry *entries = NULL;
+        if (before.node_count > 0) {
+            size_t bytes = 0;
+            if (!checked_array_bytes(before.node_count, sizeof(*entries),
+                                     &bytes)) {
+                return false;
+            }
+            entries = calloc(1, bytes);
+            if (!entries) return false;
+        }
+
+        size_t count = 0;
+        bool valid = true;
+        for (int32_t bucket = 0;
+             valid && bucket < before.bucket_count;
+             bucket++) {
+            void *node = NULL;
+            if (!safe_read_at(before.buckets,
+                              (size_t)bucket * sizeof(void *),
+                              &node, sizeof(node))) {
+                valid = false;
+                break;
+            }
+
+            while (node) {
+                if (count >= (size_t)before.node_count) {
+                    valid = false;
+                    break;
+                }
+
+                entries[count].node_address = node;
+                if (!safe_read_at(node, 0, &entries[count].node,
+                                  sizeof(entries[count].node))) {
+                    valid = false;
+                    break;
+                }
+
+                node = entries[count].node.next;
+                count++;
+            }
+        }
+
+        if (!valid || count != (size_t)before.node_count
+            || !read_subgrid_map_header(aigrid, &after)) {
+            free(entries);
+            continue;
+        }
+
+        if (memcmp(&before, &after, sizeof(before)) == 0) {
+            bool nodes_unchanged = true;
+            for (size_t i = 0; i < count; i++) {
+                NativeSubgridMapNode check = {0};
+                if (!safe_read_at(entries[i].node_address, 0, &check,
+                                  sizeof(check))
+                    || memcmp(&entries[i].node, &check,
+                              sizeof(check)) != 0) {
+                    nodes_unchanged = false;
+                    break;
+                }
+            }
+
+            if (nodes_unchanged) {
+                *out_entries = entries;
+                *out_count = count;
+                return true;
+            }
+        }
+
+        free(entries);
+    }
+
+    return false;
+}
+
+static SubgridTileReadResult world_to_subgrid_tile(
+    const NativeAiSubgridBounds *bounds,
+    int32_t world_global_x, int32_t world_global_z,
+    float world_local_x, float world_local_z,
+    int32_t *out_x, int32_t *out_y) {
+    if (!bounds || !out_x || !out_y
+        || !isfinite(bounds->translate_x)
+        || !isfinite(bounds->translate_y)
+        || !isfinite(bounds->translate_z)
+        || !isfinite(bounds->cell_size)
+        || bounds->cell_size <= 0.0f
+        || bounds->size_x <= 0
+        || bounds->size_x > AIGRID_MAX_TILE_DIMENSION
+        || bounds->size_y <= 0
+        || bounds->size_y > AIGRID_MAX_TILE_DIMENSION
+        || !isfinite(bounds->world_local_x)
+        || !isfinite(bounds->world_local_z)) {
+        return SUBGRID_TILE_INVALID;
+    }
+
+    int64_t tile_x = 0;
+    int64_t tile_y = 0;
+    if (fabsf(bounds->world_local_x) < AIGRID_WORLD_LOCAL_EPSILON
+        && fabsf(bounds->world_local_z) < AIGRID_WORLD_LOCAL_EPSILON) {
+        tile_x = (int64_t)world_global_x - bounds->world_global_x;
+        tile_y = (int64_t)world_global_z - bounds->world_global_z;
+    } else {
+        float tile_xf = floorf(
+            ((float)world_global_x * bounds->cell_size + world_local_x
+             - bounds->world_local_x) / bounds->cell_size);
+        float tile_yf = floorf(
+            ((float)world_global_z * bounds->cell_size + world_local_z
+             - bounds->world_local_z) / bounds->cell_size);
+        if (!isfinite(tile_xf) || !isfinite(tile_yf)
+            || tile_xf < -2147483648.0f || tile_xf >= 2147483648.0f
+            || tile_yf < -2147483648.0f || tile_yf >= 2147483648.0f) {
+            return SUBGRID_TILE_INVALID;
+        }
+        tile_x = (int64_t)(int32_t)tile_xf - bounds->world_global_x;
+        tile_y = (int64_t)(int32_t)tile_yf - bounds->world_global_z;
+    }
+
+    if (tile_x < 0 || tile_y < 0
+        || tile_x >= bounds->size_x || tile_y >= bounds->size_y) {
+        return SUBGRID_TILE_OUTSIDE;
+    }
+
+    *out_x = (int32_t)tile_x;
+    *out_y = (int32_t)tile_y;
+    return SUBGRID_TILE_FOUND;
+}
+
+static SubgridTileReadResult copy_subgrid_tile_at_world(
+    void *subgrid, float x, float z,
+    NativeAiGridTile *out_tile, float *out_translate_y) {
+    if (!subgrid || !out_tile || !out_translate_y
+        || !isfinite(x) || !isfinite(z)
+        || x < -AIGRID_WORLD_COORD_LIMIT || x > AIGRID_WORLD_COORD_LIMIT
+        || z < -AIGRID_WORLD_COORD_LIMIT || z > AIGRID_WORLD_COORD_LIMIT) {
+        return SUBGRID_TILE_INVALID;
+    }
+
+    float doubled_x = floorf(x + x);
+    float doubled_z = floorf(z + z);
+    int32_t world_global_x = (int32_t)doubled_x;
+    int32_t world_global_z = (int32_t)doubled_z;
+    float world_local_x = x - doubled_x * 0.5f;
+    float world_local_z = z - doubled_z * 0.5f;
+
+    for (int attempt = 0; attempt < 2; attempt++) {
+        NativeAiSubgridBounds bounds_before = {0};
+        NativeAiSubgridBounds bounds_after = {0};
+        NativeAiGridTile tile_before = {0};
+        NativeAiGridTile tile_after = {0};
+        int32_t tile_x = 0;
+        int32_t tile_y = 0;
+        int32_t width_before = 0;
+        int32_t width_after = 0;
+        void *tiles_before = NULL;
+        void *tiles_after = NULL;
+
+        if (!safe_read_at(subgrid, 0, &bounds_before,
+                          sizeof(bounds_before))) {
+            return SUBGRID_TILE_INVALID;
+        }
+
+        SubgridTileReadResult position_result = world_to_subgrid_tile(
+            &bounds_before, world_global_x, world_global_z,
+            world_local_x, world_local_z, &tile_x, &tile_y);
+        if (position_result != SUBGRID_TILE_FOUND) {
+            return position_result;
+        }
+
+        if (!bounds_before.tile_grid
+            || !safe_read_at(bounds_before.tile_grid,
+                             AITILEGRID_WIDTH_OFFSET,
+                             &width_before, sizeof(width_before))
+            || !safe_read_at(bounds_before.tile_grid,
+                             AITILEGRID_TILES_OFFSET,
+                             &tiles_before, sizeof(tiles_before))
+            || width_before <= 0
+            || width_before > AIGRID_MAX_TILE_DIMENSION
+            || width_before != bounds_before.size_x
+            || !tiles_before) {
+            return SUBGRID_TILE_INVALID;
+        }
+
+        size_t index = (size_t)tile_y * (size_t)width_before
+            + (size_t)tile_x;
+        if (index > SIZE_MAX / AIGRID_TILE_STRIDE) {
+            return SUBGRID_TILE_INVALID;
+        }
+
+        mach_vm_address_t tile_address = 0;
+        if (!checked_address_add(tiles_before,
+                                 index * AIGRID_TILE_STRIDE,
+                                 &tile_address)
+            || !safe_memory_read(tile_address, &tile_before,
+                                 sizeof(tile_before))
+            || !safe_read_at(subgrid, 0, &bounds_after,
+                             sizeof(bounds_after))
+            || !safe_read_at(bounds_before.tile_grid,
+                             AITILEGRID_WIDTH_OFFSET,
+                             &width_after, sizeof(width_after))
+            || !safe_read_at(bounds_before.tile_grid,
+                             AITILEGRID_TILES_OFFSET,
+                             &tiles_after, sizeof(tiles_after))
+            || !safe_memory_read(tile_address, &tile_after,
+                                 sizeof(tile_after))) {
+            return SUBGRID_TILE_INVALID;
+        }
+
+        if (memcmp(&bounds_before, &bounds_after,
+                   sizeof(bounds_before)) == 0
+            && width_before == width_after
+            && tiles_before == tiles_after
+            && memcmp(&tile_before, &tile_after,
+                      sizeof(tile_before)) == 0) {
+            *out_tile = tile_before;
+            *out_translate_y = bounds_before.translate_y;
+            return SUBGRID_TILE_FOUND;
+        }
+    }
+
+    return SUBGRID_TILE_INVALID;
+}
+
+/*
+ * Resolve only through the verified AiGrid subgrid map. The map and tile
+ * offsets below are documented in ghidra/offsets/AIGRID_PATHFINDING.md.
+ */
+static bool subgrid_map_lookup(void *aigrid, uint32_t subgrid_id,
+                               void **out_subgrid) {
+    if (out_subgrid) *out_subgrid = NULL;
+    if (!out_subgrid || subgrid_id == UINT32_MAX) return false;
+
+    NativeSubgridMapHeader header = {0};
+    if (!read_subgrid_map_header(aigrid, &header)
+        || header.node_count == 0) {
+        return false;
+    }
+
+    size_t bucket = subgrid_id % (uint32_t)header.bucket_count;
+    void *node = NULL;
+    if (!safe_read_at(header.buckets, bucket * sizeof(void *),
+                      &node, sizeof(node))) {
+        return false;
+    }
+
+    for (int32_t visited = 0;
+         node && visited < header.node_count;
+         visited++) {
+        NativeSubgridMapNode entry = {0};
+        if (!safe_read_at(node, 0, &entry, sizeof(entry))) {
+            return false;
+        }
+
+        if (entry.subgrid_id == subgrid_id) {
+            NativeSubgridMapHeader after = {0};
+            if (!entry.subgrid
+                || !read_subgrid_map_header(aigrid, &after)
+                || memcmp(&header, &after, sizeof(header)) != 0) {
+                return false;
+            }
+
+            *out_subgrid = entry.subgrid;
+            return true;
+        }
+
+        if (entry.next == node) return false;
+        node = entry.next;
+    }
+
+    return false;
+}
+
+static bool resolve_aigrid_tile(void *aigrid,
+                                const NativeAiTilePos *tile_pos,
+                                void **out_subgrid,
+                                void **out_tile) {
+    if (out_subgrid) *out_subgrid = NULL;
+    if (out_tile) *out_tile = NULL;
+    if (!tile_pos || !out_subgrid || !out_tile
+        || tile_pos->x < 0 || tile_pos->y < 0
+        || tile_pos->subgrid_id == -1) {
+        return false;
+    }
+
+    void *subgrid = NULL;
+    if (!subgrid_map_lookup(aigrid, (uint32_t)tile_pos->subgrid_id,
+                            &subgrid)) {
+        return false;
+    }
+
+    int32_t size_x = 0;
+    int32_t size_y = 0;
+    void *tile_grid = NULL;
+    if (!safe_read_at(subgrid, AISUBGRID_SIZE_X_OFFSET,
+                      &size_x, sizeof(size_x))
+        || !safe_read_at(subgrid, AISUBGRID_SIZE_Y_OFFSET,
+                         &size_y, sizeof(size_y))
+        || !safe_read_at(subgrid, AISUBGRID_TILE_GRID_OFFSET,
+                         &tile_grid, sizeof(tile_grid))
+        || size_x <= 0 || size_x > AIGRID_MAX_TILE_DIMENSION
+        || size_y <= 0 || size_y > AIGRID_MAX_TILE_DIMENSION
+        || tile_pos->x >= size_x || tile_pos->y >= size_y
+        || !tile_grid) {
+        return false;
+    }
+
+    int32_t width = 0;
+    void *tiles = NULL;
+    if (!safe_read_at(tile_grid, AITILEGRID_WIDTH_OFFSET,
+                      &width, sizeof(width))
+        || !safe_read_at(tile_grid, AITILEGRID_TILES_OFFSET,
+                         &tiles, sizeof(tiles))
+        || width <= 0 || width > AIGRID_MAX_TILE_DIMENSION
+        || width != size_x || tile_pos->x >= width || !tiles) {
+        return false;
+    }
+
+    size_t index = (size_t)tile_pos->y * (size_t)width
+        + (size_t)tile_pos->x;
+    if (index > SIZE_MAX / AIGRID_TILE_STRIDE) return false;
+
+    mach_vm_address_t tile_address = 0;
+    if (!checked_address_add(tiles, index * AIGRID_TILE_STRIDE,
+                             &tile_address)
+        || !readable_range(tile_address, sizeof(NativeAiGridTile))) {
+        return false;
+    }
+
+    *out_subgrid = subgrid;
+    *out_tile = (void *)(uintptr_t)tile_address;
+    return true;
+}
+
+static bool copy_aigrid_tile(void *aigrid,
+                             const NativeAiTilePos *tile_pos,
+                             NativeAiGridTile *out_tile,
+                             float *out_translate_y) {
+    if (!out_tile || !out_translate_y) return false;
+
+    for (int attempt = 0; attempt < 2; attempt++) {
+        void *subgrid = NULL;
+        void *tile = NULL;
+        NativeAiGridTile before = {0};
+        NativeAiGridTile after = {0};
+        float translate_before = 0.0f;
+        float translate_after = 0.0f;
+
+        if (!resolve_aigrid_tile(aigrid, tile_pos, &subgrid, &tile)
+            || !safe_read_at(tile, 0, &before, sizeof(before))
+            || !safe_read_at(subgrid, AISUBGRID_TRANSLATE_Y_OFFSET,
+                             &translate_before, sizeof(translate_before))
+            || !safe_read_at(tile, 0, &after, sizeof(after))
+            || !safe_read_at(subgrid, AISUBGRID_TRANSLATE_Y_OFFSET,
+                             &translate_after, sizeof(translate_after))) {
+            return false;
+        }
+
+        if (memcmp(&before, &after, sizeof(before)) == 0
+            && memcmp(&translate_before, &translate_after,
+                      sizeof(translate_before)) == 0) {
+            *out_tile = before;
+            *out_translate_y = translate_before;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool read_path_map_header(void *aigrid,
@@ -893,6 +1419,41 @@ bool level_aigrid_get_entities_on_tile(
     return true;
 }
 
+bool level_aigrid_get_tile_raw_debug_info(
+    float x, float z, LevelAiTileRawDebugInfo *out_info) {
+    if (out_info) memset(out_info, 0, sizeof(*out_info));
+    if (!out_info || !aigrid_bindings_available()
+        || !g_level.aigrid_to_tile_pos) {
+        return false;
+    }
+
+    void *aigrid = level_get_aigrid();
+    if (!aigrid) return false;
+
+    float world_pos[3] = {x, 0.0f, z};
+    NativeAiTilePos tile_pos = {0};
+    if (!g_level.aigrid_to_tile_pos(
+            aigrid, world_pos, &tile_pos, false)
+        || tile_pos.x < 0 || tile_pos.y < 0
+        || tile_pos.subgrid_id == -1) {
+        return false;
+    }
+
+    NativeAiGridTile tile = {0};
+    float translate_y = 0.0f;
+    if (!copy_aigrid_tile(aigrid, &tile_pos, &tile, &translate_y)
+        || tile.min_height > tile.max_height) {
+        return false;
+    }
+
+    out_info->raw_flags = tile.flags;
+    out_info->ground_mask = (uint8_t)((tile.flags >> 24) & 0xff);
+    out_info->cloud_mask = (uint8_t)((tile.flags >> 32) & 0xff);
+    out_info->min_height = translate_y + (float)tile.min_height / 50.0f;
+    out_info->max_height = translate_y + (float)tile.max_height / 50.0f;
+    return true;
+}
+
 void level_aigrid_free_entity_handles(uint64_t *handles) {
     free(handles);
 }
@@ -927,12 +1488,111 @@ static void *read_vmt_entry(void *object, int index) {
 // ============================================================================
 
 /*
- * RaycastClosest (macOS ARM64 VMT[8]), RaycastAll (macOS ARM64 VMT[9],
- * Windows declaration slot 8), and RaycastAny (macOS ARM64 VMT[10]) are
- * quarantined below. Their named symbols prove Vector3f const& parameters,
- * but the audited signatures include trailing ls::Function/optional lock
- * values whose C representation and ownership are not proven.
+ * RaycastClosest (macOS ARM64 VMT[8]) and RaycastAll (macOS ARM64 VMT[9],
+ * Windows declaration slot 8) remain quarantined below. RaycastAny's empty
+ * optional read-lock ABI is independently proven for the UUID-gated build.
  */
+
+#if defined(__aarch64__)
+static bool raycast_any_uuid_matches(void) {
+    void *binary_base = version_detect_get_binary_base();
+    if (!binary_base) return false;
+
+    struct mach_header_64 header = {0};
+    if (!safe_memory_read((mach_vm_address_t)binary_base,
+                          &header, sizeof(header))
+        || header.magic != MH_MAGIC_64
+        || header.ncmds == 0
+        || header.ncmds > 4096
+        || header.sizeofcmds < sizeof(struct load_command)
+        || header.sizeofcmds > (64u * 1024u * 1024u)) {
+        return false;
+    }
+
+    uintptr_t cursor = (uintptr_t)binary_base + sizeof(header);
+    if (cursor < (uintptr_t)binary_base) return false;
+
+    size_t remaining = header.sizeofcmds;
+    for (uint32_t i = 0; i < header.ncmds; i++) {
+        struct load_command command = {0};
+        if (remaining < sizeof(command)
+            || !safe_memory_read((mach_vm_address_t)cursor,
+                                 &command, sizeof(command))
+            || command.cmdsize < sizeof(command)
+            || command.cmdsize > remaining) {
+            return false;
+        }
+
+        if (command.cmd == LC_UUID) {
+            struct uuid_command uuid = {0};
+            if (command.cmdsize < sizeof(uuid)
+                || !safe_memory_read((mach_vm_address_t)cursor,
+                                     &uuid, sizeof(uuid))) {
+                return false;
+            }
+            return memcmp(uuid.uuid, s_raycast_any_verified_uuid,
+                          sizeof(s_raycast_any_verified_uuid)) == 0;
+        }
+
+        if (cursor > UINTPTR_MAX - command.cmdsize) return false;
+        cursor += command.cmdsize;
+        remaining -= command.cmdsize;
+    }
+
+    return false;
+}
+
+static bool raycast_any_gate_matches(void) {
+    return version_detect_matches() && raycast_any_uuid_matches();
+}
+
+/*
+ * RaycastAny — macOS ARM64 VMT[10]. The final by-value
+ * ls::Optional<PhysicsSceneScopedReadLock&> is disengaged: its payload and
+ * engagement word are both zero, selecting the worker's internal read lock.
+ */
+static bool physics_raycast_any_arm64(void *function, void *scene,
+                                      const float source[3],
+                                      const float destination[3],
+                                      uint32_t physics_type,
+                                      uint32_t include_group,
+                                      uint32_t exclude_group,
+                                      int context) {
+    uint32_t result = 0;
+    uint64_t context_arg = (uint32_t)context;
+
+    __asm__ volatile(
+        "sub sp, sp, #32\n"
+        "mov w9, #-1\n"
+        "str w9, [sp]\n"
+        "stp xzr, xzr, [sp, #8]\n"
+        "mov x0, %[scene]\n"
+        "mov x1, %[source]\n"
+        "mov x2, %[destination]\n"
+        "mov w3, %w[physics_type]\n"
+        "mov x4, %[include_group]\n"
+        "mov x5, %[exclude_group]\n"
+        "mov x6, %[context]\n"
+        "mov w7, #-1\n"
+        "blr %[function]\n"
+        "mov %w[result], w0\n"
+        "add sp, sp, #32\n"
+        : [result] "=r"(result)
+        : [function] "r"(function),
+          [scene] "r"(scene),
+          [source] "r"(source),
+          [destination] "r"(destination),
+          [physics_type] "r"(physics_type),
+          [include_group] "r"((uint64_t)include_group),
+          [exclude_group] "r"((uint64_t)exclude_group),
+          [context] "r"(context_arg)
+        : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+          "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+          "x16", "x17", "x30", "cc", "memory");
+
+    return result != 0;
+}
+#endif
 
 /*
  * These overlap-query signatures are complete in the audited macOS symbols.
@@ -1332,6 +1992,23 @@ bool level_raycast_any(const float src[3], const float dst[3],
                        uint32_t include_group,
                        uint32_t exclude_group,
                        int context) {
+#if defined(__aarch64__)
+    if (!src || !dst || !raycast_any_gate_matches()) return false;
+
+    void *physics = level_get_physics_scene();
+    if (!physics) return false;
+
+    void *function = read_vmt_entry(physics, PHYSICS_VMT_RAYCAST_ANY);
+    if (!function) {
+        log_message("[Level] RaycastAny VMT entry not found at index %d",
+                    PHYSICS_VMT_RAYCAST_ANY);
+        return false;
+    }
+
+    return physics_raycast_any_arm64(function, physics, src, dst,
+                                     physics_type, include_group,
+                                     exclude_group, context);
+#else
     (void)src;
     (void)dst;
     (void)physics_type;
@@ -1339,6 +2016,7 @@ bool level_raycast_any(const float src[3], const float dst[3],
     (void)exclude_group;
     (void)context;
     return false;
+#endif
 }
 
 bool level_test_box(const float pos[3], const float extents[3],
@@ -1383,20 +2061,74 @@ bool level_test_sphere(const float pos[3], float radius,
 // Tile Queries
 // ============================================================================
 
-int level_get_heights_at(float x, float z, float *out_heights, int max_heights) {
-    if (!out_heights || max_heights <= 0) return 0;
+bool level_get_heights_at(float x, float z,
+                          float **out_heights, size_t *out_count) {
+    if (!out_heights || !out_count) return false;
+    *out_heights = NULL;
+    *out_count = 0;
 
-    void *aigrid = level_get_aigrid();
-    if (!aigrid) {
-        log_message("[Level] AiGrid not available");
-        return 0;
+    if (!aigrid_bindings_available() || !isfinite(x) || !isfinite(z)) {
+        return false;
     }
 
-    // AiGrid tile height lookup requires internal structure knowledge.
-    // This is a stub until AiGrid offsets are verified at runtime.
-    // The AiGrid typically stores tile data in a grid indexed by (x,z) coords.
-    (void)x;
-    (void)z;
-    log_message("[Level] GetHeightsAt: AiGrid offsets not yet verified (stub)");
-    return 0;
+    void *aigrid = level_get_aigrid();
+    if (!aigrid) return false;
+
+    NativeSubgridMapEntry *entries = NULL;
+    size_t entry_count = 0;
+    if (!snapshot_subgrid_map(aigrid, &entries, &entry_count)) {
+        return false;
+    }
+
+    float *heights = NULL;
+    if (entry_count > 0) {
+        if (entry_count > SIZE_MAX / sizeof(*heights)) {
+            free(entries);
+            return false;
+        }
+        heights = malloc(entry_count * sizeof(*heights));
+        if (!heights) {
+            free(entries);
+            return false;
+        }
+    }
+
+    size_t height_count = 0;
+    bool query_valid = true;
+    for (size_t i = 0; i < entry_count; i++) {
+        NativeAiGridTile tile = {0};
+        float translate_y = 0.0f;
+        if (!entries[i].node.subgrid) {
+            query_valid = false;
+            break;
+        }
+
+        SubgridTileReadResult tile_result = copy_subgrid_tile_at_world(
+            entries[i].node.subgrid, x, z, &tile, &translate_y);
+        if (tile_result == SUBGRID_TILE_INVALID) {
+            query_valid = false;
+            break;
+        }
+        if (tile_result == SUBGRID_TILE_OUTSIDE
+            || (tile.flags & AIGRID_TILE_BLOCKER_FLAG) != 0) {
+            continue;
+        }
+
+        heights[height_count++] = translate_y
+            + (float)tile.max_height / 50.0f;
+    }
+
+    free(entries);
+    if (!query_valid || height_count == 0) {
+        free(heights);
+        return query_valid;
+    }
+
+    *out_heights = heights;
+    *out_count = height_count;
+    return true;
+}
+
+void level_free_heights(float *heights) {
+    free(heights);
 }

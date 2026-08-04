@@ -15,6 +15,7 @@
 
 #include "entity_events.h"
 #include "component_registry.h"
+#include "ecs_system_update.h"
 #include "../core/logging.h"
 #include "../lua/lua_runtime.h"
 
@@ -192,6 +193,9 @@ static _Atomic(bool) g_dispatch_enabled = false;
 // Transition guard — set during game state transitions (new game, load save)
 // to prevent signal handlers from dispatching while state is unstable
 static _Atomic(bool) g_in_transition = false;
+
+// Optional C observer; unlike Lua subscriptions, it runs before type filtering.
+static _Atomic(EntityEventsObserver) g_observer = NULL;
 
 // Deferred free list for old connection buffers. When inject_connection()
 // grows a Signal's Connections array, the old buffer can't be freed immediately
@@ -838,6 +842,9 @@ void entity_events_bind(void *entity_world, bool is_server) {
         return;
     }
 
+    /* This is the port's EntityWorld creation/replacement observer. */
+    ecs_system_update_on_world_bound(entity_world, is_server);
+
     // Validate CCR access BEFORE committing to this world
     void *ccr_buf = NULL;
     uint32_t ccr_size = 0;
@@ -1068,16 +1075,22 @@ void entity_events_fire_deferred(lua_State *L) {
 void entity_events_on_create(uint16_t type_index, uint64_t entity_handle,
                               void *component, lua_State *L) {
     if (!g_initialized || !L) return;
+    EntityEventsObserver observer = atomic_load_explicit(&g_observer, memory_order_acquire);
+    if (observer) observer(entity_handle, ENTITY_EVENT_CREATE);
     dispatch_event(L, type_index, entity_handle, ENTITY_EVENT_CREATE, component);
 }
 
 void entity_events_on_destroy(uint16_t type_index, uint64_t entity_handle,
                                void *component, lua_State *L) {
     if (!g_initialized || !L) return;
+    EntityEventsObserver observer = atomic_load_explicit(&g_observer, memory_order_acquire);
+    if (observer) observer(entity_handle, ENTITY_EVENT_DESTROY);
     dispatch_event(L, type_index, entity_handle, ENTITY_EVENT_DESTROY, component);
 }
 
 void entity_events_cleanup(lua_State *L) {
+    /* Restore every swapped UpdateProc before Lua runtimes are unregistered. */
+    ecs_system_update_teardown();
     if (!g_initialized) return;
 
     // Close the dispatch gate FIRST so signal handlers exit immediately if
@@ -1157,11 +1170,16 @@ bool entity_events_is_bound(void) {
 
 void entity_events_set_transition(bool in_transition) {
     atomic_store_explicit(&g_in_transition, in_transition, memory_order_release);
+    ecs_system_update_set_transition(in_transition);
     if (in_transition) {
         log_message("[INFO] [EntityEvents] Transition guard ON — signal handlers suspended");
     } else {
         log_message("[INFO] [EntityEvents] Transition guard OFF — signal handlers resumed");
     }
+}
+
+void entity_events_set_observer(EntityEventsObserver observer) {
+    atomic_store_explicit(&g_observer, observer, memory_order_release);
 }
 
 // ============================================================================
