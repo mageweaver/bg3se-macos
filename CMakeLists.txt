@@ -362,8 +362,10 @@ if(BUILD_TESTS)
         tests/tier0/test_entity_events.c
         tests/tier0/test_mod_paths.c
         tests/tier0/test_lua_runtime.c
+        tests/tier0/test_guid_lookup.c
         tests/tier0/stub_logging.c
         src/core/safe_memory.c
+        src/entity/guid_lookup.c
         src/osiris/pattern_scan.c
         src/mod/mod_paths.c
         src/lua/lua_runtime.c

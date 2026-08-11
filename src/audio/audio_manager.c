@@ -26,10 +26,6 @@
 // Constants and Offsets
 // ============================================================================
 
-// ResourceManager::m_ptr — sourced from offset_table at runtime
-// Fallback value kept for reference: 0x08a8f070 (4.1.1.6995620)
-#define OFFSET_RESOURCEMANAGER_PTR_FALLBACK  0x08a8f070
-
 // SoundManager offset within ResourceManager (needs runtime discovery)
 // Placeholder - probe ResourceManager struct to find actual offset
 #define RESOURCEMANAGER_SOUNDMANAGER_OFFSET  0x88  // TBD: needs runtime probe
@@ -69,10 +65,6 @@ typedef struct {
     };
 } LSSTDString;
 
-// Game's ls::STDString(const char*) constructor.
-// 4.1.1.7209685 vintage, nm-verified (0x10650e718 t ls::STDString::STDString(char const*)).
-// Passed through offset_table_remap_fn() (either-vintage match, fail-closed).
-#define OFFSET_STDSTRING_CTOR  0x0650e718ULL
 typedef void (*STDStringCtorFn)(LSSTDString *this_, const char *str);
 
 /*
@@ -153,15 +145,11 @@ bool audio_manager_init(void *main_binary_base) {
     if (off && off->resource_mgr_ptr) {
         g_audio.resource_manager_ptr = (void **)offset_table_resolve(off->resource_mgr_ptr);
     } else {
-        g_audio.resource_manager_ptr = (void **)((uintptr_t)main_binary_base + OFFSET_RESOURCEMANAGER_PTR_FALLBACK);
+        g_audio.resource_manager_ptr = NULL;
     }
 
-    // Resolve ls::STDString constructor (remap the hardcoded 6995620 address).
-    // NULL if no verified address -> PlayExternalSound's string path is skipped.
-    uint64_t stdstr_ghidra = offset_table_remap_fn(0x100000000ULL + OFFSET_STDSTRING_CTOR);
-    g_audio.stdstring_ctor = stdstr_ghidra
-        ? (STDStringCtorFn)((uintptr_t)main_binary_base + (stdstr_ghidra - 0x100000000ULL))
-        : NULL;
+    g_audio.stdstring_ctor =
+        (STDStringCtorFn)offset_table_game_fn(GAME_FN_STD_STRING_CTOR);
 
     g_audio.ak_get_id_from_string = (AkGetIdFromStringFn)dlsym(
         RTLD_DEFAULT, "_ZN2AK11SoundEngine15GetIDFromStringEPKc");

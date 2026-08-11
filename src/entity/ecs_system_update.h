@@ -2,7 +2,7 @@
  * BG3SE-macOS - Named ECS system update subscriptions.
  *
  * Implements Ext.Entity.OnSystemUpdate / OnSystemPostUpdate for the verified
- * 4.1.1.7209685 system registry layout.
+ * 4.1.1.7398727 system registry layout.
  */
 
 #ifndef ECS_SYSTEM_UPDATE_H

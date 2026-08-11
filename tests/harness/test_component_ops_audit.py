@@ -42,7 +42,12 @@ def test_create_component_uses_verified_embedded_registry_recipe():
     source = ENTITY_SYSTEM_C.read_text()
     body = _function_body(source, "lua_entity_create_component")
 
-    assert _define(source, "COMPONENT_OPS_VERIFIED_BUILD") == '"4.1.1.7209685"'
+    # 7398727: Wave 2C re-verified registry base +0x390, stride 8, vptr
+    # slot 5, and the three-argument ABI instruction-identical, with two
+    # concrete vtables corroborating (ghidra/offsets/ABI_REVIEW_7398727.md
+    # §2); the matching TypeIds landed in the Wave 1B regeneration. Any
+    # future change to this pin needs equivalent per-build evidence.
+    assert _define(source, "COMPONENT_OPS_VERIFIED_BUILD") == '"4.1.1.7398727"'
     assert int(_define(
         source, "ENTITYWORLD_COMPONENT_OPS_REGISTRY_OFFSET"), 16) == 0x390
     assert int(_define(
@@ -99,10 +104,15 @@ def test_passive_singleton_and_prototype_sync_claims_match_re_report():
     passive = _function_body(source, "sync_passive_prototype")
     interrupt = _function_body(source, "sync_interrupt_prototype")
 
-    assert int(_define(
-        source, "OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR").removesuffix("ULL"),
-        16,
-    ) == 0x1089BC228
+    # The passives singleton moved from a hardcoded define into the
+    # per-version offset table (Wave 2 lead, 2026-08-04). The resolution
+    # must go through the table field, and both verified rows must carry
+    # the nm-derived slot (7209685: 0x089bc228; 7398727: 0x089ec8c8).
+    assert "table_slot_to_runtime(slots->passives_ptr)" in source
+    assert "OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR" not in source
+    offset_table = (REPO_ROOT / "src/core/offset_table.c").read_text()
+    assert re.search(r"\.passives_ptr\s*=\s*0x089bc228", offset_table)
+    assert re.search(r"\.passives_ptr\s*=\s*0x089ec8c8", offset_table)
     assert "74 ADRP+LDR sites" in source
     assert "NO top-level vptr" in passive
     assert "NO" in interrupt

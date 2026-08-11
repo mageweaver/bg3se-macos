@@ -13,6 +13,59 @@ Each entry includes:
 
 ---
 
+## [Unreleased] - 2026-08-04 (later) — Offset re-migration to 4.1.1.7398727 (offline complete)
+
+**Category:** Migration / RE | **Plan:** docs/plans/2026-08-04-001-feat-offset-remigration-7398727-plan.md
+
+### Added
+
+- **7398727 offset row** (`src/core/offset_table.c`) — every singleton and
+  function re-derived from exact arm64 nm on the frozen binary; the two
+  anonymous slots (`global_switches_ptr` 0x108b25f40, `osiris_interface_ptr`
+  0x108ab68f8) recovered by ADRP+LDR metathesis with old-build self-test
+  (`ghidra/offsets/ADDRESS_MIGRATION_7398727.md`).
+- **GameFunctionId interface** — typed per-version `game_functions[]` replaces
+  the two-column remap; `component_data_shift_valid` guard (six distinct
+  TypeId deltas killed the scalar-shift model).
+- **TypeId regeneration for 7398727** — 2,004 components per exact mangled
+  symbol; ReplicatedTypeContext globals generated and consumed by
+  `replication_flags.c`.
+- **`Ext.Stats.GetValueListRegistryDiagnostic()`** — bounded read-only
+  registry walk (validity, manager, count, ≤8 names) so Phase 5 can prove the
+  read path before any insertion.
+- **New offset-table fields** `status_proto_mgr_ptr`, `passives_ptr`,
+  `interrupt_proto_mgr_ptr`, `boost_proto_mgr_ptr`, `baseapp_instance_ptr` —
+  `prototype_managers.c` and `focus_hack.c` no longer hardcode build-specific
+  VAs (the focus hack *writes* through its pointer; a stale slot was a
+  memory-corruption hazard).
+
+### Fixed
+
+- **July enum-registry regression root-caused**: `RPGSTATS_OFFSET_MODIFIER_VALUE_LISTS`
+  was `0x08`, double-counting the manager vtable — `RPGStats::Destroy` disasm on
+  both builds proves the ValueList manager sits at `+0x00`
+  (`ghidra/offsets/VALUELIST_REGISTRY_7398727.md`). Registry reads now validate
+  `count ≤ capacity ≤ 4096`.
+- **`HandleToUuid` GUID byte-order** — formatter rewritten as the exact inverse
+  of `guid_parse`; tier0 regression suite added (68/68).
+
+### Gates (evidence-driven, per ABI_REVIEW_7398727.md — all six subsystems PASS statically)
+
+- **Moved to 7398727**: `BG3_KNOWN_VERSION`, sentinels,
+  `FUNCTOR_ADDRS_VERIFIED_BUILD`, `COMPONENT_OPS_VERIFIED_BUILD`.
+- **Kept closed**: ECS system update (system-TypeId table still 7209685),
+  savegame hook (E1.1 proof pending), RaycastAny UUID (stress ladder pending),
+  ValueList Insert (new dedicated `VALUELIST_INSERT_VERIFIED_BUILD` — no live
+  insert has ever succeeded on any build).
+
+### Validation
+
+- Build clean; Tier 0 **68/68**; harness pytest **288 passed, 0 xfailed** —
+  including live-disasm confirmation of the Osiris slot on the installed
+  binary. Live tiers (`!test`, `!test_ingame`) await the Phase 5 session.
+
+---
+
 ## [Unreleased] - 2026-08-04 — Live verification session + game update to 4.1.1.7398727
 
 **Category:** Verification / Truth pass | **Evidence:** docs/parity-100/LIVE-VERIFICATION-2026-08-04.md

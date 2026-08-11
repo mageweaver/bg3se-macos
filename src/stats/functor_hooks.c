@@ -23,7 +23,10 @@
 #include "../lua/lua_runtime.h"
 #include "../entity/entity_storage.h"
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wvariadic-macros"
 #include <dobby.h>
+#pragma clang diagnostic pop
 #include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
@@ -56,21 +59,8 @@ static ExecuteFunctorsProc g_OrigSource = NULL;
 static ExecuteInterruptFunctorsProc g_OrigInterrupt = NULL;
 static ProcessDealDamageFunctorsProc g_OrigProcessDealDamage = NULL;
 
-// =============================================================================
-// Helper: Get runtime address from Ghidra offset
-// =============================================================================
-
-// Entity system provides binary base access
-extern void* entity_get_binary_base(void);
-
-static uintptr_t get_runtime_addr(uintptr_t ghidra_addr) {
-    void* base = entity_get_binary_base();
-    if (!base) return 0;
-    // Remap the hardcoded address to the running version (0 = no verified
-    // address -> caller skips the hook instead of hooking a stale function).
-    uint64_t remapped = offset_table_remap_fn(ghidra_addr);
-    if (!remapped) return 0;
-    return remapped - GHIDRA_BASE_ADDRESS + (uintptr_t)base;
+static uintptr_t get_runtime_addr(GameFunctionId id) {
+    return (uintptr_t)offset_table_game_fn(id);
 }
 
 // =============================================================================
@@ -318,7 +308,7 @@ bool functor_hooks_init(void) {
     atomic_store_explicit(&g_DispatchEnabled, true, memory_order_release);
 
     // Install AttackTarget hook
-    uintptr_t addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET);
+    uintptr_t addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_ATTACK_TARGET);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_AttackTarget, (void**)&g_OrigAttackTarget) == 0) {
         LOG_HOOKS_DEBUG("  AttackTarget hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -327,7 +317,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install AttackPosition hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_ATTACK_POSITION);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_ATTACK_POSITION);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_AttackPosition, (void**)&g_OrigAttackPosition) == 0) {
         LOG_HOOKS_DEBUG("  AttackPosition hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -336,7 +326,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install Move hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_MOVE);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_MOVE);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_Move, (void**)&g_OrigMove) == 0) {
         LOG_HOOKS_DEBUG("  Move hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -345,7 +335,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install Target hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_TARGET);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_TARGET);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_Target, (void**)&g_OrigTarget) == 0) {
         LOG_HOOKS_DEBUG("  Target hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -354,7 +344,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install NearbyAttacked hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKED);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKED);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_NearbyAttacked, (void**)&g_OrigNearbyAttacked) == 0) {
         LOG_HOOKS_DEBUG("  NearbyAttacked hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -363,7 +353,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install NearbyAttacking hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKING);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKING);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_NearbyAttacking, (void**)&g_OrigNearbyAttacking) == 0) {
         LOG_HOOKS_DEBUG("  NearbyAttacking hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -372,7 +362,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install Equip hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_EQUIP);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_EQUIP);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_Equip, (void**)&g_OrigEquip) == 0) {
         LOG_HOOKS_DEBUG("  Equip hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -381,7 +371,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install Source hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_SOURCE);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_SOURCE);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_Source, (void**)&g_OrigSource) == 0) {
         LOG_HOOKS_DEBUG("  Source hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -390,7 +380,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install Interrupt hook
-    addr = get_runtime_addr(ADDR_EXECUTE_FUNCTORS_INTERRUPT);
+    addr = get_runtime_addr(GAME_FN_EXECUTE_FUNCTORS_INTERRUPT);
     if (addr && DobbyHook((void*)addr, (void*)hook_ExecuteFunctors_Interrupt, (void**)&g_OrigInterrupt) == 0) {
         LOG_HOOKS_DEBUG("  Interrupt hook @ 0x%llx", (unsigned long long)addr);
         success_count++;
@@ -399,7 +389,7 @@ bool functor_hooks_init(void) {
     }
 
     // Install ProcessDealDamageFunctors hook
-    addr = get_runtime_addr(ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS);
+    addr = get_runtime_addr(GAME_FN_PROCESS_DEAL_DAMAGE_FUNCTORS);
     if (addr && DobbyHook((void*)addr, (void*)hook_ProcessDealDamageFunctors,
                           (void**)&g_OrigProcessDealDamage) == 0) {
         LOG_HOOKS_DEBUG("  ProcessDealDamageFunctors hook @ 0x%llx",

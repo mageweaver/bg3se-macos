@@ -3,7 +3,7 @@
  *
  * To add support for a new BG3 version, DON'T do it by hand — run the resolver:
  *     python3 tools/port_offsets.py resolve --emit
- * and paste its output (the struct entry + the g_fn_remap_<ver>[] rows) here.
+ * and paste its generated VersionOffsets row here.
  * The recipe of every address is tools/offset_manifest.json; see docs/PORTING.md.
  * Validate any change with:  python3 tools/port_offsets.py verify
  *
@@ -46,10 +46,20 @@ static const VersionOffsets g_offset_table[] = {
         .level_cache_mgr_ptr     = 0x08a735d8,  // Level::s_CacheTemplateManager
         .staticdata_mstate_ptr   = 0x083c4a68,  // ImmutableDataHeadmaster::m_State
         .gst_ptr                 = 0x08aeccd8,  // ls::gGlobalStringTable
+        .translated_string_repo_ptr = 0x08aed088, // TranslatedStringRepository::m_ptr
         .global_switches_ptr     = 0x08b18f30,  // EoCGlobalSwitches* (May 2026 RE: VMGameData init)
         .osiris_interface_ptr    = 0,           // osi::OsirisInterface instance — never verified
                                                 // on this vintage (0 = param-defs reader disabled;
                                                 // osi_dynamic_call falls back to legacy guessing)
+        /* Prototype-manager singletons: 7209685 values minus the validated
+         * +0x8000 __DATA shift — exactly what the retired ghidra_to_runtime
+         * (component_data_shift = -0x8000) computed on this vintage. */
+        .status_proto_mgr_ptr    = 0x089bdb30,
+        .passives_ptr            = 0x089b4228,
+        .interrupt_proto_mgr_ptr = 0x089b28f0,
+        .boost_proto_mgr_ptr     = 0x08991528,
+        .baseapp_instance_ptr    = 0,           // focus_hack postdates this vintage;
+                                                // never verified — fail closed
 
         /* Function offsets */
         .fn_feat_getfeats        = 0x01b752b4,  // FeatManager::GetFeats
@@ -76,6 +86,30 @@ static const VersionOffsets g_offset_table[] = {
         .fn_passives_get         = 0,           // not derived for this binary vintage
         .component_data_shift    = -0x8000,     // compiled-in __DATA constants are 7209685;
                                                 // this version's __DATA sits 0x8000 lower
+        .component_data_shift_valid = true,
+
+        .game_functions = {
+            [GAME_FN_FIXED_STRING_CREATE] = 0x064b9ebc,
+            [GAME_FN_RESOURCE_GET] = 0x060cc608,
+            [GAME_FN_EXECUTE_STATS_FUNCTOR] = 0x05783a38,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_TARGET] = 0x05787918,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_POSITION] = 0x05787c6c,
+            [GAME_FN_EXECUTE_FUNCTORS_MOVE] = 0x0578975c,
+            [GAME_FN_EXECUTE_FUNCTORS_TARGET] = 0x0578a918,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKED] = 0x0578e4d8,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKING] = 0x0578fba8,
+            [GAME_FN_EXECUTE_FUNCTORS_EQUIP] = 0x05790a28,
+            [GAME_FN_EXECUTE_FUNCTORS_SOURCE] = 0x05792a90,
+            [GAME_FN_EXECUTE_FUNCTORS_INTERRUPT] = 0x057965e4,
+            [GAME_FN_PROCESS_DEAL_DAMAGE_FUNCTORS] = 0x0538f374,
+            [GAME_FN_TRANSLATED_STRING_TRY_GET] = 0x06534d54,
+            [GAME_FN_TRANSLATED_STRING_GET] = 0x06535148,
+            [GAME_FN_TRANSLATED_STRING_ADD] = 0x06532590,
+            [GAME_FN_MESSAGE_FACTORY_GET_FREE_MESSAGE] = 0x063d5998,
+            [GAME_FN_STD_STRING_CTOR] = 0x0651fb60,
+            [GAME_FN_BINK_LOAD_VIDEO] = 0x0390b6cc,
+            [GAME_FN_VALUELIST_INSERT] = 0,
+        },
     },
 
     /* ------------------------------------------------------------------
@@ -121,6 +155,7 @@ static const VersionOffsets g_offset_table[] = {
                                                 // one-dereference traversal in staticdata_manager.c.
                                                 // nm cannot see it; audit via otool -Iv / __got.
         .gst_ptr                 = 0x08af4cd8,  // 0x08aeccd8 + 0x8000 (val=GST ptr, validated)
+        .translated_string_repo_ptr = 0x08af5088, // TranslatedStringRepository::m_ptr (nm)
         .global_switches_ptr     = 0x08af4f30,  // EoCGlobalSwitches* — NOT old+0x8000 (slot moved
                                                 // -0x24000). Verified 2026-07-29: 916 disasm refs
                                                 // across 593 fns incl. App::CreateGlobalSwitches()
@@ -131,6 +166,14 @@ static const VersionOffsets g_offset_table[] = {
                                                 //   adrp x8, 0x108a86000 ; ldr x25, [x8, #0x128]
                                                 // (matches PR #93's live-verified chain; see
                                                 // ghidra/offsets/OSIRIS_DATABASES.md)
+        /* Prototype-manager singletons + BaseApp — nm local symbols,
+         * re-derived 2026-07-28 (formerly hardcoded in prototype_managers.c
+         * and focus_hack.c; moved here 2026-08-04, Wave 2 lead). */
+        .status_proto_mgr_ptr    = 0x089c5b30,  // eoc::StatusPrototypeManager::m_ptr
+        .passives_ptr            = 0x089bc228,  // eoc::Passives::m_ptr (74 ADRP+LDR sites)
+        .interrupt_proto_mgr_ptr = 0x089ba8f0,  // eoc::InterruptPrototypeManager::m_ptr
+        .boost_proto_mgr_ptr     = 0x08999528,  // eoc::BoostPrototypeManager::m_ptr
+        .baseapp_instance_ptr    = 0x08ac0278,  // BaseApp::s_AppInstance
 
         /* Function offsets (__TEXT) — resolved by nm symbol lookup on the
          * 7209685 binary; non-uniform shift, see note above. */
@@ -171,54 +214,123 @@ static const VersionOffsets g_offset_table[] = {
                                                 // x1 = FS index BY VALUE, x0 return, NULL on miss)
         .component_data_shift    = 0,           // compiled-in __DATA constants ARE this
                                                 // vintage (nm-audited 7209685) — no shift
+        .component_data_shift_valid = true,
+
+        .game_functions = {
+            [GAME_FN_FIXED_STRING_CREATE] = 0x064a8a74,
+            [GAME_FN_RESOURCE_GET] = 0x060bc020,
+            [GAME_FN_EXECUTE_STATS_FUNCTOR] = 0x0577399c,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_TARGET] = 0x0577787c,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_POSITION] = 0x05777bd0,
+            [GAME_FN_EXECUTE_FUNCTORS_MOVE] = 0x057796c0,
+            [GAME_FN_EXECUTE_FUNCTORS_TARGET] = 0x0577a87c,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKED] = 0x0577e43c,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKING] = 0x0577fb0c,
+            [GAME_FN_EXECUTE_FUNCTORS_EQUIP] = 0x0578098c,
+            [GAME_FN_EXECUTE_FUNCTORS_SOURCE] = 0x057829f4,
+            [GAME_FN_EXECUTE_FUNCTORS_INTERRUPT] = 0x05786548,
+            [GAME_FN_PROCESS_DEAL_DAMAGE_FUNCTORS] = 0x0537e8b4,
+            [GAME_FN_TRANSLATED_STRING_TRY_GET] = 0x0652390c,
+            [GAME_FN_TRANSLATED_STRING_GET] = 0x06523d00,
+            [GAME_FN_TRANSLATED_STRING_ADD] = 0x06521148,
+            [GAME_FN_MESSAGE_FACTORY_GET_FREE_MESSAGE] = 0x063c4550,
+            [GAME_FN_STD_STRING_CTOR] = 0x0650e718,
+            [GAME_FN_BINK_LOAD_VIDEO] = 0x0390b6cc,
+            [GAME_FN_VALUELIST_INSERT] = 0x01c44920,
+        },
+    },
+
+    /* ------------------------------------------------------------------
+     * 4.1.1.7398727 — exact arm64 nm/c++filt migration (2026-08-04).
+     * Symbol-backed fields were resolved independently. The GOT field was
+     * resolved with otool -Iv. The two anonymous slots were derived by the
+     * Wave 2A ADRP+LDR metathesis (self-tested against 7209685; see
+     * ghidra/offsets/ADDRESS_MIGRATION_7398727.md).
+     * Shared ComponentTypeId entries have multiple observed deltas,
+     * so the legacy scalar shift is explicitly invalid for this version.
+     * ------------------------------------------------------------------ */
+    {
+        .version                 = "4.1.1.7398727",
+
+        .eocserver_ptr           = 0x089c6f58,
+        .eocclient_ptr           = 0x089c4fc0,
+        .spell_proto_mgr_ptr     = 0x089f3320,
+        .rpgstats_ptr            = 0x089fddd0,
+        .resource_mgr_ptr        = 0x08ac8080,
+        .level_mgr_ptr           = 0x08a74610,
+        .global_template_mgr_ptr = 0x08ac0d98,
+        .cache_template_mgr_ptr  = 0x08a69178,
+        .level_cache_mgr_ptr     = 0x08aabda8,
+        .staticdata_mstate_ptr   = 0x083fcc38,
+        .gst_ptr                 = 0x08b25ce8,
+        .translated_string_repo_ptr = 0x08b26098,
+        .global_switches_ptr     = 0x08b25f40,  // EoCGlobalSwitches* — Wave 2A metathesis
+                                                // (unique ADRP+LDR candidate; writer/reader
+                                                // corroborated; self-test reproduced the
+                                                // 7209685 value. ghidra/offsets/
+                                                // ADDRESS_MIGRATION_7398727.md)
+        .osiris_interface_ptr    = 0x08ab68f8,  // osi::OsirisInterface slot — Wave 2A
+                                                // (loaded by OsirisCall/OsirisQuery/
+                                                // ErrorMessage, written by InitStory/
+                                                // ShutdownStory in both builds; same doc)
+        /* Prototype-manager singletons + BaseApp — exact arm64 nm on the
+         * frozen 7398727 binary (offset_manifest.json source records). */
+        .status_proto_mgr_ptr    = 0x089f61d0,  // eoc::StatusPrototypeManager::m_ptr
+        .passives_ptr            = 0x089ec8c8,  // eoc::Passives::m_ptr
+        .interrupt_proto_mgr_ptr = 0x089eaf90,  // eoc::InterruptPrototypeManager::m_ptr
+        .boost_proto_mgr_ptr     = 0x089c9bc8,  // eoc::BoostPrototypeManager::m_ptr
+        .baseapp_instance_ptr    = 0x08af1288,  // BaseApp::s_AppInstance
+
+        .fn_feat_getfeats        = 0x01b56f08,
+        .fn_getallfeats          = 0x011ed03c,
+        .fn_get_background       = 0x02980bd8,
+        .fn_get_origin           = 0x0340c638,
+        .fn_get_class            = 0x026162a8,
+        .fn_get_progression      = 0x036881d0,
+        .fn_get_actionresource   = 0x011860e8,
+        .fn_get_template_raw     = 0x05f9cda4,
+        .fn_cache_template       = 0x05d2c6e8,
+        .fn_aigrid_to_tile_pos   = 0x0115f0b4,
+        .fn_aigrid_get_metadata  = 0x011489d8,
+        .fn_aigrid_remove_path   = 0x0115f598,
+        .fn_aigrid_find_path     = 0x01160140,
+        .fn_aigrid_find_path_immediate = 0x011633e0,
+        .fn_try_get_uuid_mapping = 0x010be578,
+        .fn_storage_tryget       = 0x06382944,
+        .fn_spell_proto_init     = 0x01f543a8,
+        .fn_status_proto_init    = 0x01ff4844,
+        .fn_interrupt_proto_get  = 0x01b784c0,
+        .fn_passives_get         = 0x01c0c970,
+        .component_data_shift    = 0,
+        .component_data_shift_valid = false,
+
+        .game_functions = {
+            [GAME_FN_FIXED_STRING_CREATE] = 0x064d0cb4,
+            [GAME_FN_RESOURCE_GET] = 0x060e3cd0,
+            [GAME_FN_EXECUTE_STATS_FUNCTOR] = 0x0577e650,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_TARGET] = 0x05782530,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_POSITION] = 0x05782884,
+            [GAME_FN_EXECUTE_FUNCTORS_MOVE] = 0x05784374,
+            [GAME_FN_EXECUTE_FUNCTORS_TARGET] = 0x05785530,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKED] = 0x057890f0,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKING] = 0x0578a7c0,
+            [GAME_FN_EXECUTE_FUNCTORS_EQUIP] = 0x0578b640,
+            [GAME_FN_EXECUTE_FUNCTORS_SOURCE] = 0x0578d6a8,
+            [GAME_FN_EXECUTE_FUNCTORS_INTERRUPT] = 0x057911fc,
+            [GAME_FN_PROCESS_DEAL_DAMAGE_FUNCTORS] = 0x05389568,
+            [GAME_FN_TRANSLATED_STRING_TRY_GET] = 0x0654bb4c,
+            [GAME_FN_TRANSLATED_STRING_GET] = 0x0654bf40,
+            [GAME_FN_TRANSLATED_STRING_ADD] = 0x06549388,
+            [GAME_FN_MESSAGE_FACTORY_GET_FREE_MESSAGE] = 0x063ec790,
+            [GAME_FN_STD_STRING_CTOR] = 0x06536958,
+            [GAME_FN_BINK_LOAD_VIDEO] = 0x03916380,
+            [GAME_FN_VALUELIST_INSERT] = 0x01c42014,
+        },
     },
 
 };
 
 #define NUM_VERSIONS (sizeof(g_offset_table) / sizeof(g_offset_table[0]))
-
-// ============================================================================
-// Per-version function-address remap
-// ============================================================================
-//
-// Several subsystems hold hardcoded game-function Ghidra addresses (called as
-// function pointers). Rather than thread ~20 fields through VersionOffsets,
-// callers wrap their hardcoded address with offset_table_remap_fn(), which
-// matches EITHER column (the codebase carries mixed vintages) and returns the
-// active version's column. Fail-closed: unknown version, or an address absent
-// from the table, returns 0 — the caller disables that feature instead of
-// jumping to a stale address. All values are full Ghidra addresses
-// (>= 0x100000000); every 7209685 value is symbol-verified via nm.
-
-typedef struct { uint64_t addr_6995620; uint64_t addr_7209685; } FnRemap;
-
-static const FnRemap g_fn_remap[] = {
-    { 0x1064b9ebc, 0x1064a8a74 },  // ls::FixedString::Create(char const*, int)   (ABI verified)
-    { 0x1060cc608, 0x1060bc020 },  // ls::ResourceContainer::GetResource
-    { 0x105783a38, 0x10577399c },  // ExecuteStatsFunctor (main dispatcher)
-    { 0x105787918, 0x10577787c },  // esv::functor::ExecuteStatsFunctors<AttackTarget>
-    { 0x105787c6c, 0x105777bd0 },  //   <AttackPosition>
-    { 0x10578975c, 0x1057796c0 },  //   <Move>
-    { 0x10578a918, 0x10577a87c },  //   <Target>
-    { 0x10578e4d8, 0x10577e43c },  //   <NearbyAttacked>
-    { 0x10578fba8, 0x10577fb0c },  //   <NearbyAttacking>
-    { 0x105790a28, 0x10578098c },  //   <Equip>
-    { 0x105792a90, 0x1057829f4 },  //   <Source>
-    { 0x1057965e4, 0x105786548 },  //   <Interrupt> (7209685: leading ecs::EntityWorld&)
-    { 0x10538f374, 0x10537e8b4 },  // (anonymous)::ProcessDealDamageFunctors
-    { 0x106534d54, 0x10652390c },  // ls::TranslatedStringRepository::TryGet
-    { 0x106535148, 0x106523d00 },  // ls::TranslatedStringRepository::Get
-    { 0x106532590, 0x106521148 },  // ls::TranslatedStringRepository::AddTranslatedString
-    { 0x1063d5998, 0x1063c4550 },  // net::MessageFactory::GetFreeMessage
-    { 0x10651fb60, 0x10650e718 },  // ls::STDString::STDString(char const*)  (audio PlayExternalSound)
-    // NOTE: the functor rows above are additionally gated by
-    // FUNCTOR_ADDRS_VERIFIED_BUILD in functor_types.h. Symbol resolution proves
-    // addresses, while that exact-build gate protects the wrapper ABIs.
-    // bik::BinkManager::LoadVideo (0x10390b6cc) is unchanged across versions.
-    // GetComponent<T> template addresses are intentionally NOT in this table:
-    // that path is dead on macOS (templates inlined) — remap returns 0 on
-    // every version and the path is skipped.
-};
 
 // ============================================================================
 // State
@@ -265,20 +377,7 @@ void *offset_table_fn(uintptr_t offset) {
     return offset_table_resolve(offset);
 }
 
-uint64_t offset_table_remap_fn(uint64_t ghidra_addr) {
-    // Fail closed: no active version row -> every remapped feature disabled.
-    if (!g_active) return 0;
-
-    int col;
-    if (strcmp(g_active->version, "4.1.1.6995620") == 0)      col = 0;
-    else if (strcmp(g_active->version, "4.1.1.7209685") == 0) col = 1;
-    else return 0;  // version in table but no remap column -> disabled
-
-    for (size_t i = 0; i < sizeof(g_fn_remap) / sizeof(g_fn_remap[0]); i++) {
-        if (g_fn_remap[i].addr_6995620 == ghidra_addr ||
-            g_fn_remap[i].addr_7209685 == ghidra_addr) {
-            return col ? g_fn_remap[i].addr_7209685 : g_fn_remap[i].addr_6995620;
-        }
-    }
-    return 0;  // unmapped -> disabled (graceful)
+void *offset_table_game_fn(GameFunctionId id) {
+    if (!g_active || id < 0 || id >= GAME_FN_COUNT) return NULL;
+    return offset_table_resolve(g_active->game_functions[id]);
 }

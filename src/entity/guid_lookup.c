@@ -183,18 +183,23 @@ bool guid_parse(const char *guid_str, Guid *out_guid) {
 void guid_to_string(const Guid *guid, char *out_str) {
     if (!guid || !out_str) return;
 
-    // Unpack from Guid structure
-    // Format: AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE
-    // hi contains first parts (AAAAAAAA-BBBB-CCCC)
-    // lo contains last parts (DDDD-EEEEEEEEEEEE)
-    uint32_t a = (uint32_t)(guid->hi >> 32);
-    uint16_t b = (uint16_t)((guid->hi >> 16) & 0xFFFF);
-    uint16_t c = (uint16_t)(guid->hi & 0xFFFF);
-    uint16_t d = (uint16_t)(guid->lo >> 48);
-    uint64_t e = guid->lo & 0xFFFFFFFFFFFFULL;
+    // Invert guid_parse()'s exact transformation.  The first three textual
+    // fields occupy lo after their per-field little-endian parsing.  The
+    // final two fields occupy hi after adjacent byte pairs were swapped;
+    // each resulting 16-bit word therefore has the textual byte order, but
+    // the three words making up E must be read from low to high.
+    uint32_t a = (uint32_t)(guid->lo & 0xFFFFFFFFULL);
+    uint16_t b = (uint16_t)((guid->lo >> 32) & 0xFFFFULL);
+    uint16_t c = (uint16_t)((guid->lo >> 48) & 0xFFFFULL);
+    uint16_t d = (uint16_t)(guid->hi & 0xFFFFULL);
+    uint16_t e0 = (uint16_t)((guid->hi >> 16) & 0xFFFFULL);
+    uint16_t e1 = (uint16_t)((guid->hi >> 32) & 0xFFFFULL);
+    uint16_t e2 = (uint16_t)((guid->hi >> 48) & 0xFFFFULL);
 
-    snprintf(out_str, 37, "%08x-%04hx-%04hx-%04hx-%012llx",
-             a, b, c, d, (unsigned long long)e);
+    snprintf(out_str, 37, "%08x-%04x-%04x-%04x-%04x%04x%04x",
+             (unsigned int)a, (unsigned int)b, (unsigned int)c,
+             (unsigned int)d, (unsigned int)e0, (unsigned int)e1,
+             (unsigned int)e2);
 }
 
 // ============================================================================

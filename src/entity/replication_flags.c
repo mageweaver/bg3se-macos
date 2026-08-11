@@ -1,12 +1,14 @@
 /**
  * BG3SE-macOS - Read-only SyncBuffers replication flag traversal.
  *
- * The offsets and replicated-type globals below are confirmed for game build
- * 4.1.1.7209685. Every game-memory read is guarded, and this module performs
- * no writes, allocations in game memory, insertions, or dirty notifications.
+ * ReplicatedTypeContext globals are generated per exact symbol. Traversal
+ * offsets retain their independent version gate. Every game-memory read is
+ * guarded, and this module performs no writes, allocations in game memory,
+ * insertions, or dirty notifications.
  */
 
 #include "replication_flags.h"
+#include "generated_typeids.h"
 
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
@@ -44,20 +46,22 @@
 
 typedef struct {
     const char *name;
+    const char *component_name;
+    const char *mangled_symbol;
+    const char *context;
+    const char *build_id;
     uintptr_t replicated_type_va;
 } ReplicatedTypeGlobal;
 
+#define REPLICATED_TYPE_ENTRY(api_name, component_name, mangled_symbol, context, \
+                              build_id, preferred_va)                          \
+    { api_name, component_name, mangled_symbol, context, build_id, preferred_va },
+
 static const ReplicatedTypeGlobal k_replicated_type_globals[] = {
-    { "God", 0x108902a88ULL },
-    { "GameObjectVisual", 0x108905c30ULL },
-    { "AvailableLevel", 0x108911680ULL },
-    { "DisplayName", 0x108914de0ULL },
-    { "ActionResources", 0x10891a990ULL },
-    { "Stats", 0x10891ac90ULL },
-    { "Classes", 0x10891aca0ULL },
-    { "EocLevel", 0x10891acc0ULL },
-    { "CombatParticipant", 0x10891c7d0ULL },
+    GENERATED_REPLICATED_TYPE_CONTEXT_ENTRIES(REPLICATED_TYPE_ENTRY)
 };
+
+#undef REPLICATED_TYPE_ENTRY
 
 static bool checked_add(uintptr_t base, uintptr_t offset, uintptr_t *out) {
     if (!out || UINTPTR_MAX - base < offset) {
@@ -120,6 +124,13 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
     const ReplicatedTypeGlobal *replicated_type =
         find_replicated_type(component_name);
     if (!replicated_type) {
+        return false;
+    }
+
+    const char *detected_build = version_detect_get_version();
+    if (!detected_build ||
+        strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) != 0 ||
+        strcmp(replicated_type->build_id, GENERATED_TYPEIDS_BUILD_ID) != 0) {
         return false;
     }
 

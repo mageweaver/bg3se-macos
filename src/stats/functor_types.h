@@ -375,8 +375,15 @@ typedef struct {
 // `-g`), but symbol resolution only proves the address, not the ABI. main.c
 // therefore gates hook installation on an exact match against this constant,
 // independent of BG3_KNOWN_VERSION. Unknown builds remain fail-closed.
-#define FUNCTOR_ADDRS_VERIFIED_BUILD "4.1.1.7209685"
+// 7398727: Wave 2C re-verified all eleven entry windows byte-identical and
+// the wrapper register contracts unchanged (ghidra/offsets/
+// ABI_REVIEW_7398727.md §1). Addresses come from the offset table row.
+#define FUNCTOR_ADDRS_VERIFIED_BUILD "4.1.1.7398727"
 
+// HISTORICAL (7209685 VAs) — no longer consumed by any hook installer;
+// runtime resolution goes through offset_table_game_fn(). Kept as the
+// documented anchor set for the migration manifest. Do not reintroduce
+// direct uses; the values below are stale on 7398727.
 // Main dispatcher
 #define ADDR_EXECUTE_STATS_FUNCTOR             0x10577399c
 
@@ -424,6 +431,11 @@ typedef void (*ExecuteInterruptFunctorsProc)(
 );
 
 // Main dispatcher: the third C argument is an AttackTargetContextData&.
+// WARNING (Wave 2C): this typedef omits the dispatcher's hidden x0 result
+// pointer (callers do `add x0, sp, #imm` before the call, shifting the real
+// args to x1..x3). It is currently UNUSED — no hook installs through it. Do
+// not hook the dispatcher through this typedef without adding result_out
+// first (ghidra/offsets/ABI_REVIEW_7398727.md §1).
 typedef void (*ExecuteStatsFunctorProc)(
     const StatsFunctorBase*  functor,
     uint64_t                 functorId,

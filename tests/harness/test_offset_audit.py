@@ -10,8 +10,9 @@ save load (docs/bugs/codex-debugger-nohooks-2026-07-28.md).
 
 Three audit layers, all skipped when the game binary is absent (CI):
 
-1. ``AUDITED_OFFSETS`` — #defines parsed out of C sources, resolved via nm.
-2. The 4.1.1.7209685 row of ``src/core/offset_table.c`` — every field except
+1. ``BASELINE_DIRECT_CHECKS`` — the original 35 named source-address checks,
+   resolved through the installed version's central address claim.
+2. The installed version's row of ``src/core/offset_table.c`` — every field except
    the documented exclusions must resolve to its claimed symbol.
    Exclusions: ``staticdata_mstate_ptr`` is a ``__DATA_CONST,__got`` slot
    (validated GOT-aware via ``otool -Iv`` instead — nm cannot see it);
@@ -19,9 +20,13 @@ Three audit layers, all skipped when the game binary is absent (CI):
    (verified 2026-07-29 by disassembly: 916 refs across 593 functions incl.
    App::CreateGlobalSwitches; runtime read-back guard in global_switches.c);
    ``component_data_shift`` is a delta, not an address.
-3. The two-column function remap in ``offset_table.c`` — every nonzero
-   7209685 address must have a symbol at that VA, and no address may appear
-   in more than one row (either-column matching must be collision-free).
+3. The typed ``GameFunctionId`` array — every nonzero installed-version
+   address must resolve to its exact demangled symbol and IDs must be unique.
+
+The named legacy baseline remains 68 address-sensitive pytest cases:
+35 direct-source recipes + 30 VersionOffsets fields + one typed-function-table
+case + one GOT-slot case + one Osiris disassembly-slot case. New coverage is
+reported separately and does not silently redefine that baseline.
 
 FUNCTOR GATE: the eleven functor-hook addresses in
 ``src/stats/functor_types.h`` ARE nm-visible local symbols on 7209685 (the
@@ -34,6 +39,7 @@ addresses AND wrapper ABIs were verified on, independent of
 """
 
 import json
+import plistlib
 import re
 import shutil
 import subprocess
@@ -41,138 +47,89 @@ from pathlib import Path
 
 import pytest
 
-from bg3se_harness.config import BG3_EXEC
+from bg3se_harness.config import BG3_APP_BUNDLE, BG3_EXEC
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OFFSET_TABLE_C = REPO_ROOT / "src/core/offset_table.c"
 OFFSET_TABLE_H = REPO_ROOT / "src/core/offset_table.h"
 OFFSET_MANIFEST = REPO_ROOT / "tools/offset_manifest.json"
+GENERATED_TYPEIDS_H = REPO_ROOT / "src/entity/generated_typeids.h"
 
-# (source file, #define name, expected demangled symbol substring,
-#  base-relative? — offsets below 0x100000000 are relative to the image base)
-AUDITED_OFFSETS = [
-    ("src/network/protocol.h", "ADDR_GETMESSAGE",
-     "net::MessageFactory::GetFreeMessage(int)", False),
-    ("src/game/video_skip.c", "VA_BINK_LOAD_VIDEO",
-     "bik::BinkManager::LoadVideo", False),
-    ("src/stats/stats_manager.c", "OFFSET_RPGSTATS_M_PTR",
-     "RPGStats::m_ptr", False),
-    ("src/strings/fixed_string.c", "OFFSET_RPGSTATS",
-     "RPGStats::m_ptr", False),
-    ("src/strings/fixed_string.c", "GHIDRA_FIXEDSTRING_CREATE",
-     "ls::FixedString::Create(char const*, int)", False),
-    ("src/entity/entity_system.c", "OFFSET_EOCSERVER_SINGLETON_PTR",
-     "esv::EocServer::m_ptr", False),
-    ("src/entity/entity_system.c", "OFFSET_EOCCLIENT_SINGLETON_PTR",
-     "ecl::EocClient::m_ptr", False),
-    ("src/entity/entity_system.c", "OFFSET_LEGACY_IS_IN_COMBAT",
-     "eoc::CombatHelpers::LEGACY_IsInCombat", False),
-    ("src/entity/entity_system.c", "OFFSET_LEGACY_GET_COMBAT_FROM_GUID",
-     "eoc::CombatHelpers::LEGACY_GetCombatFromGuid", False),
-    ("src/entity/entity_storage.h", "ADDR_STORAGE_CONTAINER_TRYGET",
-     "ecs::EntityStorageContainer::TryGet", False),
-    ("src/stats/prototype_managers.c", "OFFSET_BOOST_PROTOTYPE_MANAGER_PTR",
-     "eoc::BoostPrototypeManager::m_ptr", False),
-    ("src/stats/prototype_managers.c", "OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR",
-     "eoc::Passives::m_ptr", False),
-    ("src/stats/prototype_managers.c", "OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR",
-     "eoc::InterruptPrototypeManager::m_ptr", False),
-    ("src/stats/prototype_managers.c", "OFFSET_SPELL_PROTOTYPE_MANAGER_PTR",
-     "eoc::SpellPrototypeManager::m_ptr", False),
-    ("src/stats/prototype_managers.c", "OFFSET_STATUS_PROTOTYPE_MANAGER_PTR",
-     "eoc::StatusPrototypeManager::m_ptr", False),
-    ("src/stats/prototype_managers.c", "OFFSET_SPELL_PROTOTYPE_INIT",
-     "eoc::SpellPrototype::Init", False),
-    ("src/game/focus_hack.c", "BASEAPP_S_APPINSTANCE_VA",
-     "BaseApp::s_AppInstance", False),
-    ("src/resource/resource_manager.c", "OFFSET_RESOURCEMANAGER_PTR",
-     "ls::ResourceManager::m_ptr", True),
-    ("src/resource/resource_manager.c", "OFFSET_GETRESOURCE_FUNC",
-     "ls::ResourceContainer::GetResource", True),
-    ("src/localization/localization.c", "LOCA_REPO_OFFSET",
-     "ls::TranslatedStringRepository::m_ptr", True),
-    ("src/localization/localization.c", "LOCA_TRYGET_OFFSET",
-     "ls::TranslatedStringRepository::TryGet", True),
-    ("src/localization/localization.c", "LOCA_FIXEDSTRING_CREATE",
-     "ls::FixedString::Create(char const*, int)", True),
-    ("src/localization/localization.c", "LOCA_ADDTRANSLATEDSTRING",
-     "ls::TranslatedStringRepository::AddTranslatedString", True),
-    ("src/audio/audio_manager.c", "OFFSET_STDSTRING_CTOR",
-     "ls::STDString::STDString(char const*)", True),
-    # Functor targets are LOCAL text symbols. nm_symbols intentionally invokes
-    # plain `nm` (without -g/-U) so these entries participate in the same audit.
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_STATS_FUNCTOR",
-     "ExecuteStatsFunctor(eoc::StatsFunctorBase const*, unsigned long, "
-     "esv::functor::AttackTargetContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::AttackTargetContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_ATTACK_POSITION",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::AttackPositionContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_MOVE",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::MoveContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_TARGET",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::TargetContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKED",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::NearbyAttackedContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKING",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::NearbyAttackingContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_EQUIP",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::EquipContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_SOURCE",
-     "ExecuteStatsFunctors(eoc::StatsFunctorList const*, "
-     "esv::functor::SourceContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_EXECUTE_FUNCTORS_INTERRUPT",
-     "ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, "
-     "esv::functor::InterruptContextData&)", False),
-    ("src/stats/functor_types.h", "ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS",
-     "ProcessDealDamageFunctors(ecs::WorldView<", False),
+BASELINE_DIRECT_CHECKS = [
+    ("ADDR_GETMESSAGE", "net::MessageFactory::GetFreeMessage(int)"),
+    ("VA_BINK_LOAD_VIDEO", "bik::BinkManager::LoadVideo(ls::Path const&)"),
+    ("OFFSET_RPGSTATS_M_PTR", "RPGStats::m_ptr"),
+    ("OFFSET_RPGSTATS", "RPGStats::m_ptr"),
+    ("GHIDRA_FIXEDSTRING_CREATE", "ls::FixedString::Create(char const*, int)"),
+    ("OFFSET_EOCSERVER_SINGLETON_PTR", "esv::EocServer::m_ptr"),
+    ("OFFSET_EOCCLIENT_SINGLETON_PTR", "ecl::EocClient::m_ptr"),
+    ("OFFSET_LEGACY_IS_IN_COMBAT", "eoc::CombatHelpers::LEGACY_IsInCombat(ls::ID<ecs::EntityHandleTraits> const&, ecs::EntityWorld&)"),
+    ("OFFSET_LEGACY_GET_COMBAT_FROM_GUID", "eoc::CombatHelpers::LEGACY_GetCombatFromGuid(ls::Guid const&, ecs::EntityWorld&)"),
+    ("ADDR_STORAGE_CONTAINER_TRYGET", "ecs::EntityStorageContainer::TryGet(ls::ID<ecs::EntityHandleTraits>)"),
+    ("OFFSET_BOOST_PROTOTYPE_MANAGER_PTR", "eoc::BoostPrototypeManager::m_ptr"),
+    ("OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR", "eoc::Passives::m_ptr"),
+    ("OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR", "eoc::InterruptPrototypeManager::m_ptr"),
+    ("OFFSET_SPELL_PROTOTYPE_MANAGER_PTR", "eoc::SpellPrototypeManager::m_ptr"),
+    ("OFFSET_STATUS_PROTOTYPE_MANAGER_PTR", "eoc::StatusPrototypeManager::m_ptr"),
+    ("OFFSET_SPELL_PROTOTYPE_INIT", "eoc::SpellPrototype::Init(ls::FixedString const&)"),
+    ("BASEAPP_S_APPINSTANCE_VA", "BaseApp::s_AppInstance"),
+    ("OFFSET_RESOURCEMANAGER_PTR", "ls::ResourceManager::m_ptr"),
+    ("OFFSET_GETRESOURCE_FUNC", "ls::ResourceContainer::GetResource(ls::EResourceType, ls::FixedString const&) const"),
+    ("LOCA_REPO_OFFSET", "ls::TranslatedStringRepository::m_ptr"),
+    ("LOCA_TRYGET_OFFSET", "ls::TranslatedStringRepository::TryGet(ls::RuntimeStringHandle const&, ls::identity::EIdentity, ls::identity::EIdentity) const"),
+    ("LOCA_FIXEDSTRING_CREATE", "ls::FixedString::Create(char const*, int)"),
+    ("LOCA_ADDTRANSLATEDSTRING", "ls::TranslatedStringRepository::AddTranslatedString(ls::RuntimeStringHandle, ls::_StringView<char>, ls::TranslatedMapRepo<ls::RuntimeStringNoVersionHashOps>*, ls::EnumFlags<ls::EAddFlags>)"),
+    ("OFFSET_STDSTRING_CTOR", "ls::STDString::STDString(char const*)"),
+    ("ADDR_EXECUTE_STATS_FUNCTOR", "ExecuteStatsFunctor(eoc::StatsFunctorBase const*, unsigned long, esv::functor::AttackTargetContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_ATTACK_TARGET", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::AttackTargetContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_ATTACK_POSITION", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::AttackPositionContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_MOVE", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::MoveContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_TARGET", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::TargetContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKED", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::NearbyAttackedContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_NEARBY_ATTACKING", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::NearbyAttackingContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_EQUIP", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::EquipContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_SOURCE", "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::SourceContextData&)"),
+    ("ADDR_EXECUTE_FUNCTORS_INTERRUPT", "esv::functor::ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, esv::functor::InterruptContextData&)"),
+    ("ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS", "(anonymous namespace)::ProcessDealDamageFunctors(ecs::WorldView<eoc::repose::StateComponent const, ls::PhysicsComponent const, ls::TransformComponent const, ls::uuid::Component const>&, eoc::StatsFunctorBase const&, ls::ID<ecs::EntityHandleTraits> const&, ls::Optional<Vector3f> const&, eoc::spell_cast::StateComponent const&, ls::EnumFlags<eoc::EDamageEffectFlag> const&, EAbility const&, ESpellAttackType const&, eoc::interrupt::Dependency const&, eoc::interrupt::Dependency const&, int, ls::DynamicArray<eoc::interrupt::InterruptEvent, ls::TaggedAllocator<int>>&)"),
 ]
 
-# Expected symbol per 7209685-row field in offset_table.c.
-# None = documented exclusion (see module docstring).
+BASELINE_ADDRESS_CHECK_COUNT = 68
+
+MANIFEST = json.loads(OFFSET_MANIFEST.read_text())
 TABLE_FIELD_SYMBOLS = {
-    "eocserver_ptr":           "esv::EocServer::m_ptr",
-    "eocclient_ptr":           "ecl::EocClient::m_ptr",
-    "spell_proto_mgr_ptr":     "eoc::SpellPrototypeManager::m_ptr",
-    "rpgstats_ptr":            "RPGStats::m_ptr",
-    "resource_mgr_ptr":        "ls::ResourceManager::m_ptr",
-    "level_mgr_ptr":           "esv::LevelManager::m_ptr",
-    "global_template_mgr_ptr": "ls::GlobalTemplateManager::m_ptr",
-    "cache_template_mgr_ptr":  "esv::CacheTemplateManager::m_ptr",
-    "level_cache_mgr_ptr":     "esv::Level::s_CacheTemplateManager",
-    "staticdata_mstate_ptr":   None,  # __got slot — see test_mstate_got_slot
-    "gst_ptr":                 "ls::gst::s_Instance",
-    "global_switches_ptr":     None,  # anonymous __common slot, no symbol
-    "fn_feat_getfeats":        "eoc::FeatManager::GetFeats",
-    "fn_getallfeats":          "eoc::character_creation::GetAllFeats",
-    "fn_get_background":       "ImmutableDataHeadmaster::Get<eoc::BackgroundManager>",
-    "fn_get_origin":           "ImmutableDataHeadmaster::Get<eoc::OriginManager>",
-    "fn_get_class":            "ImmutableDataHeadmaster::Get<eoc::ClassDescriptions>",
-    "fn_get_progression":      "ImmutableDataHeadmaster::Get<eoc::ProgressionManager>",
-    "fn_get_actionresource":   "ImmutableDataHeadmaster::Get<eoc::ActionResourceTypes>",
-    "fn_get_template_raw":     "ls::GlobalTemplateManager::GetTemplateRaw",
-    "fn_cache_template":       "ls::CacheTemplateManagerBase::CacheTemplate",
-    "fn_aigrid_to_tile_pos":   "eoc::AiGrid::ToTilePos",
-    "fn_aigrid_get_metadata":  "eoc::AiGrid::GetMetaData",
-    "fn_aigrid_remove_path":   "eoc::AiGrid::RemovePath",
-    "fn_aigrid_find_path":     "eoc::AiGrid::FindPath",
-    "fn_aigrid_find_path_immediate": "eoc::AiGrid::FindPathImmediate",
-    "fn_try_get_uuid_mapping": "ToHandleMappingComponent",
-    "fn_storage_tryget":       "ecs::EntityStorageContainer::TryGet",
-    "fn_spell_proto_init":     "eoc::SpellPrototype::Init",
-    "fn_status_proto_init":    "eoc::StatusPrototype::Init",
-    "fn_interrupt_proto_get":  "eoc::InterruptPrototypeManager::GetPrototype",
-    "fn_passives_get":         "eoc::Passives::Get",
-    "component_data_shift":    None,  # delta, not an address
-    "osiris_interface_ptr":    None,  # no symbol — disasm-audited, see
-                                      # test_osiris_interface_slot_matches_disasm
+    entry["field"]: entry["symbol"]
+    for entry in MANIFEST["data_singletons"]
+    if entry.get("method", "symbol") == "symbol"
+}
+TABLE_FIELD_SYMBOLS.update({
+    entry["field"]: entry["symbol"]
+    for entry in MANIFEST["offset_table_functions"]
+})
+
+BASELINE_TABLE_FIELDS = (
+    "eocserver_ptr", "eocclient_ptr", "spell_proto_mgr_ptr", "rpgstats_ptr",
+    "resource_mgr_ptr", "level_mgr_ptr", "global_template_mgr_ptr",
+    "cache_template_mgr_ptr", "level_cache_mgr_ptr", "gst_ptr",
+    "fn_feat_getfeats", "fn_getallfeats", "fn_get_background",
+    "fn_get_origin", "fn_get_class", "fn_get_progression",
+    "fn_get_actionresource", "fn_get_template_raw", "fn_cache_template",
+    "fn_aigrid_to_tile_pos", "fn_aigrid_get_metadata",
+    "fn_aigrid_remove_path", "fn_aigrid_find_path",
+    "fn_aigrid_find_path_immediate", "fn_try_get_uuid_mapping",
+    "fn_storage_tryget", "fn_spell_proto_init", "fn_status_proto_init",
+    "fn_interrupt_proto_get", "fn_passives_get",
+)
+ADDITIONAL_TABLE_FIELDS = (
+    "translated_string_repo_ptr",
+    # Moved out of hardcoded consumer defines 2026-08-04 (Wave 2 lead):
+    # prototype_managers.c singletons + focus_hack.c BaseApp slot.
+    "status_proto_mgr_ptr", "passives_ptr", "interrupt_proto_mgr_ptr",
+    "boost_proto_mgr_ptr", "baseapp_instance_ptr",
+)
+EXPECTED_MANUAL_FIELDS = ("global_switches_ptr", "osiris_interface_ptr")
+NON_SYMBOL_FIELDS = {
+    "staticdata_mstate_ptr", "global_switches_ptr", "osiris_interface_ptr",
+    "component_data_shift", "component_data_shift_valid", "game_functions",
 }
 
 MSTATE_GOT_SYMBOL = "__ZN2ls11TypeContextINS_23ImmutableDataHeadmasterEE7m_StateE"
@@ -180,54 +137,116 @@ MSTATE_GOT_SYMBOL = "__ZN2ls11TypeContextINS_23ImmutableDataHeadmasterEE7m_State
 IMAGE_BASE = 0x100000000
 
 
-def _parse_define(source: Path, name: str) -> int:
-    text = source.read_text()
-    m = re.search(rf"#define\s+{name}\s+(0x[0-9a-fA-F]+)", text)
-    assert m, f"{name} not found in {source}"
-    return int(m.group(1), 16)
+def _parse_system_typeids() -> list[tuple[str, str, int]]:
+    """Parse (public_name, engine_class, va) from GENERATED_SYSTEM_TYPEID_ENTRIES."""
+    text = GENERATED_TYPEIDS_H.read_text()
+    results = []
+    for m in re.finditer(
+            r'X\("([^"]+)",\s*"([^"]+)",\s*(0x[0-9a-fA-F]+)ULL\)',
+            text):
+        results.append((m.group(1), m.group(2), int(m.group(3), 16)))
+    return results
+
+
+SYSTEM_TYPEIDS = _parse_system_typeids() if GENERATED_TYPEIDS_H.exists() else []
+
+
+def _installed_version() -> str:
+    plist = BG3_APP_BUNDLE / "Contents/Info.plist"
+    if not plist.exists():
+        pytest.skip("BG3 Info.plist not installed")
+    with plist.open("rb") as stream:
+        version = plistlib.load(stream).get("CFBundleShortVersionString")
+    assert version, f"CFBundleShortVersionString missing from {plist}"
+    return version
+
+
+def _extract_table_block(version: str) -> str:
+    text = OFFSET_TABLE_C.read_text()
+    marker = re.search(rf'\.version\s*=\s*"{re.escape(version)}"', text)
+    assert marker, f"no {version} row in offset_table.c"
+    start = text.rfind("{", 0, marker.start())
+    depth = 0
+    for pos in range(start, len(text)):
+        if text[pos] == "{":
+            depth += 1
+        elif text[pos] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:pos + 1]
+    raise AssertionError(f"unterminated {version} row in offset_table.c")
 
 
 def _parse_table_row(version: str) -> dict[str, int]:
     """Parse one VersionOffsets struct literal out of offset_table.c."""
-    text = OFFSET_TABLE_C.read_text()
-    block = re.search(
-        rf'\.version\s*=\s*"{re.escape(version)}",(.*?)\n    \}},',
-        text, re.DOTALL,
-    )
-    assert block, f"no {version} row in offset_table.c"
     fields = {}
-    for m in re.finditer(r"\.(\w+)\s*=\s*(-?0x[0-9a-fA-F]+|\d+)", block.group(1)):
-        fields[m.group(1)] = int(m.group(2), 16 if "0x" in m.group(2) else 10)
+    for m in re.finditer(
+            r"\.(\w+)\s*=\s*(-?0x[0-9a-fA-F]+|\d+|true|false)",
+            _extract_table_block(version)):
+        raw = m.group(2)
+        fields[m.group(1)] = (
+            raw == "true" if raw in ("true", "false")
+            else int(raw, 16 if "0x" in raw else 10)
+        )
     return fields
 
 
-def _parse_remap_rows() -> list[tuple[int, int]]:
-    """Parse the two-column g_fn_remap table out of offset_table.c."""
-    text = OFFSET_TABLE_C.read_text()
-    block = re.search(
-        r"g_fn_remap\[\]\s*=\s*\{(.*?)\n\};", text, re.DOTALL)
-    assert block, "g_fn_remap not found in offset_table.c"
-    rows = []
-    for m in re.finditer(
-            r"\{\s*(0x[0-9a-fA-F]+)\s*,\s*(0x[0-9a-fA-F]+|0)\s*\}",
-            block.group(1)):
-        rows.append((int(m.group(1), 16), int(m.group(2), 16)))
-    assert rows, "no rows parsed from g_fn_remap"
-    return rows
+def _parse_game_functions(version: str) -> dict[str, int]:
+    functions = {
+        match.group(1): int(match.group(2), 16)
+        for match in re.finditer(
+            r"\[(GAME_FN_[A-Z0-9_]+)\]\s*=\s*(0x[0-9a-fA-F]+|0)",
+            _extract_table_block(version),
+        )
+    }
+    assert functions, f"no GameFunctionId entries in {version} row"
+    return functions
+
+
+def _claimed_va_for_symbol(version: str, symbol: str) -> int:
+    row = _parse_table_row(version)
+    for field, expected_symbol in TABLE_FIELD_SYMBOLS.items():
+        if expected_symbol == symbol:
+            assert row.get(field), f"{field} is zero/missing in {version} row"
+            return row[field] + IMAGE_BASE
+
+    game = _parse_game_functions(version)
+    for entry in MANIFEST["game_functions"]:
+        if entry["symbol"] == symbol:
+            offset = game.get(entry["id"])
+            assert offset, f"{entry['id']} is zero/missing in {version} row"
+            return offset + IMAGE_BASE
+
+    for entry in MANIFEST["source_addresses"]:
+        if entry["symbol"] == symbol:
+            claimed = entry["addresses"].get(version)
+            assert claimed, f"{entry['name']} has no {version} address claim"
+            return int(claimed, 16)
+
+    raise AssertionError(f"exact symbol has no installed-version address recipe: {symbol}")
 
 
 def _all_audited_vas() -> set[int]:
-    vas = set()
-    for rel_path, name, _sym, base_relative in AUDITED_OFFSETS:
-        value = _parse_define(REPO_ROOT / rel_path, name)
-        vas.add(value + IMAGE_BASE if base_relative else value)
-    row = _parse_table_row("4.1.1.7209685")
-    for field, sym in TABLE_FIELD_SYMBOLS.items():
-        if sym is not None and row.get(field):
+    version = _installed_version()
+    vas = {
+        _claimed_va_for_symbol(version, symbol)
+        for _name, symbol in BASELINE_DIRECT_CHECKS
+    }
+    row = _parse_table_row(version)
+    for field in BASELINE_TABLE_FIELDS + ADDITIONAL_TABLE_FIELDS:
+        if row.get(field):
             vas.add(row[field] + IMAGE_BASE)
-    for _old, new in _parse_remap_rows():
-        if new:
-            vas.add(new)
+    vas.update(
+        offset + IMAGE_BASE
+        for offset in _parse_game_functions(version).values()
+        if offset
+    )
+    vas.update(
+        int(anchor["addresses"][version], 16)
+        for anchor in MANIFEST["typeid_shift_anchors"]
+        if version in anchor.get("addresses", {})
+    )
+    vas.update(va for _, _, va in SYSTEM_TYPEIDS)
     return vas
 
 
@@ -241,7 +260,8 @@ def nm_symbols():
 
     wanted = {f"{va:016x}" for va in _all_audited_vas()}
     nm = subprocess.run(
-        ["nm", str(BG3_EXEC)], capture_output=True, text=True, timeout=300
+        ["nm", "-arch", "arm64", str(BG3_EXEC)],
+        capture_output=True, text=True, timeout=300,
     )
     if nm.returncode != 0:
         pytest.skip(f"nm failed: {nm.stderr[:200]}")
@@ -267,36 +287,46 @@ def _assert_symbol_at(found, va, name, symbol):
         f"likely updated and this offset is STALE. Re-derive it via: "
         f"nm <BG3 binary> | c++filt | grep '{symbol}'"
     )
-    assert any(symbol in s for s in symbols_here), (
+    assert symbol in symbols_here, (
         f"{name}: VA {va:#x} resolves to {symbols_here}, expected a symbol "
-        f"containing '{symbol}' — offset is aimed at the WRONG target. "
+        f"exactly equal to '{symbol}' — offset is aimed at the WRONG target. "
         f"Patching/reading it would corrupt behavior."
     )
 
 
 @pytest.mark.parametrize(
-    "rel_path,name,symbol,base_relative",
-    AUDITED_OFFSETS,
-    ids=[entry[1] for entry in AUDITED_OFFSETS],
+    "name,symbol",
+    BASELINE_DIRECT_CHECKS,
+    ids=[entry[0] for entry in BASELINE_DIRECT_CHECKS],
 )
-def test_offset_matches_symbol(nm_symbols, rel_path, name, symbol, base_relative):
-    value = _parse_define(REPO_ROOT / rel_path, name)
-    va = value + IMAGE_BASE if base_relative else value
+def test_baseline_direct_address_matches_symbol(nm_symbols, name, symbol):
+    va = _claimed_va_for_symbol(_installed_version(), symbol)
     _assert_symbol_at(nm_symbols, va, name, symbol)
 
 
 @pytest.mark.parametrize(
     "field",
-    [f for f, s in TABLE_FIELD_SYMBOLS.items() if s is not None],
+    BASELINE_TABLE_FIELDS,
 )
-def test_offset_table_7209685_row(nm_symbols, field):
-    row = _parse_table_row("4.1.1.7209685")
-    assert field in row, f"{field} missing from 7209685 row"
+def test_baseline_offset_table_installed_row(nm_symbols, field):
+    version = _installed_version()
+    row = _parse_table_row(version)
+    assert field in row, f"{field} missing from {version} row"
     value = row[field]
-    assert value, f"{field} is 0 in the 7209685 row (feature silently disabled)"
+    assert value, f"{field} is 0 in the {version} row (feature silently disabled)"
     _assert_symbol_at(
         nm_symbols, value + IMAGE_BASE,
-        f"offset_table[7209685].{field}", TABLE_FIELD_SYMBOLS[field])
+        f"offset_table[{version}].{field}", TABLE_FIELD_SYMBOLS[field])
+
+
+@pytest.mark.parametrize("field", ADDITIONAL_TABLE_FIELDS)
+def test_new_offset_table_field_matches_symbol(nm_symbols, field):
+    version = _installed_version()
+    row = _parse_table_row(version)
+    assert row.get(field), f"{field} is zero/missing in {version} row"
+    _assert_symbol_at(
+        nm_symbols, row[field] + IMAGE_BASE,
+        f"offset_table[{version}].{field}", TABLE_FIELD_SYMBOLS[field])
 
 
 def test_offset_table_row_fields_complete():
@@ -305,9 +335,9 @@ def test_offset_table_row_fields_complete():
     struct = re.search(r"typedef struct \{(.*?)\} VersionOffsets;", header,
                        re.DOTALL)
     assert struct
-    declared = set(re.findall(r"u?intptr_t\s+(\w+);", struct.group(1)))
-    declared.discard("version")
-    classified = set(TABLE_FIELD_SYMBOLS)
+    declared = set(re.findall(
+        r"(?:u?intptr_t|bool)\s+(\w+)(?:\[[^]]+\])?;", struct.group(1)))
+    classified = set(TABLE_FIELD_SYMBOLS) | NON_SYMBOL_FIELDS
     assert declared == classified, (
         f"offset_table.h fields not classified in TABLE_FIELD_SYMBOLS: "
         f"{declared - classified or classified - declared} — every new field "
@@ -325,8 +355,7 @@ def test_offset_manifest_covers_all_function_fields():
     assert struct
     declared = set(re.findall(r"uintptr_t\s+(fn_\w+);", struct.group(1)))
 
-    manifest = json.loads(OFFSET_MANIFEST.read_text())
-    entries = manifest["offset_table_functions"]
+    entries = MANIFEST["offset_table_functions"]
     fields = [entry["field"] for entry in entries]
     assert len(fields) == len(set(fields)), (
         "duplicate offset_table_functions fields in offset_manifest.json"
@@ -344,29 +373,43 @@ def test_offset_manifest_covers_all_function_fields():
         )
 
 
-def test_remap_7209685_column(nm_symbols):
-    """Every nonzero 7209685 remap target must be a real symbol."""
-    for old, new in _parse_remap_rows():
-        if new:
-            symbols_here = nm_symbols.get(new, [])
-            assert symbols_here, (
-                f"remap {old:#x} -> {new:#x}: no symbol at target VA — "
-                f"stale remap would call the wrong function"
-            )
+def test_baseline_game_function_table(nm_symbols):
+    """The legacy remap-table case, now using typed installed-version IDs.
+
+    It covers the original 18 functions plus BinkManager::LoadVideo and
+    CRPGStats_Modifier_ValueList::Insert as ordinary IDs.
+    """
+    version = _installed_version()
+    functions = _parse_game_functions(version)
+    for entry in MANIFEST["game_functions"]:
+        offset = functions.get(entry["id"])
+        assert offset, f"{entry['id']} is zero/missing in {version} row"
+        _assert_symbol_at(
+            nm_symbols, offset + IMAGE_BASE,
+            f"offset_table[{version}].{entry['id']}", entry["symbol"])
 
 
-def test_remap_columns_collision_free():
-    """Either-column matching requires globally unique addresses."""
-    seen: dict[int, int] = {}
-    for i, (old, new) in enumerate(_parse_remap_rows()):
-        for addr in (old, new):
-            if addr == 0:
-                continue
-            assert addr not in seen, (
-                f"address {addr:#x} appears in remap rows {seen[addr]} and "
-                f"{i} — either-column lookup would be ambiguous"
-            )
-            seen[addr] = i
+def test_game_function_ids_and_version_addresses_are_unique():
+    """Stable IDs and nonzero addresses must be unique within each version."""
+    header = OFFSET_TABLE_H.read_text()
+    enum = re.search(r"typedef enum GameFunctionId \{(.*?)\} GameFunctionId;",
+                     header, re.DOTALL)
+    assert enum, "GameFunctionId enum missing"
+    declared = re.findall(r"\b(GAME_FN_[A-Z0-9_]+)\b", enum.group(1))
+    declared.remove("GAME_FN_COUNT")
+    manifest_ids = [entry["id"] for entry in MANIFEST["game_functions"]]
+    assert declared == manifest_ids, "GameFunctionId enum and manifest differ"
+
+    text = OFFSET_TABLE_C.read_text()
+    versions = re.findall(r'\.version\s*=\s*"([\d.]+)"', text)
+    for version in versions:
+        functions = _parse_game_functions(version)
+        assert set(functions) == set(declared), (
+            f"{version} function IDs incomplete: "
+            f"missing={sorted(set(declared) - set(functions))}")
+        nonzero = [value for value in functions.values() if value]
+        assert len(nonzero) == len(set(nonzero)), (
+            f"{version} has duplicate nonzero GameFunctionId addresses")
 
 
 def test_mstate_got_slot():
@@ -378,7 +421,8 @@ def test_mstate_got_slot():
     if not shutil.which("otool"):
         pytest.skip("otool unavailable")
 
-    row = _parse_table_row("4.1.1.7209685")
+    version = _installed_version()
+    row = _parse_table_row(version)
     va = row["staticdata_mstate_ptr"] + IMAGE_BASE
     out = subprocess.run(
         ["otool", "-arch", "arm64", "-Iv", str(BG3_EXEC)],
@@ -403,6 +447,37 @@ def test_mstate_got_slot():
 OSIRIS_QUERY_MANGLED = "__ZN3osi15OsirisInterface11OsirisQueryEjP16COsiArgumentDesc"
 
 
+def test_global_switches_expected_manual_field():
+    version = _installed_version()
+    row = _parse_table_row(version)
+    if not row.get("global_switches_ptr"):
+        pytest.xfail(
+            f"expected-manual: offset_table[{version}].global_switches_ptr "
+            "is zero pending Wave 2A disassembly"
+        )
+    assert row["global_switches_ptr"] > 0
+
+
+def test_scalar_typeid_shift_rejected(nm_symbols):
+    """A multi-delta TypeId family must never claim one scalar migration."""
+    version = _installed_version()
+    deltas = set()
+    for anchor in MANIFEST["typeid_shift_anchors"]:
+        claimed = int(anchor["addresses"][version], 16)
+        _assert_symbol_at(
+            nm_symbols, claimed, "component_data_shift anchor", anchor["symbol"])
+        deltas.add(claimed - int(anchor["baseline"], 16))
+
+    row = _parse_table_row(version)
+    if len(deltas) > 1:
+        assert row["component_data_shift"] == 0, (
+            f"{version} has {len(deltas)} TypeId deltas but claims scalar "
+            f"{row['component_data_shift']:#x}")
+        assert row["component_data_shift_valid"] is False
+    else:
+        assert row["component_data_shift_valid"] is True
+
+
 def test_osiris_interface_slot_matches_disasm():
     """osiris_interface_ptr (the osi::OsirisInterface global instance slot,
     used by osi_read_param_defs in main.c) has no nm symbol. Its authoritative
@@ -416,7 +491,13 @@ def test_osiris_interface_slot_matches_disasm():
     if not shutil.which("otool"):
         pytest.skip("otool unavailable")
 
-    row = _parse_table_row("4.1.1.7209685")
+    version = _installed_version()
+    row = _parse_table_row(version)
+    if not row.get("osiris_interface_ptr"):
+        pytest.xfail(
+            f"expected-manual: offset_table[{version}].osiris_interface_ptr "
+            "is zero pending Wave 2A disassembly"
+        )
     expected = row["osiris_interface_ptr"] + IMAGE_BASE
     out = subprocess.run(
         ["otool", "-arch", "arm64", "-tV", "-p", OSIRIS_QUERY_MANGLED,
@@ -481,17 +562,15 @@ def test_functor_gate_is_independent():
         not in main_c, "functor install re-coupled to global version match"
 
 
-def test_interrupt_remap_uses_entity_world_wrapper():
+def test_interrupt_game_function_uses_entity_world_wrapper():
     """The enabled 7209685 Interrupt target must carry the full machine ABI:
     hidden result_out first (esv::functor::Result output storage, invisible in
     demangled names), then ecs::EntityWorld&. Dropping result_out shifts every
     register and crashes in the original body (2026-07-29 SIGSEGV,
     docs/bugs/wave2-functor-crash-analysis.md)."""
-    rows = _parse_remap_rows()
-    interrupt = [new for old, new in rows if old == 0x1057965E4]
-    assert interrupt, "Interrupt row (0x1057965e4) missing from g_fn_remap"
-    assert interrupt[0] == 0x105786548, (
-        "Interrupt remap must target the nm-verified 7209685 overload")
+    functions = _parse_game_functions("4.1.1.7209685")
+    assert functions["GAME_FN_EXECUTE_FUNCTORS_INTERRUPT"] == 0x05786548, (
+        "Interrupt ID must target the nm-verified 7209685 overload")
     wrappers = (REPO_ROOT / "src/stats/functor_hooks.c").read_text()
     assert re.search(
         r"hook_ExecuteFunctors_Interrupt\s*\(\s*void\s*\*\s*result_out\s*,"
@@ -508,3 +587,13 @@ def test_interrupt_remap_uses_entity_world_wrapper():
         "Ordinary ExecuteStatsFunctors wrappers must accept the hidden "
         "result_out leading argument (see wave2-functor-crash-analysis.md)"
     )
+
+
+@pytest.mark.parametrize(
+    "public_name,engine_class,va",
+    SYSTEM_TYPEIDS,
+    ids=[entry[0] for entry in SYSTEM_TYPEIDS],
+)
+def test_system_typeid_matches_symbol(nm_symbols, public_name, engine_class, va):
+    expected = f"ls::TypeId<{engine_class}, ecs::SystemsContext>::m_TypeIndex"
+    _assert_symbol_at(nm_symbols, va, f"SystemTypeId[{public_name}]", expected)

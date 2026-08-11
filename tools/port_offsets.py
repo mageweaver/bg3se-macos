@@ -100,28 +100,47 @@ def got_slots(thin):
     return out
 
 
-def resolve(manifest, symtab, thin):
+def resolve(manifest, symtab, thin, version):
     """Return a dict of resolved values + a list of (level, message) issues."""
     issues = []
-    out = {"fn": {}, "data": {}, "remap": [], "exported": {}, "constants": [], "struct": []}
+    out = {
+        "fn": {}, "data": {}, "game": {}, "source": {}, "struct": [],
+        "data_shift": None, "data_shift_valid": False,
+    }
 
-    # 1. derive component_data_shift from the anchor.
-    # NOTE: the anchor baseline is the 7209685 address (the vintage of the
-    # compiled-in constants), so the result IS component_data_shift for the
-    # target version: 0 on 7209685 itself, -0x8000 on 6995620.
-    # It is used ONLY for TypeId globals (proven-uniform family), never for
-    # the data singletons below — those resolve per-entry.
-    anchor = manifest["data_shift_anchor"]
-    a_addr, a_note = lookup(symtab, anchor["symbol"])
-    if a_addr is None:
-        issues.append(("FATAL", f"data_shift anchor '{anchor['symbol']}' not found — "
-                                "cannot derive component_data_shift. Pick another anchor."))
-        return out, issues
-    shift = a_addr - int(anchor["baseline"], 16)
-    out["data_shift"] = shift
-    issues.append(("INFO", f"component_data_shift (delta from {manifest.get('constants_vintage','7209685')} "
-                           f"constants): {shift:#x} "
-                           f"(anchor {anchor['symbol'].split('(')[0]} {hx(int(anchor['baseline'],16))} -> 0x{a_addr:x})"))
+    # 1. A scalar TypeId migration is valid only when every shared-entry
+    # anchor has exactly one delta. One convenient anchor is not evidence that
+    # the family moved uniformly (7398727 has six observed delta families).
+    deltas = {}
+    for anchor in manifest["typeid_shift_anchors"]:
+        addr, note = lookup(symtab, anchor["symbol"])
+        if addr is None:
+            issues.append(("ERROR", f"component_data_shift anchor unresolved: "
+                           f"{anchor['symbol']}"))
+            continue
+        claimed = anchor.get("addresses", {}).get(version)
+        if claimed is not None and int(claimed, 16) != addr:
+            issues.append(("ERROR", f"component_data_shift anchor claimed "
+                           f"{claimed} MOVED to 0x{addr:x}: {anchor['symbol']}"))
+        delta = addr - int(anchor["baseline"], 16)
+        deltas.setdefault(delta, []).append(anchor["symbol"])
+        if note:
+            issues.append(("WARN", f"component_data_shift anchor {anchor['symbol']}: {note}"))
+
+    if len(deltas) == 1 and len(manifest["typeid_shift_anchors"]) == sum(map(len, deltas.values())):
+        shift = next(iter(deltas))
+        out["data_shift"] = shift
+        out["data_shift_valid"] = True
+        issues.append(("INFO", f"component_data_shift validated across "
+                       f"{sum(map(len, deltas.values()))} shared TypeId anchors: {shift:#x}"))
+    elif deltas:
+        detail = "; ".join(
+            f"{delta:#x}: {', '.join(symbols)}"
+            for delta, symbols in sorted(deltas.items())
+        )
+        issues.append(("WARN", "component_data_shift REJECTED: shared TypeId "
+                       f"entries have {len(deltas)} deltas ({detail}). Resolve "
+                       "TypeIds independently; no scalar was emitted."))
 
     # 2. offset_table functions (symbol)
     for e in manifest["offset_table_functions"]:
@@ -163,48 +182,48 @@ def resolve(manifest, symtab, thin):
                                         f"'{e['symbol']}' not uniquely found "
                                         f"({len(cands)} candidates) — resolve via otool -Iv manually"))
         elif method == "disasm":
-            issues.append(("WARN", f"offset_table.{e['field']}: MANUAL — anonymous slot, "
-                                   f"no symbol. {e.get('note','')}"))
+            claimed = e.get("addresses", {}).get(version)
+            out["data"][e["field"]] = int(claimed, 16) if claimed else 0
+            if not claimed:
+                issues.append(("WARN", f"offset_table.{e['field']}: EXPECTED-MANUAL — anonymous slot, "
+                                       f"no {version} derivation. {e.get('note','')}"))
         else:
             issues.append(("ERROR", f"offset_table.{e['field']}: unknown method '{method}'"))
 
-    # 4. exported data (symbol)
-    for e in manifest["exported_data"]:
+    # 4. typed game functions. A version claim is checked rather than trusted;
+    # this is what catches an address previously described as "constant" moving.
+    for e in manifest["game_functions"]:
         addr, note = lookup(symtab, e["symbol"])
         if addr is None:
-            issues.append(("ERROR", f"exported_data {e['name']}: symbol not found"))
-        else:
-            out["exported"][e["name"]] = addr
+            issues.append(("ERROR", f"game function {e['id']}: symbol not found "
+                           f"({e['symbol']})"))
+            continue
+        claimed = e.get("addresses", {}).get(version)
+        if claimed is not None and int(claimed, 16) != addr:
+            issues.append(("ERROR", f"game function {e['id']}: claimed address "
+                           f"{claimed} MOVED to 0x{addr:x} for exact symbol "
+                           f"{e['symbol']}"))
+        out["game"][e["id"]] = addr - GHIDRA_BASE
+        if note:
+            issues.append(("WARN", f"game function {e['id']}: {note}"))
 
-    # 5. remap functions (symbol). ABI CAUTION: resolving a symbol proves the
-    # ADDRESS, not the SIGNATURE the C wrapper expects — entries flagged
-    # abi_changed emit 0 until a matching wrapper exists.
-    for e in manifest["remap_functions"]:
+    # 5. Direct-source inventory not yet represented by VersionOffsets. These
+    # remain named and version-claimed so the audit cannot silently lose them.
+    for e in manifest.get("source_addresses", []):
         addr, note = lookup(symtab, e["symbol"])
         if addr is None:
-            issues.append(("ERROR", f"remap {e['name']}: symbol not found ({e['symbol'][:60]}...)"))
-        else:
-            if e.get("abi_changed"):
-                issues.append(("WARN", f"remap {e['name']}: ABI CHANGED — emitting 0 "
-                                       f"(found at 0x{addr:x}, but the wrapper signature "
-                                       f"does not fit; see manifest _note)"))
-                addr = 0
-            out["remap"].append((int(e["baseline"], 16), addr, e["name"]))
-            if note:
-                issues.append(("WARN", f"remap {e['name']}: {note}"))
+            issues.append(("ERROR", f"source address {e['name']}: symbol not found "
+                           f"({e['symbol']})"))
+            continue
+        claimed = e.get("addresses", {}).get(version)
+        if claimed is not None and int(claimed, 16) != addr:
+            issues.append(("ERROR", f"source address {e['name']}: claimed {claimed} "
+                           f"MOVED to 0x{addr:x} ({e['symbol']})"))
+        out["source"][e["name"]] = addr
+        if note:
+            issues.append(("WARN", f"source address {e['name']}: {note}"))
 
-    # 6. constant functions (verify unchanged)
-    for e in manifest.get("constant_functions", []):
-        addr, note = lookup(symtab, e["symbol"])
-        base = int(e["baseline"], 16)
-        if addr is None:
-            issues.append(("WARN", f"constant {e['name']}: symbol not found — cannot verify it is unchanged"))
-        elif addr != base:
-            issues.append(("ERROR", f"constant {e['name']}: CHANGED {hx(base)} -> 0x{addr:x} "
-                                    "— it is NOT constant for this version; promote it to remap_functions"))
-        out["constants"].append((e["name"], base, addr))
-
-    # 7. struct offsets — carried, not re-resolved (documented)
+    # 6. struct offsets — carried, not re-resolved (documented)
     out["struct"] = manifest.get("struct_offsets", [])
     return out, issues
 
@@ -225,58 +244,85 @@ def emit_c(out, version):
     L.append("        /* Function offsets (symbol-resolved) */")
     for field, val in out["fn"].items():
         L.append(f"        .{field:<24} = {hx(val)},")
-    shift = out["data_shift"]
+    shift = out["data_shift"] if out["data_shift"] is not None else 0
     L.append(f"        .component_data_shift    = {'-' if shift < 0 else ''}{hx(abs(shift))},")
-    L.append("    },")
+    valid = "true" if out["data_shift_valid"] else "false"
+    L.append(f"        .component_data_shift_valid = {valid},")
     L.append("")
-    L.append(f"    /* g_fn_remap: {version} column values (row key = 6995620 baseline). */")
-    L.append("    /* NOTE: g_fn_remap is a fixed two-column {6995620, 7209685} table; a  */")
-    L.append("    /* THIRD version needs a schema change (add a column), not new rows.   */")
-    for base, new, name in out["remap"]:
-        L.append(f"    {{ 0x{base:09x}, 0x{new:09x} }},  // {name}")
+    L.append("        /* Stable function IDs (offsets from the image base) */")
+    L.append("        .game_functions = {")
+    for function_id, val in out["game"].items():
+        L.append(f"            [{function_id}] = {hx(val)},")
+    L.append("        },")
+    L.append("    },")
     return "\n".join(L)
 
 # ----------------------------------------------------------------------------
 # verify: compare generated values against what's in offset_table.c
 # ----------------------------------------------------------------------------
 
+def extract_version_block(txt, version):
+    """Return one VersionOffsets initializer using balanced braces."""
+    marker = re.search(r'\.version\s*=\s*"' + re.escape(version) + r'"', txt)
+    if not marker:
+        return ""
+    start = txt.rfind("{", 0, marker.start())
+    depth = 0
+    for pos in range(start, len(txt)):
+        if txt[pos] == "{":
+            depth += 1
+        elif txt[pos] == "}":
+            depth -= 1
+            if depth == 0:
+                return txt[start:pos + 1]
+    return ""
+
+
 def parse_offset_table_c(version):
-    """Extract the {.field = 0x..} block for `version` and the remap pairs."""
+    """Extract scalar fields and typed game-function entries for `version`."""
     txt = open(OFFSET_TABLE_C).read()
     fields = {}
-    # find the struct entry for this version
-    m = re.search(r'\.version\s*=\s*"' + re.escape(version) + r'"(.*?)\n\s*\},', txt, re.S)
-    if m:
-        for fm in re.finditer(r'\.(\w+)\s*=\s*(-?0x[0-9a-fA-F]+|\d+)', m.group(1)):
+    block = extract_version_block(txt, version)
+    if block:
+        for fm in re.finditer(r'\.(\w+)\s*=\s*(-?0x[0-9a-fA-F]+|\d+|true|false)', block):
             v = fm.group(2)
-            fields[fm.group(1)] = int(v, 16) if "0x" in v else int(v)
-    remap = []
-    rm = re.search(r'g_fn_remap\[\]\s*=\s*\{(.*?)\n\};', txt, re.S)
-    if rm:
-        for pm in re.finditer(r'\{\s*(0x[0-9a-fA-F]+)\s*,\s*(0x[0-9a-fA-F]+|0)\s*\}', rm.group(1)):
-            remap.append((int(pm.group(1), 16), int(pm.group(2), 16)))
-    return fields, remap
+            fields[fm.group(1)] = (
+                v == "true" if v in ("true", "false")
+                else int(v, 16) if "0x" in v else int(v)
+            )
+    game = {
+        fm.group(1): int(fm.group(2), 16)
+        for fm in re.finditer(
+            r'\[(GAME_FN_[A-Z0-9_]+)\]\s*=\s*(0x[0-9a-fA-F]+|0)', block
+        )
+    }
+    return fields, game
 
 def do_verify(out, version):
-    fields, remap = parse_offset_table_c(version)
+    fields, game = parse_offset_table_c(version)
     if not fields:
         print(f"  (no '{version}' entry in offset_table.c to verify against)")
         return 0
     mism = 0
-    gen = {**out["data"], **out["fn"], "component_data_shift": out["data_shift"]}
+    gen = {
+        **out["data"], **out["fn"],
+        "component_data_shift": out["data_shift"] or 0,
+        "component_data_shift_valid": out["data_shift_valid"],
+    }
     for f, v in gen.items():
         cur = fields.get(f)
         if cur is None:
             print(f"  MISSING in offset_table.c: .{f} (generated {hx(v)})"); mism += 1
         elif cur != v:
             print(f"  MISMATCH .{f}: table={hx(cur)} generated={hx(v)}"); mism += 1
-    gen_remap = {b: n for b, n, _ in out["remap"]}
-    cur_remap = dict(remap)
-    for b, n in gen_remap.items():
-        if cur_remap.get(b) != n:
-            print(f"  REMAP MISMATCH 0x{b:x}: table={cur_remap.get(b) and hex(cur_remap[b])} generated=0x{n:x}"); mism += 1
+    for function_id, offset in out["game"].items():
+        if game.get(function_id) != offset:
+            print(f"  GAME FN MISMATCH {function_id}: "
+                  f"table={game.get(function_id) and hex(game[function_id])} "
+                  f"generated=0x{offset:x}")
+            mism += 1
     if mism == 0:
-        print(f"  ✓ all {len(gen)} fields + {len(gen_remap)} remap entries match offset_table.c")
+        print(f"  ✓ all {len(gen)} fields + {len(out['game'])} game functions match offset_table.c")
     return mism
 
 # ----------------------------------------------------------------------------
@@ -301,7 +347,7 @@ def main():
     symtab = build_symbol_map(thin)
     print(f"  {len(symtab)} symbols\n")
 
-    out, issues = resolve(manifest, symtab, thin)
+    out, issues = resolve(manifest, symtab, thin, version)
 
     rank = {"FATAL": 0, "ERROR": 1, "WARN": 2, "INFO": 3}
     for lvl, msg in sorted(issues, key=lambda i: rank.get(i[0], 9)):
@@ -314,7 +360,7 @@ def main():
         sys.exit(1 if (mism or errs) else 0)
 
     # resolve
-    nres = len(out["fn"]) + len(out["data"]) + len(out["remap"]) + len(out["exported"])
+    nres = len(out["fn"]) + len(out["data"]) + len(out["game"]) + len(out["source"])
     print(f"resolved {nres} addresses; {len(out['struct'])} struct offsets carried (stable).")
     if args.emit:
         print("\n" + "=" * 70)

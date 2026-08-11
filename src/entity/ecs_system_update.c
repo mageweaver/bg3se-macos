@@ -2,13 +2,14 @@
  * BG3SE-macOS - Ext.Entity named system update events.
  *
  * Offsets and the eight-step implementation sequence come from
- * ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md (build 4.1.1.7209685).
+ * ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md (build 4.1.1.7398727).
  */
 
 #include "ecs_system_update.h"
 
 #include "entity_events.h"
 #include "entity_system.h"
+#include "generated_typeids.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
@@ -27,7 +28,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define ECS_SYSTEM_UPDATE_VERIFIED_BUILD "4.1.1.7209685"
+#define ECS_SYSTEM_UPDATE_VERIFIED_BUILD "4.1.1.7398727"
 #define ECS_GHIDRA_BASE UINT64_C(0x100000000)
 
 /* ECS_SYSTEM_UPDATE_RECON.md: EntityWorld system array and entry layout. */
@@ -53,85 +54,16 @@ typedef struct {
     uintptr_t type_id_ghidra_address;
 } EcsSystemName;
 
-/*
- * Step 1: public ExtSystemType name -> engine TypeId global. These globals
- * were symbol-verified for 7209685; the public names match Windows ECS.inl.
- */
+#define SYSTEM_ENTRY(public, engine, va) { public, engine, va },
 static const EcsSystemName g_system_names[] = {
-    { "ClientCharacterIconRender", "ecl::CharacterIconRenderSystem", UINT64_C(0x10898afc0) },
-    { "ClientCharacterManager", "ecl::CharacterManager", UINT64_C(0x1088ab820) },
-    { "ClientEquipmentVisuals", "ecl::EquipmentVisualsSystem", UINT64_C(0x1088acbb0) },
-    { "PickingHelper", "ecl::PickingHelperManager", UINT64_C(0x1088a4908) },
-    { "ClientVisual", "ecl::VisualSystem", UINT64_C(0x1088acc30) },
-    { "ClientEffectHandler", "ecl::effect::HandlerSystem", UINT64_C(0x10898b508) },
-    { "ClientVisualsVisibilityState", "ecl::equipment::VisualsVisibilityStateSystem", UINT64_C(0x1088ab4a0) },
-    { "ServerActionResource", "esv::ActionResourceSystem", UINT64_C(0x108915f18) },
-    { "ServerAi", "esv::AiHelpers", UINT64_C(0x108911158) },
-    { "ServerBodyType", "esv::BodyTypeSystem", UINT64_C(0x108a25b40) },
-    { "ServerBoost", "esv::BoostSystem", UINT64_C(0x108902ef8) },
-    { "ServerCapabilities", "esv::CapabilitiesSystem", UINT64_C(0x108912260) },
-    { "ServerDialog", "esv::DialogSystem", UINT64_C(0x1088ea958) },
-    { "ServerDisplayName", "esv::DisplayNameSystem", UINT64_C(0x108902c28) },
-    { "ServerDualWielding", "esv::DualWieldingSystem", UINT64_C(0x1088f77f8) },
-    { "ServerFalling", "esv::FallingSystem", UINT64_C(0x10890bc58) },
-    { "ServerGravity", "esv::GravitySystem", UINT64_C(0x108903e20) },
-    { "ServerLeader", "esv::LeaderSystem", UINT64_C(0x1088e7be8) },
-    { "ServerPartyTeleport", "esv::PartyTeleportSystem", UINT64_C(0x108902400) },
-    { "ServerPassive", "esv::PassiveSystem", UINT64_C(0x108911098) },
-    { "ServerPingRequest", "esv::PingRequestSystem", UINT64_C(0x1088f2658) },
-    { "ServerPlatform", "esv::PlatformSystem", UINT64_C(0x108902e38) },
-    { "ServerRoll", "esv::RollSystem", UINT64_C(0x108912210) },
-    { "ServerSpellCooldown", "esv::SpellCooldownSystem", UINT64_C(0x10890f1c8) },
-    { "ServerSpell", "esv::SpellSystem", UINT64_C(0x108902410) },
-    { "ServerStats", "esv::StatsSystem", UINT64_C(0x108912230) },
-    { "ServerTurnOrder", "esv::TurnOrderSystem", UINT64_C(0x108915ef8) },
-    { "ServerVisual", "esv::VisualSystem", UINT64_C(0x1088fc058) },
-    { "ServerRating", "esv::approval::RatingSystem", UINT64_C(0x108902e88) },
-    { "ServerAttitude", "esv::attitude::UpdateSystem", UINT64_C(0x1089024a0) },
-    { "ServerCombat", "esv::combat::System", UINT64_C(0x108912270) },
-    { "ServerConcentration", "esv::concentration::ConcentrationSystem", UINT64_C(0x10890eef8) },
-    { "ServerExperience", "esv::exp::ExperienceSystem", UINT64_C(0x108911870) },
-    { "ServerFTBZone", "esv::ftb::ZoneSystem", UINT64_C(0x108915f08) },
-    { "ServerGod", "esv::god::GodSystem", UINT64_C(0x108902f78) },
-    { "ServerHit", "esv::hit::HitSystem", UINT64_C(0x1089110a8) },
-    { "ServerInterruptDecision", "esv::interrupt::DecisionSystem", UINT64_C(0x1088fdf08) },
-    { "ServerInterruptManagement", "esv::interrupt::ManagementSystem", UINT64_C(0x1088fdf18) },
-    { "ServerInterruptRequests", "esv::interrupt::RequestsSystem", UINT64_C(0x108a26130) },
-    { "ServerInventoryCanPlace", "esv::inventory::CanPlaceSystem", UINT64_C(0x108a25e30) },
-    { "ServerInventoryReceivalNotification", "esv::inventory::EntityReceivalNotificationSystem", UINT64_C(0x10890bc78) },
-    { "ServerInventoryEquipment", "esv::inventory::EquipmentSystem", UINT64_C(0x10890bc48) },
-    { "ServerInventoryInteractionRequest", "esv::inventory::InteractionRequestSystem", UINT64_C(0x10890eee8) },
-    { "ServerInventoryInteraction", "esv::inventory::InteractionSystem", UINT64_C(0x108a25e40) },
-    { "ServerInventoryLocking", "esv::inventory::LockingSystem", UINT64_C(0x1088ea308) },
-    { "ServerMagicPocketsTracking", "esv::inventory::MagicPocketsTrackingSystem", UINT64_C(0x10890bc88) },
-    { "ServerInventoryManagement", "esv::inventory::ManagementSystem", UINT64_C(0x108900780) },
-    { "ServerNewInventoryMember", "esv::inventory::NewInventoryMemberSystem", UINT64_C(0x1088ea318) },
-    { "ServerInventoryStack", "esv::inventory::StackSystem", UINT64_C(0x10890bc68) },
-    { "ServerTradeBuyback", "esv::inventory::TradeBuybackSystem", UINT64_C(0x1088e9850) },
-    { "ServerTreasureGeneration", "esv::inventory::TreasureGenerationSystem", UINT64_C(0x108902cc8) },
-    { "ServerParty", "esv::party::PartySystem", UINT64_C(0x1088ec720) },
-    { "ServerProgression", "esv::progression::ManagementSystem", UINT64_C(0x108a25680) },
-    { "ServerLongRest", "esv::rest::LongRestSystem", UINT64_C(0x108902ea8) },
-    { "ServerShortRest", "esv::rest::ShortRestSystem", UINT64_C(0x108912250) },
-    { "ServerRestore", "esv::restore::RestoreSystem", UINT64_C(0x1088b8c20) },
-    { "ServerRollSave", "esv::roll::stream::SaveSystem", UINT64_C(0x108909518) },
-    { "ServerShapeshift", "esv::shapeshift::System", UINT64_C(0x108911190) },
-    { "ServerSightViewshed", "esv::sight::ViewshedSystem", UINT64_C(0x108900340) },
-    { "ServerSpellLearning", "esv::spell::LearningSystem", UINT64_C(0x1088ef8b0) },
-    { "ServerCastRequest", "esv::spell_cast::CastRequestSystem", UINT64_C(0x108911210) },
-    { "ServerStatusRequest", "esv::status::RequestSystem", UINT64_C(0x108910dc0) },
-    { "ServerSummonDespawn", "esv::summon::DespawnSystem", UINT64_C(0x10890f580) },
-    { "ServerSummonSpawn", "esv::summon::SpawnSystem", UINT64_C(0x10890f3f8) },
-    { "ServerTemplateChange", "esv::templates::ChangeSystem", UINT64_C(0x1088ffde8) },
-    { "AnimationBlueprint", "ls::AnimationBlueprintSystem", UINT64_C(0x108948560) },
-    { "AnimationSet", "ls::AnimationSetSystem", UINT64_C(0x1088b4840) },
-    { "Effect", "ls::EffectsManager", UINT64_C(0x108940080) },
-    { "Light", "ls::LightSystem", UINT64_C(0x108940110) },
-    { "SoundRouting", "ls::SoundRoutingSystem", UINT64_C(0x1089401c0) },
-    { "VisualChange", "ls::VisualChangeRequestSystem", UINT64_C(0x10893fd30) },
-    { "VisualChanged", "ls::VisualChangedSystem", UINT64_C(0x10893fbb0) },
-    { "Visual", "ls::VisualSystem", UINT64_C(0x108947bb8) }
+    GENERATED_SYSTEM_TYPEID_ENTRIES(SYSTEM_ENTRY)
 };
+#undef SYSTEM_ENTRY
+
+_Static_assert(
+    sizeof(g_system_names) / sizeof(g_system_names[0]) == GENERATED_SYSTEM_TYPEID_COUNT,
+    "g_system_names size does not match GENERATED_SYSTEM_TYPEID_COUNT"
+);
 
 #define ECS_SYSTEM_NAME_COUNT (sizeof(g_system_names) / sizeof(g_system_names[0]))
 

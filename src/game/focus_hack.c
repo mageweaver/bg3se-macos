@@ -1,13 +1,16 @@
 #include "focus_hack.h"
 #include "../core/logging.h"
+#include "../core/offset_table.h"
 #include "../core/safe_memory.h"
 #include <dispatch/dispatch.h>
 #include <mach-o/dyld.h>
 #include <string.h>
 
-// BaseApp::s_AppInstance — pointer to singleton (BSS)
-// Found via: nm -a | grep s_AppInstance → __ZN7BaseApp13s_AppInstanceE
-#define BASEAPP_S_APPINSTANCE_VA 0x108ac0278
+// BaseApp::s_AppInstance slot (nm: __ZN7BaseApp13s_AppInstanceE) is carried
+// per version in the offset table (baseapp_instance_ptr). This module WRITES
+// the +0x142 focus flag through the pointer read from that slot, so a stale
+// address is memory corruption, not just a failed read — an unknown build
+// must resolve to nothing and fail closed.
 
 // Focus flag offset within BaseApp (byte field)
 // Found via Ghidra RE of BaseApp::OnFocusChange:
@@ -36,8 +39,15 @@ bool focus_hack_init(void) {
         return false;
     }
 
+    const VersionOffsets *off = offset_table_get();
+    if (!off || !off->baseapp_instance_ptr) {
+        LOG_CORE_INFO("[FocusHack] BaseApp slot not verified for this game "
+                      "version — focus hack disabled");
+        return false;
+    }
+
     uintptr_t slide = base - 0x100000000;
-    uintptr_t ptr_addr = BASEAPP_S_APPINSTANCE_VA + slide;
+    uintptr_t ptr_addr = base + off->baseapp_instance_ptr;
 
     void *instance = NULL;
     if (!safe_memory_read_pointer((mach_vm_address_t)ptr_addr, &instance)) {

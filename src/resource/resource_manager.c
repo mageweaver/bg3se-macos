@@ -26,13 +26,6 @@
 #define RESOURCEMANAGER_BANK0_OFFSET  0x28  // Primary bank
 #define RESOURCEMANAGER_BANK1_OFFSET  0x30  // Secondary bank
 
-// ResourceContainer::GetResource function
-// Takes: (ResourceContainer* this, ResourceBankType type, FixedString* id)
-// Returns: Resource* or NULL
-// Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x060cc608).
-// Audited by tests/harness/test_offset_audit.py.
-#define OFFSET_GETRESOURCE_FUNC  0x060bc020
-
 // ResourceContainer structure offsets
 #define RESOURCECONTAINER_BANKS_OFFSET  0x08  // Array of banks indexed by type
 
@@ -109,7 +102,7 @@ bool resource_manager_init(void *main_binary_base) {
     if (off && off->resource_mgr_ptr) {
         g_resource.resource_manager_ptr = (void**)offset_table_resolve(off->resource_mgr_ptr);
     } else {
-        g_resource.resource_manager_ptr = (void**)((uintptr_t)main_binary_base + OFFSET_RESOURCEMANAGER_PTR);
+        g_resource.resource_manager_ptr = NULL;
     }
 
     log_message("[Resource] Resource manager initialized");
@@ -224,15 +217,9 @@ void* resource_get(ResourceBankType type, uint32_t fixed_string_id) {
         return NULL;
     }
 
-    // Resolve GetResource for the running version (remap the hardcoded 6995620
-    // address; 0 = no verified address for this version -> bail instead of
-    // calling a stale function).
-    uint64_t fn_ghidra = offset_table_remap_fn(0x100000000ULL + OFFSET_GETRESOURCE_FUNC);
-    if (!fn_ghidra) {
-        return NULL;
-    }
-    GetResourceFunc get_resource = (GetResourceFunc)((uintptr_t)g_resource.main_binary_base
-                                                     + (fn_ghidra - 0x100000000ULL));
+    GetResourceFunc get_resource =
+        (GetResourceFunc)offset_table_game_fn(GAME_FN_RESOURCE_GET);
+    if (!get_resource) return NULL;
 
     // Note: FixedString is passed as pointer to its hash value
     void* result = get_resource(bank, (uint32_t)type, &fixed_string_id);
@@ -435,6 +422,7 @@ void resource_dump_status(void) {
 
 // Callback for dump
 static bool dump_resource_callback(void* resource, ResourceBankType type, void* user_data) {
+    (void)type;
     int* count_ptr = (int*)user_data;
     int max_count = count_ptr[1];
     int current = count_ptr[0];

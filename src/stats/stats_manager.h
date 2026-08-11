@@ -317,6 +317,26 @@ bool stats_is_shadow_stat(StatsObjectPtr obj);
 // Enum Lookup (ModifierValueLists)
 // ============================================================================
 
+#define STATS_VALUELIST_DIAGNOSTIC_MAX_NAMES 8
+
+/**
+ * Bounded, read-only snapshot of the ModifierValueLists registry.
+ * String pointers are owned by the game's FixedString table.
+ */
+typedef struct StatsValueListRegistryDiagnostic {
+    void *manager;
+    uint32_t count;
+    uint32_t sample_count;
+    const char *sample_names[STATS_VALUELIST_DIAGNOSTIC_MAX_NAMES];
+} StatsValueListRegistryDiagnostic;
+
+/**
+ * Validate the ModifierValueLists manager and collect up to eight names.
+ * This function performs no writes and is safe to call while insertion is gated.
+ */
+bool stats_get_valuelist_registry_diagnostic(
+    StatsValueListRegistryDiagnostic *out_diagnostic);
+
 /**
  * Convert a stats enum index to its label string.
  *

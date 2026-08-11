@@ -22,7 +22,7 @@ extern "C" {
  * All TypeId addresses, singleton pointers, and function offsets
  * in generated_typeids.h and component_typeid.c are for this version.
  */
-#define BG3_KNOWN_VERSION "4.1.1.7209685"
+#define BG3_KNOWN_VERSION "4.1.1.7398727"
 
 /**
  * Detect the game binary version.

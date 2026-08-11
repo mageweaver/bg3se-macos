@@ -6,12 +6,10 @@
  */
 
 #include "component_registry.h"
-#include "component_templates.h"
 #include "component_lookup.h"
 #include "arm64_call.h"
 #include "entity_system.h"
 #include "../core/logging.h"
-#include "../core/offset_table.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -361,32 +359,7 @@ void *component_get_by_name(void *entityWorld, uint64_t entityHandle,
         }
     }
 
-    // Strategy 2: Try direct template call if we have a known address
-    // Note: On macOS, template functions are inlined so this DOES NOT WORK.
-    // Keeping for potential future use if we find non-inlined templates.
-    // Remap the hardcoded 6995620 address; on a shifted version these GetComponent<T>
-    // addresses aren't remapped (returns 0) so this dead path is skipped rather
-    // than jumping to a stale function.
-    uintptr_t ghidra_addr = (uintptr_t)offset_table_remap_fn(component_template_lookup(componentName));
-    if (ghidra_addr != 0) {
-        void *binary_base = entity_get_binary_base();
-        if (binary_base) {
-            // Calculate runtime address: ghidra_addr - GHIDRA_BASE + actual_base
-            uintptr_t runtime_addr = ghidra_addr - GHIDRA_BASE_ADDRESS + (uintptr_t)binary_base;
-
-            LOG_ENTITY_DEBUG("Trying template call (likely to fail on macOS) GetComponent<%s> at %p",
-                         componentName, (void*)runtime_addr);
-
-            void *result = call_get_component_template((void*)runtime_addr,
-                                                        entityWorld, entityHandle);
-            if (result) {
-                LOG_ENTITY_DEBUG("Template call succeeded (unexpected!): %s -> %p", componentName, result);
-                return result;
-            }
-        }
-    }
-
-    // Strategy 3: Try registered component via GetRawComponent (Windows fallback)
+    // Strategy 2: Try registered component via GetRawComponent (Windows fallback)
     // On macOS this won't work since GetRawComponent doesn't exist.
     const ComponentInfo *info = component_registry_lookup(componentName);
     if (info && info->discovered) {

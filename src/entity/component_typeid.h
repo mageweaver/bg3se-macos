@@ -5,7 +5,8 @@
  *   __ZN2ls6TypeIdIN3ecl4ItemEN3ecs22ComponentTypeIdContextEE11m_TypeIndexE
  *
  * These variables hold the actual ComponentTypeIndex for each component type.
- * By reading them at runtime, we can discover the name→index mapping.
+ * Generated records retain the exact symbol and preferred VA for one build;
+ * no uniform data-segment shift is applied.
  */
 
 #ifndef COMPONENT_TYPEID_H
@@ -42,7 +43,7 @@ bool component_typeid_ready(void);
 int component_typeid_discover(void);
 
 /**
- * Discover TypeIds for all generated components (1999 components).
+ * Discover TypeIds for all generated components (2004 components).
  * Called after component_typeid_discover() to fill in the rest.
  * @return Number of additional components discovered
  */
@@ -50,11 +51,22 @@ int component_typeid_discover_all_generated(void);
 
 /**
  * Read a specific TypeId global address.
- * @param ghidraAddr The Ghidra address of the m_TypeIndex global
+ * @param preferred_va Build-specific preferred VA of the m_TypeIndex global
  * @param outIndex Output: the type index value
  * @return true if read succeeded and index is valid
  */
-bool component_typeid_read(uint64_t ghidraAddr, uint16_t *outIndex);
+bool component_typeid_read(uint64_t preferred_va, uint16_t *outIndex);
+
+/**
+ * Look up a generated preferred VA by exact component name and TypeId context.
+ * The generated implementation also retains the raw mangled symbol and build
+ * identity for offline audit.
+ */
+bool component_typeid_generated_lookup(const char *name, const char *context,
+                                       uint64_t *out_va);
+
+/** Return true when a component's layout metadata is curated in this module. */
+bool component_typeid_is_curated(const char *name);
 
 // ============================================================================
 // Debug

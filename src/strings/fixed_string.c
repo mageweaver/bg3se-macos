@@ -1484,11 +1484,6 @@ void fixed_string_dump_subtable_info(int subtable_idx) {
 // - len: string length (-1 to compute via strlen)
 typedef void (*FixedStringCreate_t)(uint32_t *out_fs_index, const char *str, int len);
 
-// Ghidra address for ls::FixedString::Create
-// ls::FixedString::Create(char const*, int) — re-derived 2026-07-28 via nm
-// for game build 4.1.1.7209685 (was 0x1064b9ebc)
-#define GHIDRA_FIXEDSTRING_CREATE 0x1064a8a74ULL
-
 static FixedStringCreate_t g_FixedStringCreate = NULL;
 static bool g_InternInitialized = false;
 
@@ -1503,21 +1498,15 @@ static bool init_intern_function(void) {
         return false;
     }
 
-    // Remap the hardcoded 6995620 address to the running version's address.
-    uint64_t create_addr = offset_table_remap_fn(GHIDRA_FIXEDSTRING_CREATE);
-    if (!create_addr) {
+    g_FixedStringCreate = (FixedStringCreate_t)offset_table_game_fn(
+        GAME_FN_FIXED_STRING_CREATE);
+    if (!g_FixedStringCreate) {
         LOG_CORE_WARN("FixedString::Create has no verified address for this version — interning disabled");
-        g_FixedStringCreate = NULL;
         return false;
     }
-    uintptr_t runtime_addr = (uintptr_t)g_MainBinaryBase +
-                              (create_addr - GHIDRA_BASE_ADDRESS);
 
-    g_FixedStringCreate = (FixedStringCreate_t)runtime_addr;
-
-    LOG_CORE_DEBUG("Resolved FixedString::Create at %p (Ghidra 0x%llx)",
-               (void *)g_FixedStringCreate,
-               (unsigned long long)GHIDRA_FIXEDSTRING_CREATE);
+    LOG_CORE_DEBUG("Resolved FixedString::Create at %p",
+                   (void *)g_FixedStringCreate);
 
     return true;
 }

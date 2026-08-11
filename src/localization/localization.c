@@ -33,18 +33,6 @@
 // Offset Constants (macOS ARM64)
 // ============================================================================
 
-// ls::TranslatedStringRepository::m_ptr offset from main binary base.
-// 4.1.1.7209685 vintage, nm-verified (0x108af5088 b TranslatedStringRepository::m_ptr).
-// Older versions are reached via VersionOffsets.component_data_shift.
-#define LOCA_REPO_OFFSET  0x8af5088
-
-// Function offsets — 4.1.1.7209685 vintage, nm-verified. Passed through
-// offset_table_remap_fn(), which matches either vintage column and fails
-// closed (NULL fn) on unknown versions.
-#define LOCA_TRYGET_OFFSET          0x652390c   // ls::TranslatedStringRepository::TryGet
-#define LOCA_FIXEDSTRING_CREATE     0x64a8a74   // ls::FixedString::Create(char*, int)
-#define LOCA_ADDTRANSLATEDSTRING    0x6521148   // AddTranslatedString(handle, value)
-
 // TranslatedStringRepository structure offsets. +0x08 is verified by the
 // installed ARM64 TryGet implementation for identity 0.
 #define REPO_OFFSET_TRANSLATED_STRINGS  0x08   // TextPool* TranslatedStrings[9]
@@ -127,16 +115,6 @@ static struct {
     AddTranslatedStringFn add_string_fn;  // AddTranslatedString function
 } s_loca = {0};
 
-static void *localization_remap_fn(void *binary_base, uint64_t offset) {
-    uint64_t address =
-        offset_table_remap_fn(0x100000000ULL + offset);
-    if (!address) {
-        return NULL;
-    }
-    return (void *)((uintptr_t)binary_base
-        + (address - 0x100000000ULL));
-}
-
 // ============================================================================
 // Initialization
 // ============================================================================
@@ -148,26 +126,23 @@ void localization_init(void *main_binary_base) {
 
     s_loca.binary_base = main_binary_base;
 
-    // The repository m_ptr is a __DATA global (7209685-vintage constant) ->
-    // apply the signed per-version data shift. No table row -> fail closed.
+    // The repository singleton and callable functions are selected from the
+    // active per-version table. No row or zero field means fail closed.
     const VersionOffsets *vo = offset_table_get();
     if (!vo) {
         LOG_CORE_INFO("LOCA: No offset-table row for this game version — localization disabled");
         s_loca.initialized = true;  // don't retry; ready() stays false (repo_ptr_addr NULL)
         return;
     }
-    intptr_t data_shift = vo->component_data_shift;
-    s_loca.repo_ptr_addr = (void**)((uintptr_t)main_binary_base + LOCA_REPO_OFFSET + data_shift);
+    s_loca.repo_ptr_addr =
+        (void **)offset_table_resolve(vo->translated_string_repo_ptr);
 
-    // The functions are __TEXT -> remap each hardcoded address (either vintage).
-    // If a function has no verified address for this version, leave it NULL so
-    // the caller skips it instead of jumping to a stale address.
-    s_loca.fs_create = (FixedStringCreateFn)localization_remap_fn(
-        main_binary_base, LOCA_FIXEDSTRING_CREATE);
-    s_loca.tryget_fn = localization_remap_fn(
-        main_binary_base, LOCA_TRYGET_OFFSET);
-    s_loca.add_string_fn = (AddTranslatedStringFn)localization_remap_fn(
-        main_binary_base, LOCA_ADDTRANSLATEDSTRING);
+    s_loca.fs_create = (FixedStringCreateFn)offset_table_game_fn(
+        GAME_FN_FIXED_STRING_CREATE);
+    s_loca.tryget_fn = offset_table_game_fn(
+        GAME_FN_TRANSLATED_STRING_TRY_GET);
+    s_loca.add_string_fn = (AddTranslatedStringFn)offset_table_game_fn(
+        GAME_FN_TRANSLATED_STRING_ADD);
 
     LOG_CORE_INFO("LOCA: Initialized - repo_ptr at %p", (void*)s_loca.repo_ptr_addr);
     LOG_CORE_DEBUG("LOCA: FixedString::Create at %p", (void*)s_loca.fs_create);

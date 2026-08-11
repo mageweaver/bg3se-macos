@@ -109,13 +109,17 @@ static int g_TypeIdRetryCount = 0;
 #define OFFSET_ENTITYWORLD_IN_EOCCLIENT 0x1D0
 
 // Verified for 4.1.1.7209685 in
-// ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 1.
+// ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 1; re-verified for
+// 4.1.1.7398727 by Wave 2C (registry base +0x390, stride 8, vptr slot 5,
+// three-argument ABI all instruction-identical; two concrete vtables
+// corroborate — ghidra/offsets/ABI_REVIEW_7398727.md §2). The 7398727
+// component TypeIds landed in Wave 1B (generated_typeids.h regeneration).
 //
 // This is an EMBEDDED DynamicArray<UniquePtr<IComponentOps>>, not a pointer
 // field: Buffer is EntityWorld+0x390, Capacity is +0x398, and Size is +0x39c.
 // AddImmediateDefaultComponent is address-point slot 5 (+0x28) because the
 // macOS Itanium vtable has two destructor entries.
-#define COMPONENT_OPS_VERIFIED_BUILD "4.1.1.7209685"
+#define COMPONENT_OPS_VERIFIED_BUILD "4.1.1.7398727"
 #define ENTITYWORLD_COMPONENT_OPS_REGISTRY_OFFSET 0x390
 #define COMPONENT_OPS_REGISTRY_BUFFER_OFFSET 0x00
 #define COMPONENT_OPS_REGISTRY_CAPACITY_OFFSET 0x08

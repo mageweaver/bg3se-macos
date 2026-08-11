@@ -27,7 +27,10 @@
 #include "../hooks/arm64_hook.h"        // arm64_safe_hook (JIT-W^X-aware inline hook)
 #include "../game/game_state.h"        // game_state_get_current()
 #include "../entity/entity_system.h"   // entity_get_binary_base(), entity_get_eoc_server()
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wvariadic-macros"
 #include <dobby.h>
+#pragma clang diagnostic pop
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -81,29 +84,12 @@ static void *safe_read_ptr(const void *base, uintptr_t offset) {
     return value;
 }
 
-/**
- * Read a uint64_t from (base + offset) safely.
- * Returns false if the read fails.
- */
-static bool safe_read_u64(const void *base, uintptr_t offset, uint64_t *out) {
-    if (!base || !out) return false;
-    return safe_memory_read_u64((mach_vm_address_t)base + offset, out);
-}
-
 // ============================================================================
 // ASLR Address Resolution
 // ============================================================================
 
-#define GHIDRA_BASE_ADDRESS 0x100000000ULL
-
-static uintptr_t get_runtime_addr(uintptr_t ghidra_addr) {
-    void *base = entity_get_binary_base();
-    if (!base) return 0;
-    // Remap the hardcoded 6995620 address to the running version (0 = no verified
-    // address -> caller skips the hook rather than hooking a stale function).
-    uint64_t remapped = offset_table_remap_fn(ghidra_addr);
-    if (!remapped) return 0;
-    return remapped - GHIDRA_BASE_ADDRESS + (uintptr_t)base;
+static uintptr_t get_runtime_addr(GameFunctionId id) {
+    return (uintptr_t)offset_table_game_fn(id);
 }
 
 // ============================================================================
@@ -499,10 +485,8 @@ bool net_hooks_register_message(void) {
     // For ID 400 we return our own pooled ExtenderMessage, for all other IDs
     // we pass through to the original.
     //
-    // NOTE (build 7209685 / macOS 26): the hook target address is resolved via
-    // offset_table_remap_fn(ADDR_GETMESSAGE), which maps the baseline 6995620
-    // address (0x1063d5998) to this build's net::MessageFactory::GetFreeMessage
-    // (0x1063c4550, symbol-verified). We install the hook with arm64_safe_hook()
+    // The target is selected by stable function ID from the active version row.
+    // We install the hook with arm64_safe_hook()
     // rather than DobbyHook(): on recent macOS (Darwin 25 / macOS 26), Dobby's
     // trampoline builder writes to a MAP_JIT page WITHOUT toggling per-thread JIT
     // write protection, so the build faults (KERN_PROTECTION_FAILURE) and
@@ -513,7 +497,8 @@ bool net_hooks_register_message(void) {
     // GetFreeMessage's prologue is a plain frame setup (no ADRP / PC-relative), so
     // the safe hook installs cleanly at offset 0.
 
-    uintptr_t runtime_addr = get_runtime_addr(ADDR_GETMESSAGE);
+    uintptr_t runtime_addr = get_runtime_addr(
+        GAME_FN_MESSAGE_FACTORY_GET_FREE_MESSAGE);
     if (!runtime_addr) {
         LOG_NET_WARN("  GetMessage hook: failed to resolve runtime address "
                      "(version not in offset table / no binary base) — net disabled");
@@ -521,8 +506,7 @@ bool net_hooks_register_message(void) {
     }
 
     s_hook_target_addr = (void *)runtime_addr;
-    LOG_NET_INFO("  GetMessage: Ghidra=0x%llx, runtime=%p",
-                 (unsigned long long)ADDR_GETMESSAGE, s_hook_target_addr);
+    LOG_NET_INFO("  GetMessage: runtime=%p", s_hook_target_addr);
 
     // Initialize the message pool before hooking
     extender_message_pool_init();

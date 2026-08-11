@@ -28,28 +28,17 @@
 // Singleton pointer locations (double-pointer pattern: *g_pManager gives Manager*)
 // These are global addresses where the manager pointer is stored
 
-// Addresses below re-derived 2026-07-28 via nm for game build 4.1.1.7209685
-// (previous values were from 4.1.1.6995620 and went stale after the game
-// update — most singletons shifted +0x8000, but shifts are NOT uniform).
-
-// eoc::Passives::m_ptr (nm, local BSS symbol; independently corroborated by
-// 74 ADRP+LDR sites). The legacy PassivePrototypeManager address claim has
-// zero references in 4.1.1.7209685 and came from stale function addresses.
-// See ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 2.
-#define OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR 0x1089bc228ULL
-
-// eoc::BoostPrototypeManager::m_ptr (nm, local symbol)
-#define OFFSET_BOOST_PROTOTYPE_MANAGER_PTR 0x108999528ULL
-
-// eoc::InterruptPrototypeManager::m_ptr (nm, local symbol — the old value
-// 0x108aecce0 was an EvaluateInterrupt ADRP guess, not the m_ptr symbol)
-#define OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR 0x1089ba8f0ULL
-
-// eoc::SpellPrototypeManager::m_ptr (nm, local symbol)
-#define OFFSET_SPELL_PROTOTYPE_MANAGER_PTR 0x1089c2c80ULL
-
-// eoc::StatusPrototypeManager::m_ptr (nm, local symbol)
-#define OFFSET_STATUS_PROTOTYPE_MANAGER_PTR 0x1089c5b30ULL
+// Singleton slot addresses live in the per-version offset table
+// (src/core/offset_table.c: passives_ptr, boost_proto_mgr_ptr,
+// interrupt_proto_mgr_ptr, spell_proto_mgr_ptr, status_proto_mgr_ptr) —
+// moved out of hardcoded defines 2026-08-04 (Wave 2 lead) after the 7398727
+// migration proved __DATA shifts are not uniform across builds.
+//
+// eoc::Passives::m_ptr is an nm local BSS symbol, independently corroborated
+// by 74 ADRP+LDR sites on 7209685. The legacy PassivePrototypeManager address
+// claim had zero references and came from stale function addresses. The old
+// interrupt value 0x108aecce0 was an EvaluateInterrupt ADRP guess, not the
+// m_ptr symbol. See ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 2.
 
 // Additional globals from EvaluateInterrupt (may be related)
 // UNVERIFIED for 4.1.1.7209685 — no nm symbol; needs Ghidra re-derivation.
@@ -59,8 +48,9 @@
 // Prototype Init Function Offsets (Dec 12, 2025)
 // ============================================================================
 
-// eoc::SpellPrototype::Init(ls::FixedString const&) — populates prototype
-// from stats. Re-derived via nm for 4.1.1.7209685 (was 0x101f72754).
+// HISTORICAL (7209685 VA, unused): the Init functions resolve at runtime from
+// the per-version offset table (fn_spell_proto_init etc.). Kept as the
+// documented signature anchor only.
 // Signature: void SpellPrototype::Init(SpellPrototype* this, uint32_t spell_name_fs)
 #define OFFSET_SPELL_PROTOTYPE_INIT 0x101f56cb4ULL
 
@@ -199,20 +189,18 @@ static InterruptGetPrototype_fn g_InterruptGetPrototype = NULL;
 static PassivesGet_fn g_PassivesGet = NULL;
 
 // ============================================================================
-// Helper: Calculate runtime address from Ghidra offset
+// Helper: Resolve a per-version singleton slot from the offset table
 // ============================================================================
 
-// Resolve a __DATA Ghidra address (prototype-manager singleton pointer) to a
-// runtime address. The compiled-in constants are 4.1.1.7209685-vintage
-// (nm-derived); component_data_shift is the signed delta from that vintage to
-// the running version (0 on 7209685, -0x8000 on 6995620). The Init *function*
-// (a __TEXT address with a different per-version shift) is resolved separately
-// via the offset table.
-static void* ghidra_to_runtime(uint64_t ghidra_addr) {
-    if (!g_MainBinaryBase) return NULL;
-    const VersionOffsets *off = offset_table_get();
-    intptr_t shift = off ? off->component_data_shift : 0;
-    return (void*)((uintptr_t)g_MainBinaryBase + (ghidra_addr - GHIDRA_BASE_ADDRESS) + shift);
+// Every singleton slot is a base-relative __DATA offset carried per version
+// in offset_table.c (the retired ghidra_to_runtime helper applied
+// component_data_shift to 7209685-vintage constants, which the 7398727
+// migration proved unsound — six distinct TypeId deltas, no scalar shift).
+// A zero field means "never verified on this build": resolve to NULL and let
+// every consumer fail closed.
+static void* table_slot_to_runtime(uintptr_t slot_offset) {
+    if (!g_MainBinaryBase || !slot_offset) return NULL;
+    return (void*)((uintptr_t)g_MainBinaryBase + slot_offset);
 }
 
 // ============================================================================
@@ -238,37 +226,45 @@ bool prototype_managers_init(void *main_binary_base) {
         return true;
     }
 
-    // Resolve singleton pointer addresses from Ghidra offsets
+    // Resolve singleton slots from the per-version offset table row.
+    const VersionOffsets *slots = offset_table_get();
+    if (!slots) {
+        LOG_STATS_INFO("[PrototypeManagers] No offset row for this game version — "
+                       "prototype manager features disabled.");
+        g_Initialized = true;
+        return true;
+    }
 
-    // eoc::Passives (the accessor name is retained for API compatibility)
-    g_pPassivePrototypeManagerPtr = (void**)ghidra_to_runtime(OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR);
-    LOG_STATS_DEBUG("[PrototypeManagers] eoc::Passives::m_ptr addr: %p (Ghidra: 0x%llx)",
+    // eoc::Passives (the accessor name is retained for API compatibility;
+    // nm BSS symbol corroborated by 74 ADRP+LDR sites on 7209685)
+    g_pPassivePrototypeManagerPtr = (void**)table_slot_to_runtime(slots->passives_ptr);
+    LOG_STATS_DEBUG("[PrototypeManagers] eoc::Passives::m_ptr addr: %p (slot +0x%llx)",
                     (void*)g_pPassivePrototypeManagerPtr,
-                    (unsigned long long)OFFSET_PASSIVE_PROTOTYPE_MANAGER_PTR);
+                    (unsigned long long)slots->passives_ptr);
 
     // BoostPrototypeManager
-    g_pBoostPrototypeManagerPtr = (void**)ghidra_to_runtime(OFFSET_BOOST_PROTOTYPE_MANAGER_PTR);
-    LOG_STATS_DEBUG("[PrototypeManagers] BoostPrototypeManager ptr addr: %p (Ghidra: 0x%llx)",
+    g_pBoostPrototypeManagerPtr = (void**)table_slot_to_runtime(slots->boost_proto_mgr_ptr);
+    LOG_STATS_DEBUG("[PrototypeManagers] BoostPrototypeManager ptr addr: %p (slot +0x%llx)",
                     (void*)g_pBoostPrototypeManagerPtr,
-                    (unsigned long long)OFFSET_BOOST_PROTOTYPE_MANAGER_PTR);
+                    (unsigned long long)slots->boost_proto_mgr_ptr);
 
     // InterruptPrototypeManager
-    g_pInterruptPrototypeManagerPtr = (void**)ghidra_to_runtime(OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR);
-    LOG_STATS_DEBUG("[PrototypeManagers] InterruptPrototypeManager ptr addr: %p (Ghidra: 0x%llx)",
+    g_pInterruptPrototypeManagerPtr = (void**)table_slot_to_runtime(slots->interrupt_proto_mgr_ptr);
+    LOG_STATS_DEBUG("[PrototypeManagers] InterruptPrototypeManager ptr addr: %p (slot +0x%llx)",
                     (void*)g_pInterruptPrototypeManagerPtr,
-                    (unsigned long long)OFFSET_INTERRUPT_PROTOTYPE_MANAGER_PTR);
+                    (unsigned long long)slots->interrupt_proto_mgr_ptr);
 
-    // SpellPrototypeManager - discovered via GetSpellPrototype decompilation
-    g_pSpellPrototypeManagerPtr = (void**)ghidra_to_runtime(OFFSET_SPELL_PROTOTYPE_MANAGER_PTR);
-    LOG_STATS_DEBUG("[PrototypeManagers] SpellPrototypeManager ptr addr: %p (Ghidra: 0x%llx)",
+    // SpellPrototypeManager
+    g_pSpellPrototypeManagerPtr = (void**)table_slot_to_runtime(slots->spell_proto_mgr_ptr);
+    LOG_STATS_DEBUG("[PrototypeManagers] SpellPrototypeManager ptr addr: %p (slot +0x%llx)",
                     (void*)g_pSpellPrototypeManagerPtr,
-                    (unsigned long long)OFFSET_SPELL_PROTOTYPE_MANAGER_PTR);
+                    (unsigned long long)slots->spell_proto_mgr_ptr);
 
-    // StatusPrototypeManager - discovered via Ghidra symbol search
-    g_pStatusPrototypeManagerPtr = (void**)ghidra_to_runtime(OFFSET_STATUS_PROTOTYPE_MANAGER_PTR);
-    LOG_STATS_DEBUG("[PrototypeManagers] StatusPrototypeManager ptr addr: %p (Ghidra: 0x%llx)",
+    // StatusPrototypeManager
+    g_pStatusPrototypeManagerPtr = (void**)table_slot_to_runtime(slots->status_proto_mgr_ptr);
+    LOG_STATS_DEBUG("[PrototypeManagers] StatusPrototypeManager ptr addr: %p (slot +0x%llx)",
                     (void*)g_pStatusPrototypeManagerPtr,
-                    (unsigned long long)OFFSET_STATUS_PROTOTYPE_MANAGER_PTR);
+                    (unsigned long long)slots->status_proto_mgr_ptr);
 
     // Resolve Init function pointer from the per-version offset table (it's a
     // __TEXT address with a version-specific shift different from __DATA, so it
@@ -962,8 +958,8 @@ void prototype_managers_dump_status(void) {
     LOG_STATS_DEBUG("Sync Requirements:");
     LOG_STATS_DEBUG("  SpellData -> SpellPrototypeManager (singleton found at 0x1089bac80)");
     LOG_STATS_DEBUG("  StatusData -> StatusPrototypeManager (singleton found at 0x1089bdb30)");
-    LOG_STATS_DEBUG("  PassiveData -> eoc::Passives (m_ptr at 0x1089bc228)");
-    LOG_STATS_DEBUG("  InterruptData -> InterruptPrototypeManager (m_ptr at 0x1089ba8f0)");
+    LOG_STATS_DEBUG("  PassiveData -> eoc::Passives (m_ptr slot from offset table)");
+    LOG_STATS_DEBUG("  InterruptData -> InterruptPrototypeManager (m_ptr slot from offset table)");
     LOG_STATS_DEBUG("  BoostData -> BoostPrototypeManager (singleton found at 0x108991528)");
     LOG_STATS_DEBUG("  Weapon/Armor/etc -> No prototype manager (direct RPGStats use)");
 }

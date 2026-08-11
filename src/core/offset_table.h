@@ -21,6 +21,31 @@
 extern "C" {
 #endif
 
+/** Stable identifiers for callable functions in the BG3 main executable. */
+typedef enum GameFunctionId {
+    GAME_FN_FIXED_STRING_CREATE = 0,
+    GAME_FN_RESOURCE_GET,
+    GAME_FN_EXECUTE_STATS_FUNCTOR,
+    GAME_FN_EXECUTE_FUNCTORS_ATTACK_TARGET,
+    GAME_FN_EXECUTE_FUNCTORS_ATTACK_POSITION,
+    GAME_FN_EXECUTE_FUNCTORS_MOVE,
+    GAME_FN_EXECUTE_FUNCTORS_TARGET,
+    GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKED,
+    GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKING,
+    GAME_FN_EXECUTE_FUNCTORS_EQUIP,
+    GAME_FN_EXECUTE_FUNCTORS_SOURCE,
+    GAME_FN_EXECUTE_FUNCTORS_INTERRUPT,
+    GAME_FN_PROCESS_DEAL_DAMAGE_FUNCTORS,
+    GAME_FN_TRANSLATED_STRING_TRY_GET,
+    GAME_FN_TRANSLATED_STRING_GET,
+    GAME_FN_TRANSLATED_STRING_ADD,
+    GAME_FN_MESSAGE_FACTORY_GET_FREE_MESSAGE,
+    GAME_FN_STD_STRING_CTOR,
+    GAME_FN_BINK_LOAD_VIDEO,
+    GAME_FN_VALUELIST_INSERT,
+    GAME_FN_COUNT
+} GameFunctionId;
+
 typedef struct {
     const char *version;                 // e.g. "4.1.1.6995620"
 
@@ -40,6 +65,7 @@ typedef struct {
     uintptr_t level_cache_mgr_ptr;      // Level::s_CacheTemplateManager
     uintptr_t staticdata_mstate_ptr;    // ImmutableDataHeadmaster::m_State
     uintptr_t gst_ptr;                  // ls::gGlobalStringTable (FixedString pool)
+    uintptr_t translated_string_repo_ptr; // ls::TranslatedStringRepository::m_ptr
     uintptr_t global_switches_ptr;      // EoCGlobalSwitches* slot (double pointer).
                                         // NOT covered by component_data_shift: this
                                         // __common slot moved -0x24000 between 6995620
@@ -49,6 +75,14 @@ typedef struct {
                                         // disassembling OsirisQuery's ADRP+LDR pair
                                         // (see ghidra/offsets/OSIRIS_DATABASES.md).
                                         // Used by osi_read_param_defs (main.c).
+    uintptr_t status_proto_mgr_ptr;     // eoc::StatusPrototypeManager::m_ptr
+    uintptr_t passives_ptr;             // eoc::Passives::m_ptr (nm BSS symbol)
+    uintptr_t interrupt_proto_mgr_ptr;  // eoc::InterruptPrototypeManager::m_ptr
+    uintptr_t boost_proto_mgr_ptr;      // eoc::BoostPrototypeManager::m_ptr
+    uintptr_t baseapp_instance_ptr;     // BaseApp::s_AppInstance (focus_hack.c
+                                        // reads the instance pointer here, then
+                                        // writes the +0x142 focus flag — MUST be
+                                        // per-version or the write lands wild)
 
     /* ------------------------------------------------------------------ */
     /* Function offsets                                                    */
@@ -85,13 +119,19 @@ typedef struct {
                                         // despite the const& in the symbol (instruction-verified,
                                         // ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md)
     intptr_t component_data_shift;      // signed delta added to compiled-in __DATA Ghidra
-                                        // addresses (TypeIds, prototype-manager singletons,
-                                        // TranslatedStringRepository::m_ptr) to reach THIS
+                                        // addresses (legacy TypeIds and prototype-manager
+                                        // singletons) to reach THIS
                                         // version. NOT applied to global_switches_ptr —
                                         // that slot has its own per-version field above.
                                         // Convention: all compiled-in __DATA constants are
                                         // 4.1.1.7209685-vintage (nm-audited), so the
                                         // 7209685 row is 0 and 6995620 is -0x8000.
+    bool component_data_shift_valid;    // false when shared TypeIds have multiple deltas;
+                                        // consumers must not treat component_data_shift as
+                                        // a family-wide migration in that version.
+
+    /* Per-version offsets for GameFunctionId, relative to the image base. */
+    uintptr_t game_functions[GAME_FN_COUNT];
 } VersionOffsets;
 
 /**
@@ -127,14 +167,11 @@ void *offset_table_resolve(uintptr_t offset);
 void *offset_table_fn(uintptr_t offset);
 
 /**
- * Remap a hardcoded game-function Ghidra address (either 6995620 or 7209685
- * vintage — the table matches both columns) to the correct address for the
- * running version. Fail-closed: returns 0 when the version is unknown, when
- * the version has no remap column, or when the address is not in the table —
- * the caller must then disable that feature rather than call a stale address.
- * Input/output are full Ghidra addresses (>= 0x100000000).
+ * Resolve a stable game-function ID to a callable runtime pointer.
+ * Returns NULL for an unknown version, invalid ID, missing binary base, or a
+ * zero/unverified address in the active version row.
  */
-uint64_t offset_table_remap_fn(uint64_t ghidra_addr);
+void *offset_table_game_fn(GameFunctionId id);
 
 #ifdef __cplusplus
 }

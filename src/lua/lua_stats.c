@@ -761,6 +761,30 @@ static int lua_stats_enum_label_to_index(lua_State *L) {
     return 1;
 }
 
+// Ext.Stats.GetValueListRegistryDiagnostic() ->
+//   {Valid=bool, Manager=integer, Count=integer, Names={...}}
+// Bounded and read-only so the registry walk can be proven before insertion.
+static int lua_stats_get_valuelist_registry_diagnostic(lua_State *L) {
+    StatsValueListRegistryDiagnostic diagnostic;
+    bool valid = stats_get_valuelist_registry_diagnostic(&diagnostic);
+
+    lua_newtable(L);
+    lua_pushboolean(L, valid);
+    lua_setfield(L, -2, "Valid");
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)diagnostic.manager);
+    lua_setfield(L, -2, "Manager");
+    lua_pushinteger(L, (lua_Integer)diagnostic.count);
+    lua_setfield(L, -2, "Count");
+
+    lua_newtable(L);
+    for (uint32_t i = 0; i < diagnostic.sample_count; i++) {
+        lua_pushstring(L, diagnostic.sample_names[i]);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    lua_setfield(L, -2, "Names");
+    return 1;
+}
+
 // Ext.Stats.GetModifierAttributes(modifierName) -> table {attrName=typeName, ...} or nil
 static int lua_stats_get_modifier_attributes(lua_State *L) {
     const char *modifier_name = luaL_checkstring(L, 1);
@@ -1348,6 +1372,7 @@ static const luaL_Reg stats_functions[] = {
     {"GetCachedInterrupt", lua_stats_get_cached_interrupt},
     {"EnumIndexToLabel", lua_stats_enum_index_to_label},
     {"EnumLabelToIndex", lua_stats_enum_label_to_index},
+    {"GetValueListRegistryDiagnostic", lua_stats_get_valuelist_registry_diagnostic},
     {"GetModifierAttributes", lua_stats_get_modifier_attributes},
     {"AddAttribute", lua_stats_add_attribute},  // Explicitly allocator-gated
     {"AddEnumerationValue", lua_stats_add_enumeration_value},

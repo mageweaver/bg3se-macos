@@ -9,122 +9,117 @@
 #include "component_registry.h"
 #include "component_property.h"  // For property system linkage
 #include "entity_storage.h"  // For GHIDRA_BASE_ADDRESS
+#include "generated_typeids.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
-#include "../core/offset_table.h"  // For per-version component_data_shift
+#include "../core/version_detect.h"
 
 #include <string.h>
 
 // ============================================================================
-// Known TypeId Addresses
+// Curated Component Metadata
 // ============================================================================
 
 /**
- * Table of known TypeId<T>::m_TypeIndex global addresses.
- * These were discovered via Ghidra analysis of the macOS ARM64 binary.
- *
- * Mangled name pattern:
- *   __ZN2ls6TypeIdIN3{namespace}{length}{Component}EN3ecs22ComponentTypeIdContextEE11m_TypeIndexE
+ * Curated size/proxy/one-frame metadata, keyed only by component name.
+ * Preferred VAs and mangled symbols are supplied by the generated authority.
  */
 typedef struct {
     const char *componentName;  // Full component name (e.g., "ecl::Character")
-    uint64_t ghidraAddr;        // Ghidra address of m_TypeIndex global
     uint16_t expectedSize;      // Expected component size (0 = unknown)
     bool isProxy;               // Is this a proxy component?
-    bool isPointer;             // If true, ghidraAddr points to TypeInfo*, read value at *ptr
+    const char *context;        // Exact generated TypeId context
+    bool isOneFrame;            // Register in the one-frame component pool
 } TypeIdEntry;
 
 static const TypeIdEntry g_KnownTypeIds[] = {
     // =====================================================================
     // ecl:: namespace (client components)
-    // Discovered via: nm -gU "Baldur's Gate 3" | c++filt | grep TypeId
-    // Game version: 4.1.1.7209685 (macOS ARM64). Migrated 2026-07-29 from the
-    // original 6995620 addresses (+0x8000 uniform __DATA shift); 161/163
-    // entries symbol-verified against nm on the installed binary. Older
-    // versions are reached via VersionOffsets.component_data_shift.
+    // Layout metadata remains curated; addresses resolve by exact generated
+    // symbol for GENERATED_TYPEIDS_BUILD_ID.
     // =====================================================================
-    { "ecl::Character", 0x1088b38e0, 0, false },
-    { "ecl::Item",      0x1088b38f0, 0, false },
+    { "ecl::Character", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ecl::Item", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // eoc:: namespace (engine of combat)
     // =====================================================================
-    { "eoc::HealthComponent",  0x108912360, 0, false },
-    { "eoc::StatsComponent",   0x108913058, 0, false },
-    { "eoc::ArmorComponent",   0x10891ae40, 0, false },
-    { "eoc::BaseHpComponent",  0x10890f888, 0, false },
-    { "eoc::DataComponent",    0x108913088, 0, false },
+    { "eoc::HealthComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::StatsComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ArmorComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::BaseHpComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::DataComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // ls:: namespace (base Larian components)
     // =====================================================================
-    { "ls::TransformComponent", 0x108948550, 0, false },
-    { "ls::LevelComponent",     0x108946780, 0, false },
-    { "ls::VisualComponent",    0x108948110, 0, false },
-    { "ls::PhysicsComponent",   0x1089448e8, 0, false },
+    { "ls::TransformComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::LevelComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::VisualComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::PhysicsComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Components (Issue #33)
     // =====================================================================
-    { "eoc::LevelComponent",             0x108913068, 0, false },  // Character level (different from ls::LevelComponent)
-    { "eoc::exp::ExperienceComponent",   0x1088f7818, 0, false },
-    { "eoc::exp::AvailableLevelComponent", 0x10890f918, 0, false },
-    { "eoc::PassiveComponent",           0x1089193f8, 0, false },
-    { "eoc::PassiveContainerComponent",  0x10890f158, 0, false },
-    { "eoc::ResistancesComponent",       0x108918010, 0, false },
-    { "eoc::TagComponent",               0x108913048, 0, false },
-    { "eoc::RaceComponent",              0x10890f5f0, 0, false },
-    { "eoc::OriginComponent",            0x108908530, 0, false },
-    { "eoc::ClassesComponent",           0x108913098, 0, false },
-    { "eoc::MovementComponent",          0x108911240, 0, false },
+    { "eoc::LevelComponent", 0, false, "ecs::ComponentTypeIdContext", false },  // Character level (different from ls::LevelComponent)
+    { "eoc::exp::ExperienceComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::exp::AvailableLevelComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::PassiveComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::PassiveContainerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ResistancesComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::TagComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::RaceComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::OriginComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ClassesComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::MovementComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 2 Components (Issue #33)
     // =====================================================================
-    { "eoc::BackgroundComponent",        0x1089084e0, 0, false },
-    { "eoc::god::GodComponent",          0x108902f68, 0, false },
-    { "eoc::ValueComponent",             0x10890f8e8, 0, false },
-    { "eoc::TurnBasedComponent",         0x1089169a8, 0, false },
+    { "eoc::BackgroundComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::god::GodComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ValueComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::TurnBasedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 3 Components (Issue #33) - High-priority gameplay
     // =====================================================================
-    { "eoc::WeaponComponent",            0x10891ae00, 0, false },
-    { "eoc::spell::BookComponent",       0x108912e78, 0, false },
-    { "eoc::status::ContainerComponent", 0x10891b0e0, 0, false },
-    { "eoc::inventory::ContainerComponent", 0x108910f08, 0, false },
-    { "eoc::ActionResourcesComponent",   0x108916b08, 0, false },
+    { "eoc::WeaponComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::spell::BookComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::status::ContainerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::ContainerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ActionResourcesComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 4 Components (Issue #33) - Inventory relationships
     // =====================================================================
-    { "eoc::inventory::OwnerComponent",    0x108910ef8, 0, false },
-    { "eoc::inventory::MemberComponent",   0x10891d3b0, 0, false },
-    { "eoc::inventory::IsOwnedComponent",  0x10890bca8, 0, false },
-    { "eoc::EquipableComponent",           0x10890f8f8, 0, false },
+    { "eoc::inventory::OwnerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::MemberComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::IsOwnedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::EquipableComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 5 Components (Issue #33) - Spell and boost components
     // =====================================================================
-    { "eoc::spell::ContainerComponent",               0x10890ece0, 0, false },
-    { "eoc::concentration::ConcentrationComponent",   0x10890f450, 0, false },
-    { "eoc::BoostsContainerComponent",                0x108918000, 0, false },
-    { "eoc::DisplayNameComponent",                    0x108914e20, 0, false },
+    { "eoc::spell::ContainerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::concentration::ConcentrationComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::BoostsContainerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::DisplayNameComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 6 Components (Issue #33) - Simple components
     // =====================================================================
-    { "eoc::death::StateComponent",                   0x1088ffa60, 0, false },
-    { "eoc::death::DeathTypeComponent",               0x10890a7c0, 0, false },
-    { "eoc::inventory::WeightComponent",              0x1088ff6d8, 0, false },
-    { "eoc::combat::ThreatRangeComponent",            0x1089136e8, 0, false },
-    { "eoc::combat::IsInCombatComponent",             0x10891afd0, 0, false },
+    { "eoc::death::StateComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::death::DeathTypeComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::WeightComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::combat::ThreatRangeComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::combat::IsInCombatComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 7 Components (Issue #33) - Combat components
     // =====================================================================
-    { "eoc::combat::ParticipantComponent",            0x1089169b8, 0, false },
-    { "eoc::combat::StateComponent",                  0x108916a38, 0, false },
+    { "eoc::combat::ParticipantComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::combat::StateComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Phase 2 Batch 8 Components (Issue #33) - Tag components (115 total)
@@ -133,146 +128,142 @@ static const TypeIdEntry g_KnownTypeIds[] = {
     // =====================================================================
 
     // ecl:: tag components
-    { "ecl::camera::IsInSelectorModeComponent",       0x1088ac410, 0, false },
-    { "ecl::camera::SpellTrackingComponent",          0x1088b3858, 0, false },
-    { "ecl::dummy::IsCopyingFullPoseComponent",       0x1088a91f8, 0, false },
-    { "ecl::dummy::LoadedComponent",                  0x1088a5e20, 0, false },
+    { "ecl::camera::IsInSelectorModeComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ecl::camera::SpellTrackingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ecl::dummy::IsCopyingFullPoseComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ecl::dummy::LoadedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // eoc:: tag components
-    { "eoc::CanTriggerRandomCastsComponent",          0x1088f72b8, 0, false },
-    { "eoc::ClientControlComponent",                  0x10891d3c0, 0, false },
-    { "eoc::GravityDisabledComponent",                0x108900b48, 0, false },
-    { "eoc::IsInTurnBasedModeComponent",              0x108916088, 0, false },
-    { "eoc::OffStageComponent",                       0x108916238, 0, false },
-    { "eoc::PickingStateComponent",                   0x1088f7828, 0, false },
-    { "eoc::PlayerComponent",                         0x108916a28, 0, false },
-    { "eoc::SimpleCharacterComponent",                0x1088fc068, 0, false },
-    { "eoc::active_roll::InProgressComponent",        0x1089097a8, 0, false },
-    { "eoc::ambush::AmbushingComponent",              0x1088e7b88, 0, false },
-    { "eoc::camp::PresenceComponent",                 0x108914008, 0, false },
-    { "eoc::character::CharacterComponent",           0x108916248, 0, false },
-    { "eoc::combat::DelayedFanfareComponent",         0x10891afe0, 0, false },
-    { "eoc::exp::CanLevelUpComponent",                0x108901ed8, 0, false },
-    { "eoc::falling::IsFallingComponent",             0x10891afa0, 0, false },
-    { "eoc::ftb::IsFtbPausedComponent",               0x1088fca08, 0, false },
-    { "eoc::ftb::IsInFtbComponent",                   0x1088fe2b0, 0, false },
-    { "eoc::heal::BlockComponent",                    0x1088e9c60, 0, false },
-    { "eoc::heal::MaxIncomingComponent",              0x1088e9c40, 0, false },
-    { "eoc::heal::MaxOutgoingComponent",              0x1088e9c50, 0, false },
-    { "eoc::improvised_weapon::CanBeWieldedComponent", 0x1088ea228, 0, false },
-    { "eoc::inventory::CanBeInComponent",             0x1089060e0, 0, false },
-    { "eoc::inventory::CannotBePickpocketedComponent", 0x108902d78, 0, false },
-    { "eoc::inventory::CannotBeTakenOutComponent",    0x10890a320, 0, false },
-    { "eoc::inventory::DropOnDeathBlockedComponent",  0x108902db8, 0, false },
-    { "eoc::inventory::IsLockedComponent",            0x10890d760, 0, false },
-    { "eoc::inventory::NewItemsInsideComponent",      0x108902000, 0, false },
-    { "eoc::inventory::NonTradableComponent",         0x108902d98, 0, false },
-    { "eoc::item::DestroyingComponent",               0x1089007d0, 0, false },
-    { "eoc::item::DoorComponent",                     0x108900c68, 0, false },
-    { "eoc::item::ExamineDisabledComponent",          0x108900c88, 0, false },
-    { "eoc::item::HasMovedComponent",                 0x108900c58, 0, false },
-    { "eoc::item::HasOpenedComponent",                0x108902b28, 0, false },
-    { "eoc::item::InUseComponent",                    0x108900c38, 0, false },
-    { "eoc::item::IsGoldComponent",                   0x1089007f0, 0, false },
-    { "eoc::item::IsPoisonedComponent",               0x108900c48, 0, false },
-    { "eoc::item::ItemComponent",                     0x10891ccb0, 0, false },
-    { "eoc::item::NewInInventoryComponent",           0x108901ff0, 0, false },
-    { "eoc::item::ShouldDestroyOnSpellCastComponent", 0x10890c008, 0, false },
-    { "eoc::item_template::CanMoveComponent",         0x10890bf20, 0, false },
-    { "eoc::item_template::ClimbOnComponent",         0x108900c18, 0, false },
-    { "eoc::item_template::DestroyedComponent",       0x10890bf00, 0, false },
-    { "eoc::item_template::InteractionDisabledComponent", 0x10890bf30, 0, false },
-    { "eoc::item_template::IsStoryItemComponent",     0x108900c78, 0, false },
-    { "eoc::item_template::LadderComponent",          0x10890cb90, 0, false },
-    { "eoc::item_template::WalkOnComponent",          0x108900c28, 0, false },
-    { "eoc::multiplayer::HostComponent",              0x1088f3780, 0, false },
-    { "eoc::ownership::OwnedAsLootComponent",         0x1089007e0, 0, false },
-    { "eoc::party::BlockFollowComponent",             0x1088f83c0, 0, false },
-    { "eoc::party::CurrentlyFollowingPartyComponent", 0x108913e78, 0, false },
-    { "eoc::pickup::PickUpExecutingComponent",        0x108905ea0, 0, false },
-    { "eoc::rest::LongRestInScriptPhase",             0x1088f2a78, 0, false },
-    { "eoc::rest::ShortRestComponent",                0x10890cf10, 0, false },
-    { "eoc::spell_cast::CanBeTargetedComponent",      0x10890c1e8, 0, false },
-    { "eoc::status::IndicateDarknessComponent",       0x1088efad8, 0, false },
-    { "eoc::tadpole_tree::FullIllithidComponent",     0x1088f1108, 0, false },
-    { "eoc::tadpole_tree::HalfIllithidComponent",     0x1088f1118, 0, false },
-    { "eoc::tadpole_tree::TadpoledComponent",         0x1088f1128, 0, false },
-    { "eoc::tag::AvatarComponent",                    0x10891d7a0, 0, false },
-    { "eoc::tag::HasExclamationDialogComponent",      0x1088f1648, 0, false },
-    { "eoc::tag::TraderComponent",                    0x108906310, 0, false },
-    { "eoc::through::CanSeeThroughComponent",         0x108900df8, 0, false },
-    { "eoc::through::CanShootThroughComponent",       0x10890f2c8, 0, false },
-    { "eoc::through::CanWalkThroughComponent",        0x108900e18, 0, false },
-    { "eoc::trade::CanTradeComponent",                0x108906300, 0, false },
+    { "eoc::CanTriggerRandomCastsComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ClientControlComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::GravityDisabledComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::IsInTurnBasedModeComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::OffStageComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::PickingStateComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::PlayerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::SimpleCharacterComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::active_roll::InProgressComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ambush::AmbushingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::camp::PresenceComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::character::CharacterComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::combat::DelayedFanfareComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::exp::CanLevelUpComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::falling::IsFallingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ftb::IsFtbPausedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ftb::IsInFtbComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::heal::BlockComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::heal::MaxIncomingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::heal::MaxOutgoingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::improvised_weapon::CanBeWieldedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::CanBeInComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::CannotBePickpocketedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::CannotBeTakenOutComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::DropOnDeathBlockedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::IsLockedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::NewItemsInsideComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::inventory::NonTradableComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::DestroyingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::DoorComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::ExamineDisabledComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::HasMovedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::HasOpenedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::InUseComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::IsGoldComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::IsPoisonedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::ItemComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::NewInInventoryComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item::ShouldDestroyOnSpellCastComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::CanMoveComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::ClimbOnComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::DestroyedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::InteractionDisabledComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::IsStoryItemComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::LadderComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::item_template::WalkOnComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::multiplayer::HostComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::ownership::OwnedAsLootComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::party::BlockFollowComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::party::CurrentlyFollowingPartyComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::pickup::PickUpExecutingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::rest::LongRestInScriptPhase", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::rest::ShortRestComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::spell_cast::CanBeTargetedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::status::IndicateDarknessComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::tadpole_tree::FullIllithidComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::tadpole_tree::HalfIllithidComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::tadpole_tree::TadpoledComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::tag::AvatarComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::tag::HasExclamationDialogComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::tag::TraderComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::through::CanSeeThroughComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::through::CanShootThroughComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::through::CanWalkThroughComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "eoc::trade::CanTradeComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // esv:: tag components
-    { "esv::IsMarkedForDeletionComponent",            0x1089050d8, 0, false },
-    { "esv::NetComponent",                            0x1088fec90, 0, false },
-    { "esv::ScriptPropertyCanBePickpocketedComponent", 0x1088e7f30, 0, false },
-    { "esv::ScriptPropertyIsDroppedOnDeathComponent", 0x1088ea420, 0, false },
-    { "esv::ScriptPropertyIsTradableComponent",       0x1088ea4f0, 0, false },
-    { "esv::TurnOrderSkippedComponent",               0x108916ad8, 0, false },
-    { "esv::VariableManagerComponent",                0x1088f3928, 0, false },
-    { "esv::boost::StatusBoostsProcessedComponent",   0x10890be48, 0, false },
-    { "esv::character_creation::IsCustomComponent",   0x1088fe9e8, 0, false },
-    { "esv::combat::CanStartCombatComponent",         0x1088f9670, 0, false },
-    { "esv::combat::FleeBlockedComponent",            0x1088f8e80, 0, false },
-    { "esv::combat::ImmediateJoinComponent",          0x1088f95c0, 0, false },
-    { "esv::combat::LeaveRequestComponent",           0x1088fc858, 0, false },
-    { "esv::cover::IsLightBlockerComponent",          0x1088e8498, 0, false },
-    { "esv::cover::IsVisionBlockerComponent",         0x1088f39b0, 0, false },
-    { "esv::darkness::DarknessActiveComponent",       0x1088e85e8, 0, false },
-    { "esv::death::DeathContinueComponent",           0x1088f84c0, 0, false },
-    { "esv::escort::HasStragglersComponent",          0x1088e94b0, 0, false },
-    { "esv::hotbar::OrderComponent",                  0x1088ec528, 0, false },
-    { "esv::inventory::CharacterHasGeneratedTradeTreasureComponent", 0x1088ffa80, 0, false },
-    { "esv::inventory::EntityHasGeneratedTreasureComponent", 0x1088ffa70, 0, false },
-    { "esv::inventory::IsReplicatedWithComponent",    0x1088fee30, 0, false },
-    { "esv::inventory::ReadyToBeAddedToInventoryComponent", 0x1088feb10, 0, false },
-    { "esv::level::InventoryItemDataPopulatedComponent", 0x1088eaae8, 0, false },
-    { "esv::rest::ShortRestConsumeResourcesComponent", 0x1088f46c0, 0, false },
-    { "esv::sight::EventsEnabledComponent",           0x1088f3960, 0, false },
-    { "esv::spell_cast::ClientInitiatedComponent",    0x10890da90, 0, false },
-    { "esv::status::ActiveComponent",                 0x108905058, 0, false },
-    { "esv::status::AddedFromSaveLoadComponent",      0x10890a400, 0, false },
-    { "esv::status::AuraComponent",                   0x1088f0000, 0, false },
-    { "esv::summon::IsUnsummoningComponent",          0x108900ae8, 0, false },
-    { "esv::trigger::LoadedHandledComponent",         0x1088f22a8, 0, false },
-    { "esv::trigger::TriggerWorldAutoTriggeredComponent", 0x108913ea8, 0, false },
+    { "esv::IsMarkedForDeletionComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::NetComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::ScriptPropertyCanBePickpocketedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::ScriptPropertyIsDroppedOnDeathComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::ScriptPropertyIsTradableComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::TurnOrderSkippedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::VariableManagerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::boost::StatusBoostsProcessedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::character_creation::IsCustomComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::combat::CanStartCombatComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::combat::FleeBlockedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::combat::ImmediateJoinComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::combat::LeaveRequestComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::cover::IsLightBlockerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::cover::IsVisionBlockerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::darkness::DarknessActiveComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::death::DeathContinueComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::escort::HasStragglersComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::hotbar::OrderComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::inventory::CharacterHasGeneratedTradeTreasureComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::inventory::EntityHasGeneratedTreasureComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::inventory::IsReplicatedWithComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::inventory::ReadyToBeAddedToInventoryComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::level::InventoryItemDataPopulatedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::rest::ShortRestConsumeResourcesComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::sight::EventsEnabledComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::spell_cast::ClientInitiatedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::status::ActiveComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::status::AddedFromSaveLoadComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::status::AuraComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::summon::IsUnsummoningComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::trigger::LoadedHandledComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "esv::trigger::TriggerWorldAutoTriggeredComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Template Components (Issue #41 - Ext.Template support)
     // =====================================================================
-    { "eoc::templates::OriginalTemplateComponent",    0x10890a230, 0, false },
+    { "eoc::templates::OriginalTemplateComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // ls:: tag components
-    { "ls::AlwaysUpdateEffectComponent",              0x10893e3d8, 0, false },
-    { "ls::AnimationUpdateComponent",                 0x10893de68, 0, false },
-    { "ls::IsGlobalComponent",                        0x1089470c0, 0, false },
-    { "ls::IsSeeThroughComponent",                    0x108945628, 0, false },
-    { "ls::LevelIsOwnerComponent",                    0x1089431a8, 0, false },
-    { "ls::LevelPrepareUnloadBusyComponent",          0x10893ded8, 0, false },
-    { "ls::LevelUnloadBusyComponent",                 0x108943448, 0, false },
-    { "ls::SavegameComponent",                        0x10893dff8, 0, false },
-    { "ls::VisualLoadedComponent",                    0x1089482a8, 0, false },
-    { "ls::game::PauseComponent",                     0x1089468f0, 0, false },
-    { "ls::game::PauseExcludedComponent",             0x108946930, 0, false },
-    { "ls::level::LevelInstanceUnloadingComponent",   0x108943468, 0, false },
+    { "ls::AlwaysUpdateEffectComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::AnimationUpdateComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::IsGlobalComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::IsSeeThroughComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::LevelIsOwnerComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::LevelPrepareUnloadBusyComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::LevelUnloadBusyComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::SavegameComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::VisualLoadedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::game::PauseComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::game::PauseExcludedComponent", 0, false, "ecs::ComponentTypeIdContext", false },
+    { "ls::level::LevelInstanceUnloadingComponent", 0, false, "ecs::ComponentTypeIdContext", false },
 
     // =====================================================================
     // Issue #51 Event Components - One-frame event components for Ext.Events
-    // These addresses contain POINTERS to TypeIndex storage.
-    // Must dereference: TypeIndex = *(uint32_t*)(*ptr)
-    // Discovered via Ghidra: RegisterQueryDescription uses PTR_m_TypeIndex pattern.
-    // PTR_ slots live in __DATA_CONST (no nm symbol); +0x8000 migration relies on
-    // the segment-wide shift proven by the __got slot at 0x1083cca68. Reads are
-    // safe_memory-validated and range-checked, so a miss degrades, not crashes.
+    // Their old anonymous pointer slots are no longer used. Both exact
+    // OneFrameComponentTypeIdContext symbols remain exported on 7398727.
     // =====================================================================
-    { "esv::TurnStartedEventOneFrameComponent",       0x1083d6d18, 0, false, true },  // TypeIndex 167
-    { "esv::TurnEndedEventOneFrameComponent",         0x1083d6ca8, 0, false, true },  // TypeIndex 164
+    { "esv::TurnStartedEventOneFrameComponent", 0, false, "ecs::OneFrameComponentTypeIdContext", true },  // TypeIndex 167
+    { "esv::TurnEndedEventOneFrameComponent", 0, false, "ecs::OneFrameComponentTypeIdContext", true },  // TypeIndex 164
 
     // Sentinel
-    { NULL, 0, 0, false, false }
+    { NULL, 0, false, NULL, false }
 };
 
 // ============================================================================
@@ -307,32 +298,47 @@ bool component_typeid_ready(void) {
 // TypeId Reading
 // ============================================================================
 
-bool component_typeid_read(uint64_t ghidraAddr, uint16_t *outIndex) {
-    if (!component_typeid_ready() || !outIndex) {
+static bool component_typeid_runtime_build_matches(void) {
+    const char *detected_build = version_detect_get_version();
+    return detected_build != NULL && version_detect_matches() &&
+           strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) == 0;
+}
+
+static bool component_typeid_runtime_address(uint64_t preferred_va,
+                                             mach_vm_address_t *out_address) {
+    if (!out_address || preferred_va < GHIDRA_BASE_ADDRESS || !g_BinaryBase) {
+        return false;
+    }
+    *out_address = preferred_va - GHIDRA_BASE_ADDRESS +
+                   (mach_vm_address_t)g_BinaryBase;
+    return true;
+}
+
+bool component_typeid_read(uint64_t preferred_va, uint16_t *outIndex) {
+    if (!component_typeid_ready() || !outIndex ||
+        !component_typeid_runtime_build_matches()) {
         return false;
     }
 
-    /* Calculate runtime address
-     * Formula: runtime = ghidra - 0x100000000 + binary_base + per-version data shift.
-     * The TypeId globals live in __DATA, which can shift uniformly between game
-     * versions (e.g. +0x8000 for 7209685); component_data_shift carries that delta. */
-    uint64_t offset = ghidraAddr - GHIDRA_BASE_ADDRESS;
-    const VersionOffsets *vo = offset_table_get();
-    if (vo) offset += vo->component_data_shift;
-    mach_vm_address_t runtimeAddr = offset + (mach_vm_address_t)g_BinaryBase;
+    mach_vm_address_t runtimeAddr = 0;
+    if (!component_typeid_runtime_address(preferred_va, &runtimeAddr)) {
+        return false;
+    }
 
     /* Validate the runtime address before attempting to read */
     SafeMemoryInfo info = safe_memory_check_address(runtimeAddr);
     if (!info.is_valid || !info.is_readable) {
-        LOG_ENTITY_DEBUG("  Address 0x%llx (Ghidra 0x%llx) is not readable",
-                   (unsigned long long)runtimeAddr, (unsigned long long)ghidraAddr);
+        LOG_ENTITY_DEBUG("  Address 0x%llx (preferred VA 0x%llx) is not readable",
+                   (unsigned long long)runtimeAddr,
+                   (unsigned long long)preferred_va);
         return false;
     }
 
     /* Check for GPU carveout region */
     if (safe_memory_is_gpu_region(runtimeAddr)) {
-        LOG_ENTITY_DEBUG("  Address 0x%llx (Ghidra 0x%llx) is in GPU region",
-                   (unsigned long long)runtimeAddr, (unsigned long long)ghidraAddr);
+        LOG_ENTITY_DEBUG("  Address 0x%llx (preferred VA 0x%llx) is in GPU region",
+                   (unsigned long long)runtimeAddr,
+                   (unsigned long long)preferred_va);
         return false;
     }
 
@@ -340,8 +346,9 @@ bool component_typeid_read(uint64_t ghidraAddr, uint16_t *outIndex) {
      * TypeId<T>::m_TypeIndex is typically a 32-bit integer */
     int32_t rawValue = -1;
     if (!safe_memory_read_i32(runtimeAddr, &rawValue)) {
-        LOG_ENTITY_DEBUG("  Failed to safely read from 0x%llx (Ghidra 0x%llx)",
-                   (unsigned long long)runtimeAddr, (unsigned long long)ghidraAddr);
+        LOG_ENTITY_DEBUG("  Failed to safely read from 0x%llx (preferred VA 0x%llx)",
+                   (unsigned long long)runtimeAddr,
+                   (unsigned long long)preferred_va);
         return false;
     }
 
@@ -353,80 +360,9 @@ bool component_typeid_read(uint64_t ghidraAddr, uint16_t *outIndex) {
     }
 
     *outIndex = (uint16_t)rawValue;
-    LOG_ENTITY_DEBUG("  TypeIndex=%u at 0x%llx (Ghidra 0x%llx)",
-               *outIndex, (unsigned long long)runtimeAddr, (unsigned long long)ghidraAddr);
-    return true;
-}
-
-/**
- * Read TypeIndex from a pointer-based address.
- * Some components (like one-frame event components) store a pointer to TypeInfo,
- * and the TypeIndex is at offset 0 of that structure.
- *
- * Pattern from Ghidra:
- *   puVar3 = PTR_m_TypeIndex_XXXXXXXX;
- *   uVar1 = *(uint *)PTR_m_TypeIndex_XXXXXXXX;
- */
-bool component_typeid_read_pointer(uint64_t ghidraAddr, uint16_t *outIndex) {
-    if (!component_typeid_ready() || !outIndex) {
-        return false;
-    }
-
-    /* Calculate runtime address of the pointer (with per-version data shift) */
-    uint64_t offset = ghidraAddr - GHIDRA_BASE_ADDRESS;
-    const VersionOffsets *vo = offset_table_get();
-    if (vo) offset += vo->component_data_shift;
-    mach_vm_address_t ptrAddr = offset + (mach_vm_address_t)g_BinaryBase;
-
-    /* Validate the pointer address */
-    SafeMemoryInfo info = safe_memory_check_address(ptrAddr);
-    if (!info.is_valid || !info.is_readable) {
-        LOG_ENTITY_DEBUG("  Pointer address 0x%llx (Ghidra 0x%llx) is not readable",
-                   (unsigned long long)ptrAddr, (unsigned long long)ghidraAddr);
-        return false;
-    }
-
-    /* Read the pointer value */
-    void *typeInfoPtr = NULL;
-    if (!safe_memory_read_pointer(ptrAddr, &typeInfoPtr)) {
-        LOG_ENTITY_DEBUG("  Failed to read pointer from 0x%llx (Ghidra 0x%llx)",
-                   (unsigned long long)ptrAddr, (unsigned long long)ghidraAddr);
-        return false;
-    }
-
-    if (!typeInfoPtr) {
-        LOG_ENTITY_DEBUG("  Null pointer at 0x%llx (Ghidra 0x%llx)",
-                   (unsigned long long)ptrAddr, (unsigned long long)ghidraAddr);
-        return false;
-    }
-
-    /* Validate the dereferenced address */
-    mach_vm_address_t valueAddr = (mach_vm_address_t)typeInfoPtr;
-    SafeMemoryInfo derefInfo = safe_memory_check_address(valueAddr);
-    if (!derefInfo.is_valid || !derefInfo.is_readable) {
-        LOG_ENTITY_DEBUG("  Dereferenced address 0x%llx is not readable (ptr at Ghidra 0x%llx)",
-                   (unsigned long long)valueAddr, (unsigned long long)ghidraAddr);
-        return false;
-    }
-
-    /* Read the TypeIndex from the dereferenced address */
-    int32_t rawValue = -1;
-    if (!safe_memory_read_i32(valueAddr, &rawValue)) {
-        LOG_ENTITY_DEBUG("  Failed to read TypeIndex from 0x%llx (ptr at Ghidra 0x%llx)",
-                   (unsigned long long)valueAddr, (unsigned long long)ghidraAddr);
-        return false;
-    }
-
-    /* Check for valid TypeIndex range */
-    if (rawValue < 0 || rawValue > 0xFFFF) {
-        LOG_ENTITY_DEBUG("  Invalid TypeIndex value %d at *0x%llx (expected 0-65535)",
-                   rawValue, (unsigned long long)valueAddr);
-        return false;
-    }
-
-    *outIndex = (uint16_t)rawValue;
-    LOG_ENTITY_DEBUG("  TypeIndex=%u at *0x%llx (ptr at Ghidra 0x%llx)",
-               *outIndex, (unsigned long long)valueAddr, (unsigned long long)ghidraAddr);
+    LOG_ENTITY_DEBUG("  TypeIndex=%u at 0x%llx (preferred VA 0x%llx)",
+               *outIndex, (unsigned long long)runtimeAddr,
+               (unsigned long long)preferred_va);
     return true;
 }
 
@@ -434,9 +370,24 @@ bool component_typeid_read_pointer(uint64_t ghidraAddr, uint16_t *outIndex) {
 // Discovery
 // ============================================================================
 
+bool component_typeid_is_curated(const char *name) {
+    if (!name) return false;
+    for (int i = 0; g_KnownTypeIds[i].componentName != NULL; i++) {
+        if (strcmp(g_KnownTypeIds[i].componentName, name) == 0) return true;
+    }
+    return false;
+}
+
 int component_typeid_discover(void) {
     if (!component_typeid_ready()) {
         LOG_ENTITY_DEBUG("ERROR: Not initialized, cannot discover");
+        return 0;
+    }
+    if (!component_typeid_runtime_build_matches()) {
+        const char *detected_build = version_detect_get_version();
+        LOG_ENTITY_DEBUG("TypeId build gate closed: generated=%s detected=%s",
+                         GENERATED_TYPEIDS_BUILD_ID,
+                         detected_build ? detected_build : "unknown");
         return 0;
     }
 
@@ -447,28 +398,29 @@ int component_typeid_discover(void) {
     for (int i = 0; g_KnownTypeIds[i].componentName != NULL; i++) {
         const TypeIdEntry *entry = &g_KnownTypeIds[i];
 
-        uint16_t typeIndex;
-        bool success;
-
-        // Use pointer-based read for one-frame components (isPointer flag)
-        if (entry->isPointer) {
-            success = component_typeid_read_pointer(entry->ghidraAddr, &typeIndex);
-        } else {
-            success = component_typeid_read(entry->ghidraAddr, &typeIndex);
+        uint64_t preferred_va = 0;
+        if (!component_typeid_generated_lookup(entry->componentName,
+                                               entry->context,
+                                               &preferred_va)) {
+            LOG_ENTITY_DEBUG("  %s: generated symbol authority missing",
+                             entry->componentName);
+            continue;
         }
+        uint16_t typeIndex = 0;
+        bool success = component_typeid_read(preferred_va, &typeIndex);
 
         if (success) {
-            // One-frame components (isPointer=true) need the 0x8000 bit set
+            // One-frame components need the high storage-pool bit set.
             // This tells the storage lookup to search the OneFrameComponents pool
             uint16_t registeredIndex = typeIndex;
-            if (entry->isPointer) {
+            if (entry->isOneFrame) {
                 registeredIndex = typeIndex | 0x8000;  // Set one-frame bit
             }
 
             LOG_ENTITY_DEBUG("  %s: index=%u (registered=%u, from 0x%llx, oneFrame=%s)",
                        entry->componentName, typeIndex, registeredIndex,
-                       (unsigned long long)entry->ghidraAddr,
-                       entry->isPointer ? "yes" : "no");
+                       (unsigned long long)preferred_va,
+                       entry->isOneFrame ? "yes" : "no");
 
             // Update the component registry with the proper index (with 0x8000 for one-frame)
             bool registered = component_registry_register(
@@ -484,15 +436,15 @@ int component_typeid_discover(void) {
                 discovered++;
             }
         } else {
-            LOG_ENTITY_DEBUG("  %s: FAILED to read from 0x%llx (ptr=%s)",
-                       entry->componentName, (unsigned long long)entry->ghidraAddr,
-                       entry->isPointer ? "yes" : "no");
+            LOG_ENTITY_DEBUG("  %s: FAILED to read generated VA 0x%llx",
+                       entry->componentName,
+                       (unsigned long long)preferred_va);
         }
     }
 
     LOG_ENTITY_DEBUG("Discovered %d component type indices from known list", discovered);
 
-    // Also discover TypeIds for all 1999 generated components
+    // Also discover the remainder of the 2004 generated component surface.
     int generated = component_typeid_discover_all_generated();
     discovered += generated;
 
@@ -516,6 +468,13 @@ void component_typeid_dump_to_console(void) {
         console_printf("TypeId system not initialized");
         return;
     }
+    if (!component_typeid_runtime_build_matches()) {
+        const char *detected_build = version_detect_get_version();
+        console_printf("TypeId build gate closed (generated=%s, detected=%s)",
+                       GENERATED_TYPEIDS_BUILD_ID,
+                       detected_build ? detected_build : "unknown");
+        return;
+    }
 
     console_printf("Component TypeId Resolution Status:");
     console_printf("------------------------------------");
@@ -527,37 +486,20 @@ void component_typeid_dump_to_console(void) {
         const TypeIdEntry *entry = &g_KnownTypeIds[i];
         total++;
 
-        const VersionOffsets *vo = offset_table_get();
-        mach_vm_address_t runtimeAddr = entry->ghidraAddr - GHIDRA_BASE_ADDRESS
-                                        + (vo ? vo->component_data_shift : 0)
-                                        + (mach_vm_address_t)g_BinaryBase;
-
-        // Check if address is readable
-        SafeMemoryInfo info = safe_memory_check_address(runtimeAddr);
-        if (!info.is_valid || !info.is_readable) {
-            console_printf("%-55s UNREADABLE", entry->componentName);
-            continue;
-        }
-
-        if (safe_memory_is_gpu_region(runtimeAddr)) {
-            console_printf("%-55s GPU_REGION", entry->componentName);
-            continue;
-        }
-
-        // Safely read the value
-        int32_t rawValue = -1;
-        if (!safe_memory_read_i32(runtimeAddr, &rawValue)) {
-            console_printf("%-55s READ_FAILED", entry->componentName);
-            continue;
-        }
-
-        if (rawValue >= 0 && rawValue <= 0xFFFF && rawValue != 0xFFFF) {
-            console_printf("%-55s RESOLVED (typeIndex=%u)", entry->componentName, (uint16_t)rawValue);
+        uint64_t preferred_va = 0;
+        uint16_t type_index = 0;
+        if (!component_typeid_generated_lookup(entry->componentName,
+                                               entry->context,
+                                               &preferred_va)) {
+            console_printf("%-55s NO_GENERATED_SYMBOL", entry->componentName);
+        } else if (component_typeid_read(preferred_va, &type_index)) {
+            console_printf("%-55s RESOLVED (typeIndex=%u)",
+                           entry->componentName, type_index);
             resolved++;
-        } else if (rawValue == 0xFFFF || rawValue == -1) {
-            console_printf("%-55s UNRESOLVED (typeIndex=65535)", entry->componentName);
         } else {
-            console_printf("%-55s INVALID (rawValue=%d)", entry->componentName, rawValue);
+            console_printf("%-55s UNRESOLVED (preferredVA=0x%llx)",
+                           entry->componentName,
+                           (unsigned long long)preferred_va);
         }
     }
 
@@ -570,6 +512,13 @@ void component_typeid_dump(void) {
         LOG_ENTITY_DEBUG("Not initialized");
         return;
     }
+    if (!component_typeid_runtime_build_matches()) {
+        const char *detected_build = version_detect_get_version();
+        LOG_ENTITY_DEBUG("TypeId build gate closed (generated=%s, detected=%s)",
+                         GENERATED_TYPEIDS_BUILD_ID,
+                         detected_build ? detected_build : "unknown");
+        return;
+    }
 
     LOG_ENTITY_DEBUG("=== TypeId<T>::m_TypeIndex Dump ===");
     LOG_ENTITY_DEBUG("Binary base: %p", g_BinaryBase);
@@ -577,40 +526,26 @@ void component_typeid_dump(void) {
     for (int i = 0; g_KnownTypeIds[i].componentName != NULL; i++) {
         const TypeIdEntry *entry = &g_KnownTypeIds[i];
 
-        const VersionOffsets *vo = offset_table_get();
-        mach_vm_address_t runtimeAddr = entry->ghidraAddr - GHIDRA_BASE_ADDRESS
-                                        + (vo ? vo->component_data_shift : 0)
-                                        + (mach_vm_address_t)g_BinaryBase;
-
         LOG_ENTITY_DEBUG("  %s:", entry->componentName);
-        LOG_ENTITY_DEBUG("    Ghidra addr: 0x%llx", (unsigned long long)entry->ghidraAddr);
-        LOG_ENTITY_DEBUG("    Runtime addr: 0x%llx", (unsigned long long)runtimeAddr);
-
-        /* Check if address is readable */
-        SafeMemoryInfo info = safe_memory_check_address(runtimeAddr);
-        if (!info.is_valid || !info.is_readable) {
-            LOG_ENTITY_DEBUG("    => NOT READABLE");
+        uint64_t preferred_va = 0;
+        if (!component_typeid_generated_lookup(entry->componentName,
+                                               entry->context,
+                                               &preferred_va)) {
+            LOG_ENTITY_DEBUG("    => NO GENERATED SYMBOL");
             continue;
         }
+        mach_vm_address_t runtime_address = 0;
+        component_typeid_runtime_address(preferred_va, &runtime_address);
+        LOG_ENTITY_DEBUG("    Preferred VA: 0x%llx",
+                         (unsigned long long)preferred_va);
+        LOG_ENTITY_DEBUG("    Runtime addr: 0x%llx",
+                         (unsigned long long)runtime_address);
 
-        if (safe_memory_is_gpu_region(runtimeAddr)) {
-            LOG_ENTITY_DEBUG("    => GPU REGION (unsafe)");
-            continue;
-        }
-
-        /* Safely read the value */
-        int32_t rawValue = -1;
-        if (!safe_memory_read_i32(runtimeAddr, &rawValue)) {
-            LOG_ENTITY_DEBUG("    => READ FAILED");
-            continue;
-        }
-
-        LOG_ENTITY_DEBUG("    Raw value: %d (0x%x)", rawValue, rawValue);
-
-        if (rawValue >= 0 && rawValue <= 0xFFFF) {
-            LOG_ENTITY_DEBUG("    => TypeIndex: %u", (uint16_t)rawValue);
+        uint16_t type_index = 0;
+        if (component_typeid_read(preferred_va, &type_index)) {
+            LOG_ENTITY_DEBUG("    => TypeIndex: %u", type_index);
         } else {
-            LOG_ENTITY_DEBUG("    => INVALID (uninitialized or error)");
+            LOG_ENTITY_DEBUG("    => UNRESOLVED");
         }
     }
 }

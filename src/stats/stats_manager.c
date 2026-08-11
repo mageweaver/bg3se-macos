@@ -121,12 +121,11 @@ static bool safe_write_i32(void *addr, int32_t value) {
 // CNamedElementManager has: VMT(8) + Values(24) + NameToHandle(~48) + NextHandle(4)
 // Approximate size per manager: ~80-88 bytes
 
-// For ARM64, we assume 8-byte alignment
+// ARM64 layout re-derived from named accessors and RPGStats::Destroy.
 // struct RPGStats {
-//     VMT;                             // +0x00 (8 bytes)
-//     CNamedElementManager ModifierValueLists;  // +0x08
-//     CNamedElementManager ModifierLists;       // +0x??
-//     CNamedElementManager Objects;             // +0x??
+//     CNamedElementManager ModifierValueLists;  // +0x00 (includes VMT)
+//     CNamedElementManager ModifierLists;       // +0x60
+//     CNamedElementManager Objects;             // +0xC0
 //     ...
 // }
 
@@ -538,7 +537,7 @@ void* stats_manager_get_raw(void) {
 // ============================================================================
 
 // Get the Objects manager from RPGStats
-// RPGStats layout: VMT(?), ModifierValueLists, ModifierLists, Objects, ...
+// RPGStats layout: ModifierValueLists, ModifierLists, Objects, ...
 // Based on runtime probing: Objects.NextHandle at +0x0E0
 static void* get_objects_manager(void) {
     void *rpgstats = stats_manager_get_raw();
@@ -559,15 +558,48 @@ static void* get_modifier_lists_manager(void) {
     return (char*)rpgstats + RPGSTATS_OFFSET_MODIFIER_LISTS;
 }
 
-// Get the ModifierValueLists manager from RPGStats
-// ModifierValueLists is the 1st CNamedElementManager (after VMT)
-// RPGStats layout: VMT(8) + ModifierValueLists(0x58) + ModifierLists(0x60) + Objects(0xC0)
-#define RPGSTATS_OFFSET_MODIFIER_VALUE_LISTS 0x08
+// RPGStats begins with its CRPGStats_Modifier_ValueList_Manager base. The
+// manager's own VMT is therefore RPGStats+0x00; there is no outer RPGStats VMT
+// before it. This is instruction-verified on 4.1.1.7209685 and 4.1.1.7398727.
+#define RPGSTATS_OFFSET_MODIFIER_VALUE_LISTS 0x00
+#define VALUELIST_REGISTRY_MAX_ENTRIES       4096U
+#define VALUELIST_DIAGNOSTIC_SCAN_LIMIT      32U
 
 static void* get_modifier_value_lists_manager(void) {
     void *rpgstats = stats_manager_get_raw();
     if (!rpgstats) return NULL;
     return (char*)rpgstats + RPGSTATS_OFFSET_MODIFIER_VALUE_LISTS;
+}
+
+static bool stats_valuelist_registry_shape(void *manager, uint32_t *count,
+                                           void **elements) {
+    void *buffer = NULL;
+    uint32_t capacity = 0;
+    uint32_t size = 0;
+
+    if (!manager ||
+        !safe_read_ptr((char*)manager + CNEM_OFFSET_VALUES_BUF, &buffer) ||
+        !safe_read_u32((char*)manager + CNEM_OFFSET_VALUES_CAP, &capacity) ||
+        !safe_read_u32((char*)manager + CNEM_OFFSET_VALUES_SIZE, &size) ||
+        size > capacity || capacity > VALUELIST_REGISTRY_MAX_ENTRIES ||
+        (size > 0 && !buffer)) {
+        return false;
+    }
+
+    if (count) *count = size;
+    if (elements) *elements = buffer;
+    return true;
+}
+
+static void* stats_valuelist_registry_element(void *elements, uint32_t count,
+                                               uint32_t index) {
+    void *element = NULL;
+    if (!elements || index >= count ||
+        !safe_read_ptr((char*)elements + (size_t)index * sizeof(void*),
+                       &element)) {
+        return NULL;
+    }
+    return element;
 }
 
 static bool treasure_manager_is_sane(void *manager, const char *manager_name) {
@@ -624,11 +656,13 @@ static void* find_rpgenumeration_by_name(const char *name) {
     if (!name || !stats_manager_ready()) return NULL;
 
     void *mvl = get_modifier_value_lists_manager();
-    if (!mvl) return NULL;
+    uint32_t count = 0;
+    void *elements = NULL;
+    if (!stats_valuelist_registry_shape(mvl, &count, &elements)) return NULL;
 
-    int count = get_manager_count(mvl);
-    for (int i = 0; i < count; i++) {
-        void *enumeration = get_manager_element(mvl, i);
+    for (uint32_t i = 0; i < count; i++) {
+        void *enumeration =
+            stats_valuelist_registry_element(elements, count, i);
         if (!enumeration) continue;
 
         const char *enum_name = read_fixed_string((char*)enumeration + RPGENUM_OFFSET_NAME);
@@ -639,6 +673,42 @@ static void* find_rpgenumeration_by_name(const char *name) {
     return NULL;
 }
 
+bool stats_get_valuelist_registry_diagnostic(
+    StatsValueListRegistryDiagnostic *out_diagnostic) {
+    if (!out_diagnostic) return false;
+    memset(out_diagnostic, 0, sizeof(*out_diagnostic));
+
+    void *manager = get_modifier_value_lists_manager();
+    out_diagnostic->manager = manager;
+
+    uint32_t count = 0;
+    void *elements = NULL;
+    if (!stats_valuelist_registry_shape(manager, &count, &elements)) {
+        return false;
+    }
+    out_diagnostic->count = count;
+
+    uint32_t scan_count = count;
+    if (scan_count > VALUELIST_DIAGNOSTIC_SCAN_LIMIT) {
+        scan_count = VALUELIST_DIAGNOSTIC_SCAN_LIMIT;
+    }
+    for (uint32_t i = 0;
+         i < scan_count &&
+         out_diagnostic->sample_count < STATS_VALUELIST_DIAGNOSTIC_MAX_NAMES;
+         i++) {
+        void *enumeration =
+            stats_valuelist_registry_element(elements, count, i);
+        const char *name = enumeration
+            ? read_fixed_string((char*)enumeration + RPGENUM_OFFSET_NAME)
+            : NULL;
+        if (name) {
+            out_diagnostic->sample_names[out_diagnostic->sample_count++] = name;
+        }
+    }
+
+    return true;
+}
+
 #define VALUELIST_OFFSET_BUCKET_COUNT 0x08
 #define VALUELIST_OFFSET_BUCKETS      0x10
 #define VALUELIST_OFFSET_ITEM_COUNT   0x18
@@ -647,7 +717,15 @@ static void* find_rpgenumeration_by_name(const char *name) {
 #define VALUELIST_NODE_OFFSET_VALUE   0x0C
 #define VALUELIST_MAX_BUCKETS         1048576U
 #define VALUELIST_MAX_ITEMS           1048576U
-#define VALUELIST_INSERT_ADDRESS      0x101c44920ULL
+
+// Mutation gate, independent of BG3_KNOWN_VERSION (which now tracks the
+// migrated 7398727 offsets). ValueList::Insert's static ABI is proven
+// identical on both builds (ghidra/offsets/VALUELIST_REGISTRY_7398727.md),
+// but no live insertion has ever succeeded — the 7209685 sessions hit the
+// registry-root bug before reaching Insert. Keep this pinned until the
+// Phase 5 live session proves the diagnostic + insert round trip on
+// 7398727, then move it with that evidence.
+#define VALUELIST_INSERT_VERIFIED_BUILD "4.1.1.7209685"
 
 typedef enum {
     STATS_VALUELIST_ERROR = -1,
@@ -866,13 +944,21 @@ bool stats_add_enumeration_value(const char *enum_name, const char *label) {
         return false;
     }
 
+    // Validate the complete read path before checking or invoking any mutation
+    // primitive. This remains usable independently through the diagnostic API.
+    StatsValueListRegistryDiagnostic registry_diagnostic;
+    if (!stats_get_valuelist_registry_diagnostic(&registry_diagnostic)) {
+        LOG_STATS_WARN("ModifierValueLists registry failed read-only validation");
+        return false;
+    }
+
 #if !defined(__aarch64__) && !defined(__arm64__)
     LOG_STATS_WARN("ValueList::Insert is only verified for ARM64");
     return false;
 #endif
 
     const char *version = version_detect_get_version();
-    if (!version || strcmp(version, BG3_KNOWN_VERSION) != 0) {
+    if (!version || strcmp(version, VALUELIST_INSERT_VERIFIED_BUILD) != 0) {
         LOG_STATS_WARN("ValueList::Insert disabled for unaudited game version");
         return false;
     }
@@ -921,9 +1007,12 @@ bool stats_add_enumeration_value(const char *enum_name, const char *label) {
         return false;
     }
 
-    StatsValueListInsertFn insert = (StatsValueListInsertFn)(
-        (uintptr_t)g_MainBinaryBase +
-        (VALUELIST_INSERT_ADDRESS - GHIDRA_BASE_ADDRESS));
+    StatsValueListInsertFn insert = (StatsValueListInsertFn)
+        offset_table_game_fn(GAME_FN_VALUELIST_INSERT);
+    if (!insert) {
+        LOG_STATS_WARN("ValueList::Insert unavailable for the active offset row");
+        return false;
+    }
     int32_t inserted_value = (int32_t)old_count;
     insert(value_list, &label_fs, inserted_value);
 

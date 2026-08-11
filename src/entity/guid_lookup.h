@@ -127,7 +127,8 @@ const char *extract_uuid_from_guid(const char *guid);
 bool guid_parse(const char *guid_str, Guid *out_guid);
 
 /**
- * Convert a Guid to string representation
+ * Convert a Guid to its canonical lowercase string representation.
+ * This is the exact inverse of guid_parse() for valid UUID strings.
  * @param guid The Guid to convert
  * @param out_str Output buffer (must be at least 37 bytes)
  */

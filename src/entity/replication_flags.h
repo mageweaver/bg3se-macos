@@ -1,5 +1,6 @@
 /**
  * BG3SE-macOS - Read-only entity replication flag lookup.
+ * ReplicatedTypeContext preferred VAs come from generated_typeids.h.
  */
 
 #ifndef BG3SE_REPLICATION_FLAGS_H

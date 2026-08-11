@@ -31,10 +31,9 @@ python3 tools/port_offsets.py resolve
 # 2. Print copy-pasteable C for src/core/offset_table.c:
 python3 tools/port_offsets.py resolve --emit
 
-# 3. Paste the generated struct entry into g_offset_table[]. The remap
-#    table g_fn_remap is a fixed two-column {6995620, 7209685} table: a
-#    third version needs a new column (and a matching branch in
-#    offset_table_remap_fn), not new rows. Then:
+# 3. Paste the generated VersionOffsets entry into g_offset_table[]. Each row
+#    contains a GameFunctionId-indexed address array, so no schema change is
+#    needed when a fourth or later game version is added. Then:
 cd build && cmake --build .
 
 # 4. Launch, load a save, and run the regression suite:
@@ -53,19 +52,20 @@ python3 tools/port_offsets.py verify
 
 This resolves every address against your binary and **diffs against the values
 already in `offset_table.c`**. On the version the table was built for it prints
-`✓ all N fields + M remap entries match`. That's the proof the automation
+`✓ all N fields + M game functions match`. That's the proof the automation
 reproduces hand-done work before you trust it on a new version.
 
 ## Reading the output / fixing flags
 
 The resolver classifies every item:
 
-- `[INFO] component_data_shift ...` — the signed delta from the 7209685-vintage
-  compiled-in TypeId constants to your version, computed from the
-  `data_shift_anchor`. It is applied ONLY to the TypeId-global family (proven
-  uniform); every data singleton resolves by its own symbol. Sanity-check it
-  looks like a small, plausible delta.
-- `[WARN] ... MANUAL — anonymous slot` — a global with no symbol at all (e.g.
+- `[INFO] component_data_shift validated ...` — every shared TypeId anchor has
+  one common signed delta from the 7209685-vintage constants.
+- `[WARN] component_data_shift REJECTED ...` — shared TypeId anchors moved by
+  more than one delta. The emitter writes `component_data_shift = 0` and
+  `component_data_shift_valid = false`; migrate TypeIds independently by exact
+  symbol. Never choose the most common delta.
+- `[WARN] ... EXPECTED-MANUAL — anonymous slot` — a global with no symbol (e.g.
   `global_switches_ptr`, an anonymous `__common` slot). It does NOT follow the
   uniform shift (it moved -0x24000 between 6995620 and 7209685 while its
   neighbors moved +0x8000): re-derive it by disassembly (ADRP+LDR reference
@@ -82,8 +82,10 @@ The resolver classifies every item:
   signature drifted. Open the binary's symbols (`nm BINARY | c++filt | grep Name`)
   and update the manifest `symbol`. If it's genuinely gone, that feature needs
   rework.
-- `[ERROR] constant ... CHANGED` — an address we assumed was stable moved. Move
-  that entry from `constant_functions` to `remap_functions`.
+- `[ERROR] game function ... claimed address ... MOVED` — a version claim does
+  not match the exact symbol. Update that version's address; do not preserve a
+  cross-version “constant” assumption. BinkManager::LoadVideo is an example: it
+  stayed at `0x10390b6cc` through 7209685 and moved to `0x103916380` in 7398727.
 - `[WARN] exported_data ... shift != __DATA shift` — that global lives in a
   segment that shifted differently. Resolve it by its own symbol (it already is)
   and don't rely on the uniform shift for it.
@@ -111,9 +113,12 @@ Update the `value` in the manifest and the matching `#define` in the code.
 If you wire a new game function/global into the extender, add it to the manifest
 so future ports resolve it automatically:
 
-- A called game function → `remap_functions` (or `offset_table_functions` if it
-  has a dedicated `VersionOffsets` field). Give the exact demangled `symbol` and
-  its current-version `baseline` address.
+- A called game function → `game_functions`. Add a stable `GAME_FN_*` ID, the
+  exact demangled signature, and the audited preferred VA under `addresses` for
+  the new version. Callers use `offset_table_game_fn(id)` and never pass a raw
+  address.
+- A function already represented by a dedicated `VersionOffsets.fn_*` field →
+  `offset_table_functions`, with its exact demangled signature.
 - A singleton pointer global → `data_singletons` with `method: "symbol"` and its
   demangled `symbol` (plain `nm` resolves local symbols too). Use
   `method: "got"` for `__DATA_CONST,__got` slots and `method: "disasm"` (with a
@@ -126,17 +131,31 @@ Find the exact symbol string with:
 nm "$BG3_BINARY" | c++filt | grep "YourFunctionName"
 ```
 
-Use whatever `c++filt` prints, verbatim, as the manifest `symbol` (whitespace is
-normalized during matching).
+Use whatever `c++filt` prints, verbatim, as the manifest `symbol`. Whitespace is
+normalized, but matching is otherwise exact; name substrings and overload guesses
+are not accepted.
 
-## How the remap table works (background)
+## How the typed function table works
 
-Several subsystems hold a hardcoded game-function address (mixed vintages:
-some 6995620, some 7209685) and call it as a function pointer.
-`offset_table_remap_fn(addr)` (in `offset_table.c`) matches the address against
-EITHER column of the two-column `g_fn_remap` table and returns the running
-version's column. It is fail-closed: an unknown version, or an address not in
-the table, returns **0 — the caller skips that feature instead of jumping to a
-stale address and crashing.** So even an un-ported function degrades gracefully.
-The tool generates the column values for you; entries flagged `abi_changed` in
-the manifest emit 0 until a matching wrapper exists.
+`GameFunctionId` is a stable, typed identifier shared by callers and the
+manifest. Every `VersionOffsets` row contains `game_functions[GAME_FN_COUNT]`,
+whose values are offsets from the preferred image base. The caller asks
+`offset_table_game_fn(GAME_FN_...)` for a runtime callable pointer.
+
+Lookup is fail-closed: an unknown version, out-of-range ID, missing binary base,
+or zero/unverified entry returns `NULL`, so the caller disables that feature
+instead of jumping to a stale address. Symbol resolution proves the entry point,
+not its ABI; independent subsystem gates such as
+`FUNCTOR_ADDRS_VERIFIED_BUILD` remain mandatory.
+
+For build 4.1.1.7398727, run against the preserved binary explicitly:
+
+```bash
+python3 tools/port_offsets.py verify \
+  --binary "build/migration-binaries/4.1.1.7398727/Baldur's Gate 3" \
+  --version 4.1.1.7398727
+```
+
+Until Wave 2A supplies disassembly-derived values, the 7398727 row deliberately
+keeps `global_switches_ptr` and `osiris_interface_ptr` at zero. The audit reports
+both by field name as expected-manual xfails.

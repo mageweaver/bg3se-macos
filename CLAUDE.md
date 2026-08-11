@@ -217,21 +217,23 @@ For RE sessions, adopt the **Meridian** persona (see `agent_docs/meridian-person
 
 ## Key Offsets (Ghidra-verified)
 
-**Build 4.1.1.7209685 (STALE — Steam delivered 4.1.1.7398727 on 2026-08-04, new arm64 LC_UUID `0C51CAED-6D60-3DCD-9299-8519C92631B0`, injection patch wiped).** All offsets below await re-migration (metathesis plan, docs/plans/2026-05-13-003); until then `tests/harness/test_offset_audit.py` fails all 68 tests **by design** and every runtime version/UUID gate fails closed. Offsets were last migrated 2026-07-28; prior values (build 6995620) are invalid.
+**Build 4.1.1.7398727 (current — migrated offline 2026-08-04, arm64 LC_UUID `0C51CAED-6D60-3DCD-9299-8519C92631B0`; Phase 5 live verification pending).** All singletons and functions resolve from the per-version table in `src/core/offset_table.c` (rows: 6995620, 7209685, 7398727), audited every run by `tests/harness/test_offset_audit.py` (283+ checks against the installed binary's exact nm symbols). Gates still closed on 7398727: ECS system update (stale system-TypeIds), savegame hook, RaycastAny UUID, ValueList Insert (`VALUELIST_INSERT_VERIFIED_BUILD`). Evidence: `ghidra/offsets/ADDRESS_MIGRATION_7398727.md`, `VALUELIST_REGISTRY_7398727.md`, `ABI_REVIEW_7398727.md`.
 
-| Offset | Purpose |
+| Offset (7398727) | Purpose |
 |--------|---------|
 | `0x348` | RPGSTATS_OFFSET_FIXEDSTRINGS |
-| `0x101233e8c` | LEGACY_IsInCombat (EntityWorld capture) |
-| `0x1089968b8` | esv::EocServer::m_ptr (server singleton) |
-| `0x108994968` | ecl::EocClient::m_ptr (client singleton) |
-| `0x1089c2c80` | SpellPrototypeManager::m_ptr |
-| `0x1089c5b30` | StatusPrototypeManager::m_ptr |
-| `0x1089bc228` | eoc::Passives::m_ptr (nm BSS symbol; 74 ADRP+LDR sites) |
-| `0x1089ba8f0` | InterruptPrototypeManager::m_ptr |
-| `0x108999528` | BoostPrototypeManager::m_ptr |
-| `0x108a97070` | ResourceManager::m_ptr |
-| `0x101f56cb4` | SpellPrototype::Init (populates from stats) |
+| `0x1089c6f58` | esv::EocServer::m_ptr (server singleton) |
+| `0x1089c4fc0` | ecl::EocClient::m_ptr (client singleton) |
+| `0x1089f3320` | SpellPrototypeManager::m_ptr |
+| `0x1089fddd0` | RPGStats::m_ptr (ValueList registry at +0x00) |
+| `0x1089f61d0` | StatusPrototypeManager::m_ptr |
+| `0x1089ec8c8` | eoc::Passives::m_ptr |
+| `0x1089eaf90` | InterruptPrototypeManager::m_ptr |
+| `0x1089c9bc8` | BoostPrototypeManager::m_ptr |
+| `0x108ac8080` | ResourceManager::m_ptr |
+| `0x108b25f40` | EoCGlobalSwitches* slot (Wave 2A metathesis) |
+| `0x108ab68f8` | osi::OsirisInterface slot (Wave 2A metathesis) |
+| `0x101f543a8` | SpellPrototype::Init (populates from stats) |
 
 ## BG3 CLI Flags (Discovered via RE)
 
