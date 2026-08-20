@@ -147,20 +147,20 @@
         },
         {
           "name": "EnableTracing",
-          "note": "Warn-once stub returning nil. No tracing infrastructure recovered. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game. Installs global capture across all CCR types (1425/2715 hooked) so tracing observes the world, not only subscribed types.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetTrace",
-          "note": "Absent. Tracing infrastructure not built. Wave 7 Phase A8.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game. Returns the Windows ECSChangeLog shape: Entities[handle]={Entity(proxy),Components[idx]={Name,Type,Create,Destroy,...}}. OneFrame always false (0x8000 bit stripped upstream); no modification tracking.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "ClearTrace",
-          "note": "Absent. Same tracing gap. Wave 7 Phase A8.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game: empties the log; disabled tracing records nothing.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -183,8 +183,8 @@
         },
         {
           "name": "RemoveComponent",
-          "note": "Returns false. 734 per-type templates, no generic entry point. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game. Dispatches ImmediateWorldCache::RemoveComponent<T> (666 covered names); fails closed on unknown/uncovered. DIVERGENCE: this is Windows' RemoveComponentImmediate, not the deferred RemoveComponent; also bound as RemoveComponentImmediate. Specializations return void, so true means 'dispatched', not 'was present'.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
@@ -333,7 +333,7 @@
         },
         {
           "name": "Get",
-          "note": "Wave 7 A4: behavioral parity incl. the level parameter — Windows Stats.inl:479-508 accepts level but calls StatFindObject(statName, warnOnError) name-only; macOS also ignores it. The level docstring is a DOS2 vestige on both platforms.",
+          "note": "Wave 7 A4: behavioral parity incl. the level parameter \u2014 Windows Stats.inl:479-508 accepts level but calls StatFindObject(statName, warnOnError) name-only; macOS also ignores it. The level docstring is a DOS2 vestige on both platforms.",
           "class": "implemented",
           "kind": "function"
         },
@@ -741,8 +741,8 @@
         },
         {
           "name": "GetTileDebugInfo",
-          "note": "Warn-once stub returning nil. MinHeight open; flag decoders provisional. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game: Material/GroundSurface in range, heights ordered, cross-checked against GetTileRawDebugInfo. Cloud decode path still unexercised (tile had CloudMask=0).",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -999,49 +999,49 @@
       "contracts": [
         {
           "name": "RegisterUserVariable",
-          "note": "Implemented — src/vars/user_variables.c:754 — full options table (Server/Persistent/etc.). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:754 \u2014 full options table (Server/Persistent/etc.). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "SyncUserVariables",
-          "note": "Implemented — src/vars/user_variables.c:846. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:846. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "DirtyUserVariables",
-          "note": "Implemented — src/vars/user_variables.c:855. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:855. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetEntitiesWithVariable",
-          "note": "Implemented — src/vars/user_variables.c:837. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:837. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "RegisterModVariable",
-          "note": "Implemented — src/vars/user_variables.c:1360. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:1360. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetModVariables",
-          "note": "Implemented — src/vars/user_variables.c:1402. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:1402. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "SyncModVariables",
-          "note": "Implemented — src/vars/user_variables.c:1417. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:1417. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
         {
           "name": "DirtyModVariables",
-          "note": "Implemented — src/vars/user_variables.c:1426. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/vars/user_variables.c:1426. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         }
@@ -1485,7 +1485,7 @@
         },
         {
           "name": "IsDeveloperMode",
-          "note": "Implemented — src/lua/lua_debug.c:942 (MCM compat, Issue #68). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/lua/lua_debug.c:942 (MCM compat, Issue #68). Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         },
@@ -1503,7 +1503,7 @@
         },
         {
           "name": "Reset",
-          "note": "Implemented — src/lua/lua_debug.c:945. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
+          "note": "Implemented \u2014 src/lua/lua_debug.c:945. Phase 0 adjudication: the manifest builder wrongly classed this absent.",
           "class": "implemented",
           "kind": "function"
         }
