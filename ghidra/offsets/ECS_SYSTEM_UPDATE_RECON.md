@@ -732,3 +732,49 @@ Makefile hardcodes Intel (it carries a literal
 
 Headless decompilation works after that. This is plausibly why prior RE on this
 project stopped at recon.
+
+### Follow-up: the offsets in `ecs_system_update.c` were already correct
+
+After recovering the layout, comparing it against the shipped implementation
+shows **every constant already matches**:
+
+| Constant in `ecs_system_update.c` | Value | Decompiled |
+|---|---|---|
+| `ECS_WORLD_SYSTEM_BUFFER_OFFSET` | `0x30` | matches |
+| `ECS_WORLD_SYSTEM_CAPACITY_OFFSET` | `0x38` | matches |
+| `ECS_WORLD_SYSTEM_USED_OFFSET` | `0x3c` | matches |
+| `ECS_SYSTEM_ENTRY_STRIDE` | `0xf8` | matches |
+| `ECS_SYSTEM_ENTRY_SYSTEM_OFFSET` | `0x00` | matches |
+| `ECS_SYSTEM_ENTRY_INDEX0/1_OFFSET` | `0x08` / `0x0c` | matches (the CONCAT44 pair) |
+| `ECS_SYSTEM_ENTRY_UPDATE_PROC_OFFSET` | `0x18` | matches |
+
+So the walk is not the problem, and no code change is warranted from this
+recon. The remaining failure is isolated to **resolving a system's TypeIndex**.
+
+### What is known about the TypeIndex read
+
+- The `ls::TypeId<T, ecs::SystemsContext>::m_TypeIndex` symbols are the real
+  storage; the `PTR_..._10840a698` seen in the decompiler output is a `__got`
+  slot (range `0x1083d0000` + `0x6ae58`) holding that symbol's address, not a
+  second copy.
+- Those globals live in `__DATA,__common`, i.e. BSS: **zero at load, assigned
+  when the system registers.** A system that has not registered in the current
+  session therefore has no meaningful index.
+- The live probe read implausible values for four sampled systems, and
+  `ClientCharacterManager` -- which *is* in the generated table -- reported
+  "system entry is absent or its stored indices disagree", which is the expected
+  symptom when the index fails the `< *(uint32*)(EntityWorld+0x3c)` bound.
+
+### The one open question
+
+Whether those reads were wrong (address/slide) or correct-but-unregistered.
+This is a five-minute live check, not RE: with a session loaded, read the
+TypeIndex for a system known to be registered in that world (a *server* system
+when probing the server world, since `RegisterSharedSystems`/`RegisterClientSystems`
+populate different sets), then confirm
+`entry = *(void**)(world+0x30) + idx*0xf8` lands on an entry whose `+0x08`/`+0x0c`
+pair equals that index.
+
+If it does, `OnSystemUpdate` works today for covered systems and only the
+name-coverage gap (73 of 454) remains. If it does not, the problem is the
+TypeIndex source, not the table walk.
