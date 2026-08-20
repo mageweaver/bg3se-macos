@@ -725,7 +725,7 @@ bool stats_get_valuelist_registry_diagnostic(
 // registry-root bug before reaching Insert. Keep this pinned until the
 // Phase 5 live session proves the diagnostic + insert round trip on
 // 7398727, then move it with that evidence.
-#define VALUELIST_INSERT_VERIFIED_BUILD "4.1.1.7209685"
+#define VALUELIST_INSERT_VERIFIED_BUILD "4.1.1.7398727"
 
 typedef enum {
     STATS_VALUELIST_ERROR = -1,
@@ -939,9 +939,9 @@ int32_t stats_enum_label_to_index(const char *enum_name, const char *label) {
         ? value : -1;
 }
 
-bool stats_add_enumeration_value(const char *enum_name, const char *label) {
+int32_t stats_add_enumeration_value(const char *enum_name, const char *label) {
     if (!enum_name || !label || !stats_manager_ready() || !g_MainBinaryBase) {
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     // Validate the complete read path before checking or invoking any mutation
@@ -949,24 +949,24 @@ bool stats_add_enumeration_value(const char *enum_name, const char *label) {
     StatsValueListRegistryDiagnostic registry_diagnostic;
     if (!stats_get_valuelist_registry_diagnostic(&registry_diagnostic)) {
         LOG_STATS_WARN("ModifierValueLists registry failed read-only validation");
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
 #if !defined(__aarch64__) && !defined(__arm64__)
     LOG_STATS_WARN("ValueList::Insert is only verified for ARM64");
-    return false;
+    return STATS_ENUM_INSERT_FAILED;
 #endif
 
     const char *version = version_detect_get_version();
     if (!version || strcmp(version, VALUELIST_INSERT_VERIFIED_BUILD) != 0) {
         LOG_STATS_WARN("ValueList::Insert disabled for unaudited game version");
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     void *value_list = find_rpgenumeration_by_name(enum_name);
     if (!value_list) {
         LOG_STATS_WARN("No stats enumeration named '%s'", enum_name);
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     uint32_t old_count = 0;
@@ -975,7 +975,7 @@ bool stats_add_enumeration_value(const char *enum_name, const char *label) {
         stats_valuelist_is_non_enumeration(enum_name)) {
         LOG_STATS_WARN("Stats value list '%s' is not a mutable enumeration or "
                        "has an invalid layout", enum_name);
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     StatsValueListLookup existing =
@@ -985,33 +985,33 @@ bool stats_add_enumeration_value(const char *enum_name, const char *label) {
             LOG_STATS_WARN("Stats enumeration '%s' already contains '%s'",
                            enum_name, label);
         }
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     if (!fixed_string_intern_ready()) {
         LOG_STATS_WARN("Cannot add '%s' to '%s': FixedString interning unavailable",
                        label, enum_name);
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     uint32_t label_fs = fixed_string_intern(label, -1);
     if (label_fs == FS_NULL_INDEX ||
         stats_valuelist_find_key(value_list, label_fs, NULL) !=
             STATS_VALUELIST_NOT_FOUND) {
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     uint32_t pre_call_count = 0;
     if (!stats_valuelist_shape(value_list, NULL, NULL, &pre_call_count) ||
         pre_call_count != old_count) {
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
     StatsValueListInsertFn insert = (StatsValueListInsertFn)
         offset_table_game_fn(GAME_FN_VALUELIST_INSERT);
     if (!insert) {
         LOG_STATS_WARN("ValueList::Insert unavailable for the active offset row");
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
     int32_t inserted_value = (int32_t)old_count;
     insert(value_list, &label_fs, inserted_value);
@@ -1032,10 +1032,12 @@ bool stats_add_enumeration_value(const char *enum_name, const char *label) {
         strcmp(reverse_label, label) != 0) {
         LOG_STATS_WARN("ValueList::Insert readback failed for '%s'.'%s'",
                        enum_name, label);
-        return false;
+        return STATS_ENUM_INSERT_FAILED;
     }
 
-    return true;
+    /* Windows returns std::optional<int32_t> holding the new value
+     * (Stats.inl:633), not a boolean. */
+    return inserted_value;
 }
 
 // Get modifier attributes by name

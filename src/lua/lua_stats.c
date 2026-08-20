@@ -828,13 +828,24 @@ static int lua_stats_add_attribute(lua_State *L) {
     return 1;
 }
 
-// Ext.Stats.AddEnumerationValue(typeName, enumLabel) -> bool
+/*
+ * Ext.Stats.AddEnumerationValue(typeName, enumLabel) -> integer | false
+ *
+ * Windows returns std::optional<int32_t> holding the newly assigned value
+ * (Stats.inl:633). The port previously pushed a boolean, so mod code that used
+ * the returned index -- the whole point of the call -- got `true` instead.
+ * Return the index, and false when the insert is refused.
+ */
 static int lua_stats_add_enumeration_value(lua_State *L) {
     const char *type_name = luaL_checkstring(L, 1);
     const char *enum_label = luaL_checkstring(L, 2);
 
-    lua_pushboolean(L,
-                    stats_add_enumeration_value(type_name, enum_label));
+    int32_t value = stats_add_enumeration_value(type_name, enum_label);
+    if (value == STATS_ENUM_INSERT_FAILED) {
+        lua_pushboolean(L, 0);
+    } else {
+        lua_pushinteger(L, (lua_Integer)value);
+    }
     return 1;
 }
 
