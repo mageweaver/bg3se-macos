@@ -57,14 +57,14 @@
         },
         {
           "name": "Create",
-          "note": "Absent. Engine entity lifecycle (allocator + handle mint) not recovered. Wave 7 Phase D4.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game. EntityCommandBuffer::CreateEntity via EntityWorld+0x230 per-thread array (stride 0xC0). Created entity appears in the indexed component pool after flush. Deferred, like Windows EntityWorld->Deferred().",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "Destroy",
-          "note": "Absent. Same allocator gap as Create. Wave 7 Phase D4.",
-          "class": "behavioral_gap",
+          "note": "Verified 2026-08-20 in-game. EntityCommandBuffer::DestroyEntity; after flush the entity leaves the indexed pool and the pool count drops by exactly one.",
+          "class": "implemented",
           "kind": "function"
         },
         {

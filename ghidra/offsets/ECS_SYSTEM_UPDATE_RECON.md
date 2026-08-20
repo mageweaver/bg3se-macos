@@ -1065,3 +1065,34 @@ uses. `ecs::EntityCommandBuffer` exposes only CreateEntity, DestroyEntity,
 `AccessAddStorage<T>` and `Flush` as symbols, so the deferred remove path is
 inlined or templated and is not yet callable; the RemoveComponent timing
 divergence therefore still stands.
+
+## Entity lifecycle verified in-game (2026-08-20)
+
+`Ext.Entity.Create` / `Destroy` confirmed on the vanilla Tav fixture.
+
+Observing the result required care, because two existing APIs cannot see entity
+liveness at all:
+
+- `Ext.Entity.GetByHandle` resolves any well-formed handle. It returned an
+  entity for a freshly created handle *before* any flush, so it proves nothing.
+- `entity_is_alive` (`entity:IsAlive`) is a stub — its body is
+  `// TODO: Check entity storage for validity` followed by `return true`. It
+  reports true for any valid-looking handle, including one that was never
+  created and one that was destroyed. **This is a separate pre-existing defect:
+  `IsAlive` is currently meaningless.**
+
+A real signal comes from the indexed component pool. Giving the new entity a
+component and querying `GetAllEntitiesWithComponent`:
+
+    CreateComponent("eoc::TagComponent") -> true
+    after create + flush : entity present, pool = 20668
+    after destroy + flush: entity absent,  pool = 20667
+
+Both operations are therefore genuinely applied by the engine, and the pool
+count moves by exactly one in each direction.
+
+This also exercises the working side of the CreateComponent stub fix:
+`eoc::TagComponent` is one of the 725 types with a real
+AddImmediateDefaultComponent, and it succeeds, while
+`esv::status::DifficultyModifiersComponent` (a std::terminate stub) now returns
+false instead of killing the process.
