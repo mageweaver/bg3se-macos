@@ -143,3 +143,27 @@ inside the `Ext.Entity` row, not a scope exclusion.
   Serialize/Unserialize, and Loca update left the list; the three raycasts
   entered it (previously miscounted as implemented while dispatching the
   wrong VMT slots).
+
+## Investigation notes (2026-08-20)
+
+**`Ext.StaticData.GetSources` / `GetByModId` — no cheap path.** Windows
+implements both as thin accessors over `GuidResourceBank<T>::ResourceGuidsByMod`
+(`StaticData.inl:37-45`). A symbol sweep of the 4.1.1.7398727 arm64 image finds:
+
+- no `GuidResourceBank` symbols at all;
+- no `ResourceGuidsByMod` symbol;
+- no per-mod resource mapping symbol of any kind (the only `ModGUID` symbols are
+  `gui::VMModPreview::Get/SetModGUID`, unrelated).
+
+`ls::ResourceBank` exists but is the visual/asset bank, not the GUID resource
+bank. The macOS port also models this area differently from Windows: it reaches
+managers directly (e.g. `eoc::FeatManager` via `Context.field_0x130`, count at
+`+0x7C`, array at `+0x80`) rather than through a `GuidResourceBank<T>` with
+`Resources` + `ResourceGuidsByMod` members.
+
+This does **not** prove the field is absent -- a plain struct member needs no
+symbol -- but it does mean there is no symbol-driven shortcut, and the accessor
+that would reveal its offset does not exist as a distinct function to decompile.
+Recovering it means finding a site that populates the mapping during resource
+load and reading the destination offset there. Treat as genuine RE, not a quick
+win.
