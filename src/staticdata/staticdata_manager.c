@@ -109,12 +109,16 @@ static const ManagerConfig g_manager_configs[STATICDATA_COUNT] = {
     // STATICDATA_PROGRESSION
     { 0x7C, 0x80, 0x200, 0x18, "/tmp/bg3se_progressionmanager.txt" },
     // STATICDATA_ACTIONRESOURCE
-    // entry_size measured in-game 2026-08-20, not estimated: with 0x80 only
-    // every third enumerated entry carried a well-formed ResourceUUID
-    // (residue 0 mod 3 was 29/29 valid, the other residues 16/29 and 7/29),
-    // which is the signature of a stride three times too small. GetAll was
-    // therefore returning ~2/3 misaligned garbage.
-    { 0x7C, 0x80, 0x180, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
+    // entry_size measured 2026-08-20 by vtable-identity probe: 87 records at
+    // 0x60 spacing, exactly matching count@+0x7C=87.
+    //
+    // Two earlier values were both wrong in instructive ways. 0x80 is not a
+    // multiple of 0x60, so reads realigned only every 0x180 and two thirds of
+    // enumerated entries were misaligned garbage. The 0x180 "fix" then made
+    // every read land on a record boundary -- which is why all 87 UUIDs looked
+    // valid -- while silently skipping three of every four resources, because
+    // 0x180 is 4 * 0x60.
+    { 0x7C, 0x80, 0x60, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
     // STATICDATA_FEATDESCRIPTION
     { 0x7C, 0x80, 0x80, 0, "/tmp/bg3se_featdescmanager.txt" },  // Has TranslatedString, not FixedString
 };
