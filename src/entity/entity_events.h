@@ -48,7 +48,11 @@ struct lua_State;
  */
 typedef uint64_t EntitySubscriptionId;
 
-typedef void (*EntityEventsObserver)(uint64_t entity_handle, uint32_t event);
+/* type_index is the ECS ComponentTypeIndex whose add/remove triggered the
+ * event; it is what lets a tracer build the Windows-shaped per-entity
+ * component change map rather than a flat event list. */
+typedef void (*EntityEventsObserver)(uint64_t entity_handle, uint32_t event,
+                                     uint16_t type_index);
 
 // Subscription type tags (upper 32 bits)
 #define SUB_TYPE_REPLICATION  1

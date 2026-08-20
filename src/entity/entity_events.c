@@ -1079,7 +1079,7 @@ void entity_events_on_create(uint16_t type_index, uint64_t entity_handle,
                               void *component, lua_State *L) {
     if (!g_initialized || !L) return;
     EntityEventsObserver observer = atomic_load_explicit(&g_observer, memory_order_acquire);
-    if (observer) observer(entity_handle, ENTITY_EVENT_CREATE);
+    if (observer) observer(entity_handle, ENTITY_EVENT_CREATE, type_index);
     dispatch_event(L, type_index, entity_handle, ENTITY_EVENT_CREATE, component);
 }
 
@@ -1087,7 +1087,7 @@ void entity_events_on_destroy(uint16_t type_index, uint64_t entity_handle,
                                void *component, lua_State *L) {
     if (!g_initialized || !L) return;
     EntityEventsObserver observer = atomic_load_explicit(&g_observer, memory_order_acquire);
-    if (observer) observer(entity_handle, ENTITY_EVENT_DESTROY);
+    if (observer) observer(entity_handle, ENTITY_EVENT_DESTROY, type_index);
     dispatch_event(L, type_index, entity_handle, ENTITY_EVENT_DESTROY, component);
 }
 

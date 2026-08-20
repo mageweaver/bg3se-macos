@@ -33,8 +33,14 @@ enum {
     ENTITY_TRACING_OP_DESTROY = 1
 };
 
+/* Mirrors the observable subset of Windows EntityChangeFlags /
+ * ComponentChangeFlags (EntitySystemHelpers.h). */
+#define ENTITY_TRACE_FLAG_CREATE   0x1u
+#define ENTITY_TRACE_FLAG_DESTROY  0x2u
+
 typedef struct {
     uint64_t entity_handle;
+    uint16_t type_index;   /* ECS ComponentTypeIndex that changed */
     uint8_t op;
     uint64_t seq;
 } EntityTracingRecord;
@@ -54,7 +60,8 @@ static uint64_t g_entity_tracing_dropped = 0;
 static uint64_t g_entity_tracing_next_seq = 0;
 static bool g_entity_tracing_enabled = false;
 
-static void entity_tracing_observe(uint64_t entity_handle, uint32_t event) {
+static void entity_tracing_observe(uint64_t entity_handle, uint32_t event,
+                                  uint16_t type_index) {
     uint8_t op;
     if (event == ENTITY_EVENT_CREATE) {
         op = ENTITY_TRACING_OP_CREATE;
@@ -72,6 +79,7 @@ static void entity_tracing_observe(uint64_t entity_handle, uint32_t event) {
 
     EntityTracingRecord record = {
         .entity_handle = entity_handle,
+        .type_index = type_index,
         .op = op,
         .seq = ++g_entity_tracing_next_seq
     };
@@ -90,12 +98,34 @@ static void entity_tracing_observe(uint64_t entity_handle, uint32_t event) {
     pthread_mutex_unlock(&g_entity_tracing_mutex);
 }
 
+/*
+ * Ext.Entity.EnableTracing([enable])
+ *
+ * Windows takes a bool (Entity.inl:263) and warns once that tracing is a
+ * development tool. We match both. Windows additionally refuses unless
+ * gExtender->GetConfig().DeveloperMode is set; macOS has no DeveloperMode
+ * config (Ext.Debug.IsDeveloperMode is hardcoded false), so gating on it would
+ * make tracing permanently unusable. The gate is therefore absent by necessity
+ * and recorded as a divergence rather than silently emulated.
+ */
 static int entity_tracing_lua_enable(lua_State *L) {
+    bool enable = lua_isnoneornil(L, 1) ? true : (lua_toboolean(L, 1) != 0);
+
+    if (enable) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            log_message("[WARN] [EntityTracing] Entity tracing is a development "
+                        "tool for tracking entity changes; it should not be used "
+                        "in production!");
+        }
+    }
+
     pthread_mutex_lock(&g_entity_tracing_mutex);
-    g_entity_tracing_enabled = true;
+    g_entity_tracing_enabled = enable;
     pthread_mutex_unlock(&g_entity_tracing_mutex);
 
-    log_message("[INFO] [EntityTracing] Capture enabled");
+    log_message("[INFO] [EntityTracing] Capture %s", enable ? "enabled" : "disabled");
     lua_pushboolean(L, true);
     return 1;
 }
@@ -110,6 +140,25 @@ static int entity_tracing_lua_disable(lua_State *L) {
     return 1;
 }
 
+/*
+ * Ext.Entity.GetTrace() -> ECSChangeLog-shaped table
+ *
+ * Windows returns ecs::ECSChangeLog (EntitySystemHelpers.h:86):
+ *
+ *   ECSChangeLog { Entities : map<EntityHandle, ECSEntityLog> }
+ *   ECSEntityLog { Entity, Flags, Components : map<uint16, ECSComponentLog> }
+ *   ECSComponentLog { ComponentType, Flags }
+ *
+ * We build the same nested shape from the create/destroy ring buffer. Flags use
+ * the Windows bit meanings we can actually observe: entity Create/Destroy, and
+ * per-component Create/Destroy.
+ *
+ * Coverage note: Windows' tracer additionally follows the entity command
+ * buffer, the immediate world cache, replication, and in-place modifications
+ * (ECSChangeTracerOptions). macOS only observes component add/remove signals,
+ * so Components entries reflect those; there is no modification tracking. The
+ * Enabled/Dropped fields are macOS extras retained for diagnostics.
+ */
 static int entity_tracing_lua_get_trace(lua_State *L) {
     EntityTracingSnapshot snapshot;
 
@@ -127,27 +176,68 @@ static int entity_tracing_lua_get_trace(lua_State *L) {
 
     lua_pushboolean(L, snapshot.enabled);
     lua_setfield(L, -2, "Enabled");
-
     lua_pushinteger(L, (lua_Integer)snapshot.dropped);
     lua_setfield(L, -2, "Dropped");
 
-    lua_createtable(L, (int)snapshot.count, 0);
+    /* Entities : map<EntityHandle, ECSEntityLog> */
+    lua_newtable(L);
     for (size_t i = 0; i < snapshot.count; i++) {
-        const EntityTracingRecord *record = &snapshot.records[i];
-        lua_createtable(L, 0, 3);
+        const EntityTracingRecord *r = &snapshot.records[i];
+        uint32_t entity_flag = (r->op == ENTITY_TRACING_OP_CREATE)
+            ? ENTITY_TRACE_FLAG_CREATE : ENTITY_TRACE_FLAG_DESTROY;
 
-        lua_pushinteger(L, (lua_Integer)record->entity_handle);
-        lua_setfield(L, -2, "Entity");
+        /* fetch-or-create Entities[handle] */
+        lua_pushinteger(L, (lua_Integer)r->entity_handle);
+        lua_rawget(L, -2);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            lua_createtable(L, 0, 3);
 
-        lua_pushstring(L, record->op == ENTITY_TRACING_OP_CREATE ? "Create" : "Destroy");
-        lua_setfield(L, -2, "Op");
+            lua_pushinteger(L, (lua_Integer)r->entity_handle);
+            lua_setfield(L, -2, "Entity");
+            lua_pushinteger(L, 0);
+            lua_setfield(L, -2, "Flags");
+            lua_newtable(L);
+            lua_setfield(L, -2, "Components");
 
-        lua_pushinteger(L, (lua_Integer)record->seq);
-        lua_setfield(L, -2, "Seq");
+            lua_pushinteger(L, (lua_Integer)r->entity_handle);
+            lua_pushvalue(L, -2);
+            lua_rawset(L, -4);
+        }
 
-        lua_rawseti(L, -2, (lua_Integer)i + 1);
+        /* Flags |= entity_flag */
+        lua_getfield(L, -1, "Flags");
+        lua_Integer flags = lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        lua_pushinteger(L, flags | (lua_Integer)entity_flag);
+        lua_setfield(L, -2, "Flags");
+
+        /* Components[typeIndex] : fetch-or-create, then OR the flag */
+        lua_getfield(L, -1, "Components");
+        lua_pushinteger(L, (lua_Integer)r->type_index);
+        lua_rawget(L, -2);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            lua_createtable(L, 0, 2);
+            lua_pushinteger(L, (lua_Integer)r->type_index);
+            lua_setfield(L, -2, "ComponentType");
+            lua_pushinteger(L, 0);
+            lua_setfield(L, -2, "Flags");
+
+            lua_pushinteger(L, (lua_Integer)r->type_index);
+            lua_pushvalue(L, -2);
+            lua_rawset(L, -4);
+        }
+        lua_getfield(L, -1, "Flags");
+        lua_Integer cflags = lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        lua_pushinteger(L, cflags | (lua_Integer)entity_flag);
+        lua_setfield(L, -2, "Flags");
+
+        lua_pop(L, 2);   /* component log, Components */
+        lua_pop(L, 1);   /* entity log */
     }
-    lua_setfield(L, -2, "Events");
+    lua_setfield(L, -2, "Entities");
 
     return 1;
 }
