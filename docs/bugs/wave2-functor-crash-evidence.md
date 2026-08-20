@@ -45,13 +45,13 @@ Wave 2 commits in the new dylib:
 - Why did the 18:14 run never leave Init (menu stall, -continueGame not engaging) while the 18:22 run reached status ticking? Same binary + args. Is the menu stall an independent flake, or did the first run's server thread die silently earlier (a swallowed crash on another thread would NOT stall the menu though)?
 - Which of the 10 hooks were actually hit before the crash? (No BG3SE log entries for functor events observed — check the rotated session log for the 18:22 boot.)
 
-## Addendum (Claude, 18:4x): prologue byte analysis
+## Addendum (the assistant, 18:4x): prologue byte analysis
 Raw prologue decode of all 10 hooked functions (file offsets via fat 0xf558000):
 - All 10 begin with plain STP saves (FP/SIMD `0x6d......` and GPR `0xa9......`) — **no PC-relative instructions in the first 6**, so trampoline relocation of the copied prologue is not inherently unsafe for these targets.
 - **The fault address 0x6d0133ed6db63ebf is instruction bytes**: high word 0x6d0133ed == Interrupt variant's prologue instruction #2 exactly; low word 0x6db63ebf is an FP-STP encoding (Interrupt instr #1 is 0x6db63bef — 2 nibbles differ, so possibly a *different* function's FP-STP prologue with different registers). The "entity handle" the game dereferenced is the first 8 bytes of some function entry — i.e., a function pointer (hook target? trampoline? table entry?) was loaded as data along the Target execution path.
 - Discriminating next step: disassemble ExecuteStatsFunctors(Target) +0x80..+0x90 to see which register/field supplies the handle passed to GetComponent, then trace where that value could alias a code pointer (our g_functor_hooks table? trampoline literal pool layout in the shared MAP_JIT page? off-by-one in per-hook trampoline slot allocation?).
 
-## Addendum 2 (Claude): faulting-thread registers — the decisive fact
+## Addendum 2 (the assistant): faulting-thread registers — the decisive fact
 - pc = GetComponent+64, lr = Target+0x8c (its caller).
 - **x0 = 0x6d0133ed6db63bef = the EXACT first 8 bytes of the Interrupt variant's entry (0x105786548): instr0 0x6db63bef | instr1 0x6d0133ed.**
 - x0 is the `this` (EntityWorld*) argument to GetComponent. Therefore the code loaded EntityWorld* by dereferencing a pointer whose VALUE was the (slid) Interrupt function address (0x1077c2548). I.e., an `EntityWorld**`-shaped slot somewhere contains the ADDRESS OF THE HOOKED INTERRUPT FUNCTION.

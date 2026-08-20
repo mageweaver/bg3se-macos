@@ -159,8 +159,6 @@ tools/bg3se_harness/
 - **Verification**: `bg3se-harness mod --help` shows all subcommands; end-to-end install+enable+list
 
 ### Unit 9: Documentation + skill update
-- **Goal**: Update SKILL.md, CLAUDE.md, agent_docs/tools.md with menu + mod commands
-- **Files**: SKILL.md, CLAUDE.md, tools.md
 - **Verification**: All new commands documented
 
 ## Scope Boundaries

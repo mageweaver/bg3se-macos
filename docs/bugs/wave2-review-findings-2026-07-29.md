@@ -53,7 +53,6 @@ status sync real / passive honestly false; damage events fire live; tests
   CLAUDE.md:173-174, api-status.md:36-37, README.md:143-144, ROADMAP.md:67-68 —
   all claim treasure stubs, empty GetStatsLoadedMods, and stubbed component writes.
   Entity-stub line ref drifted (main.c:1134-1136, not 955-958).
-- CLAUDE.md:204 test counts (67→74 tier-2; 209→246 offline); README.md:140 (385→429);
   ROADMAP.md:1552 (385→429); docs/testing.md:510 (125→183 registered definitions).
 - api-status.md:1 version header v0.37.1 → v0.39.0 (or the Wave 2 bump);
   api-status.md:33 + CLAUDE.md Ext.Events line: "exist as event objects" →
@@ -63,7 +62,6 @@ status sync real / passive honestly false; damage events fire live; tests
 - ROADMAP.md:483-487 remove ExecuteFunctor/BeforeDealDamage/DealDamage from
   "Missing Events (~12)" (→ ~9); ROADMAP.md:710 Section 3.2 "❌ Not Started" →
   "✅ Complete (Wave 2)"; ROADMAP.md:292-293 check both component read/write boxes.
-- Ext.Types stale refs (CLAUDE.md:171, api-status.md:18): stubs are at
   main.c:1108-1120 + lua_ext.c:1004-1012; GetValueType/GetHashSetValueAt/
   GetFunctionLocation are implemented (lua_ext.c:978-1040) — possibly 11/15 (73%),
   maintainer call.

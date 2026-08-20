@@ -645,7 +645,7 @@ Interceptor.attach(Module.findExportByName(null, "GetComponent"), {
 
 #### Strategy 4: LLM-Augmented RE Pipeline
 
-Use Claude + GhidraMCP for accelerated struct layout deduction:
+Use the assistant + the Ghidra HTTP bridge for accelerated struct layout deduction:
 
 ```
 Input: Windows header struct + Ghidra decompilation of accessor
@@ -726,7 +726,7 @@ DEFINE_TAG_COMPONENT(eoc::combat, IsInCombat, IsInCombat)
 | `generate_component_stubs.py` | `tools/` | Generate C stubs from Windows headers |
 | `make_property_map.py` | Windows BG3SE | Original automation script (reference) |
 | Frida | External | Runtime memory instrumentation |
-| GhidraMCP | MCP server | On-demand decompilation |
+| the Ghidra HTTP bridge | MCP server | On-demand decompilation |
 
 ### Related Issues
 
@@ -738,7 +738,7 @@ DEFINE_TAG_COMPONENT(eoc::combat, IsInCombat, IsInCombat)
 
 ## Ghidra MCP Batch Extraction (Dec 2025)
 
-**BREAKTHROUGH:** Using Ghidra MCP server with parallel Claude subagents achieves massive component size extraction throughput.
+**BREAKTHROUGH:** Using Ghidra MCP server with parallel the assistant subagents achieves massive component size extraction throughput.
 
 ### Methodology
 
@@ -760,7 +760,7 @@ ComponentFrameStorageAllocRaw(
 
 ### Parallel Agent Strategy
 
-Deploy 8-10 Claude subagents simultaneously, each processing a different offset range:
+Deploy 8-10 the assistant subagents simultaneously, each processing a different offset range:
 
 ```
 Agent 1: offsets 0-50      → extracts ~30 components

@@ -982,7 +982,6 @@ Osi.DB_MyDatabase:Delete("filter", nil, nil)  -- Filtered
 ### bg3se-macos Current Implementation
 - `/Users/tomdimino/Desktop/Programming/bg3se-macos/ROADMAP.md`
 - `/Users/tomdimino/Desktop/Programming/bg3se-macos/README.md`
-- `/Users/tomdimino/Desktop/Programming/bg3se-macos/CLAUDE.md`
 
 ### Windows BG3SE Reference Implementation
 - `BG3Extender/Lua/Libs/` - Lua API implementations
@@ -1142,4 +1141,4 @@ Osi.DB_MyDatabase:Delete("filter", nil, nil)  -- Filtered
 
 **Document Version:** 1.0
 **Created:** 2025-12-03
-**Author:** Claude Code (gap analysis from BG3SE documentation audit)
+**Author:** the CLI (gap analysis from BG3SE documentation audit)

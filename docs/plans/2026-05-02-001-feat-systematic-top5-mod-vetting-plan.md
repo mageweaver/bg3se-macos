@@ -277,7 +277,6 @@ Independent Codex 5.5 review identified these gaps that affect the vetting pipel
 5. **TEST_LINE_RE doesn't handle `[SLOW ...]` token** — slow test results may be misparsed. [test_runner.py:9](tools/bg3se_harness/test_runner.py:9)
 
 ### Low-Hanging Fruit (code + docs improvements)
-1. **CMake sets C23 but CLAUDE.md says C17** — align docs or build. [CMakeLists.txt:37](CMakeLists.txt:37)
 2. **`savegames.restore()` doesn't back up current state** — claims to but only copies fixture. [savegames.py:155](tools/bg3se_harness/savegames.py:155)
 3. **`mod enable <name>` only accepts UUID** — CLI advertises name support but doesn't resolve. [cli.py:568](tools/bg3se_harness/cli.py:568)
 4. **`lua_timer` JSON: 1024-byte stack buffer** — no bounds checks or JSON escaping. [lua_timer.c:330](src/lua/lua_timer.c:330)

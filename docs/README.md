@@ -29,7 +29,7 @@ Read [Architecture](architecture.md) to understand the codebase, then [Developme
 ## Additional Resources
 
 - **[ghidra/offsets/](../ghidra/offsets/)** - Reverse-engineered memory offsets
-- **[agent_docs/](../agent_docs/)** - Claude Code development context
+- **[agent_docs/](../agent_docs/)** - the CLI development context
 - **[tools/](../tools/)** - PAK extractor, Frida scripts, test mods
 - **[ROADMAP.md](../ROADMAP.md)** - Feature parity tracking
 - **[archive/](archive/)** - Historical investigation notes (crash analysis, debugging sessions)

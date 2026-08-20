@@ -6,7 +6,7 @@ kept up to date as work proceeds.
 
 ## Purpose / Big Picture
 
-The harness should launch Baldur's Gate 3, avoid or finish the intro movie phase, dismiss the "Press Any Key" splash, wait for the Script Extender socket, and run tests while Claude Code or another terminal remains the frontmost application. The user-visible value is an autonomous command such as `PYTHONPATH=tools python3 -m bg3se_harness test --headless --continue` that reaches `"socket_connected": true` without a person clicking BG3 or manually pressing Space.
+The harness should launch Baldur's Gate 3, avoid or finish the intro movie phase, dismiss the "Press Any Key" splash, wait for the Script Extender socket, and run tests while the CLI or another terminal remains the frontmost application. The user-visible value is an autonomous command such as `PYTHONPATH=tools python3 -m bg3se_harness test --headless --continue` that reaches `"socket_connected": true` without a person clicking BG3 or manually pressing Space.
 
 The plan deliberately separates two problems. Video skipping means avoiding the Bink `.bk2` movie files that run before the splash. Background input means delivering the splash-dismiss Space key to BG3 without making BG3 frontmost. A Bink file is a RAD Game Tools video file with extension `.bk2`. A frontmost app is the macOS application currently receiving normal keyboard input.
 
@@ -23,7 +23,7 @@ The plan deliberately separates two problems. Video skipping means avoiding the 
 - [ ] Implement Milestone 2, the exact-config or media-path video skip path chosen by Milestone 1.
 - [ ] Implement Milestone 3, the focusless input path chosen by Milestone 1.
 - [ ] Implement Milestone 4, the unified launch pipeline and JSON diagnostics.
-- [ ] Run live validation while Claude Code is frontmost and BG3 is not frontmost.
+- [ ] Run live validation while the CLI is frontmost and BG3 is not frontmost.
 - [ ] Record final outcomes and any discarded alternatives in this document.
 
 ## Surprises & Discoveries
@@ -69,7 +69,7 @@ The plan deliberately separates two problems. Video skipping means avoiding the 
   Date/Author: 2026-05-04 / Planner Agent
 
 - Decision: Keep force-focus as the final fallback, not the target behavior.
-  Rationale: `NSRunningApplication.activate()` plus `CGEventPost(kCGHIDEventTap, ...)` can keep current behavior working, but it does not satisfy the requirement that Claude Code remains frontmost.
+  Rationale: `NSRunningApplication.activate()` plus `CGEventPost(kCGHIDEventTap, ...)` can keep current behavior working, but it does not satisfy the requirement that the CLI remains frontmost.
   Date/Author: 2026-05-04 / Planner Agent
 
 ## Outcomes & Retrospective
@@ -92,11 +92,11 @@ Milestone 1 is a probing milestone. It adds two small, reversible test paths bef
 
 Milestone 2 implements the video-skip path. If `-mediaPath` successfully skips missing `.bk2` files without blocking launch, implement `tools/bg3se_harness/video_skip.py` to prepare the media-skip directory and add `mediaPath` to `extra_flags` from `tools/bg3se_harness/launch.py`. If `-mediaPath` does not work, use Ghidra xrefs to `SkipVideo` and `SkipSplashScreen` to find the exact settings file, section, type, and read timing, then update `ensure_skip_videos()` in `tools/bg3se_harness/launch.py` to write that exact location. If both fail, add a documented fallback that suppresses the known movie requests by in-process path interception or a safe hook, but only after runtime prologue analysis shows the target is safe.
 
-Milestone 3 implements background input. If the `CGEventPostToPid` probe works while BG3 is behind Claude Code, change `_try_dismiss_splash()` in `tools/bg3se_harness/launch.py` to pass the launched process PID into a new `dismiss_splash_background(pid)` path and stop activating BG3 by default. If `CGEventPostToPid` does not work, add a new Objective-C module such as `src/input/focusless_input.m` and `src/input/focusless_input.h`. That module should schedule a short-lived splash auto-dismiss timer on BG3's main run loop when the harness sets `BG3SE_AUTO_DISMISS_SPLASH=1`. Each tick should synthesize Space key down and up inside the BG3 process, first by `CGEventPostToPid(getpid(), event)`, then by constructing `NSEvent` key events and calling `[NSApp sendEvent:event]` on the main thread. The timer stops when a maximum duration expires or when a new C function marks the socket as responsive.
+Milestone 3 implements background input. If the `CGEventPostToPid` probe works while BG3 is behind the CLI, change `_try_dismiss_splash()` in `tools/bg3se_harness/launch.py` to pass the launched process PID into a new `dismiss_splash_background(pid)` path and stop activating BG3 by default. If `CGEventPostToPid` does not work, add a new Objective-C module such as `src/input/focusless_input.m` and `src/input/focusless_input.h`. That module should schedule a short-lived splash auto-dismiss timer on BG3's main run loop when the harness sets `BG3SE_AUTO_DISMISS_SPLASH=1`. Each tick should synthesize Space key down and up inside the BG3 process, first by `CGEventPostToPid(getpid(), event)`, then by constructing `NSEvent` key events and calling `[NSApp sendEvent:event]` on the main thread. The timer stops when a maximum duration expires or when a new C function marks the socket as responsive.
 
 Milestone 4 wires the unified pipeline. `tools/bg3se_harness/launch.py` should set harness-specific environment variables in `subprocess.Popen`, prepare video skip only when `skip_videos=True`, pass `-continueGame` or `-loadSaveGame` exactly as it does now, and wait for the socket without requiring BG3 focus. `tools/bg3se_harness/cli.py` should include JSON fields showing which video method and input method were used. `docs/harness.md` should state the new behavior plainly: BG3 may open a window, but the harness should not need to make it frontmost to dismiss the splash.
 
-Milestone 5 validates the full flow live. The important acceptance test is not just that the socket responds; it is that the frontmost application remains Claude Code or Terminal while BG3 is launching. The validation commands below include explicit foreground-app checks before and after launch.
+Milestone 5 validates the full flow live. The important acceptance test is not just that the socket responds; it is that the frontmost application remains the CLI or Terminal while BG3 is launching. The validation commands below include explicit foreground-app checks before and after launch.
 
 ## Concrete Steps
 
@@ -131,7 +131,7 @@ PYTHONPATH=tools python3 -m bg3se_harness launch --continue --timeout 90
 osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'
 ```
 
-Expected output after implementation: the launch JSON contains `"socket_connected": true`. The foreground app before and after should be the terminal or Claude Code host, not `Baldur's Gate 3`. If BG3 becomes frontmost, record that `CGEventPostToPid` failed and the aggressive fallback ran.
+Expected output after implementation: the launch JSON contains `"socket_connected": true`. The foreground app before and after should be the terminal or the CLI host, not `Baldur's Gate 3`. If BG3 becomes frontmost, record that `CGEventPostToPid` failed and the aggressive fallback ran.
 
 Step 5: Add the media-path probe in `tools/bg3se_harness/video_skip.py`.
 
@@ -191,7 +191,7 @@ PYTHONPATH=tools python3 -m bg3se_harness test --help
 
 Expected output: the CMake and harness builds exit 0, the offline tests exit 0, and help text documents the video/input automation options without removing `--no-skip-videos`.
 
-Step 11: Run final live validation with Claude Code or the terminal kept frontmost.
+Step 11: Run final live validation with the CLI or the terminal kept frontmost.
 
 ```bash
 PYTHONPATH=tools python3 -m bg3se_harness quit --force
@@ -200,11 +200,11 @@ PYTHONPATH=tools python3 -m bg3se_harness test --headless --continue --tier 1
 osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'
 ```
 
-Expected output: BG3 may create a window, but the foreground app remains Claude Code or the terminal. The test command returns structured JSON with launch metadata, `"socket_connected": true` or a successful test summary, and automation metadata showing a focusless input method. If the foreground app changes to `Baldur's Gate 3`, the background-input requirement is not met.
+Expected output: BG3 may create a window, but the foreground app remains the CLI or the terminal. The test command returns structured JSON with launch metadata, `"socket_connected": true` or a successful test summary, and automation metadata showing a focusless input method. If the foreground app changes to `Baldur's Gate 3`, the background-input requirement is not met.
 
 ## Validation and Acceptance
 
-Acceptance criterion 1: The harness can launch BG3 and reach the Script Extender socket while the terminal or Claude Code remains frontmost. This must be verified with the `osascript` foreground-app command before and after a live launch.
+Acceptance criterion 1: The harness can launch BG3 and reach the Script Extender socket while the terminal or the CLI remains frontmost. This must be verified with the `osascript` foreground-app command before and after a live launch.
 
 Acceptance criterion 2: Intro videos are skipped by a reversible harness-controlled mechanism. Acceptable mechanisms are an exact verified config write, a working `-mediaPath` redirection, or a narrowly targeted path/movie hook with documented runtime proof. Renaming `Gustav_Video.pak` is not acceptable as the default solution.
 

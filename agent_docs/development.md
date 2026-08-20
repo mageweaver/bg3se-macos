@@ -294,7 +294,6 @@ When completing a feature or ending a session, update these files:
 |------|----------------|
 | `docs/CHANGELOG.md` | Add entry for new version with Added/Changed/Technical sections |
 | `src/core/version.h` | Bump `BG3SE_VERSION` if releasing |
-| `CLAUDE.md` | Version number, API status summary, key offsets |
 | `README.md` | Version number, feature status table |
 | `ROADMAP.md` | Version number, feature details, version history table |
 
@@ -304,12 +303,10 @@ When completing a feature or ending a session, update these files:
 ```
 
 **Component count locations** (when adding components):
-- `CLAUDE.md`: "X component property layouts" in Ext.Entity line
 - `README.md`: "X component layouts" in status table
 - `ROADMAP.md`: Section 2.2 status, component table, version history
 
 **Parity percentage** (recalculate when adding significant features):
-- `CLAUDE.md`: "Parity: ~XX%" in header line
 - `README.md`: "Feature Parity: ~XX%" in Status section
 - `ROADMAP.md`: "Overall Feature Parity: ~XX%" at top
 - Calculation: Based on Feature Parity Matrix in ROADMAP.md (weighted by namespace importance)
@@ -444,7 +441,7 @@ For bulk component size extraction using Ghidra MCP and parallel subagents.
 
 1. **Ghidra with MCP plugin** - Ghidra 11.3+ with pyghidra-mcp installed
 2. **BG3 binary loaded** - ARM64 slice of Baldur's Gate 3 analyzed
-3. **Claude Code** - With Task tool for launching subagents
+3. **the CLI** - With Task tool for launching subagents
 
 ### The Pattern
 

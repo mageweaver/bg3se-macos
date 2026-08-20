@@ -776,7 +776,7 @@ GameStateChanged EnumValues, Ext.IO VFS semantics).
   `Ext.Net.CreateChannel` exposed for MCM (PR #93, marcus-sa).
 
 ### Fixed
-- Hardening pass from a four-agent review (two Codex, two Claude) over the
+- Hardening pass from a four-agent review (two Codex, two the assistant) over the
   integration: CTuple small-object storage, stale-registry re-walk on save
   load, param-def validation, engine-string safe reads, Ext.IO path
   containment, PAK entry bounds validation, per-mod loader state clearing.
@@ -1176,7 +1176,6 @@ emitting structured JSON.
   (``parity.py``, ``compat.py``, ``savegames.py``).
 
 ### Plan tracking
-- Chunks 1 and 2 of ``~/.claude/plans/2026-04-06-bg3se-harness-opencli-integration.md``
   shipped; Chunks 3–9 (OpenCLI manifest, upstream-parity tracker, trending
   mods, doctor opencli, graceful degradation) remain.  Deviations from the
   original plan (Cargo → opensearch pivot, verify-as-field-printer) are
@@ -1895,7 +1894,7 @@ emitting structured JSON.
 - `peer_manager_clear()` now properly resets `s_initialized` for full state reset
 - Consistent auto-init guards across all `peer_manager_*` public functions
 - `net_hooks.c/h` prepared with documented Ghidra RE targets for Phase 4D
-- 4 reviewers (3 Claude agents + 1 Codex GPT-5.2): 0 critical bugs remaining
+- 4 reviewers (3 the assistant agents + 1 Codex GPT-5.2): 0 critical bugs remaining
 
 ---
 
@@ -2339,7 +2338,7 @@ Found via Ghidra analysis of `gui::DataContextProvider::CreateDataContextClass` 
 - **Log Monitoring Script** - `scripts/tail_log.sh`
   - `--no-osiris` flag to filter noisy Osiris events
   - `-g PATTERN` for grep filtering
-  - Designed for Claude Code subagent monitoring
+  - Designed for the CLI subagent monitoring
 
 ### Changed
 - **File I/O Optimization** - Persistent log file handle

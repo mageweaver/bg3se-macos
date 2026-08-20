@@ -21,10 +21,9 @@ This plan expands the harness CLI into a **full autonomous pipeline** (build →
 
 ## Problem Statement / Motivation
 
-1. **Menu navigation was the last manual step.** The previous plan used vision-based automation (Claude Computer Use) to click through menus — fragile and non-deterministic. `-continueGame` makes this obsolete.
+1. **Menu navigation was the last manual step.** The previous plan used vision-based automation (the assistant Computer Use) to click through menus — fragile and non-deterministic. `-continueGame` makes this obsolete.
 2. **38 game flags are undocumented.** No public documentation exists for BG3's CLI flags. We discovered them via binary string extraction. They enable debug modes, save system diagnostics, story logging, and more.
 3. **Ghidra is underutilized.** The HTTP bridge has 135+ endpoints but no CLI integration. RE sessions currently require manual curl commands.
-4. **The skill and docs are stale.** The bg3se-harness SKILL.md still references vision-based menu navigation, and `~/.claude/agent_docs/tools.md` doesn't document the Ghidra HTTP bridge workaround.
 
 ## Proposed Solution
 
@@ -151,18 +150,16 @@ This confirms `-loadSaveGame` and `-continueGame` are **mutually exclusive** —
 **Goal:** Update stale docs before any code changes.
 
 **Tasks:**
-- [ ] **`~/.claude/agent_docs/tools.md`** — Add Ghidra HTTP bridge section:
   ```
   ## Ghidra RE (via HTTP Bridge)
-  - **Bridge**: GhidraMCP HTTP server at `http://127.0.0.1:8080/`
+  - **Bridge**: the Ghidra HTTP bridge HTTP server at `http://127.0.0.1:8080/`
   - **Workaround**: MCP wrapper may fail to connect; use curl directly
   - **135+ endpoints**: decompile, search, xref, rename, struct, analysis
   - **Key endpoints**: /decompile_function, /search_strings, /get_xrefs_to,
     /list_functions, /batch_decompile, /search_functions
-  - **Setup**: Ghidra must be running with GhidraMCP plugin + BG3 binary loaded
+  - **Setup**: Ghidra must be running with the Ghidra HTTP bridge plugin + BG3 binary loaded
   ```
 
-- [ ] **`game-modding/bg3/bg3se-macos/CLAUDE.md`** — Add:
   - Ghidra HTTP bridge section with curl examples
   - Complete CLI flag inventory (the 38 flags table above)
   - Note: `-continueGame` and `-loadSaveGame` for autonomous launch
@@ -297,7 +294,7 @@ This confirms `-loadSaveGame` and `-continueGame` are **mutually exclusive** —
   GHIDRA_URL = "http://127.0.0.1:8080"
 
   class GhidraBridge:
-      """Client for the GhidraMCP HTTP bridge."""
+      """Client for the the Ghidra HTTP bridge HTTP bridge."""
 
       def __init__(self, base_url=GHIDRA_URL):
           self.base_url = base_url
@@ -374,7 +371,6 @@ This confirms `-loadSaveGame` and `-continueGame` are **mutually exclusive** —
 **Goal:** Update `bg3se-harness` SKILL.md to reflect all new capabilities.
 
 **Tasks:**
-- [ ] **`~/.claude/skills/bg3se-harness/SKILL.md`** — Full rewrite:
   - Remove vision-based menu navigation section (obsoleted by `-continueGame`)
   - Add all new subcommands (launch --continue, flags, ghidra)
   - Add Ghidra integration section with examples
@@ -476,8 +472,6 @@ PYTHONPATH=tools python3 -m bg3se_harness launch --continue --stats --storylog -
 - [ ] Ghidra commands fail gracefully when bridge is down
 
 ### Quality Gates
-- [ ] CLAUDE.md updated with full flag inventory and Ghidra bridge docs
-- [ ] `~/.claude/agent_docs/tools.md` updated with Ghidra HTTP bridge section
 - [ ] `ghidra/offsets/CLI_FLAGS.md` documents all discoveries
 - [ ] SKILL.md rewritten to reflect autonomous pipeline
 - [ ] All existing tests still pass (no regression)
@@ -490,7 +484,7 @@ PYTHONPATH=tools python3 -m bg3se_harness launch --continue --stats --storylog -
 | BG3 binary with CLI flags | **Verified** | 38 flags confirmed via `strings` |
 | `-continueGame` behavior | **Confirmed** | Embedded JS shows it posts to WebKit message handler |
 | Ghidra HTTP bridge | **Running** | Port 8080, 135+ endpoints, tested via curl |
-| GhidraMCP plugin | **Installed** | xebyte fork with McpTool annotations |
+| the Ghidra HTTP bridge plugin | **Installed** | xebyte fork with McpTool annotations |
 | Python 3.10+ | **Available** | Via `uv run` |
 
 ## Risk Analysis & Mitigation
@@ -499,7 +493,7 @@ PYTHONPATH=tools python3 -m bg3se_harness launch --continue --stats --storylog -
 |------|--------|------------|
 | `-continueGame` doesn't work on macOS | High | Test immediately in Phase 1. Fallback: `-loadSaveGame` with most recent save name |
 | `-loadSaveGame` needs exact save file path | Medium | RE the flag parsing function via Ghidra to discover expected format |
-| Ghidra bridge endpoint changes | Low | Pin to current xebyte GhidraMCP version |
+| Ghidra bridge endpoint changes | Low | Pin to current xebyte the Ghidra HTTP bridge version |
 | Save loading takes too long for timeout | Medium | Increase timeout to 90s for `--continue`, add configurable `--timeout` |
 | Some flags have unknown argument formats | Low | Phase 2 RE work: use Ghidra to decompile flag parsing for each unknown |
 
@@ -508,17 +502,14 @@ PYTHONPATH=tools python3 -m bg3se_harness launch --continue --stats --storylog -
 1. **CI/CD integration**: The fully autonomous pipeline (`test` with JSON output) can feed into GitHub Actions for automated regression testing on every commit.
 2. **Ghidra MCP reconnection**: When the MCP wrapper connection issue is resolved, the `ghidra.py` module can add MCP as an alternative transport alongside HTTP.
 3. **Parity acceleration**: `ghidra batch-decompile` enables parallel component size extraction (1,577 Ghidra sizes already, 922 gaps remain).
-4. **Cross-binary analysis**: GhidraMCP supports `/diff_functions` and `/bulk_fuzzy_match` for comparing macOS vs Windows binaries.
+4. **Cross-binary analysis**: the Ghidra HTTP bridge supports `/diff_functions` and `/bulk_fuzzy_match` for comparing macOS vs Windows binaries.
 
 ## Documentation Plan
 
 | File | Update |
 |------|--------|
-| `~/.claude/agent_docs/tools.md` | Ghidra HTTP bridge section |
-| `game-modding/bg3/bg3se-macos/CLAUDE.md` | CLI flags, Ghidra bridge, expanded commands |
 | `ghidra/offsets/CLI_FLAGS.md` | New: complete flag inventory with addresses |
 | `docs/harness.md` | Expanded commands, autonomous pipeline |
-| `~/.claude/skills/bg3se-harness/SKILL.md` | Full rewrite |
 
 ## Sources & References
 
@@ -532,11 +523,11 @@ PYTHONPATH=tools python3 -m bg3se_harness launch --continue --stats --storylog -
 - Console IPC: `tools/bg3se_harness/console.py` (socket client, reusable as-is)
 - Existing Ghidra scripts: `ghidra/scripts/` (40+ Python scripts for headless analysis)
 - Ghidra offsets: `ghidra/offsets/` (16 offset docs, osgrep indexed)
-- GhidraMCP plugin: `/Users/tomdimino/ghidra/GhidraMCP/` (135+ HTTP endpoints)
-- GhidraMCP bridge: `/Users/tomdimino/ghidra/GhidraMCP/bridge_mcp_ghidra.py` (MCP→HTTP adapter)
+- the Ghidra HTTP bridge plugin: `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/` (135+ HTTP endpoints)
+- the Ghidra HTTP bridge bridge: `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/bridge_mcp_ghidra.py` (MCP→HTTP adapter)
 
 ### External References
-- GhidraMCP (xebyte fork): https://github.com/xebyte/GhidraMCP
+- the Ghidra HTTP bridge (xebyte fork): https://github.com/xebyte/the Ghidra HTTP bridge
 - BG3 CLI flags: Discovered via `strings -a` on macOS binary (no public docs)
 - Larian Noesis UI: Embedded JavaScript in binary (`continueGame: function(args)`)
 

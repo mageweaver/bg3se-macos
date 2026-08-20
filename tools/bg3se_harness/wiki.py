@@ -71,14 +71,12 @@ _ITEM_TEMPLATES: tuple[str, ...] = (
     "Feature page",  # some items still use the generic template
 )
 
-
 # ---------------------------------------------------------------------------
 # Error envelope helpers
 # ---------------------------------------------------------------------------
 
 def _error(error_type: str, message: str, **extra) -> dict:
     return {"success": False, "error_type": error_type, "message": message, **extra}
-
 
 # ---------------------------------------------------------------------------
 # HTTP helper
@@ -118,7 +116,6 @@ def _http_get_json(params: dict) -> tuple[dict | list | None, dict | None]:
 
     return data, None
 
-
 # ---------------------------------------------------------------------------
 # Cache
 # ---------------------------------------------------------------------------
@@ -149,14 +146,12 @@ def _http_get_json(params: dict) -> tuple[dict | list | None, dict | None]:
 # every lookup would bleat.  Rate-limit to a single warning per process.
 _cache_warn_emitted: bool = False
 
-
 def _cache_warn(msg: str) -> None:
     global _cache_warn_emitted
     if _cache_warn_emitted:
         return
     _cache_warn_emitted = True
     print(f"[wiki] WARNING: {msg}", file=sys.stderr)
-
 
 def _cache_dir() -> Path:
     """Return the wiki cache directory, creating it on demand.
@@ -181,7 +176,6 @@ def _cache_dir() -> Path:
                 return path  # return anyway — subsequent writes will fail loud
     return path
 
-
 def _cache_key(title: str) -> str:
     """Return a collision-resistant, filesystem-safe cache key for *title*.
 
@@ -191,7 +185,6 @@ def _cache_key(title: str) -> str:
     existing cache entry.
     """
     return hashlib.sha1(title.encode("utf-8")).hexdigest()[:32]
-
 
 def _cache_path(title: str) -> Path | None:
     """Return the absolute cache path for *title*, or None if unsafe.
@@ -209,7 +202,6 @@ def _cache_path(title: str) -> Path | None:
         _cache_warn(f"refusing cache path outside sandbox: {candidate}")
         return None
     return candidate
-
 
 def _cache_read(title: str, _depth: int = 0) -> dict | None:
     """Return cached payload for *title* if it exists and is still fresh.
@@ -237,7 +229,6 @@ def _cache_read(title: str, _depth: int = 0) -> dict | None:
 
     return data if isinstance(data, dict) else None
 
-
 def _cache_write(title: str, payload: dict) -> bool:
     """Persist *payload* under *title*.  Returns True on success."""
     path = _cache_path(title)
@@ -250,13 +241,11 @@ def _cache_write(title: str, payload: dict) -> bool:
         _cache_warn(f"cache write failed for {title!r}: {exc}")
         return False
 
-
 def _cache_write_alias(alias: str, target_title: str) -> bool:
     """Write an alias pointer so *alias* redirects to *target_title*."""
     if alias == target_title:
         return True
     return _cache_write(alias, {"alias_for": target_title})
-
 
 def clear_cache() -> dict:
     """Wipe all cached wiki pages. Returns a summary dict."""
@@ -275,7 +264,6 @@ def clear_cache() -> dict:
         return {"success": True, "removed": removed}
     except Exception as exc:
         return _error("cache_error", f"clear_cache failed: {exc}")
-
 
 # ---------------------------------------------------------------------------
 # MediaWiki endpoint wrappers
@@ -307,7 +295,6 @@ def _opensearch(query: str, limit: int = 5) -> tuple[list[str] | None, dict | No
         return None, _error("api_error", "Unexpected opensearch titles field")
 
     return [t for t in titles if isinstance(t, str)], None
-
 
 def _fetch_wikitext(title: str) -> tuple[dict | None, dict | None]:
     """Fetch raw wikitext for a single page.
@@ -347,7 +334,6 @@ def _fetch_wikitext(title: str) -> tuple[dict | None, dict | None]:
         "pageid": parse.get("pageid"),
         "wikitext": wikitext,
     }, None
-
 
 # ---------------------------------------------------------------------------
 # Wikitext template parsing
@@ -391,9 +377,7 @@ def _find_template_block(wikitext: str, template_names: tuple[str, ...]) -> str 
 
     return None
 
-
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-
 
 def _parse_template_fields(block: str) -> dict:
     """Parse a ``{{Template | key = value | ...}}`` block into a dict.
@@ -486,7 +470,6 @@ def _parse_template_fields(block: str) -> dict:
 
     return result
 
-
 def _flatten_template(body: str) -> str:
     """Flatten a single (already-innermost) ``{{name|arg1|arg2}}`` body.
 
@@ -508,13 +491,11 @@ def _flatten_template(body: str) -> str:
     # Drop the template name.
     return " ".join(parts[1:]) if len(parts) > 1 else ""
 
-
 # Innermost `{{...}}` — contains no further `{{` or `}}`.
 _INNERMOST_TEMPLATE_RE = re.compile(r"\{\{([^{}]*?)\}\}")
 _WIKI_LINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _WHITESPACE_RE = re.compile(r"\s+")
-
 
 def _strip_wiki_markup(value: str) -> str:
     """Flatten common wiki markup in a field value for JSON output.
@@ -557,7 +538,6 @@ def _strip_wiki_markup(value: str) -> str:
     value = _WHITESPACE_RE.sub(" ", value).strip()
     return value
 
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -573,7 +553,6 @@ def _resolve_page(name: str) -> tuple[str | None, dict | None]:
             f"No bg3.wiki page matches {name!r}.",
         )
     return titles[0], None
-
 
 def _lookup(
     name: str,
@@ -658,7 +637,6 @@ def _lookup(
                 _cache_write_alias(name, title)
     return result
 
-
 def query_spell(name: str, *, use_cache: bool = True) -> dict:
     """Look up a bg3.wiki spell page by display name.
 
@@ -683,14 +661,12 @@ def query_spell(name: str, *, use_cache: bool = True) -> dict:
     """
     return _lookup(name, _SPELL_TEMPLATES, "spell", use_cache)
 
-
 def query_item(name: str, *, use_cache: bool = True) -> dict:
     """Look up a bg3.wiki item page (weapon, armour, etc.) by display name.
 
     Returns the same shape as :func:`query_spell` with ``kind = "item"``.
     """
     return _lookup(name, _ITEM_TEMPLATES, "item", use_cache)
-
 
 def verify_page(
     page_name: str,
@@ -783,7 +759,6 @@ def verify_page(
         result["uid_matches"] = (result.get("uid") == expect_uid)
 
     return result
-
 
 # ---------------------------------------------------------------------------
 # CLI handler (wired up from bg3se_harness.cli)

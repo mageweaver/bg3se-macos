@@ -116,7 +116,6 @@ Register in `lua_ext_register_functions()`:
 
 - `src/injector/main.c` - Register Ext.Template namespace
 - `CMakeLists.txt` - Add new source files
-- `CLAUDE.md`, `README.md`, `ROADMAP.md` - Update docs
 
 ## Risk Mitigation
 

@@ -1,16 +1,25 @@
-<p align="center">
-  <img src="assets/tanit.svg" alt="Symbol of Tanit" width="80" height="100"/>
-</p>
-
 # BG3SE-macOS
 
-**Baldur's Gate 3 Script Extender for macOS**
+**Baldur's Gate 3 Script Extender for macOS** — maintained by DigitalMinotaur.
 
-A native macOS implementation of the BG3 Script Extender, working toward scope-corrected 100% parity with Norbyte's Windows BG3SE: 100% of the supported macOS surface. Enables mods that require scripting capabilities to work on Mac—including companion mods, gameplay tweaks, UI enhancements, and more.
+A native macOS implementation of the BG3 Script Extender, working toward
+scope-corrected 100% parity with Norbyte's Windows BG3SE across the supported
+macOS surface. Enables mods that require scripting to work on Mac — companion
+mods, gameplay tweaks, UI enhancements, and more.
 
-The supported surface excludes four things by explicit decision—`Ext.UI`/Noesis (stub layer only), Lua Debugger/DAP, Virtual Textures, and Input Injection—all recorded in [docs/deferrals.md](docs/deferrals.md) and outside the parity denominator. Entity replication (`entity:Replicate`, `GetReplicationFlags`) is **not** excluded: it has real mod demand, so it stays a scored deferral inside the `Ext.Entity` parity row until implemented.
+The supported surface excludes four things by explicit decision — `Ext.UI`/Noesis
+(stub layer only), Lua Debugger/DAP, Virtual Textures, and Input Injection — all
+recorded in [docs/deferrals.md](docs/deferrals.md) and outside the parity
+denominator. Entity replication (`entity:Replicate`, `GetReplicationFlags`) is
+**not** excluded: it has real mod demand, so it stays a scored deferral inside
+the `Ext.Entity` parity row until implemented.
 
-> **Note:** This is a ground-up rebuild, not a port—the Windows BG3SE uses x86_64 assembly and Windows APIs that don't exist on macOS ARM64. We use the Windows codebase as architectural reference while reverse-engineering the macOS binary via Ghidra.
+> Built on the macOS port originally created by Tom di Mino
+> ([tdimino/bg3se-macos](https://github.com/tdimino/bg3se-macos)), MIT licensed.
+> This is a ground-up rebuild rather than a direct port of the Windows codebase:
+> Windows BG3SE relies on x86_64 assembly and Win32 APIs that do not exist on
+> macOS ARM64, so the Windows source serves as an architectural reference while
+> the macOS binary is reverse engineered.
 
 ## Quick Start
 
@@ -26,7 +35,7 @@ The supported surface excludes four things by explicit decision—`Ext.UI`/Noesi
 
 ```bash
 # Clone with submodules
-git clone --recursive https://github.com/tdimino/bg3se-macos.git
+git clone --recursive https://github.com/mageweaver/bg3se-macos.git
 cd bg3se-macos
 
 # If you already cloned without --recursive:
@@ -181,7 +190,7 @@ PYTHONPATH=tools python3 -m bg3se_harness run "<lua>"       # Inline Lua via soc
 # Game inspection
 PYTHONPATH=tools python3 -m bg3se_harness entity <GUID>                      # Inspect entity components
 PYTHONPATH=tools python3 -m bg3se_harness stats WPN_Longsword --diff Shortsword  # RPG stats + diff
-PYTHONPATH=tools python3 -m bg3se_harness screenshot                         # Claude-Code-safe JPEG
+PYTHONPATH=tools python3 -m bg3se_harness screenshot                         # the assistant-Code-safe JPEG
 
 # Web integrations (Nexus + bg3.wiki, stdlib urllib, 24h file cache)
 PYTHONPATH=tools python3 -m bg3se_harness mod changelog 12345       # Per-version HTML-stripped changelog
@@ -343,7 +352,7 @@ bg3se-macos/
 │   ├── lua/                    # Lua 5.4
 │   └── lz4/                    # Compression for PAK files
 │
-├── agent_docs/                 # Claude Code context docs
+├── agent_docs/                 # the CLI context docs
 ├── plans/                      # Implementation plans
 └── test-mods/                  # Test mod examples
 ```
@@ -369,7 +378,6 @@ MIT License
 ## Authors
 
 - Tom di Mino (the artist formerly known as [Pnutmaster](https://wiki.twcenter.net/index.php?title=Blood_Broads_%26_Bastards) / [Nexus](https://next.nexusmods.com/profile/Pnutmaster/mods?gameId=130))
-- [Claude Code](https://claude.ai/claude-code) (Anthropic)
 
 ## Support This Project
 

@@ -36,11 +36,10 @@ the team chooses one of those two end states and makes the docs truthful.
 
 ## Progress
 
-- [x] (2026-04-02 07:22Z) Read `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/CLAUDE.md`, `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/ROADMAP.md`, and `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/agent_docs/api-status.md`.
 - [x] (2026-04-02 07:22Z) Confirmed current working branch is `feat/qedeshot-parity` and captured the current head commit `4a29138` ("re-enable PlayExternalSound with verified STDString construction").
 - [x] (2026-04-02 07:23Z) Mapped each remaining parity gap to its current code owner and reverse-engineering evidence.
 - [x] (2026-04-02 07:24Z) Wrote this ExecPlan and saved it as a handoff artifact in `plans/`.
-- [ ] Rebuild the installed GhidraMCP extension from `/Users/tomdimino/ghidra/GhidraMCP/` so the HTTP bridge exposes `POST /create_function`.
+- [ ] Rebuild the installed the Ghidra HTTP bridge extension from `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/` so the HTTP bridge exposes `POST /create_function`.
 - [ ] Recover and verify ARM64 `BeforeDealDamage` and `DealDamage` hook targets, then wire live hooks and tests.
 - [ ] Runtime-probe `ComponentOpsRegistry` inside `EntityWorld`, replace the current estimate with a verified offset, and ungate `CreateComponent` and `RemoveComponent`.
 - [ ] Decide whether entity replication is truly implementable on this branch or must be formally deferred from the parity claim.
@@ -52,8 +51,8 @@ the team chooses one of those two end states and makes the docs truthful.
 - Observation: `Ext.UI` is not absent; it already exists as a graceful stub layer for MCM compatibility.
   Evidence: `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/src/lua/lua_ui.c` explicitly registers `Ext.UI` and states that Noesis UI is not available on macOS.
 
-- Observation: the local source checkout of the xebyte GhidraMCP fork already contains the missing `create_function` endpoint, so the blocker is the installed extension JAR, not the source tree.
-  Evidence: `/Users/tomdimino/ghidra/GhidraMCP/src/main/java/com/xebyte/core/EndpointRegistry.java` and `/Users/tomdimino/ghidra/GhidraMCP/src/main/java/com/xebyte/core/FunctionService.java` both contain `/create_function`, while `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/ghidra/offsets/FUNCTORS.md` records that the live bridge currently returns HTTP 404.
+- Observation: the local source checkout of the xebyte the Ghidra HTTP bridge fork already contains the missing `create_function` endpoint, so the blocker is the installed extension JAR, not the source tree.
+  Evidence: `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/src/main/java/com/xebyte/core/EndpointRegistry.java` and `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/src/main/java/com/xebyte/core/FunctionService.java` both contain `/create_function`, while `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/ghidra/offsets/FUNCTORS.md` records that the live bridge currently returns HTTP 404.
 
 - Observation: `ComponentOpsRegistry` is still based on an estimate, and the estimate moved from `0x368` to roughly `0x390`.
   Evidence: `/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/ghidra/offsets/ENTITY_SYSTEM.md` marks the offset as unconfirmed and prescribes a runtime probe over `EntityWorld + 0x350..0x3B0`.
@@ -77,7 +76,7 @@ the team chooses one of those two end states and makes the docs truthful.
   Rationale: the current code still contains real stubs and safety gates in those areas.
   Date/Author: 2026-04-02 / Codex
 
-- Decision: make the GhidraMCP rebuild the first execution milestone.
+- Decision: make the the Ghidra HTTP bridge rebuild the first execution milestone.
   Rationale: `BeforeDealDamage` and `DealDamage` are on the critical path, and the local fork already appears to have the missing endpoint. This is the fastest way to unblock static analysis without guessing hook addresses.
   Date/Author: 2026-04-02 / Codex
 
@@ -157,10 +156,10 @@ The key files and directories for this plan are:
 
 There is one external but local dependency that matters for this plan.
 
-`/Users/tomdimino/ghidra/GhidraMCP/` is the xebyte fork source tree whose Java
+`/Users/tomdimino/ghidra/the Ghidra HTTP bridge/` is the xebyte fork source tree whose Java
 code already exposes `POST /create_function`.
 
-`/Users/tomdimino/ghidra/Ghidra/Extensions/GhidraMCP/lib/GhidraMCP.jar` is the
+`/Users/tomdimino/ghidra/Ghidra/Extensions/the Ghidra HTTP bridge/lib/the Ghidra HTTP bridge.jar` is the
 installed Ghidra extension JAR that must be rebuilt and replaced.
 
 ## Plan of Work
@@ -172,7 +171,7 @@ parity for the supported macOS surface area. This is not paperwork. It changes
 the denominator for the parity scan, the acceptance criteria for the branch,
 and whether replication is treated as blocking.
 
-Next, unblock reverse engineering. Rebuild the local xebyte GhidraMCP fork,
+Next, unblock reverse engineering. Rebuild the local xebyte the Ghidra HTTP bridge fork,
 replace the installed extension JAR, restart Ghidra, and prove that
 `POST /create_function` returns success instead of HTTP 404. Only after that
 should the team spend more time on `BeforeDealDamage` and `DealDamage`, because
@@ -233,22 +232,22 @@ same story.
    entity, replication, or denominator issues that this plan is meant to close
    or formally defer.
 
-2. Verify that the local GhidraMCP source tree already contains the missing endpoint, then rebuild the extension.
+2. Verify that the local the Ghidra HTTP bridge source tree already contains the missing endpoint, then rebuild the extension.
 
-   Working directory: `/Users/tomdimino/ghidra/GhidraMCP`
+   Working directory: `/Users/tomdimino/ghidra/the Ghidra HTTP bridge`
 
    Run:
 
    ```bash
    rg -n "create_function" src/main/java/com/xebyte/core/EndpointRegistry.java src/main/java/com/xebyte/core/FunctionService.java
    mvn clean package assembly:single
-   cp target/GhidraMCP.jar /Users/tomdimino/ghidra/Ghidra/Extensions/GhidraMCP/lib/GhidraMCP.jar
+   cp target/the Ghidra HTTP bridge.jar /Users/tomdimino/ghidra/Ghidra/Extensions/the Ghidra HTTP bridge/lib/the Ghidra HTTP bridge.jar
    ```
 
    Expected output:
 
    `rg` prints both endpoint definitions. Maven ends with `BUILD SUCCESS`. The
-   installed JAR at `/Users/tomdimino/ghidra/Ghidra/Extensions/GhidraMCP/lib/GhidraMCP.jar`
+   installed JAR at `/Users/tomdimino/ghidra/Ghidra/Extensions/the Ghidra HTTP bridge/lib/the Ghidra HTTP bridge.jar`
    receives a fresh timestamp.
 
 3. Restart Ghidra with the BG3 macOS binary loaded and prove the endpoint is live.
@@ -459,7 +458,7 @@ numerator, denominator, exclusions, and wording.
 
 Most steps in this plan are repeatable.
 
-Rebuilding `/Users/tomdimino/ghidra/GhidraMCP/` with Maven is safe to repeat.
+Rebuilding `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/` with Maven is safe to repeat.
 Replacing the installed JAR is also safe to repeat. If `POST /create_function`
 already succeeds, the rebuild milestone is already complete and can be marked
 done.
@@ -507,9 +506,9 @@ features through sentinel probes, and Dobby-installed code hooks must remain
 behind an exact-match safety policy unless the policy itself is deliberately
 extended and validated.
 
-The external dependency `/Users/tomdimino/ghidra/GhidraMCP/` must remain
+The external dependency `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/` must remain
 buildable with Maven, and the installed extension JAR at
-`/Users/tomdimino/ghidra/Ghidra/Extensions/GhidraMCP/lib/GhidraMCP.jar` must
+`/Users/tomdimino/ghidra/Ghidra/Extensions/the Ghidra HTTP bridge/lib/the Ghidra HTTP bridge.jar` must
 expose `POST /create_function` during this work.
 
 ## Documentation Parity (Nomos Audit — 2026-04-02)
@@ -537,8 +536,7 @@ the full scope at `.subdaimon-output/nomos-1775116318.md`.
 
 | Priority | File | State |
 |----------|------|-------|
-| **HIGH** | `agent_docs/api-status.md` | VERY STALE — Claude reads every session |
-| **HIGH** | `CLAUDE.md` | Wrong version, counts, parity |
+| **HIGH** | `agent_docs/api-status.md` | VERY STALE — the assistant reads every session |
 | **HIGH** | `README.md` | Public-facing, wrong numbers |
 | **MEDIUM** | `ROADMAP.md` | Feature Parity Matrix behind |
 | **MEDIUM** | `agent_docs/development.md` | Test counts wrong |
@@ -551,7 +549,6 @@ the full scope at `.subdaimon-output/nomos-1775116318.md`.
 
 - Version: v0.36.50 in ROADMAP/api-status vs v0.37.1 in CHANGELOG/version.h
 - Parity: ~94% everywhere, should be ~96%
-- Entity layouts: "534" in CLAUDE.md vs "462" in api-status.md
 - Test count: 85/40/125 everywhere, should be 101/53/154
 - Events: "33" everywhere, should be ~43
 

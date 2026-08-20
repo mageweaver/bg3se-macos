@@ -48,7 +48,7 @@ branch: feat/qedeshot-parity
 | Tasks completed | 22 of 26 (85%) |
 | Merge conflicts | 0 |
 | Build failures | 0 |
-| Review agents | 6 (4 Claude: security, perf, arch, code + 2 Codex: reviewer, security) |
+| Review agents | 6 (4 the assistant: security, perf, arch, code + 2 Codex: reviewer, security) |
 | Review findings fixed | 7 (NULL guard, atomic counter, overflow warning, unconditional log, static buffer, audio ABI gate, stride comment) |
 
 ### Task Completion Matrix
@@ -389,7 +389,6 @@ From 6 existing solution documents, these gotchas apply to the parity push:
 | V1 | sassuratu | Run full test suite (125 + new tests), verify all pass | ⏳ Pending |
 | V2 | sassuratu | Run `parity scan` against frozen baseline | ⏳ Pending |
 | V3 | sassuratu | Run `compat run mcm` + `compat run community_library` | ⏳ Pending |
-| V4 | qedesha-lead | Update ROADMAP.md, CLAUDE.md, README.md with new parity % | ⏳ Pending |
 | V5 | qedesha-lead | Create release PR | ⏳ Pending |
 
 #### Post-Swarm: Review Fixes — ✅ COMPLETE
@@ -560,7 +559,6 @@ After the knesset is dismissed, run the autoresearch loop autonomously on a dedi
 - [ ] `compat run mcm` passes — ⏳ V3 pending
 - [x] Signal handler thread safety fixed (deferred path only) — ✅ P0
 - [x] One-frame polling optimized (cached TypeIndex, listener-count guards) — ✅ I12
-- [ ] ROADMAP.md, CLAUDE.md, README.md updated with new parity % — ⏳ V4 pending
 - [ ] Autoresearch `.lab/` scaffolded with working fast + full eval gates — ⏳ Mode B pending
 
 ## Success Metrics
@@ -589,8 +587,6 @@ After the knesset is dismissed, run the autoresearch loop autonomously on a dedi
 - RLAMA buckets: `bg3se-windows` (294 docs), `bg3se-macos` (389 docs)
 - Parity baseline: `tools/bg3se_harness/catalog/windows_parity_baseline.json`
 - ROADMAP.md: Feature Parity Matrix with per-namespace status
-- Minoan Swarm skill: `~/.claude/skills/minoan-swarm/`
-- Autoresearch skill: `~/.claude/skills/autoresearch/`
 - Prior plan: `docs/plans/2026-03-31-003-feat-unified-parity-modcompat-cli-expansion-plan.md`
 
 ### Solution Docs Referenced

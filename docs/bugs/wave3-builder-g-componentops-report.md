@@ -79,7 +79,6 @@ calls a representative specialization with an arbitrary component type.
 
 Updated files:
 
-- `CLAUDE.md`
 - `ghidra/offsets/STATS.md`
 - `src/stats/prototype_managers.c`
 - `src/stats/prototype_managers.h`

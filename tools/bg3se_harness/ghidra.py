@@ -1,9 +1,9 @@
 """Ghidra HTTP bridge client.
 
-Wraps the GhidraMCP HTTP server (default: http://127.0.0.1:8080/) to provide
+Wraps the the Ghidra HTTP bridge HTTP server (default: http://127.0.0.1:8080/) to provide
 decompilation, string search, xref analysis, and function listing from the CLI.
 
-The MCP wrapper may fail to connect to Claude Code sessions. This module hits
+The MCP wrapper may fail to connect to the CLI sessions. This module hits
 the HTTP bridge directly as a reliable alternative.
 
 Endpoint reference (from GhidraMCPPlugin.java):
@@ -20,7 +20,6 @@ import urllib.request
 
 GHIDRA_DEFAULT_URL = "http://127.0.0.1:8080"
 TIMEOUT = 30
-
 
 class GhidraBridge:
     def __init__(self, base_url=GHIDRA_DEFAULT_URL):

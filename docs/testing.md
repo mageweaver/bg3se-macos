@@ -368,7 +368,7 @@ The filter argument is a Lua `string.find` pattern applied to the test name:
 ### Automated via Socket
 
 ```bash
-# One-liner from terminal (Claude can run these directly)
+# One-liner from terminal (the assistant can run these directly)
 echo '!test' | nc -U /tmp/bg3se.sock
 
 # With timeout

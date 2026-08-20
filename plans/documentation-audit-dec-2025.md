@@ -2,7 +2,7 @@
 
 **Date:** 2025-12-28
 **Version:** v0.36.17 | **Parity:** ~82%
-**Auditor:** Claude Code with parallel subagents
+**Auditor:** the CLI with parallel subagents
 
 ## Executive Summary
 

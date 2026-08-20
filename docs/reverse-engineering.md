@@ -19,26 +19,24 @@ ghidra-bg3  # Launch Ghidra with JAVA_HOME set (requires ~/bin in PATH)
 
 Then open the BG3 project → select libOsiris.dylib → CodeBrowser.
 
-### GhidraMCP Integration
+### the Ghidra HTTP bridge Integration
 
-With the GhidraMCP plugin enabled, an HTTP server starts on port 8080 when you open a binary in CodeBrowser. This enables Claude to query decompilation directly via MCP tools.
+With the the Ghidra HTTP bridge plugin enabled, an HTTP server starts on port 8080 when you open a binary in CodeBrowser. This enables the assistant to query decompilation directly via MCP tools.
 
 **Quick setup:**
-1. Install plugin: `unzip GhidraMCP-release-1-4.zip -d ~/ghidra/Ghidra/Extensions/`
+1. Install plugin: `unzip the Ghidra HTTP bridge-release-1-4.zip -d ~/ghidra/Ghidra/Extensions/`
 2. Enable in Ghidra: File → Configure → Developer → GhidraMCPPlugin
-3. Install bridge: `pip install mcp requests && git clone https://github.com/LaurieWired/GhidraMCP ~/ghidra/GhidraMCP`
-4. Configure Claude Code (per-project in `~/.claude.json`):
+3. Install bridge: `pip install mcp requests && git clone https://github.com/LaurieWired/the Ghidra HTTP bridge ~/ghidra/the Ghidra HTTP bridge`
+4. Configure the CLI (per-project in `~/.claude.json`):
    ```json
    "mcpServers": {
      "ghidra": {
        "type": "stdio",
        "command": "python",
-       "args": ["/path/to/GhidraMCP/bridge_mcp_ghidra.py", "--ghidra-server", "http://127.0.0.1:8080/"]
+       "args": ["/path/to/the Ghidra HTTP bridge/bridge_mcp_ghidra.py", "--ghidra-server", "http://127.0.0.1:8080/"]
      }
    }
    ```
-
-**Note:** Claude Code MCP servers are configured per-project in `.mcp.json`, NOT in `~/.claude/settings.json`.
 
 Verify server is running:
 ```bash
@@ -85,8 +83,6 @@ file ~/ghidra_projects/BG3_arm64_current.thin
 # Should show: "Mach-O 64-bit executable arm64" (NOT "universal binary")
 ```
 
-**Step 3: Configure Claude Code MCP** (`.mcp.json` in project root)
-
 ```json
 {
   "mcpServers": {
@@ -112,7 +108,6 @@ file ~/ghidra_projects/BG3_arm64_current.thin
 | Error | Solution |
 |-------|----------|
 | `PyGhidra.jar does not exist` | Upgrade Ghidra to 11.3+ |
-| `Unable to locate a Java Runtime` | Set `JAVA_HOME` in .mcp.json env |
 | `No load spec found` | Binary is universal - must thin first! |
 | `Path does not exist` | Check Steam path vs /Applications |
 

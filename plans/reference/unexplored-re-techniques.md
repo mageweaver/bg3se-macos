@@ -10,7 +10,7 @@ Techniques discovered via Exa MCP research (2025-12-12) that we haven't yet empl
 
 | Technique | Tool | Issue Impact | Effort | Status |
 |-----------|------|--------------|--------|--------|
-| GhidraMCP integration | MCP server | All issues | 2h setup | ✅ COMPLETE |
+| the Ghidra HTTP bridge integration | MCP server | All issues | 2h setup | ✅ COMPLETE |
 | Frida Stalker | Frida | #32 (hash function) | 1h | ⚠️ CRASHES BG3 |
 | frida-itrace | Frida | Complex flows | 2h | NOT STARTED |
 | Parallel Ghidra | Bash/Scripts | Init discovery | 1h | ✅ COMPLETE |
@@ -18,11 +18,11 @@ Techniques discovered via Exa MCP research (2025-12-12) that we haven't yet empl
 
 ---
 
-## 1. GhidraMCP Integration (HIGHEST IMPACT)
+## 1. the Ghidra HTTP bridge Integration (HIGHEST IMPACT)
 
-MCP server by LaurieWired enabling Claude to directly query Ghidra.
+MCP server by LaurieWired enabling the assistant to directly query Ghidra.
 
-**Source:** https://github.com/LaurieWired/GhidraMCP
+**Source:** https://github.com/LaurieWired/the Ghidra HTTP bridge
 
 **Capabilities:**
 - Decompile functions on demand
@@ -36,16 +36,16 @@ MCP server by LaurieWired enabling Claude to directly query Ghidra.
 
 ```bash
 # Download release
-curl -LO https://github.com/LaurieWired/GhidraMCP/releases/download/1.4/GhidraMCP-release-1-4.zip
+curl -LO https://github.com/LaurieWired/the Ghidra HTTP bridge/releases/download/1.4/the Ghidra HTTP bridge-release-1-4.zip
 
 # Extract to Ghidra Extensions directory
-unzip GhidraMCP-release-1-4.zip -d ~/ghidra/Ghidra/Extensions/
+unzip the Ghidra HTTP bridge-release-1-4.zip -d ~/ghidra/Ghidra/Extensions/
 cd ~/ghidra/Ghidra/Extensions/
-unzip GhidraMCP-release-1-4/GhidraMCP-1-4.zip
-rm -rf GhidraMCP-release-1-4
+unzip the Ghidra HTTP bridge-release-1-4/the Ghidra HTTP bridge-1-4.zip
+rm -rf the Ghidra HTTP bridge-release-1-4
 ```
 
-Result: `~/ghidra/Ghidra/Extensions/GhidraMCP/` with extension.properties, lib/GhidraMCP.jar
+Result: `~/ghidra/Ghidra/Extensions/the Ghidra HTTP bridge/` with extension.properties, lib/the Ghidra HTTP bridge.jar
 
 **Step 2: Enable plugin (one-time in GUI)**
 
@@ -55,12 +55,10 @@ In Ghidra: File → Configure → Developer → check GhidraMCPPlugin
 
 ```bash
 pip install mcp requests
-git clone https://github.com/LaurieWired/GhidraMCP ~/ghidra/GhidraMCP
+git clone https://github.com/LaurieWired/the Ghidra HTTP bridge ~/ghidra/the Ghidra HTTP bridge
 ```
 
-**Step 4: Configure Claude Code MCP**
-
-**IMPORTANT:** Claude Code uses per-project MCP config in `~/.claude.json`, NOT `~/.claude/settings.json`.
+**Step 4: Configure the CLI MCP**
 
 Add to `~/.claude.json` under your project's entry:
 
@@ -73,7 +71,7 @@ Add to `~/.claude.json` under your project's entry:
           "type": "stdio",
           "command": "python",
           "args": [
-            "/path/to/GhidraMCP/bridge_mcp_ghidra.py",
+            "/path/to/the Ghidra HTTP bridge/bridge_mcp_ghidra.py",
             "--ghidra-server",
             "http://127.0.0.1:8080/"
           ]
@@ -86,7 +84,7 @@ Add to `~/.claude.json` under your project's entry:
 
 Or use the CLI: `claude mcp add ghidra --command python --args /path/to/bridge_mcp_ghidra.py --args --ghidra-server --args http://127.0.0.1:8080/`
 
-**Step 5: Restart Claude Code**
+**Step 5: Restart the CLI**
 
 **Impact:** Query decompilation directly during conversation - no context switching.
 
@@ -150,8 +148,8 @@ mv ~/ghidra ~/ghidra-11.2.1-backup
 unzip ghidra_11.3.2_PUBLIC_20250415.zip -d ~/
 mv ~/ghidra_11.3.2_PUBLIC ~/ghidra
 
-# Copy extensions from backup (e.g., GhidraMCP)
-cp -r ~/ghidra-11.2.1-backup/Ghidra/Extensions/GhidraMCP ~/ghidra/Ghidra/Extensions/
+# Copy extensions from backup (e.g., the Ghidra HTTP bridge)
+cp -r ~/ghidra-11.2.1-backup/Ghidra/Extensions/the Ghidra HTTP bridge ~/ghidra/Ghidra/Extensions/
 ```
 
 **Step 2: Verify PyGhidra exists**
@@ -164,8 +162,6 @@ ls ~/ghidra/Ghidra/Features/PyGhidra/lib/PyGhidra.jar
 ```bash
 uvx pyghidra-mcp --version  # v0.1.12
 ```
-
-**Step 4: Configure Claude Code MCP** (`.mcp.json`)
 
 First, create a thinned ARM64 binary (see "CRITICAL: BG3 Binary is Universal" below).
 
@@ -202,7 +198,6 @@ claude mcp add --transport stdio pyghidra-mcp \
 | Error | Solution |
 |-------|----------|
 | `PyGhidra.jar does not exist` | Upgrade Ghidra to 11.3+ |
-| `Unable to locate a Java Runtime` | Set `JAVA_HOME` in .mcp.json env |
 | `--project-path` bug | Known issue in v0.1.12, use binary path instead |
 | `No load spec found` | BG3 is a universal (fat) binary - must thin first! |
 | `Path does not exist` | Check Steam path vs /Applications path |
@@ -300,7 +295,7 @@ Interceptor.attach(REFMAP_GET_OR_ADD, {
 });
 ```
 
-**For hash algorithm discovery:** Use GhidraMCP to decompile `DEPRECATED_RefMapImpl::GetOrAdd` at `0x1011bbc5c` instead of runtime tracing.
+**For hash algorithm discovery:** Use the Ghidra HTTP bridge to decompile `DEPRECATED_RefMapImpl::GetOrAdd` at `0x1011bbc5c` instead of runtime tracing.
 
 ---
 
@@ -381,7 +376,7 @@ Stalker.follow({
 2. **Parallel Ghidra scripts** - Find remaining Init functions
 
 ### Phase 2: Infrastructure (This Week)
-3. **GhidraMCP setup** - Transform future RE sessions
+3. **the Ghidra HTTP bridge setup** - Transform future RE sessions
 4. **frida-itrace integration** - Complex flow analysis
 
 ### Phase 3: Advanced (As Needed)
@@ -411,8 +406,8 @@ Stalker.follow({
 
 1. [x] ~~Create `tools/frida/stalker_refmap_hash.js`~~ - Created but crashes BG3
 2. [x] ~~Run Frida Stalker during SpellPrototypeManager lookup~~ - Stalker too heavy
-3. [x] **Document discovered hash algorithm** - ✅ XXH3 discovered via GhidraMCP! (see STATS.md)
+3. [x] **Document discovered hash algorithm** - ✅ XXH3 discovered via the Ghidra HTTP bridge! (see STATS.md)
 4. [ ] Implement XXH3 hash function in C for RefMap insertion
 5. [ ] Test creating new spell with full prototype sync
 6. [ ] Run `capture_physics.js` for PhysicsScene singleton (when BG3 running)
-7. [ ] Search for Wwise/Audio functions in main binary via GhidraMCP
+7. [ ] Search for Wwise/Audio functions in main binary via the Ghidra HTTP bridge

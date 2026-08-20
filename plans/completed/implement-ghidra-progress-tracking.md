@@ -155,8 +155,6 @@ def main():
 
 ### Step 5: Update Documentation
 
-**CLAUDE.md changes:**
-
 ```markdown
 ### Ghidra Analysis (Optimized)
 
@@ -185,7 +183,6 @@ tail -f /tmp/ghidra_progress.log
 7. [ ] Update `quick_component_search.py` with progress
 8. [ ] Update `find_modifierlist_offsets.py` with progress
 9. [ ] Update `find_globalstringtable.py` with progress
-10. [ ] Update `CLAUDE.md` with wrapper script usage
 
 ## Testing
 

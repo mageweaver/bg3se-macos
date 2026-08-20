@@ -91,7 +91,7 @@ Detailed findings in `ghidra/offsets/`:
 
 ## pyGhidra MCP (Interactive Decompilation)
 
-When Ghidra is running with the BG3 binary loaded and MCP plugin enabled, Claude has direct access to decompilation via MCP tools.
+When Ghidra is running with the BG3 binary loaded and MCP plugin enabled, the assistant has direct access to decompilation via MCP tools.
 
 ### Token Optimization Strategies
 
@@ -139,7 +139,7 @@ strings -arch arm64 "$BG3_BIN" | grep "pattern"
    mcp__ghidra__disassemble_function("0xADDRESS")
    ```
 
-### GhidraMCP HTTP API Endpoints
+### the Ghidra HTTP bridge HTTP API Endpoints
 
 When Ghidra is running with CodeBrowser open, you can query directly via curl:
 

@@ -349,7 +349,6 @@ docs/ARM64_EXECUTIVE_SUMMARY.md           (This file) - High-level overview
 ## Next Steps
 
 1. **Review** - Verify documentation accuracy
-2. **Integrate** - Link from CLAUDE.md and README
 3. **Reference** - Use in code review process
 4. **Expand** - Add project-specific discoveries as they occur
 5. **Share** - Make available to community if open-sourcing

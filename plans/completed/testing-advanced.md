@@ -264,7 +264,6 @@ Begin by stating your hypothesis, then probe systematically.
 | **P1** | Hot reload for scripts | 3h | No game restarts |
 | **P1** | Frida singleton capture | 2h | Unblock #37, #38 |
 | **P2** | Script library system | 30m | Reusable probes |
-| **P2** | Persona prompt in CLAUDE.md | 15m | Consistent approach |
 
 **Total: ~9 hours for full testing optimization**
 

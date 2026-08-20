@@ -299,7 +299,6 @@ python3 tools/generate_tag_components.py --binary-path "/Applications/BG3.app/Co
 | `src/entity/component_offsets.h` | +1263 | TypeId #defines + NULL layout macros |
 | `tools/generate_tag_components.py` | +301 | Automation tool (new file) |
 | `docs/CHANGELOG.md` | +20 | Version 0.32.8 release notes |
-| `CLAUDE.md` | +5 | Updated component count (52 → 157) |
 | `README.md` | +3 | Updated status table |
 | `ROADMAP.md` | +15 | Updated component parity statistics |
 
@@ -363,7 +362,7 @@ By documenting the pattern in this solution file, future contributors can:
    - Generate bulk component stubs with high-confidence offsets
 
 6. **LLM-assisted RE pipeline:**
-   - Use Claude + GhidraMCP to analyze accessor functions
+   - Use the assistant + the Ghidra HTTP bridge to analyze accessor functions
    - Input: Windows header struct + Ghidra ARM64 decompilation
    - Output: Verified ARM64 field offsets accounting for alignment
    - Target: 500 tokens per component × 500 components = 250k tokens (~$100)
@@ -396,6 +395,6 @@ By documenting the pattern in this solution file, future contributors can:
 
 ---
 
-**Author:** Claude Opus 4.5 (assisting Tom DiMino)
+**Author:** the assistant Opus 4.5 (assisting Tom DiMino)
 **Session Date:** December 15, 2025
 **Commit Reference:** v0.32.8 tag component expansion

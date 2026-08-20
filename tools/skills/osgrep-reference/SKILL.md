@@ -198,10 +198,10 @@ osgrep serve stop --all         # Stop all daemons
 - `POST /search` - Search with `{ query, limit, path, rerank }`
 - Lock file: `.osgrep/server.json` with `port`/`pid`
 
-### Claude Code Integration
+### the CLI Integration
 
 ```bash
-osgrep install-claude-code      # Install as Claude Code plugin
+osgrep install-claude-code      # Install as the CLI plugin
 osgrep install-opencode         # Install for Opencode
 ```
 

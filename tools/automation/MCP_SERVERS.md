@@ -1,6 +1,6 @@
 # MCP Servers for BG3SE Testing
 
-Model Context Protocol (MCP) servers enable Claude Code to automate macOS tasks for testing the Script Extender.
+Model Context Protocol (MCP) servers enable the CLI to automate macOS tasks for testing the Script Extender.
 
 ## Installation
 

@@ -10,7 +10,7 @@ origin: ~/.claude/plans/golden-weaving-crab.md
 
 ## Overview
 
-Build `bg3se-harness`—a Python CLI that gives Claude Code (and the developer) a single command to build, inject, launch, test, and report on bg3se-macos. Replaces the fragile DYLD_INSERT_LIBRARIES injection with static Mach-O patching via `insert_dylib`, eliminating the primary failure mode. Exposed as a Claude Code skill with full documentation in the repo and agent_docs.
+Build `bg3se-harness`—a Python CLI that gives the CLI (and the developer) a single command to build, inject, launch, test, and report on bg3se-macos. Replaces the fragile DYLD_INSERT_LIBRARIES injection with static Mach-O patching via `insert_dylib`, eliminating the primary failure mode. Exposed as a the CLI skill with full documentation in the repo and agent_docs.
 
 ## Problem Statement / Motivation
 
@@ -148,23 +148,23 @@ game-modding/bg3/bg3se-macos/
     ```
   - Support `bg3se-harness run "Ext.Print('hello')"` for arbitrary Lua with raw output
 
-**Success criteria:** `bg3se-harness test` returns parseable JSON that Claude Code can reason about.
+**Success criteria:** `bg3se-harness test` returns parseable JSON that the CLI can reason about.
 
 #### Phase 3: Vision-Based Menu Navigation (files: 1)
 
 **Goal:** `bg3se-harness test` navigates main menu → load save automatically
 
 **Tasks:**
-- [ ] `tools/bg3se-harness/menu.py` — Save loading via Claude Computer Use or peekaboo
-  - **Primary: Claude Computer Use** (available in Claude Code CLI since March 23, 2026)
-    - When invoked from Claude Code, the harness can delegate menu navigation to the calling Claude instance via structured instructions
-    - The skill SKILL.md will include step-by-step instructions for Claude to use its screen control
+- [ ] `tools/bg3se-harness/menu.py` — Save loading via the assistant Computer Use or peekaboo
+  - **Primary: the assistant Computer Use** (available in the CLI CLI since March 23, 2026)
+    - When invoked from the CLI, the harness can delegate menu navigation to the calling the assistant instance via structured instructions
+    - The skill SKILL.md will include step-by-step instructions for the assistant to use its screen control
   - **Fallback: peekaboo MCP** (already configured in bg3-steam-launcher)
     - Screenshot → analyze → click sequence
     - Reuse JXA/CGEvent click pattern from existing skill (not hardcoded coords—use vision to find buttons)
   - **Fallback 2: usecomputer CLI** (`npm i -g usecomputer`)
     - `usecomputer screenshot --path /tmp/bg3_menu.png`
-    - Analyze with SmolVLM or Claude
+    - Analyze with SmolVLM or the assistant
     - `usecomputer click -x N -y N`
   - Menu flow: Wait for main menu → Click "Load Game" → Select most recent save (or by name) → Click "Load"
   - Timeout + retry: if menu not detected within 60s of launch, report failure
@@ -173,12 +173,11 @@ game-modding/bg3/bg3se-macos/
 
 **Success criteria:** `bg3se-harness test` loads a save without manual intervention.
 
-#### Phase 4: Claude Code Skill (files: 1 new, 1 updated)
+#### Phase 4: the CLI Skill (files: 1 new, 1 updated)
 
 **Goal:** Replace `bg3-steam-launcher` with `bg3se-harness` skill
 
 **Tasks:**
-- [ ] Create `~/.claude/skills/bg3se-harness/SKILL.md`
   - Trigger: "test SE", "launch BG3", "run bg3se tests", "bg3 test", "start BG3 with SE"
   - Subcommands:
     - `bg3 test [filter]` → full cycle
@@ -186,17 +185,14 @@ game-modding/bg3/bg3se-macos/
     - `bg3 run <lua>` → send Lua to running game
     - `bg3 status` → check game/socket status
     - `bg3 unpatch` → restore original binary
-  - Include menu navigation instructions for Claude Computer Use
+  - Include menu navigation instructions for the assistant Computer Use
   - Reference: `game-modding/bg3/bg3se-macos/tools/bg3se-harness/`
 
-- [ ] Move `~/.claude/skills/bg3-steam-launcher/` to `~/.claude/skills/disabled/bg3-steam-launcher/`
   - The old skill is superseded but preserved for reference
 
-**Success criteria:** Claude Code can invoke `bg3 test` and get structured results.
+**Success criteria:** the CLI can invoke `bg3 test` and get structured results.
 
 #### Phase 5: Documentation (files: 3-4)
-
-**Goal:** Full docs in repo, agent_docs reference, CLAUDE.md update
 
 **Tasks:**
 - [ ] `game-modding/bg3/bg3se-macos/docs/harness.md` — User-facing CLI docs
@@ -207,17 +203,14 @@ game-modding/bg3/bg3se-macos/
   - Troubleshooting (game updates, re-patching, socket timeout)
   - How insert_dylib works (brief technical explanation)
 
-- [ ] Update `game-modding/bg3/bg3se-macos/CLAUDE.md`
   - Add Harness CLI section with quick-reference commands
   - Document the `bg3se-harness` tool location and usage
   - Update injection method from DYLD to insert_dylib
   - Use `claude-md-manager` skill for structure/quality
 
-- [ ] `~/.claude/agent_docs/tools.md` — Add bg3se-harness entry
   - Under existing Game Modding section or new section
   - CLI reference, path, key subcommands
 
-- [ ] Update `~/.claude/agent_docs/active-projects.md`
   - Reference the new plan
 
 ## System-Wide Impact
@@ -257,15 +250,14 @@ game-modding/bg3/bg3se-macos/
 
 ### Non-Functional Requirements
 - [ ] Socket health check completes within 30s of launch
-- [ ] Test results parseable by Claude Code (valid JSON to stdout)
+- [ ] Test results parseable by the CLI (valid JSON to stdout)
 - [ ] No hardcoded screen coordinates anywhere
 - [ ] Works on ARM64 Apple Silicon (M-series)
 
 ### Quality Gates
 - [ ] Harness itself tested: build, patch, unpatch subcommands verified
 - [ ] CLI help text (`--help`) for all subcommands
-- [ ] CLAUDE.md updated with harness usage
-- [ ] Skill registered and working from Claude Code
+- [ ] Skill registered and working from the CLI
 
 ## Dependencies & Prerequisites
 
@@ -276,7 +268,7 @@ game-modding/bg3/bg3se-macos/
 | BG3 installed via Steam | Available | Verified at `~/Library/Application Support/Steam/...` |
 | BG3 binary: no Hardened Runtime | **Verified** | flags=0x0, plain arm64, no entitlements |
 | Socket IPC (`/tmp/bg3se.sock`) | Available | 500+ lines, 4 client max, well-tested |
-| Claude Computer Use | Available | Shipped March 23, 2026; Pro/Max subscription |
+| the assistant Computer Use | Available | Shipped March 23, 2026; Pro/Max subscription |
 
 ## Risk Analysis & Mitigation
 
@@ -286,7 +278,7 @@ game-modding/bg3/bg3se-macos/
 | Steam "Verify Integrity" reverts patch | Low | User education; `unpatch` command; backup stored |
 | insert_dylib fails on BG3 binary | Low | Verified: no Hardened Runtime, fat binary support confirmed |
 | Socket protocol changes in SE update | Low | We control both sides (SE source + harness) |
-| Claude Computer Use not available | Medium | Fallback to peekaboo MCP or usecomputer CLI |
+| the assistant Computer Use not available | Medium | Fallback to peekaboo MCP or usecomputer CLI |
 
 ## Verification
 
@@ -320,17 +312,16 @@ uv run python -m bg3se_harness unpatch
 # Expect: original binary restored
 ```
 
-### From Claude Code Skill
+### From the CLI Skill
 
 ```
 > bg3 test Stats
-# Claude Code runs harness, parses JSON, reports results
+# the CLI runs harness, parses JSON, reports results
 ```
 
 ## Sources & References
 
 ### Origin
-- **Origin document:** [~/.claude/plans/golden-weaving-crab.md](~/.claude/plans/golden-weaving-crab.md) — BG3SE Autonomous Test Harness requirements. Key decisions: insert_dylib over DYLD, direct launch over Steam, vision only for menus.
 
 ### Internal References
 - Socket IPC server: `src/console/console.c:157-194` (server init), `console.h:32` (socket path)
@@ -339,12 +330,11 @@ uv run python -m bg3se_harness unpatch
 - Console client: `tools/bg3se-console.c:65-103` (socket connection)
 - Build system: `CMakeLists.txt:289-293` (POST_BUILD deploy hook)
 - Launch scripts: `scripts/launch_bg3.sh`, `scripts/bg3w.sh`
-- Existing skill: `~/.claude/skills/bg3-steam-launcher/SKILL.md`
 
 ### External References
 - insert_dylib (tyilo): https://github.com/tyilo/insert_dylib (2,046 stars)
 - insert_dylib (YinMo19, Rust): https://github.com/YinMo19/insert-dylib (Feb 2026)
-- Claude Computer Use: https://thenewstack.io/claude-computer-use/ (March 2026)
+- the assistant Computer Use: https://thenewstack.io/claude-computer-use/ (March 2026)
 - usecomputer CLI: https://github.com/remorses/usecomputer (152 stars, March 2026)
 - mac-use-mcp: https://github.com/antbotlab/mac-use-mcp (18 macOS automation tools)
 - SIP/DYLD deep dive: https://theevilbit.github.io/posts/dyld_insert_libraries_dylib_injection_in_macos_osx_deep_dive/

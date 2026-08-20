@@ -31,7 +31,7 @@ Stall-detecting wrapper that drives BG3 from launch through a running session. E
 - `run "<lua>"` / `eval script.lua` / `watch script.lua` — Lua execution
 - `entity <GUID>` / `stats <name>` / `components` / `probe <addr>` — data inspection
 - `dump spells|items|...` / `events --subscribe X` — bulk extract / stream
-- `screenshot` — JPEG capture (1568px max, Claude-safe)
+- `screenshot` — JPEG capture (1568px max, the assistant-safe)
 
 ### Mod Management
 - `mod list|install|enable|disable|remove|info|order|search|backup`
@@ -80,7 +80,7 @@ tools/bg3se_harness/
 - **Idempotent patch** — checks otool before patching, SHA-256 hash tracking
 
 ## When to Use
-- **Claude testing BG3SE**: `launch --headless` → `run` / `test` → `screenshot`
+- **the assistant testing BG3SE**: `launch --headless` → `run` / `test` → `screenshot`
 - **Mod vetting**: `mod install` → `compat vet` → check logs
 - **RE sessions**: `ghidra decompile` + `probe` + `entity`
 - **CI/offline**: `build` + Tier 0/H tests (no game needed)

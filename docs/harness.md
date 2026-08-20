@@ -51,7 +51,7 @@ tooling.
 | `probe <0xADDR> [--classify]` | Memory inspection with pointer classification |
 | `dump spells\|items\|passives\|...` | Bulk extract game data |
 | `events --subscribe SessionLoaded` | Stream engine events as JSONL |
-| `screenshot` | Game window capture (Claude-Code-safe JPEG) |
+| `screenshot` | Game window capture (the assistant-Code-safe JPEG) |
 
 ### Diagnostics & performance
 
@@ -129,7 +129,7 @@ follow-up.
 | `menu click-fraction X Y [--method both]` | Foreground click probe at a window-relative point when OCR fails |
 | `menu geometry [--capture]` | Report Quartz, System Events, screenshot, and Retina coordinate data |
 | `flags [--group X]` | 40 discovered BG3 CLI flags |
-| `ghidra decompile <name\|0xADDR>` | Ghidra HTTP bridge (requires running Ghidra + GhidraMCP) |
+| `ghidra decompile <name\|0xADDR>` | Ghidra HTTP bridge (requires running Ghidra + the Ghidra HTTP bridge) |
 
 ## How Injection Works
 
@@ -186,7 +186,7 @@ tools/bg3se_harness/
 ├── launch.py           # direct launch + socket health check
 ├── console.py          # Python socket IPC client
 ├── test_runner.py      # test execution + output parsing
-├── menu.py             # vision-based save loading (Claude Computer Use)
+├── menu.py             # vision-based save loading (the assistant Computer Use)
 ├── wiki.py             # bg3.wiki MediaWiki client (opensearch + parse, 24h file cache)
 ├── ghidra.py           # Ghidra HTTP bridge wrapper
 ├── mod_cli.py          # mod subcommand dispatcher

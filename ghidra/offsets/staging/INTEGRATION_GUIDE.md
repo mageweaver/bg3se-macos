@@ -350,7 +350,6 @@ Add comment in component_offsets.h:
 
 ## Next Steps After Integration
 
-1. **Update component count** in CLAUDE.md and README.md
 2. **Document commonly used components** in agent_docs/
 3. **Create mod examples** using new components
 4. **Generate more namespaces** (esv::, ecl::, ls::) using same process

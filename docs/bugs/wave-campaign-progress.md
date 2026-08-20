@@ -7,7 +7,7 @@ Append-only. Each entry: date, wave/goal, action, evidence, verdict.
 
 ## 2026-07-28 — Wave 0: Truth & Baseline
 
-**Housekeeping (Claude)** — DONE
+**Housekeeping (the assistant)** — DONE
 - Committed campaign artifacts (wave plan, e2e review, CLI goal spec, May plans, progress.json) as `f701dc1`.
 - `.gitignore` extended: `.screenshots/`, `.subdaimon-output/`, `__pycache__/`, `*.pyc`. Stale tracked `.pyc` removed.
 - `gold.*.log` / `network.*.log` already covered by existing `*.log` rule.
@@ -16,7 +16,6 @@ Append-only. Each entry: date, wave/goal, action, evidence, verdict.
 - Verified `src/injector/main.c:2659-2670`: the unsafe `pfn_InternalCall` fallback is gone; function fails closed with explanatory comment ("InternalCall takes COsiParameterList*, NOT OsiArgumentDesc*"). Fixed between 2026-04-02 review and the May 16 commits. No work needed.
 
 **Goal 0.1 — documentation reconciliation (codex docs profile)** — DONE (2026-07-28, ~126k tokens)
-- ROADMAP.md, CLAUDE.md, README.md, agent_docs/api-status.md now tell one story: **v0.37.1**, overall **~94.7%** (unweighted mean of supported-surface matrix rows, source cited), honest per-namespace numbers (Types 9/15=60%, Math 57/59=96.6%, Level 15/21=71%, Audio 13/17=76%), Stats "function-count parity" + stub footnote, Entity stub footnote (incl. stubbed component writes), Ext.UI/Debugger moved outside the denominator with the scope-corrected exclusion statement (Ext.UI excluded; Debugger, replication, Virtual Textures, Input Injection deferred).
 - Known residual for Wave 3: Ext.Localization still listed 100% (GetLanguage/CreateHandle) while the Windows baseline expects GetTranslatedString/UpdateTranslatedString — reconcile when Goal 3.2 implements them.
 
 **Wave 0 exit gate** — ✅ PASSED (2026-07-28)
@@ -70,10 +69,10 @@ Append-only. Each entry: date, wave/goal, action, evidence, verdict.
 - Mod state confound ruled out for next runs: current `modsettings.lsx` matches the blessed 8-mod snapshot byte-for-name.
 - **Codex fleet dispatched (user-directed)**: debugger (enumerate SE surface under NO_HOOKS + disassemble faulting site imageOffset 40039100 + rank suspects + design decisive arms), syseng (true-headless CLI architecture: in-process input injection, modsettings guard, honest session evidence), reviewer (adversarial audit of all three claims + full launch timeline + probe-script holes). Reports land in `docs/bugs/codex-*-2026-07-28.md`.
 
-**🎯 ROOT CAUSE FOUND — stale code-patch offsets patch the middle of `HotbarSystem::Update`** (19:46, codex debugger + Claude verification)
+**🎯 ROOT CAUSE FOUND — stale code-patch offsets patch the middle of `HotbarSystem::Update`** (19:46, codex debugger + the assistant verification)
 - Codex debugger report: `docs/bugs/codex-debugger-nohooks-2026-07-28.md`. Mechanism: the game updated to build **4.1.1.7209685** (offsets were derived on 4.1.1.6995620); the three sentinel probes validate *data* addresses only, so stale *code* offsets sailed through. `OFFSET_GET_CLASS 0x0262f184` (staticdata_manager.c:33) is no longer `ImmutableDataHeadmaster::Get<eoc::ClassDescriptions>` (now `0x02614874`) — it is **`gui::HotbarSystem::Update+0xacc`** (function starts `0x10262e6b8`, per nm). Dobby installs a mid-function trampoline there; when the hotbar loop reaches it, execution resumes with the wrong stack frame, the saved `WorldView*` reads back as 0, and the code faults at `Update+3076` on `[x12,#0x10]` → the exact `KERN_INVALID_ADDRESS 0x10` in all three .ips (all with `x12=0`). The ~31–35s latency is just time-to-reach-the-patched-block, not delayed corruption.
 - **`BG3SE_NO_HOOKS` was never authoritative**: it skips only the four Osiris hooks in `install_hooks()`, then jumps to `init_subsystems`, which still runs `staticdata_manager_init()` (6 Dobby patches) and `video_skip_init()` (1 patch). The NO_HOOKS run therefore still carried the fatal patch — the "Dobby hooks exonerated" conclusion was wrong *in the interesting direction*: hooks were exonerated, but the mis-aimed patch wasn't a hook at all in the intended sense.
-- Claude independently verified: the define, the symbol addresses via `nm` on the installed binary, and the ASLR math in the crashed run's log (`0x10262f184 + slide 0x27f0000 = 0x104e1f184`, the address StaticData logged patching).
+- the assistant independently verified: the define, the symbol addresses via `nm` on the installed binary, and the ASLR math in the crashed run's log (`0x10262f184 + slide 0x27f0000 = 0x104e1f184`, the address StaticData logged patching).
 - **Full staleness audit (nm, build 7209685)**: ALL six StaticData code targets are stale — GetFeats `0x01b752b4→0x01b59814`, Background `0x02994834→0x0297a068`, Origin `0x0341c42c→0x03401c84`, Class `0x0262f184→0x02614874`, Progression `0x03697f0c→0x0367d764`, ActionResource `0x011a4494→0x011889f4` — plus Ext.Net `ADDR_GETMESSAGE 0x1063d5998→0x1063c4550` (`net::MessageFactory::GetFreeMessage`). VideoSkip's `BinkManager::LoadVideo` is the only correct hardcoded code patch. Every SE session on the current build has been installing up to seven blind patches; the Class one happened to detonate first.
 - **Evidence correction (from the same report)**: `.ips 190312` belongs to **PID 36512**, whose SE log is `bg3se_2026-07-28_19-02-36.log` — in that (crashed) process focus_hack **did** write `Forced focus: 0 -> 1` and focusless input injected zero events. The `19-03-08.log` I earlier greped (20× NULL polls, no write) is **PID 37698, the post-crash relaunch**. My "focus_hack exonerated" entry above is therefore retracted as *unproven by that run* — though it's now moot: the mid-function patch is sufficient to explain all three crashes. Lesson: pair logs to crashes by PID + `procLaunch`, never by filename timestamp adjacency.
 - **Fix plan (Wave 1, implementing now)**: (1) update the seven stale targets to nm-derived build-7209685 addresses; (2) make `BG3SE_NO_HOOKS` authoritative over StaticData/VideoSkip code patches and fix its false "ALL Dobby hooks SKIPPED" log; (3) add an offline harness test that runs `nm` against the installed binary and asserts every hardcoded code-patch target still resolves to its intended symbol (kills this bug class in CI); (4) leave `version_detect` expected-build and functor hooks untouched — functor offsets are still old-build and must stay version-gated off until re-derived. Decisive test after rebuild: `launch --continue` soak ≥240s with session evidence.
@@ -100,8 +99,8 @@ Append-only. Each entry: date, wave/goal, action, evidence, verdict.
 
 **Parallel research track: plasma-ai/fractal integration (user-requested 2026-07-28)** — COMPLETE
 - Two subagent reports (architecture survey + insertion-point analysis) synthesized into `docs/plans/2026-07-28-002-feat-fractal-orchestration-integration-plan.md`.
-- Verdicts: **ADOPT** Ghidra component-size extraction swarm as Wave 3 pilot Goal 3.4 (≥800/922 sizes, ≤$20, ≤4h, output confined to `ghidra/offsets/`, never builds/deploys/launches game); **DEFER** code-wave orchestration (until pilot verdict), vetting fan-out, crash bisection; **REJECT** live-game orchestration (tmux nodes lack GUI/Accessibility — origin plan's Claude-only rule confirmed structurally).
-- Key findings: Claude Code native backend with hard budget caps (G2 pass); action space is LLM-mediated only — no deterministic exit-code gating (offline gates stay in setup.sh/Claude); branch-only worktree isolation leaves the shared dylib deploy target and single BG3 instance unprotected (design rule: fractal nodes never build or touch the game); Ghidra HTTP bridge is single-threaded, so swarm value is parse/recovery, not parallel queries.
+- Verdicts: **ADOPT** Ghidra component-size extraction swarm as Wave 3 pilot Goal 3.4 (≥800/922 sizes, ≤$20, ≤4h, output confined to `ghidra/offsets/`, never builds/deploys/launches game); **DEFER** code-wave orchestration (until pilot verdict), vetting fan-out, crash bisection; **REJECT** live-game orchestration (tmux nodes lack GUI/Accessibility — origin plan's the assistant-only rule confirmed structurally).
+- Key findings: the CLI native backend with hard budget caps (G2 pass); action space is LLM-mediated only — no deterministic exit-code gating (offline gates stay in setup.sh/the assistant); branch-only worktree isolation leaves the shared dylib deploy target and single BG3 instance unprotected (design rule: fractal nodes never build or touch the game); Ghidra HTTP bridge is single-threaded, so swarm value is parse/recovery, not parallel queries.
 
 ---
 
@@ -143,7 +142,7 @@ Console commands sent during a dialog-storm save (Zhentarim dungeon, dozens of O
 
 ## 2026-07-28 (evening 7): four-agent synthesis; tier-2 "defect" was a socket identity mixup; P0/P1 hardening implemented
 
-**Codex fleet reports** (all in `docs/bugs/`): reviewer (`codex-review-uncommitted-2026-07-28.md`), debugger (`codex-debug-sessioninit-2026-07-28.md`), syseng (`codex-syseng-launch-lifecycle-2026-07-28.md`), plus the Claude doc-proposal (`claude-md-update-proposal-2026-07-28.md`).
+**Codex fleet reports** (all in `docs/bugs/`): reviewer (`codex-review-uncommitted-2026-07-28.md`), debugger (`codex-debug-sessioninit-2026-07-28.md`), syseng (`codex-syseng-launch-lifecycle-2026-07-28.md`), plus the the assistant doc-proposal (`claude-md-update-proposal-2026-07-28.md`).
 
 **Debugger verdict — the tier-2 24/54 failure cluster was never a session-init defect.** The manual menu load (PID 2556) initialized identically to `-continueGame` (15,774 stats, 2,081 TypeIds, SessionLoaded fired, tier-1 109/109 in that process). The failures ran against PID 27477 — a fresh menu process that rebound `/tmp/bg3se.sock` after 2556's overlay crash; `Load: 0, Event: 0` at its shutdown. Bonus find: 2556 had TWO libbg3se.dylib images loaded (build tree + app bundle) — two static universes in one process.
 
@@ -156,7 +155,6 @@ Console commands sent during a dialog-storm save (Zhentarim dungeon, dozens of O
 - **Identity handshake:** new `!identity` console builtin (JSON: pid, version, game_state, session_init, stats_ready, dylib image) so test clients verify who they're talking to before running live tiers.
 - **Duplicate-image guard:** constructor elects exactly one dylib image per process via env (BG3SE_LOADED_PID); second image logs + disables itself; destructor no-ops on duplicates.
 - **Misc:** functor install now honors BG3SE_NO_HOOKS; console poll logs starvation after 50 consecutive gate misses; overlay clearOutput drops pending lines in the append sync domain; GameStateChanged LoadSession now fires only after a successful orig_Load.
-- **Docs:** architecture.md (lua_gate table, MAP_JIT section, poll-timer rewrite), development.md (test counts 41/79/109/67, macOS debugging gotchas), CLAUDE.md (counts, structure, offset-table build stamp), agent_docs/harness.md (session driver, Steam environment, headless truth).
 
 **In flight:** harness-lifecycle subagent implementing the syseng design offline (launch-attempt record + Steam-bounce adoption, socket peer-PID verification, exactly-once graphics restore, Steam/memory preflights, config.lsf windowed attestation, driver rework + lifecycle tests).
 

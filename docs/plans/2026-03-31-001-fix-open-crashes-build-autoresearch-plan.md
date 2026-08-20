@@ -239,7 +239,6 @@ Scaffold `.lab/` with eval gates targeting all fixes:
 
 ### Unit 7: Documentation & release
 - **Goal**: Version bump, changelog, close issues
-- **Files**: `docs/CHANGELOG.md`, `src/core/version.h`, `CLAUDE.md`, `README.md`
 - **Verification**: All docs updated, issues commented with fix commit
 
 ## Scope Boundaries

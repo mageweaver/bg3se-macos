@@ -382,7 +382,6 @@ grep "0x[0-9a-f]" docs/solutions/**/*.md | grep related_offsets -A 20
 
 ## Related Documentation
 
-- **CLAUDE.md** - Project overview and API status
 - **ghidra/offsets/** - Offset documentation organized by system
 - **agent_docs/meridian-persona.md** - RE session approach
 - **agent_docs/development.md** - Development workflow

@@ -171,7 +171,6 @@ end
 1. **Verification**: Test 10-20 high-priority layouts against live game data
 2. **Integration**: Merge verified layouts into `src/entity/component_offsets.h`
 3. **Expansion**: Generate esv::, ecl::, and ls:: namespace components using same workflow
-4. **Documentation**: Update component count in CLAUDE.md and README.md
 5. **Testing**: Create automated test suite using in-game Lua console
 
 ## Known Limitations

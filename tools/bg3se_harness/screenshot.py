@@ -1,7 +1,7 @@
 """BG3 game window screenshot capture.
 
 Captures the BG3 window via screencapture and resizes to JPEG for
-Claude Code safety (Claude's vision token limit: ~1568px max dimension,
+the CLI safety (the assistant's vision token limit: ~1568px max dimension,
 ~(w*h)/750 tokens per image).
 
 Usage:
@@ -25,9 +25,8 @@ from pathlib import Path
 from .config import PROJECT_ROOT
 
 SCREENSHOTS_DIR = PROJECT_ROOT / ".screenshots"
-MAX_DIMENSION = 1568  # Claude Code safe limit
+MAX_DIMENSION = 1568  # the CLI safe limit
 JPEG_QUALITY = 80
-
 
 def get_window_id():
     """Get BG3 CGWindowID via Quartz window list. Returns str or None.
@@ -61,7 +60,6 @@ def get_window_id():
         pass
     return None
 
-
 def get_image_dimensions(path):
     """Get (width, height) of an image via sips. Returns (int, int)."""
     try:
@@ -80,7 +78,6 @@ def get_image_dimensions(path):
         return width, height
     except Exception:
         return 0, 0
-
 
 def capture(output=None, raw=False):
     """Capture BG3 window and return result dict.
@@ -179,7 +176,6 @@ def capture(output=None, raw=False):
         "size_bytes": size_bytes,
         "format": "jpeg",
     }
-
 
 def cmd_screenshot(args):
     """CLI handler for the screenshot command."""

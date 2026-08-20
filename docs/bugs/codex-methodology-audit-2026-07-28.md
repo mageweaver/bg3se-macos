@@ -112,7 +112,7 @@ the preserved artifacts.
    “vanilla” versus “SE core + loose EntityTest + SE automation,” not simply
    “dylib absent” versus “dylib present.”
 
-6. **Different process histories.** The preserved Claude session transcript
+6. **Different process histories.** The preserved the assistant session transcript
    shows a direct vanilla launch at 18:06:52 and all subsequent watchers target
    the same PID, **15736**. That one process remained alive through manual
    splash/menu/dialog experiments, loaded only after the Start Game click at

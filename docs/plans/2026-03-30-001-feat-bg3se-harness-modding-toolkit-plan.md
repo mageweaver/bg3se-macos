@@ -10,13 +10,13 @@ origin: docs/plans/2026-03-28-001-feat-bg3se-cli-autonomous-pipeline-expansion-p
 
 ## Overview
 
-Expand bg3se-harness from 9 commands to 21 with a full modding toolkit: entity/stats inspection, game data extraction, hot-reload development, screenshot automation with Claude Code safeguards, crash diagnostics, memory probing, benchmarking, and CI regression comparison. All commands follow the existing JSON-stdout / stderr-narration convention and compose with shell pipelines.
+Expand bg3se-harness from 9 commands to 21 with a full modding toolkit: entity/stats inspection, game data extraction, hot-reload development, screenshot automation with the CLI safeguards, crash diagnostics, memory probing, benchmarking, and CI regression comparison. All commands follow the existing JSON-stdout / stderr-narration convention and compose with shell pipelines.
 
-Based on Nomos blueprint (2026-03-29) and Claude Code image limit research (Exa, 2026-03-30).
+Based on Nomos blueprint (2026-03-29) and the CLI image limit research (Exa, 2026-03-30).
 
 ## Problem Statement / Motivation
 
-The harness handles build/patch/launch/test but offers no help with the actual mod development workflow. Modders currently write ad-hoc multi-line Lua in the console for every inspection, have no hot-reload, can't extract game data in bulk, and can't pass screenshots to Claude Code without manual resizing and token management. 12 new commands close these gaps.
+The harness handles build/patch/launch/test but offers no help with the actual mod development workflow. Modders currently write ad-hoc multi-line Lua in the console for every inspection, have no hot-reload, can't extract game data in bulk, and can't pass screenshots to the CLI without manual resizing and token management. 12 new commands close these gaps.
 
 ## Proposed Solution
 
@@ -29,7 +29,7 @@ tools/bg3se_harness/
   launch.py, test_runner.py, flags.py, ghidra.py, menu.py
 
   # New modules (12 commands)
-  screenshot.py        # P0: Game window capture + Claude Code safeguards
+  screenshot.py        # P0: Game window capture + the CLI safeguards
   eval.py              # P0: Execute Lua file/stdin
   entity_inspect.py    # P0: Entity + entity-search + components
   stats_inspect.py     # P0: Stats inspection + diff
@@ -51,7 +51,7 @@ tools/bg3se_harness/
 
 ##### 1.1 `screenshot` — `screenshot.py` (~80 lines)
 
-Captures BG3 game window via `screencapture -l <windowid>`. Auto-resizes for Claude Code safety.
+Captures BG3 game window via `screencapture -l <windowid>`. Auto-resizes for the CLI safety.
 
 ```
 bg3se-harness screenshot                     # → game-modding/bg3/bg3se-macos/.screenshots/latest.jpg
@@ -59,7 +59,7 @@ bg3se-harness screenshot --output path.png   # specific path
 bg3se-harness screenshot --raw               # skip resize (full resolution PNG)
 ```
 
-**Claude Code Image Safeguards** (from Exa research):
+**the CLI Image Safeguards** (from Exa research):
 
 | Constraint | Source | Safeguard |
 |-----------|--------|-----------|
@@ -369,7 +369,6 @@ bg3se-harness probe 0x10898e8b8 --classify         # pointer classification
 - [ ] All existing commands still work (no regression)
 - [ ] `--help` text for every new subcommand
 - [ ] SKILL.md updated with all 21 commands
-- [ ] CLAUDE.md updated with new command reference
 
 ## Dependencies & Prerequisites
 
@@ -407,7 +406,6 @@ bg3se-harness probe 0x10898e8b8 --classify         # pointer classification
 
 | File | Update |
 |------|--------|
-| `CLAUDE.md` | Add all 12 new commands to harness reference |
 | `SKILL.md` | Rewrite with 21-command reference + modding workflow examples |
 | `docs/harness.md` | Full CLI reference for all commands |
 | `docs/plans/` | This plan |
@@ -426,7 +424,7 @@ bg3se-harness probe 0x10898e8b8 --classify         # pointer classification
 - Test runner: `tools/bg3se_harness/test_runner.py` (JSON output format)
 - SE Lua APIs: `src/lua/lua_*.c` (all Ext.* implementations)
 
-### External References — Claude Code Image Limits
+### External References — the CLI Image Limits
 - anthropics/claude-code#27869: Chrome MCP screenshots accumulate, 17% of Max plan for 5 turns
 - anthropics/claude-code#23446: Oversized images (>2000px) break sessions permanently
 - anthropics/claude-code#29969: >8000px images cause unrecoverable 400 loop after compaction

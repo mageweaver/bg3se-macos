@@ -109,7 +109,6 @@ Update `docs/api-reference.md` with:
 ## Quick Win: Update Stale Documentation
 
 The `acceleration.md` file says "52 components" but we have 158. Update:
-- CLAUDE.md ✅ (already says 158)
 - acceleration.md (outdated)
 - README.md (check)
 - ROADMAP.md (check)

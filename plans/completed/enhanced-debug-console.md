@@ -221,7 +221,6 @@ _PTR = function(base, offset) return base + offset end
 - [ ] Add multiline buffer to console processing in `main.c`
 - [ ] Implement `--[[` / `]]--` delimiter detection
 - [ ] Test with complex multi-line Lua scripts
-- [ ] Update CLAUDE.md console documentation
 
 ### Phase 2: Core Memory APIs (4-6 hours)
 - [ ] Create `src/lua/lua_debug.c` module
@@ -260,7 +259,6 @@ _PTR = function(base, offset) return base + offset end
 ### Non-Functional Requirements
 - [ ] Bad memory addresses never crash the game (graceful nil return)
 - [ ] Console remains responsive during large memory scans
-- [ ] All new APIs are documented in CLAUDE.md
 
 ### Quality Gates
 - [ ] All memory read functions handle SIGSEGV/SIGBUS safely

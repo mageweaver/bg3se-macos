@@ -19,8 +19,6 @@ The end state: `bg3se-harness mod install mcm && bg3se-harness compat run mcm &&
 
 ## Problem Statement
 
-**At 94% Windows BG3SE parity, the remaining 6% is invisible.** No machine-readable audit exists. The `docs/supported-mods.md` file says ~82% parity (stale — CLAUDE.md says ~94%). Compatibility claims are manual notes, not test results.
-
 **MCM is the gate.** 8 of the top 20 mods require it. Hundreds more depend on it. MCM is pure Lua (18,000 lines) — if our Metal IMGUI backend works, the entire configurable mod ecosystem opens up. But we've never tested it.
 
 **No mod lifecycle from the CLI.** Installing, enabling, and testing mods requires manual file copying and XML editing. ShaiLaric's BG3MacModManager provides a GUI, but there's no headless path for CI or autonomous pipelines.
@@ -329,8 +327,6 @@ Always Show Approvals, AI Allies, Additional Spell Interactions, Extend Party Li
 - **Verification**: `author new TestMod` creates valid mod skeleton; `author check` finds planted issues
 
 ### Unit 12: Documentation + skill update
-- **Goal**: Update CLAUDE.md (30+ commands), SKILL.md, supported-mods.md, CHANGELOG.md
-- **Files**: CLAUDE.md, SKILL.md, docs/supported-mods.md, docs/CHANGELOG.md
 - **Verification**: All new commands documented; parity percentage updated
 
 ## Scope Boundaries

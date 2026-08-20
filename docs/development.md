@@ -202,7 +202,7 @@ osgrep "Lua component binding" -p /Users/tomdimino/Desktop/Programming/bg3se
 
 ## Tools
 
-### Claude Code Skills
+### the CLI Skills
 
 Install the BG3SE development skill:
 ```bash

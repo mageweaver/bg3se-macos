@@ -28,7 +28,7 @@ Deep osgrep + Exa MCP audit to find acceleration strategies for ALL remaining is
 
 ### Non-Feature Issues
 - #8 - Technical debt: stability, testing, documentation
-- #24 - Meta: How-to process / Claude usage
+- #24 - Meta: How-to process / the assistant usage
 
 ---
 

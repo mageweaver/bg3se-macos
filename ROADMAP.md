@@ -1808,7 +1808,7 @@ ComponentFrameStorageAllocRaw((ComponentFrameStorage*)(this_00 + 0x48), SIZE, ..
 - `mcp__ghidra__decompile_function` - Extract SIZE parameter from allocation call
 
 **Parallel agent workflow:**
-1. Deploy 8-10 Claude subagents processing different offset ranges
+1. Deploy 8-10 the assistant subagents processing different offset ranges
 2. Each agent searches 50 functions at specified offset (e.g., offset=700, limit=50)
 3. Decompile and extract sizes from ComponentFrameStorageAllocRaw calls
 4. Consolidate results into modular documentation

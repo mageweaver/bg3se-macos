@@ -36,7 +36,6 @@ from .stats_inspect import cmd_stats
 from .test_runner import run_tests
 from .watch import cmd_watch
 
-
 def _collect_extra_flags(args):
     """Build extra_flags dict from CLI args."""
     flags = {}
@@ -81,17 +80,14 @@ def _collect_extra_flags(args):
 
     return flags or None
 
-
 def _boot_retry_count(args, headless):
     value = getattr(args, "boot_retries", None)
     if value is not None:
         return max(0, value)
     return 1 if headless else 0
 
-
 def _retry_delay(args):
     return max(0.0, float(getattr(args, "retry_delay", 3.0) or 0.0))
-
 
 def _cancel_boot_attempt(health, *, headless, reason):
     """Cancel a failed boot attempt and restore transient settings."""
@@ -104,11 +100,9 @@ def _cancel_boot_attempt(health, *, headless, reason):
         )
     return cleanup
 
-
 def _boot_attempts_summary(attempts):
     """Deep-copy attempts before embedding them in final JSON output."""
     return [copy.deepcopy(attempt) for attempt in attempts]
-
 
 def _launch_until_socket(
     *,
@@ -193,7 +187,6 @@ def _launch_until_socket(
 
     return session, health, attempts
 
-
 def _attach_headless_failure(health, *, reason):
     cleanup = _cancel_boot_attempt(health, headless=True, reason=reason)
     health["headless"] = {
@@ -205,7 +198,6 @@ def _attach_headless_failure(health, *, reason):
         health["headless"]["graphics_restore"] = cleanup["graphics_restore"]
     if "cancel" in cleanup:
         health["headless"]["cancel"] = cleanup["cancel"]
-
 
 def _add_launch_flags(parser):
     """Add game flag arguments shared between launch and test."""
@@ -246,7 +238,6 @@ def _add_launch_flags(parser):
     g.add_argument("--accept-mod-verification", action="store_true",
                     help="Debug only: allow launch even when preflight expects BG3 Mod Verification")
 
-
 def _run_mod_preflight_if_needed(args, *, continue_game, load_save):
     """Run the mod-state preflight before save-loading launches."""
     if not (continue_game or load_save):
@@ -270,7 +261,6 @@ def _run_mod_preflight_if_needed(args, *, continue_game, load_save):
         result["load_save"] = load_save
     return result
 
-
 def cmd_build(args):
     print("Building...", file=sys.stderr)
     result = build_mod.build()
@@ -289,20 +279,17 @@ def cmd_build(args):
     print(json.dumps(result, indent=2))
     return 0 if verify.get("verified") and deploy.get("deployed") else 1
 
-
 def cmd_patch(args):
     print("Patching BG3 binary...", file=sys.stderr)
     result = patch_mod.patch()
     print(json.dumps(result, indent=2))
     return 0 if result.get("success") or result.get("already_patched") else 1
 
-
 def cmd_unpatch(args):
     print("Restoring original binary...", file=sys.stderr)
     result = patch_mod.unpatch()
     print(json.dumps(result, indent=2))
     return 0 if result.get("success") else 1
-
 
 def cmd_launch(args):
     continue_game = getattr(args, "continue_game", False)
@@ -439,7 +426,6 @@ def cmd_launch(args):
     print(json.dumps(health, indent=2))
     return 0 if health.get("socket_connected") else 1
 
-
 def cmd_test(args):
     continue_game = getattr(args, "continue_game", True)  # default: auto-continue
     load_save = getattr(args, "save", None)
@@ -543,7 +529,6 @@ def cmd_test(args):
     print(json.dumps(output, indent=2))
     return 0 if result.get("all_passed") else 1
 
-
 def cmd_run(args):
     try:
         with Console() as c:
@@ -553,7 +538,6 @@ def cmd_run(args):
     except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
         print(json.dumps({"error": f"Socket connection failed: {e}"}))
         return 1
-
 
 def cmd_status(args):
     result = {
@@ -568,7 +552,6 @@ def cmd_status(args):
     print(json.dumps(result, indent=2))
     return 0
 
-
 def cmd_boot_log(args):
     """Print the background monitor boot log."""
     from .config import MONITOR_LOG
@@ -580,12 +563,10 @@ def cmd_boot_log(args):
         print(json.dumps({"error": "No boot log found. Run launch --background first."}))
         return 1
 
-
 def cmd_quit(args):
     result = launch_mod.quit_game(force=getattr(args, "force", False))
     print(json.dumps(result, indent=2))
     return 0 if result["success"] else 1
-
 
 def cmd_flags(args):
     group = getattr(args, "group", None)
@@ -623,7 +604,6 @@ def cmd_flags(args):
         print(f"  Groups: {', '.join(ALL_GROUPS)}", file=sys.stderr)
         print(f"  Presets: {', '.join(PRESETS.keys())}", file=sys.stderr)
     return 0
-
 
 def cmd_ghidra(args):
     from .ghidra import GhidraBridge
@@ -677,7 +657,6 @@ def cmd_ghidra(args):
         return 0
 
     return 1
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -769,7 +748,7 @@ def main():
     p_flags.add_argument("--verify", action="store_true", help="Verify flags exist in current binary")
 
     # screenshot
-    p_ss = sub.add_parser("screenshot", help="Capture game window screenshot (Claude Code safe)")
+    p_ss = sub.add_parser("screenshot", help="Capture game window screenshot (the CLI safe)")
     p_ss.add_argument("--output", "-o", metavar="PATH", help="Output file path")
     p_ss.add_argument("--raw", action="store_true", help="Skip resize, keep full resolution PNG")
 
@@ -820,7 +799,6 @@ def main():
     p_probe.add_argument("--range", type=int, default=256, help="Range in bytes (default 256)")
     p_probe.add_argument("--stride", type=int, default=8, help="Stride for struct probe (default 8)")
     p_probe.add_argument("--classify", action="store_true", help="Classify pointer type")
-
 
     # menu
     p_menu = sub.add_parser("menu", help="Main menu automation (OCR + click)")

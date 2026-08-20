@@ -13,7 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTITY_SYSTEM_C = REPO_ROOT / "src/entity/entity_system.c"
 PROTOTYPE_MANAGERS_C = REPO_ROOT / "src/stats/prototype_managers.c"
 LUA_EXT_C = REPO_ROOT / "src/lua/lua_ext.c"
-CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 STATS_MD = REPO_ROOT / "ghidra/offsets/STATS.md"
 
 
@@ -120,7 +119,7 @@ def test_passive_singleton_and_prototype_sync_claims_match_re_report():
     assert "return false;" in passive
     assert "return false;" in interrupt
 
-    for path in (PROTOTYPE_MANAGERS_C, CLAUDE_MD, STATS_MD):
+    for path in (PROTOTYPE_MANAGERS_C, STATS_MD):
         assert "108aeccd8" not in path.read_text(), (
             f"stale passive singleton claim remains in {path}")
 

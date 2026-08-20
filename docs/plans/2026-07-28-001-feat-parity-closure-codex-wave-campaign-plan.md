@@ -15,14 +15,13 @@ Work stopped 2026-05-16 (~2.5 months idle). The project claims ~94% parity at v0
 
 - **Parity target = scope-corrected 100%**: close all supported-surface gaps; Ext.UI (Noesis) stays excluded, Debugger + entity replication formally deferred with honest docs. Denominator frozen in `tools/bg3se_harness/catalog/windows_parity_baseline.json`.
 - **Nexus Premium available** → autonomous batch PAK downloads via existing `nexus.py`.
-- **Execution = codex-exec waves**: Claude spawns `~/.claude/skills/codex-orchestrator/scripts/codex-exec.sh <profile> "<goal>"` one-shots (builder/debugger/reviewer/researcher/docs), monitors output (`--json` / `--no-cleanup`), drives all live BG3 launches itself via the harness, evaluates against exit gates, and designs the next wave from results. Codex writes code; Claude verifies against the live game.
 
 ## Orchestration protocol (applies to every wave)
 
-- Each goal below becomes one codex-exec prompt (≤3,500 chars, written by Claude with file paths + acceptance criteria + "do not touch" constraints from this plan).
+- Each goal below becomes one codex-exec prompt (≤3,500 chars, written by the assistant with file paths + acceptance criteria + "do not touch" constraints from this plan).
 - Concurrency: max 2 codex builders in parallel, never on overlapping files. Reviewer passes run after builders.
 - **Offline gate before any live attempt** (from `bg3se-cli-goal.md`): `pytest tests/harness -q` (55) + `build/bin/bg3se_test_tier0` (41) + `tests_nexus` (23) + `tests_wiki` (23) + `cmake --build build`.
-- **Live validation is Claude-only** (Accessibility perms, game launches, socket commands, screenshots). Codex never launches BG3.
+- **Live validation is the assistant-only** (Accessibility perms, game launches, socket commands, screenshots). Codex never launches BG3.
 - Wave exit gate = named artifacts + passing commands, recorded in `docs/bugs/wave-campaign-progress.md` (dated, append-only). A wave that fails its gate gets a debugger-profile diagnosis pass, then either a repair goal or an explicit deferral logged in the progress doc.
 - Git: one commit per completed goal (user-requested campaign = durable authorization to commit; **no pushes** without explicit user confirmation).
 
@@ -30,10 +29,9 @@ Work stopped 2026-05-16 (~2.5 months idle). The project claims ~94% parity at v0
 
 Cheap, unblocks everything, kills doc drift before new work compounds it.
 
-1. **Housekeeping (Claude)**: commit untracked plan/docs artifacts (`docs/plans/*.md`, `docs/e2e-review/`, `bg3se-cli-goal.md`, `plans/2026-04-02-windows-parity-execplan.md`, `progress.json`); add `gold.*.log`, `network.*.log`, `.screenshots/`, `.subdaimon-output/`, `__pycache__` to `.gitignore`; resolve staged `.pyc` deletion.
-2. **Goal 0.1 (docs profile)**: reconcile ROADMAP.md / CLAUDE.md / README.md / `agent_docs/api-status.md` / `windows_parity_baseline.json` to one truthful story — actual version (v0.37.1+headless), honest per-namespace percentages from explorer-2 inventory (Types 60% not 90%, Math 57/59, Entity/Stats stub footnotes), scope-corrected denominator with named exclusions (Ext.UI excluded; Debugger + replication deferred).
+1. **Housekeeping (the assistant)**: commit untracked plan/docs artifacts (`docs/plans/*.md`, `docs/e2e-review/`, `bg3se-cli-goal.md`, `plans/2026-04-02-windows-parity-execplan.md`, `progress.json`); add `gold.*.log`, `network.*.log`, `.screenshots/`, `.subdaimon-output/`, `__pycache__` to `.gitignore`; resolve staged `.pyc` deletion.
 3. **Goal 0.2 (reviewer→builder)**: fix the critical Codex finding — `osiris_call_by_id()` unsafe `pfn_InternalCall` fallback (`src/injector/main.c:2633`): fail closed.
-4. **Claude**: run full offline gate; record baseline numbers.
+4. **the assistant**: run full offline gate; record baseline numbers.
 
 **Exit gate**: offline suites green; docs agree on numerator/denominator/exclusions; progress doc created.
 
@@ -41,7 +39,7 @@ Cheap, unblocks everything, kills doc drift before new work compounds it.
 
 Critical path for everything downstream. Two parallel tracks:
 
-- **Goal 1.1 (debugger) — hotbar crash retest**: the unfinished half of `docs/plans/2026-05-16-001`. Claude runs live `test --headless --continue --tier 1` with reconciled registry (all 14 PAKs). If `HotbarSystem::Update` still crashes → codex debugger designs a mod-set bisection procedure (`mod disable` halves), Claude executes the launches, codex analyzes `.ips` crash attributions between rounds.
+- **Goal 1.1 (debugger) — hotbar crash retest**: the unfinished half of `docs/plans/2026-05-16-001`. the assistant runs live `test --headless --continue --tier 1` with reconciled registry (all 14 PAKs). If `HotbarSystem::Update` still crashes → codex debugger designs a mod-set bisection procedure (`mod disable` halves), the assistant executes the launches, codex analyzes `.ips` crash attributions between rounds.
 - **Goal 1.2 (researcher→builder) — menu bypass via direct game-state invocation**: implement the `possible-with-RE` path from `docs/bugs/true-headless-feasibility.md`: RE the `-continueGame`/`-loadSaveGame` GameStateInit consumption path (Ghidra HTTP bridge at `127.0.0.1:8080`, `bg3se-harness ghidra` wrapper) and expose a dylib-side "request save load" that skips menu UI input entirely (console command or auto-trigger when `-continueGame` was passed). Fallback ladder if blocked: the 5 ranked approaches in `docs/bugs/noesis-input-bypass-re.md`.
   - Note: `-continueGame` is already passed at launch today, yet the game sits at menu — the RE question is why the flag stalls (likely a confirm gate, e.g. Mod Verification dialog / MainMenuConfirm), and how to programmatically satisfy it from the dylib.
 
@@ -52,11 +50,11 @@ Critical path for everything downstream. Two parallel tracks:
 Ordered by mod impact (from explorer-2 inventory):
 
 - **Goal 2.1 (builder)**: **component property writes** — implement `component_property_write()` (`src/entity/component_property.c:418`) for verified layouts (169 verified first; generated layouts gated behind size-known check). Include write-safety: bounds checks, blacklist one-frame components, refuse unknown layouts loudly.
-- **Goal 2.2 (builder, needs Ghidra)**: **damage events** — rebuild GhidraMCP JAR from `/Users/tomdimino/ghidra/GhidraMCP/` (source already has `create_function`; installed JAR 404s — steps 2–4 of `plans/2026-04-02-windows-parity-execplan.md`), recover `ThrowDamageEvent`/`ApplyDamage` ARM64 addresses, wire BeforeDealDamage/DealDamage in `src/stats/functor_hooks.c` + `src/lua/lua_events.c`; finish ExecuteFunctor's missing `Functors*` plumbing (`src/lua/lua_stats.c:1078`).
+- **Goal 2.2 (builder, needs Ghidra)**: **damage events** — rebuild the Ghidra HTTP bridge JAR from `/Users/tomdimino/ghidra/the Ghidra HTTP bridge/` (source already has `create_function`; installed JAR 404s — steps 2–4 of `plans/2026-04-02-windows-parity-execplan.md`), recover `ThrowDamageEvent`/`ApplyDamage` ARM64 addresses, wire BeforeDealDamage/DealDamage in `src/stats/functor_hooks.c` + `src/lua/lua_events.c`; finish ExecuteFunctor's missing `Functors*` plumbing (`src/lua/lua_stats.c:1078`).
 - **Goal 2.3 (builder)**: **Stats stubs** — real TreasureTable/TreasureCategory reads, AddAttribute/AddEnumerationValue via game heap alloc, GetStatsLoadedMods, prototype sync RefMap inserts (`src/stats/prototype_managers.c:693-744`).
 - **Goal 2.4 (builder)**: **test honesty** — convert presence-based parity tests (flagged by `docs/e2e-review/`) into execution assertions for everything Waves 2–3 implement; extend Tier 1/2 suites.
 
-**Exit gate**: Claude live-validates on a disposable combat save — both damage events fire in combat without crash; component write round-trips on a safe component; new Tier 2 tests pass via the now-working Wave-1 pipeline.
+**Exit gate**: the assistant live-validates on a disposable combat save — both damage events fire in combat without crash; component write round-trips on a safe component; new Tier 2 tests pass via the now-working Wave-1 pipeline.
 
 ## Wave 3 — Parity Closure B: breadth to 100% (2–3 days; codex: builder ×2)
 
@@ -71,11 +69,11 @@ Ordered by mod impact (from explorer-2 inventory):
 
 - **Goal 4.1 (builder)**: integrated compat pipeline — `compat run --launch` (wires `_launch_until_socket()` + save-fixture restore + launch-scoped log windows), auto `mod install`/`enable` from catalog inside the flow (Premium download via `nexus.py`), `requires_mcm` dependency enforcement, `compat diff` vs `docs/compat-reports/baseline/`.
 - **Goal 4.2 (builder)**: scenarios to 10 — add manifests for `expansion_lvl20`, `more_reactive_companions`, `camp_event_notifications`, `auto_send_food`, `always_show_approvals` (top-10 by catalog priority: 5 existing + these 5); upgrade all 10 to Tier-2 execution assertions; define one shared save fixture (`save list --fixtures`).
-- **Claude**: batch-download all 10 PAKs (Premium), verify installs, dry-run `compat run --launch mcm`.
+- **the assistant**: batch-download all 10 PAKs (Premium), verify installs, dry-run `compat run --launch mcm`.
 
 **Exit gate**: offline tests extended + green; one full autonomous vet (MCM) produces a `working`-status report with launch-scoped evidence.
 
-## Wave 5 — Top-10 Vetting Campaign (1–2 days; Claude-driven, codex: debugger on failures)
+## Wave 5 — Top-10 Vetting Campaign (1–2 days; the assistant-driven, codex: debugger on failures)
 
 Run the campaign mod-by-mod in dependency order (MCM → Community Library → 5e Spells → Expansion Lvl 20 → More Reactive Companions → Party Limit Begone → Combat Extender → Camp Event Notifications → Auto Send Food → Always Show Approvals):
 
@@ -88,7 +86,6 @@ Run the campaign mod-by-mod in dependency order (MCM → Community Library → 5
 ## Wave 6 — Final Audit & Release (½ day; codex: reviewer + security + docs)
 
 - Codex reviewer over the full campaign diff; security profile over injection/patching surface; fix or log findings.
-- CHANGELOG entry, version bump (`src/core/version.h`), ROADMAP/README/CLAUDE.md/api-status final pass (end-of-session checklist in `agent_docs/development.md`).
 - Evidence bundle: campaign progress doc finalized with links to JSON proofs (headless run, parity scan, compat matrix).
 - User decides on push/tag.
 
@@ -114,9 +111,8 @@ PYTHONPATH=tools python3 -m pytest tests/harness -q && build/bin/bg3se_test_tier
 
 - Origin request: this conversation (/ce-plan, 2026-07-28)
 - `bg3se-cli-goal.md` — non-negotiable CLI outcome + acceptance criteria (carried into Wave 1 gate)
-- `plans/2026-04-02-windows-parity-execplan.md` — parity end-state decision framework, GhidraMCP rebuild steps, Nomos doc audit, Codex review findings (carried into Waves 0/2)
+- `plans/2026-04-02-windows-parity-execplan.md` — parity end-state decision framework, the Ghidra HTTP bridge rebuild steps, Nomos doc audit, Codex review findings (carried into Waves 0/2)
 - `docs/plans/2026-05-16-001-fix-mod-state-reconciliation-hotbar-crash-plan.md` — unchecked retest/bisection items (carried into Goal 1.1)
 - `docs/plans/2026-05-02-001-feat-systematic-top5-mod-vetting-plan.md` — Phases 2–4 unfinished (carried into Waves 4–5)
 - `docs/bugs/true-headless-feasibility.md`, `docs/bugs/noesis-input-bypass-re.md` — Wave 1 technical basis
 - `tools/bg3se_harness/catalog/windows_parity_baseline.json` + explorer gap inventory — Waves 2–3 work items
-- `~/.claude/skills/codex-orchestrator/SKILL.md` — execution mechanics

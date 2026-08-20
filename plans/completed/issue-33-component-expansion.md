@@ -94,7 +94,6 @@ echo 'Debug.ProbeStruct(entity_ptr, 0, 0x100, 8)' | nc -U /tmp/bg3se.sock
 
 ### Documentation
 - `ROADMAP.md` - Update component count, version history
-- `CLAUDE.md` - Update component count, parity %
 - `README.md` - Update status table
 - `docs/CHANGELOG.md` - Add version entry
 

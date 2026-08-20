@@ -229,7 +229,7 @@ tail -f /tmp/ghidra_progress.log
 
 ### Step 2.4: Ghidra MCP (AI-Assisted Decompilation)
 
-When Ghidra is running with the pyghidra-mcp plugin enabled, Claude has direct access to decompilation via MCP tools. This enables automated bulk extraction.
+When Ghidra is running with the pyghidra-mcp plugin enabled, the assistant has direct access to decompilation via MCP tools. This enables automated bulk extraction.
 
 **Available MCP tools:**
 ```
@@ -253,7 +253,7 @@ mcp__ghidra__decompile_function(name="AddComponent<eoc::HealthComponent>")
 ```
 
 **Parallel extraction with subagents:**
-Launch multiple Claude subagents to process different offset ranges simultaneously. See "Subagent Workflow Patterns" section below.
+Launch multiple the assistant subagents to process different offset ranges simultaneously. See "Subagent Workflow Patterns" section below.
 
 ### Step 2.5: Manual Ghidra Investigation
 
@@ -589,7 +589,6 @@ If offsets don't work:
 ### Step 6.5: Update Documentation
 
 - Update ROADMAP.md with new status
-- Add to CLAUDE.md if relevant for future development
 - Update offset files with any new discoveries
 
 ---
@@ -703,15 +702,13 @@ osgrep "entity manager" -p /Users/tomdimino/Desktop/Programming/bg3se
 
 ## AI-Assisted Development with MCP Servers
 
-This project uses Model Context Protocol (MCP) servers, CLI tools, and Claude Code skills for AI-assisted research, planning, and review. These tools significantly accelerate the reverse-engineering workflow.
-
-**Quick Setup:** Copy `example.mcp.json` to `.mcp.json` and add your API keys for Perplexity and other services.
+This project uses Model Context Protocol (MCP) servers, CLI tools, and the CLI skills for AI-assisted research, planning, and review. These tools significantly accelerate the reverse-engineering workflow.
 
 ### Available Tools
 
 | Tool | Type | Purpose |
 |------|------|---------|
-| **bg3se-macos-ghidra** | Claude Skill | Project-specific patterns, offsets, and workflows |
+| **bg3se-macos-ghidra** | the assistant Skill | Project-specific patterns, offsets, and workflows |
 | **osgrep** | CLI | Semantic code search - finds code by concept, not keywords |
 | **Exa** | MCP Server | Web search + code context from documentation and GitHub |
 | **Perplexity** | MCP Server | AI-powered research and documentation lookup |
@@ -719,7 +716,7 @@ This project uses Model Context Protocol (MCP) servers, CLI tools, and Claude Co
 
 ### bg3se-macos-ghidra Skill
 
-This Claude Code skill provides project-specific context for BG3SE-macOS development. It includes:
+This the CLI skill provides project-specific context for BG3SE-macOS development. It includes:
 
 - **Project locations** for both bg3se-macos and the Windows reference implementation
 - **Build and test commands** for quick reference
@@ -729,7 +726,7 @@ This Claude Code skill provides project-specific context for BG3SE-macOS develop
 - **Module design patterns** for consistent code structure
 - **Lua API registration patterns**
 
-**When Claude Code loads this skill, it has immediate context about:**
+**When the CLI loads this skill, it has immediate context about:**
 
 - How to build and test the project
 - Where key files are located
@@ -737,7 +734,7 @@ This Claude Code skill provides project-specific context for BG3SE-macOS develop
 - ARM64-specific calling conventions
 - Common tasks like adding new Ext.* APIs or discovering offsets
 
-**Invoking the skill:** The skill is automatically available when working in the bg3se-macos project. Claude Code can reference it for project-specific guidance on Ghidra analysis, offset documentation, and implementation patterns.
+**Invoking the skill:** The skill is automatically available when working in the bg3se-macos project. the CLI can reference it for project-specific guidance on Ghidra analysis, offset documentation, and implementation patterns.
 
 ### osgrep for Codebase Research
 
@@ -794,7 +791,7 @@ osgrep doctor                   # Check health and configuration
 
 ### Exa for External Research
 
-Exa MCP server provides web search and code context from the broader ecosystem. Use it via Claude Code's MCP integration.
+Exa MCP server provides web search and code context from the broader ecosystem. Use it via the CLI's MCP integration.
 
 **Capabilities:**
 
@@ -857,7 +854,7 @@ Context7 MCP server fetches up-to-date documentation for frameworks and librarie
 
 ## Subagent Workflow Patterns
 
-Claude Code's Task tool enables launching parallel subagents for bulk extraction and analysis tasks. This dramatically accelerates repetitive work.
+the CLI's Task tool enables launching parallel subagents for bulk extraction and analysis tasks. This dramatically accelerates repetitive work.
 
 ### When to Use Subagents
 
@@ -935,7 +932,7 @@ Using 10 parallel agents, extracted 438 component sizes in ~20 minutes:
 
 ## Agent Teams (Minoan Swarm)
 
-Claude Code Agent Teams extend the subagent pattern into persistent, coordinated teams with shared task lists and bi-directional messaging. This is a paradigm shift from the subagent model above: instead of fire-and-forget tasks, agents are persistent teammates that claim work, communicate, and coordinate in real-time.
+the CLI Agent Teams extend the subagent pattern into persistent, coordinated teams with shared task lists and bi-directional messaging. This is a paradigm shift from the subagent model above: instead of fire-and-forget tasks, agents are persistent teammates that claim work, communicate, and coordinate in real-time.
 
 ### When Agent Teams Beat Subagents
 
@@ -1016,7 +1013,6 @@ For naming conventions, archetype mappings, and ready-to-use team templates, see
 
 ## Getting Help
 
-- **CLAUDE.md**: Project context for AI-assisted development
 - **agent_docs/**: Detailed architecture documentation
 - **ROADMAP.md**: Feature status and priorities
 - **plans/**: Implementation plans for features

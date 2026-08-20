@@ -1,6 +1,6 @@
 # Automation Tools
 
-This folder contains configuration and documentation for automated BG3SE testing using Claude Code with MCP servers.
+This folder contains configuration and documentation for automated BG3SE testing using the CLI with MCP servers.
 
 ## Contents
 
@@ -11,7 +11,7 @@ automation/
 ├── mcp-servers.json       # MCP server configuration template
 └── skills/
     └── bg3-steam-launcher/
-        └── SKILL.md       # Claude Code skill for BG3 testing
+        └── SKILL.md       # the CLI skill for BG3 testing
 ```
 
 ## Quick Setup
@@ -23,11 +23,11 @@ claude mcp add macos-automator -- npx -y @steipete/macos-automator-mcp@latest
 claude mcp add peekaboo -- npx -y @steipete/peekaboo-mcp@beta
 ```
 
-Or merge `mcp-servers.json` into your Claude Code config at `~/.claude.json`.
+Or merge `mcp-servers.json` into your the CLI config at `~/.claude.json`.
 
 ### 2. Install the Skill
 
-Copy the skill to your Claude Code skills directory:
+Copy the skill to your the CLI skills directory:
 
 ```bash
 cp -r skills/bg3-steam-launcher ~/.claude/skills/
@@ -39,13 +39,13 @@ System Preferences → Security & Privacy → Privacy → Accessibility → enab
 
 ## Usage
 
-With Claude Code, invoke the skill:
+With the CLI, invoke the skill:
 
 ```
 skill: "bg3-steam-launcher"
 ```
 
-This provides Claude with the workflow for:
+This provides the assistant with the workflow for:
 - Launching BG3 via Steam
 - Clicking through the Larian launcher
 - Loading saved games
