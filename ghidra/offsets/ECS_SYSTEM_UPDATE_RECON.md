@@ -541,3 +541,46 @@ So step 1 is mechanical: regenerate the whole table from symbols (names *and*
 addresses) rather than patching entries. Step 2 -- re-deriving the EntityWorld
 system array offsets and the `0xf8` entry stride for this build -- is the part
 that still needs disassembly.
+
+### CORRECTION (same day): the system TypeId table is NOT stale
+
+The section above, and the "stale system-TypeIds" note in CLAUDE.md, both blame
+the generated table. That is wrong. Re-running the project's own extractor
+against the installed 4.1.1.7398727 binary:
+
+    python3.12 tools/extract_typeids.py "<BG3 binary>" \
+      --build-id 4.1.1.7398727 --header-out /tmp/regen.h
+
+produces a `GENERATED_SYSTEM_TYPEID_ENTRIES` block that is **byte-identical** to
+the shipped one: 73 entries, 73 exact matches, zero additions, zero removals.
+Regenerating the table cannot fix `OnSystemUpdate`.
+
+(Note the extractor needs Python 3.10+ for `zip(..., strict=True)`; the macOS
+system `python3` is 3.9 and fails with `TypeError: zip() takes no keyword
+arguments`.)
+
+So the two real issues are:
+
+1. **Coverage, not staleness.** The binary exports **454** `ecs::SystemsContext`
+   TypeIndex symbols, but the table only carries **73**. Names like
+   `ServerCharacterManager` return "Unknown system type" simply because they were
+   never in the table -- not because their address drifted. Widening the
+   extractor's system filter would add them, but see (2) before assuming that
+   helps.
+
+2. **The runtime lookup is what fails.** For the 73 covered systems the recorded
+   addresses are provably correct, yet reading them live (slide `0xa20000`)
+   returns implausible values (e.g. `ecl::CharacterManager` -> -1459607556),
+   and `ClientCharacterManager` -- which *is* in the table -- fails with
+   "system entry is absent or its stored indices disagree". The identical read
+   technique returns valid, unique, in-range indices for the
+   `ReplicatedTypeContext` globals on the same build, so the method is sound.
+   Additionally `EntityWorld + 0x28/+0x30` yields `count = 1433124880`, which is
+   not a system count.
+
+**Revised next step.** Do not regenerate the table. Determine instead whether
+these TypeIndex globals are populated only at system-registration time (so the
+correct source is the live `EntityWorld` system array, not the statics), and
+re-derive the array/buffer offsets and `0xf8` stride for 7398727. That is
+disassembly work, and it is the only remaining blocker for both
+`OnSystemUpdate` and `OnSystemPostUpdate`.
