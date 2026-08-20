@@ -1135,3 +1135,13 @@ So RemoveComponent is not exposed to this failure mode on 4.1.1.7398727. The
 check was still generalized to `game_fn_is_terminate_stub()` and applied on that
 path, because a future build could compile any specialization out and three word
 reads is cheap next to branching into std::terminate.
+
+### IsAlive verified in-game (2026-08-20)
+
+    host character (long-lived) : true    (unchanged, no regression)
+    handle never created        : false   (previously true)
+    created + flushed           : true
+    destroyed + flushed         : false   (previously true)
+
+Both previously-wrong directions are now correct, and this is the probe that
+should have been used to verify Ext.Entity.Destroy in the first place.

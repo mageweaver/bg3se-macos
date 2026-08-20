@@ -1522,6 +1522,36 @@ static int lua_entity_subscribe(lua_State *L) {
         ENTITY_EVENT_CREATE | ENTITY_EVENT_DESTROY, true, false);
 }
 
+/*
+ * Ext.Entity.OnChange
+ *
+ * DIVERGENCE. On Windows this fires when a component is *modified*. macOS has no
+ * component-modification tracking at all -- the port observes only the engine's
+ * add/remove signals, which is also why Ext.Entity tracing cannot report
+ * modifications (ECSChangeTracerOptions::TrackModifications has no analogue
+ * here).
+ *
+ * The name was aliased straight onto the create+destroy subscription, so a mod
+ * registering OnChange to react to a value changing silently received
+ * add/remove callbacks instead and never fired on an actual modification. That
+ * is a quiet wrong answer, so warn once rather than let it pass unnoticed.
+ *
+ * The subscription is still installed: erroring would break Windows mods that
+ * call OnChange during init, and add/remove is a strict subset of the events
+ * they expect rather than a wrong event.
+ */
+static int lua_entity_on_change(lua_State *L) {
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        log_message("[WARN] [EntityEvents] Ext.Entity.OnChange fires on component "
+                    "add/remove on macOS, not on modification: the engine exposes "
+                    "no component-modification signal. Callbacks will not run when "
+                    "a component's fields change.");
+    }
+    return lua_entity_subscribe(L);
+}
+
 // --- Ext.Entity.Unsubscribe(handle) ---
 static int lua_entity_unsubscribe(lua_State *L) {
     lua_Integer id = luaL_checkinteger(L, 1);
@@ -1549,7 +1579,7 @@ void entity_events_register_lua(lua_State *L) {
     // Register functions (overwriting stubs)
     static const struct { const char *name; lua_CFunction func; } funcs[] = {
         { "Subscribe",              lua_entity_subscribe },
-        { "OnChange",               lua_entity_subscribe },   // Alias
+        { "OnChange",               lua_entity_on_change },
         { "OnCreate",               lua_entity_on_create },
         { "OnCreateDeferred",       lua_entity_on_create_deferred },
         { "OnCreateOnce",           lua_entity_on_create_once },
