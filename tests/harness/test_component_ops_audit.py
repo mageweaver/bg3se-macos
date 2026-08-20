@@ -87,15 +87,36 @@ def test_create_component_guards_precede_native_dispatch():
         assert body.index(guard) < dispatch
 
 
-def test_remove_component_remains_an_explicit_false_contract():
+def test_remove_component_dispatches_only_exact_specializations():
+    """RemoveComponent was undeferred on 2026-08-20 via a generated per-build
+    dispatch table (src/entity/generated_remove_component.h).
+
+    The original hazard was that macOS emits 734 type-specialized removers with
+    no generic runtime-TypeId entry point, so "calling a specialization for a
+    different type would remove the wrong component". This test pins the
+    property that makes that impossible: dispatch is by exact name match only,
+    and anything not in the table fails closed.
+    """
     source = ENTITY_SYSTEM_C.read_text()
     body = _function_body(source, "lua_entity_remove_component")
+    resolver = _function_body(source, "remove_component_fn_for")
 
-    assert "NOT GENERICALLY UNLOCKED" in source
-    assert "734 per-type RemoveComponent<T> instantiations" in source
-    assert "734 type-specialized removers" in body
+    # Exact-name dispatch, never index- or guess-based.
+    assert "strcmp(component_name, (name)) == 0" in resolver
+    assert "GENERATED_REMOVE_COMPONENT_ENTRIES" in resolver
+
+    # Gated on the audited build, and slide-corrected rather than raw VAs.
+    assert "version_detect_matches()" in resolver
+    assert "version_detect_get_binary_base()" in resolver
+    assert "0x100000000" in resolver
+
+    # Unknown / uncovered component names must fail closed.
+    assert "if (!fn)" in body
     assert "lua_pushboolean(L, 0)" in body
-    assert "AddImmediateDefaultComponentFn" not in body
+
+    # The cache pointer comes from the recorded EntityWorld offset, guarded.
+    assert "ENTITYWORLD_CACHE_OFFSET" in body
+    assert "safe_memory_read_pointer" in body
 
 
 def test_passive_singleton_and_prototype_sync_claims_match_re_report():

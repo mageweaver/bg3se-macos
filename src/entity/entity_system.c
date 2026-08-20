@@ -7,6 +7,7 @@
 
 #include "entity_system.h"
 #include "entity_events.h"
+#include "generated_remove_component.h"
 #include "component_registry.h"
 #include "component_lookup.h"
 #include "component_typeid.h"
@@ -1649,18 +1650,80 @@ static int lua_entity_create_component(lua_State *L) {
 // build 4.1.1.7209685 emits 734 per-type RemoveComponent<T> instantiations
 // whose TypeIds are hard-coded. There is no verified generic entry point that
 // accepts a runtime ComponentTypeId, so arbitrary removal remains deferred.
-static int lua_entity_remove_component(lua_State *L) {
-    (void)luaL_checkudata(L, 1, "BG3Entity");
-    const char *component = luaL_checkstring(L, 2);
-    if (!s_remove_component_warned) {
-        log_message(
-            "[WARN] [Entity] entity:RemoveComponent('%s') deferred: "
-            "build 4.1.1.7209685 has 734 type-specialized removers but no "
-            "verified runtime-TypeId entry point",
-            component);
-        s_remove_component_warned = 1;
+/*
+ * entity:RemoveComponent(componentName) -> boolean
+ *
+ * Undeferred 2026-08-20. macOS emits 734 specializations of
+ *   ecs::legacy::ImmediateWorldCache::RemoveComponent<T>(ls::ID<EntityHandleTraits>)
+ * each with its TypeId<T> baked in, and no generic runtime-TypeIndex entry
+ * point -- which is why this was deferred. But the specializations are exported
+ * symbols, so a per-build name -> address table is recoverable mechanically
+ * (see src/entity/generated_remove_component.h). 666 of the 734 correspond to a
+ * component this port registers.
+ *
+ * Dispatch is exact: we only ever call the specialization whose own name equals
+ * the requested component, so the "calling a specialization for a different
+ * type would remove the wrong component" hazard cannot occur. Unknown or
+ * uncovered names fail closed with false.
+ */
+static void *remove_component_fn_for(const char *component_name) {
+    if (!component_name) return NULL;
+
+    void *base = version_detect_get_binary_base();
+    if (!base || !version_detect_matches()) return NULL;
+
+    /* Recorded VAs assume the nominal 0x100000000 image base. */
+    uintptr_t slide = (uintptr_t)base - 0x100000000ull;
+
+#define REMOVE_COMPONENT_ENTRY(name, va) \
+    if (strcmp(component_name, (name)) == 0) { \
+        return (void *)((uintptr_t)(va) + slide); \
     }
-    lua_pushboolean(L, 0);
+    GENERATED_REMOVE_COMPONENT_ENTRIES(REMOVE_COMPONENT_ENTRY)
+#undef REMOVE_COMPONENT_ENTRY
+
+    return NULL;
+}
+
+static int lua_entity_remove_component(lua_State *L) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    const char *component = luaL_checkstring(L, 2);
+
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    void *world = g_ServerEntityWorld;
+    if (!world) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    void *fn = remove_component_fn_for(component);
+    if (!fn) {
+        LOG_ENTITY_DEBUG("RemoveComponent('%s'): no specialization for this build",
+                         component);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    void *cache = NULL;
+    if (!safe_memory_read_pointer(
+            (mach_vm_address_t)((uintptr_t)world + ENTITYWORLD_CACHE_OFFSET),
+            &cache)
+        || !cache) {
+        LOG_ENTITY_DEBUG("RemoveComponent('%s'): ImmediateWorldCache unavailable",
+                         component);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    typedef void (*RemoveComponentFn)(void *cache, uint64_t entity);
+    ((RemoveComponentFn)fn)(cache, (uint64_t)ud->handle);
+
+    LOG_ENTITY_DEBUG("RemoveComponent('%s') dispatched for entity 0x%llx",
+                     component, (unsigned long long)ud->handle);
+    lua_pushboolean(L, 1);
     return 1;
 }
 
