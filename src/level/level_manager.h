@@ -265,6 +265,35 @@ typedef struct {
     float max_height;
 } LevelAiTileRawDebugInfo;
 
+/**
+ * Windows-shaped decoded tile (Level.inl GetTileDebugInfo / AiGridLuaTile).
+ *
+ * The decoders are manual shifts over the engine's own 64-bit tile Flags word
+ * (Ai.h:41-80), not C bitfields, so the encoding is a data format rather than a
+ * compiler layout decision and is identical across platforms. Two of the five
+ * shifts (ground >>24, cloud >>32) were already verified in this port and ship
+ * as GetTileRawDebugInfo.
+ */
+typedef struct {
+    uint64_t flags;                  /* base flags, low 24 bits */
+    uint8_t  ground_surface;         /* (Flags >> 24) & 0xff */
+    uint16_t cloud_surface;          /* raw ? raw + 38 : 0   (Ai.h:46-50) */
+    uint8_t  material;               /* (Flags >> 40) & 0x3f */
+    uint32_t extra_flags;            /* Flags >> 46 */
+    uint64_t unmapped_flags;         /* always 0, as Windows sets it */
+    int16_t  subgrid_id;
+    int16_t  tile_x;
+    int16_t  tile_y;
+    float    min_height;
+    float    max_height;
+    uint16_t metadata_index;
+    uint16_t surface_metadata_index;
+} LevelAiTileDebugInfo;
+
+/** Windows-shaped GetTileDebugInfo. Returns false when the tile is invalid. */
+bool level_aigrid_get_tile_debug_info(float x, float z,
+                                      LevelAiTileDebugInfo *out_info);
+
 /** Resolve path_id only through AiGrid::PathMap and copy its public state. */
 bool level_aigrid_get_path_by_id(int32_t path_id, LevelAiPathState *out_state);
 

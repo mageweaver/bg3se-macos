@@ -667,13 +667,43 @@ static int lua_level_get_entities_on_tile(lua_State *L) {
     return 1;
 }
 
+/**
+ * Ext.Level.GetTileDebugInfo(pos) -> AiGridLuaTile-shaped table, or nil
+ *
+ * Undeferred 2026-08-20. MinHeight at +0x0a is CONFIRMED (two independent
+ * accessor sites sharing the /50 scaling), and the flag decoders are plain
+ * shifts over the engine's own 64-bit Flags word (Ai.h:41-80) rather than C
+ * bitfields, so they are a data format rather than a compiler layout and port
+ * directly. Two of the five shifts were already verified here and ship as
+ * GetTileRawDebugInfo.
+ */
 static int lua_level_get_tile_debug_info(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "GetTileDebugInfo",
-        "AIGRID_PATHFINDING.md leaves AiGridTile::MinHeight at +0x0a OPEN "
-        "and the public cloud-surface enum conversion PROVISIONAL; returning nil");
-    lua_pushnil(L);
+    float pos[3];
+    if (!read_vec3(L, 1, pos)) {
+        return luaL_error(L, "Ext.Level.GetTileDebugInfo: pos must be a {x,y,z} table");
+    }
+
+    LevelAiTileDebugInfo info;
+    if (!level_aigrid_get_tile_debug_info(pos[0], pos[2], &info)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_createtable(L, 0, 13);
+    lua_pushinteger(L, (lua_Integer)info.flags);            lua_setfield(L, -2, "Flags");
+    lua_pushinteger(L, (lua_Integer)info.ground_surface);   lua_setfield(L, -2, "GroundSurface");
+    lua_pushinteger(L, (lua_Integer)info.cloud_surface);    lua_setfield(L, -2, "CloudSurface");
+    lua_pushinteger(L, (lua_Integer)info.material);         lua_setfield(L, -2, "Material");
+    lua_pushinteger(L, (lua_Integer)info.unmapped_flags);   lua_setfield(L, -2, "UnmappedFlags");
+    lua_pushinteger(L, (lua_Integer)info.extra_flags);      lua_setfield(L, -2, "ExtraFlags");
+    lua_pushinteger(L, (lua_Integer)info.subgrid_id);       lua_setfield(L, -2, "SubgridId");
+    lua_pushinteger(L, (lua_Integer)info.tile_x);           lua_setfield(L, -2, "TileX");
+    lua_pushinteger(L, (lua_Integer)info.tile_y);           lua_setfield(L, -2, "TileY");
+    lua_pushnumber(L, (lua_Number)info.min_height);         lua_setfield(L, -2, "MinHeight");
+    lua_pushnumber(L, (lua_Number)info.max_height);         lua_setfield(L, -2, "MaxHeight");
+    lua_pushinteger(L, (lua_Integer)info.metadata_index);   lua_setfield(L, -2, "MetaDataIndex");
+    lua_pushinteger(L, (lua_Integer)info.surface_metadata_index);
+    lua_setfield(L, -2, "SurfaceMetaDataIndex");
     return 1;
 }
 

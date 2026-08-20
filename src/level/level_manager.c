@@ -1467,6 +1467,64 @@ bool level_aigrid_get_tile_raw_debug_info(
     return true;
 }
 
+/*
+ * Windows GetTileDebugInfo (Level.inl:136-171) populates AiGridLuaTile from
+ * AiGridTile::Flags accessors (Ai.h:41-80). Those accessors are plain shifts on
+ * the engine's own 64-bit Flags word, so they port directly:
+ *
+ *   GroundSurface = (Flags >> 24) & 0xff          [already verified in-port]
+ *   CloudSurface  = raw ? raw + 38 : None, raw = (Flags >> 32) & 0xff
+ *   Material      = (Flags >> 40) & 0x3f
+ *   ExtraFlags    =  Flags >> 46
+ *   Flags         =  Flags & 0xffffff
+ *
+ * Heights match Windows' subgrid->Translate.y + GetLocalMin/MaxHeight(), which
+ * this port already applies with the confirmed /50 scaling.
+ */
+bool level_aigrid_get_tile_debug_info(float x, float z,
+                                      LevelAiTileDebugInfo *out_info) {
+    if (!out_info) return false;
+    memset(out_info, 0, sizeof(*out_info));
+
+    if (!version_detect_matches()) return false;
+
+    void *aigrid = level_get_aigrid();
+    if (!aigrid) return false;
+
+    float world_pos[3] = {x, 0.0f, z};
+    NativeAiTilePos tile_pos = {0};
+    if (!g_level.aigrid_to_tile_pos(aigrid, world_pos, &tile_pos, false)
+        || tile_pos.x < 0 || tile_pos.y < 0
+        || tile_pos.subgrid_id == -1) {
+        return false;
+    }
+
+    NativeAiGridTile tile = {0};
+    float translate_y = 0.0f;
+    if (!copy_aigrid_tile(aigrid, &tile_pos, &tile, &translate_y)
+        || tile.min_height > tile.max_height) {
+        return false;
+    }
+
+    uint64_t f = tile.flags;
+    uint32_t cloud_raw = (uint32_t)((f >> 32) & 0xffu);
+
+    out_info->flags                  = f & 0xffffffull;
+    out_info->ground_surface         = (uint8_t)((f >> 24) & 0xffu);
+    out_info->cloud_surface          = cloud_raw ? (uint16_t)(cloud_raw + 38u) : 0u;
+    out_info->material               = (uint8_t)((f >> 40) & 0x3fu);
+    out_info->extra_flags            = (uint32_t)(f >> 46);
+    out_info->unmapped_flags         = 0;
+    out_info->subgrid_id             = (int16_t)tile_pos.subgrid_id;
+    out_info->tile_x                 = (int16_t)tile_pos.x;
+    out_info->tile_y                 = (int16_t)tile_pos.y;
+    out_info->min_height             = translate_y + (float)tile.min_height / 50.0f;
+    out_info->max_height             = translate_y + (float)tile.max_height / 50.0f;
+    out_info->metadata_index         = tile.metadata_index;
+    out_info->surface_metadata_index = tile.surface_metadata_index;
+    return true;
+}
+
 void level_aigrid_free_entity_handles(uint64_t *handles) {
     free(handles);
 }
