@@ -51,16 +51,16 @@
 // Then type-specific fields follow
 
 // Feat structure
-#define FEAT_SIZE                     0x128  // 296 bytes per feat
+#define FEAT_SIZE                     0x128  // 296 bytes/feat; probe confirms (41 records==count)
 #define FEAT_OFFSET_NAME              0x18   // FixedString Name (after GuidResource base)
 
 // Race structure
-#define RACE_SIZE                     0x200  // Estimate - has many arrays
+#define RACE_SIZE                     0x168  // Measured 2026-08-20 (vtable probe; records==count)
 #define RACE_OFFSET_NAME              0x18   // FixedString Name (same as Feat)
 
 // Origin structure
 // Has uint8_t AvailableInCharacterCreation at +0x18 before Name
-#define ORIGIN_SIZE                   0x180  // Estimate
+#define ORIGIN_SIZE                   0x190  // Measured 2026-08-20 (vtable probe; records==count)
 #define ORIGIN_OFFSET_NAME            0x1C   // FixedString Name (aligned after uint8_t)
 
 // Background structure - NO Name field, only DisplayName (TranslatedString)
@@ -71,12 +71,12 @@
 #define BACKGROUND_OFFSET_NAME        0      // No FixedString Name field!
 
 // God structure
-#define GOD_SIZE                      0x60   // Small structure
+#define GOD_SIZE                      0x60   // Small structure; probe confirms (24 records==count)
 #define GOD_OFFSET_NAME               0x18   // FixedString Name
 
 // ClassDescription structure
 // Has Guid ParentGuid (16 bytes) at +0x18 before Name
-#define CLASS_SIZE                    0x100  // Estimate
+#define CLASS_SIZE                    0x110  // Measured 2026-08-20 (vtable probe; records==count)
 #define CLASS_OFFSET_NAME             0x28   // FixedString Name (after ParentGuid)
 
 // ============================================================================
@@ -105,7 +105,9 @@ static const ManagerConfig g_manager_configs[STATICDATA_COUNT] = {
     // STATICDATA_CLASS
     { 0x7C, 0x80, CLASS_SIZE, CLASS_OFFSET_NAME, "/tmp/bg3se_classmanager.txt" },
     // STATICDATA_PROGRESSION
-    { 0x7C, 0x80, 0x200, 0x18, "/tmp/bg3se_progressionmanager.txt" },
+    // Progression entry_size measured 2026-08-20: 1004 records at 0x148,
+    // matching count. Previous 0x200 was an estimate.
+    { 0x7C, 0x80, 0x148, 0x18, "/tmp/bg3se_progressionmanager.txt" },
     // STATICDATA_ACTIONRESOURCE
     // entry_size measured 2026-08-20 by vtable-identity probe: 87 records at
     // 0x60 spacing, exactly matching count@+0x7C=87.
@@ -118,7 +120,9 @@ static const ManagerConfig g_manager_configs[STATICDATA_COUNT] = {
     // 0x180 is 4 * 0x60.
     { 0x7C, 0x80, 0x60, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
     // STATICDATA_FEATDESCRIPTION
-    { 0x7C, 0x80, 0x80, 0, "/tmp/bg3se_featdescmanager.txt" },  // Has TranslatedString, not FixedString
+    // FeatDescription entry_size measured 2026-08-20: 41 records at 0x60,
+    // matching count. Previous 0x80 was an estimate.
+    { 0x7C, 0x80, 0x60, 0, "/tmp/bg3se_featdescmanager.txt" },  // Has TranslatedString, not FixedString
 };
 
 // ============================================================================
