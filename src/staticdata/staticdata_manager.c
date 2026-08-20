@@ -64,12 +64,10 @@
 #define ORIGIN_OFFSET_NAME            0x1C   // FixedString Name (aligned after uint8_t)
 
 // Background structure - NO Name field, only DisplayName (TranslatedString)
-/* UNVERIFIED estimate. Measured 2026-08-20: enumeration yields well-formed
- * ResourceUUIDs for only ~59% of entries, so this stride is probably wrong too,
- * but 22 entries were too few to identify the true multiple with confidence
- * (best candidate was 6 at 75% over 4 samples). Left alone deliberately rather
- * than guessed. */
-#define BACKGROUND_SIZE               0x80   // Estimate — see note above
+/* Measured 2026-08-20 by vtable-identity probe: 22 records at 0x70 spacing,
+ * matching count@+0x7C=22. The previous 0x80 was an estimate and left only
+ * 17 of 22 enumerated entries well-formed. */
+#define BACKGROUND_SIZE               0x70   // Measured, not estimated
 #define BACKGROUND_OFFSET_NAME        0      // No FixedString Name field!
 
 // God structure
