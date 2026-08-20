@@ -1195,3 +1195,21 @@ verified only for Feat. Windows models every static-data type as deriving from
 `resource::GuidResource { void* VMT; Guid ResourceUUID; }`, which puts the UUID
 at +0x08 uniformly, and the 29/29 valid ActionResource reads at that offset
 support it. macOS ships no `GuidResource` symbol to confirm the name directly.
+
+### Verified after the fix (2026-08-20)
+
+With `entry_size = 0x180`:
+
+    ActionResource n=87  valid=87  allZero=0  lowEntropy=0  distinctGuids=86
+
+Before the fix only 29 of 87 were well-formed, and the first entries alternated
+real/garbage/zero; they are now consecutive real UUIDs. This was a falsifiable
+prediction stated before the change and it held.
+
+Residual, not chased further: one value,
+`45564157-6d66-2074-4200-0000ffff0200`, appears at indices 33 and 65 (exactly 32
+strides apart). Its bytes decode as ASCII text rather than a UUID, so those two
+slots are still reading something that is not a resource UUID — either the real
+element count is below 87, or those slots hold a different record. 85 of 87 are
+clean and distinct, so the enumeration is now sound in the main; this is logged
+as a known residual rather than papered over.
