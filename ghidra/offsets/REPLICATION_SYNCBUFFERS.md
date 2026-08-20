@@ -188,3 +188,84 @@ entity proxy to match the upstream surface.
 - Exercise a bitset larger than 64 bits to validate heap mode + qword bounds.
 - Confirm client-side write attempts stay fail-closed and never touch server
   memory.
+
+## W7-C Step 2 — LIVE PROBE RESULT (2026-08-20)
+
+First execution of the live-probe checklist. Build 4.1.1.7398727, ASLR slide
+`0xa20000` (base `0x100a20000`), vanilla Tav session, server world only
+(`GetClientWorld()` returned nil at this point in the session).
+
+### Confirmed live
+
+| Check | Result |
+|---|---|
+| `world + 0x00` → `SyncBuffers*` | **PASS** — world `0xb7b01a300` → sync `0xb8e5ae3b8`, pointer valid |
+| pool `+0x00/+0x08/+0x0c/+0x10` | **PASS** — buf `0xb4a140000`, capacity 582, size 582, dirty 0, `size <= capacity` |
+| ownership relation | **PASS, upgrades PROBABLE → CONFIRMED** — `*(sync - 0x8)` equals the current world pointer exactly |
+| `DisplayName` pool is real | **PASS** — index 39, buckets `0xb3d818700`/389, values `0xb69190000`/256 |
+
+The `EntityReplicationAuthority + 0x10` embedding can therefore be treated as
+CONFIRMED: reading back one qword from the sync pointer recovers the owning
+world.
+
+### Failures — replicated-type globals are only partly correct on 7398727
+
+Only **5 of 9** globals read as plausible indices (`0 <= idx < 582`):
+
+| Component | Value @ slid VA | Verdict |
+|---|---:|---|
+| DisplayName | 39 | plausible, **pool populated** |
+| Stats | 178 | plausible, pool empty |
+| God | 257 | plausible, pool empty |
+| AvailableLevel | 257 | plausible, pool empty — **duplicate of God** |
+| Classes | 332 | plausible, pool empty |
+| GameObjectVisual | 154295240 | **out of range** |
+| ActionResources | 154376152 | **out of range** |
+| EocLevel | 154381440 | **out of range** |
+| CombatParticipant | 154393640 | **out of range** |
+
+Two independent problems:
+
+1. **Four VAs do not hold int32 replication indices on this build.** Their
+   values (~1.5e8) look like pointers or unrelated data, not pool indices.
+   They need re-deriving for 7398727.
+2. **`God` and `AvailableLevel` both read 257.** Distinct components cannot
+   share a replication index, so at least one is wrong even though both pass a
+   naive range check. A range check alone is not sufficient validation —
+   uniqueness must also be asserted.
+
+Of the five in-range indices, only `DisplayName` addresses a populated pool;
+the other four point at all-zero slots (`buckets = keys = values = 0x0`),
+consistent with those indices also being wrong rather than merely unused.
+
+### `GetReplicationFlags` returns 0 even where the pool is populated
+
+`entity:GetReplicationFlags(...)` is correctly placed on the entity proxy and
+never errors, but returns `0` for every component tried (DisplayName, Stats,
+ActionResources, God, EocLevel) on the host entity
+(handle `0x200000100000086`) — including `DisplayName`, whose pool holds 256
+values. So the zeros are fail-closed, not real reads: the hash-chain walk is
+not locating the entity.
+
+One suspicious observation for whoever picks this up: the `DisplayName` pool
+reports **256 values but 0 keys** (`keys` buffer `0xb94e79000`, size field at
+`+0x2c` reads 0). Either the key-size offset is wrong in the recovered layout,
+or key storage is organised differently than `+0x20/+0x28/+0x2c` assumes. That
+mismatch is the most likely reason the walk finds nothing.
+
+### Verdict
+
+**The deferral stays closed and earns no parity credit.** The confirmed chain
+(world → sync → pool) is solid and the ownership relation is now proven, but
+`entity:Replicate()` cannot be built on a type-index table that is 4/9 wrong,
+contains a duplicate, and whose reader returns nothing against a populated
+pool.
+
+Next steps, in order:
+1. Re-derive the 9 replicated-type global VAs for 7398727; assert **uniqueness**
+   as well as range.
+2. Resolve the keys-size discrepancy on a populated pool (`DisplayName`, index
+   39) before trusting any traversal.
+3. Only then re-run this checklist; the remaining unexercised items (dirty
+   `0 → 1` on a component change, authority sync clearing it, >64-bit heap
+   bitsets, client-side fail-closed writes) all depend on a working read first.
