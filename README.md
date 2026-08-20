@@ -121,7 +121,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 
 ## Status
 
-**Version:** v0.44.0 | **Feature Parity:** **91.8%** (257/280 scored) under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
+**Version:** v0.44.0 | **Feature Parity:** **92.1%** (258/280 scored) under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
 
 | Feature | Status |
 |---------|--------|
