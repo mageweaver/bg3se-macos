@@ -349,3 +349,64 @@ nine wrong-by-one indices on this VMT.
 **Purpose:** decompile `0x105c87778` (slot 10) in Ghidra and confirm it is
 RaycastAny before advancing `s_raycast_any_verified_uuid` to
 `0C51CAED-6D60-3DCD-9299-8519C92631B0`. See `RAYCAST_ABI_B4A.md`.
+
+## VMT re-audit on 7398727 — COMPLETE, no Ghidra required (2026-08-20)
+
+The shipped binary retains C++ symbols, so the whole vtable can be identified
+with `llvm-objdump` against the arm64 slice. No Ghidra project, no analysis
+pass:
+
+    lipo -thin arm64 "<BG3 binary>" -output bg3_arm64
+    llvm-objdump -d --start-address=<slotVA> --stop-address=<slotVA+4> bg3_arm64
+
+Each slot's first instruction is preceded by its mangled symbol; pipe through
+`c++filt`. Result for build 4.1.1.7398727 (Ghidra-rebased VAs):
+
+| slot | VA | symbol | matches constant |
+|---:|---|---|---|
+| 0-1 | `0x105c873fc` / `0x105c87400` | `~SimplePhysXScene` | - |
+| 2 | `0x105c8748c` | `InstantiateReadLock` | - |
+| 3 | `0x105c87494` | `Unload` | - |
+| 4 | `0x105c87580` | `AddPhysicsObjects` | - |
+| 5 | `0x105c87590` | `RemovePhysicsObjects` | - |
+| 6 | `0x105c87598` | `AddPhysicsShape` | - |
+| 7 | `0x105c875a8` | `RemovePhysicsShape` | - |
+| 8 | `0x105c87634` | `RaycastClosest` | RAYCAST_CLOSEST 8 OK |
+| 9 | `0x105c87760` | `RaycastAll` | RAYCAST_ALL 9 OK |
+| 10 | `0x105c87778` | **`RaycastAny`** | **RAYCAST_ANY 10 OK** |
+| 11 | `0x105c87790` | `SweepSphereClosest` | 11 OK |
+| 12 | `0x105c877f8` | `SweepCapsuleClosest` | 12 OK |
+| 13 | `0x105c87888` | `SweepBoxClosest` | 13 OK |
+| 14 | `0x105c878e8` | `SweepCylinderClosest` | 14 OK |
+| 15 | `0x105c878f0` | `SweepSphereAll` | 15 OK |
+| 16 | `0x105c87958` | `SweepCapsuleAll` | 16 OK |
+| 17 | `0x105c879cc` | `SweepBoxAll` | 17 OK |
+
+**Every `PHYSICS_VMT_*` constant is correct on this build.** The wrong-by-one
+problem found previously has not recurred.
+
+Slot 10 is a thunk: it loads the `PxScene` from `[x0, #0x88]` and tail-branches
+to `phx::PhysXSceneHelpers::RaycastAny`.
+
+### Full signatures of the three raycasts
+
+    RaycastClosest(Vector3f const&, Vector3f const&, ls::PhysicsHit&,
+        ls::EPhysicsType, unsigned, unsigned, ls::EPhysicsContext,
+        unsigned, unsigned, ls::Function<bool (ls::PhysicsShape const*)>) const
+
+    RaycastAll(Vector3f const&, Vector3f const&, ls::PhysicsHitAll&,
+        ls::EPhysicsType, unsigned, unsigned, ls::EPhysicsContext,
+        unsigned, unsigned, ls::Optional<ls::PhysicsSceneScopedReadLock&>) const
+
+    RaycastAny(Vector3f const&, Vector3f const&,
+        ls::EPhysicsType, unsigned, unsigned, ls::EPhysicsContext,
+        unsigned, unsigned, ls::Optional<ls::PhysicsSceneScopedReadLock&>) const
+
+**Consequence for `RaycastAll`.** `docs/deferrals.md` quarantines it because its
+"trailing by-value `ls::Optional<PhysicsSceneScopedReadLock&>`; value ABI
+unverified". That is the **same** trailing parameter as `RaycastAny`, whose
+zeroed-optional ABI is already proven GO (`RAYCAST_ABI_B4A.md`). So RaycastAll
+needs only the `ls::PhysicsHitAll&` out-parameter layout, not new ABI work --
+a materially smaller task than the registry implies. `RaycastClosest` remains
+genuinely harder: it ends in a by-value `ls::Function<bool(ls::PhysicsShape
+const*)>`, which is a different and unproven value ABI.

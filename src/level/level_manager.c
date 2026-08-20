@@ -101,9 +101,22 @@
 #define PHYSICS_VMT_TEST_SPHERE              24
 
 #if defined(__aarch64__)
+/*
+ * arm64 LC_UUID of the game image whose physics VMT has been audited.
+ *
+ * 4.1.1.7398727 = 0C51CAED-6D60-3DCD-9299-8519C92631B0. Advanced from
+ * 7209685's 9A647311-E263-3FF2-AF98-111CEDCB3034 on 2026-08-20 only after
+ * re-auditing the VMT on this build from the shipped symbols -- see
+ * ghidra/offsets/PHYSICS_VMT_AUDIT.md. Slot 10 disassembles to
+ *   phx::SimplePhysXScene::RaycastAny(Vector3f const&, Vector3f const&,
+ *       ls::EPhysicsType, unsigned, unsigned, ls::EPhysicsContext,
+ *       unsigned, unsigned, ls::Optional<ls::PhysicsSceneScopedReadLock&>) const
+ * i.e. the exact signature the B4a ABI report proved GO, and slots 8/9/11-15
+ * likewise match their PHYSICS_VMT_* constants.
+ */
 static const uint8_t s_raycast_any_verified_uuid[16] = {
-    0x9a, 0x64, 0x73, 0x11, 0xe2, 0x63, 0x3f, 0xf2,
-    0xaf, 0x98, 0x11, 0x1c, 0xed, 0xcb, 0x30, 0x34,
+    0x0c, 0x51, 0xca, 0xed, 0x6d, 0x60, 0x3d, 0xcd,
+    0x92, 0x99, 0x85, 0x19, 0xc9, 0x26, 0x31, 0xb0,
 };
 #endif
 
