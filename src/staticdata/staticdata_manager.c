@@ -1635,21 +1635,14 @@ StaticDataPtr staticdata_get_by_guid_string(StaticDataType type, const char* gui
  * the most common gap recovers the real stride directly from memory.
  * -------------------------------------------------------------------------*/
 
-/* A real UUID is high-entropy; misread bytes are mostly zero. */
-static bool guid_bytes_plausible(const uint8_t *b) {
-    int zeros = 0, ff = 0;
-    for (int i = 0; i < 16; i++) {
-        if (b[i] == 0x00) zeros++;
-        if (b[i] == 0xFF) ff++;
-    }
-    return zeros <= 6 && ff <= 6;
-}
-
-int staticdata_get_configured_entry_size(StaticDataType type) {
-    if (type < 0 || type >= STATICDATA_COUNT) return 0;
-    return g_manager_configs[type].entry_size;
-}
-
+/*
+ * Records in one bank are all the same C++ type, so they share a vtable
+ * pointer. That is a far stronger boundary marker than "these 16 bytes look
+ * like a UUID": heap bytes frequently pass an entropy test, which made an
+ * earlier version of this probe match at nearly every 8-byte step and report a
+ * stride of 8. Matching the first record's vtable pointer instead keys on an
+ * exact 64-bit value.
+ */
 int staticdata_probe_stride(StaticDataType type, int *out_hits) {
     if (out_hits) *out_hits = 0;
     StaticDataRawInfo info;
@@ -1658,47 +1651,46 @@ int staticdata_probe_stride(StaticDataType type, int *out_hits) {
         return 0;
     }
 
-    /* Bound the scan: enough to see many records, never unbounded. */
-    const int STEP = 8;
-    const size_t MAX_SCAN = 512 * 1024;
-    size_t scan = MAX_SCAN;
-
-    int hit_offsets[512];
-    int hits = 0;
-
-    for (size_t off = 0; off + 0x18 <= scan && hits < 512; off += STEP) {
-        void *vmt = NULL;
-        if (!safe_memory_read_pointer((mach_vm_address_t)info.array_ptr + off,
-                                      &vmt) || !vmt) {
-            continue;
-        }
-        uint8_t g[16];
-        bool ok = true;
-        for (int i = 0; i < 16; i++) {
-            if (!safe_memory_read_u8(
-                    (mach_vm_address_t)info.array_ptr + off + 8 + i, &g[i])) {
-                ok = false; break;
-            }
-        }
-        if (!ok || !guid_bytes_plausible(g)) continue;
-        hit_offsets[hits++] = (int)off;
+    /* The first record's vtable identifies every other record. */
+    void *vmt = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)info.array_ptr, &vmt) ||
+        !vmt) {
+        return 0;
     }
 
+    const int STEP = 8;
+    const size_t MAX_SCAN = 1024 * 1024;
+
+    int offsets[1024];
+    int hits = 0;
+    for (size_t off = 0; off + 8 <= MAX_SCAN && hits < 1024; off += STEP) {
+        void *p = NULL;
+        if (!safe_memory_read_pointer(
+                (mach_vm_address_t)info.array_ptr + off, &p)) {
+            continue;
+        }
+        if (p == vmt) offsets[hits++] = (int)off;
+    }
     if (hits < 3) return 0;
+    if (out_hits) *out_hits = hits;
 
     /* Most common gap between consecutive record starts. */
     int best_gap = 0, best_count = 0;
     for (int i = 1; i < hits; i++) {
-        int gap = hit_offsets[i] - hit_offsets[i - 1];
+        int gap = offsets[i] - offsets[i - 1];
         if (gap <= 0) continue;
         int c = 0;
         for (int j = 1; j < hits; j++) {
-            if (hit_offsets[j] - hit_offsets[j - 1] == gap) c++;
+            if (offsets[j] - offsets[j - 1] == gap) c++;
         }
         if (c > best_count) { best_count = c; best_gap = gap; }
     }
-    if (out_hits) *out_hits = hits;
     return best_gap;
+}
+
+int staticdata_get_configured_entry_size(StaticDataType type) {
+    if (type < 0 || type >= STATICDATA_COUNT) return 0;
+    return g_manager_configs[type].entry_size;
 }
 
 bool staticdata_get_guid(StaticDataType type, StaticDataPtr entry, StaticDataGuid* out_guid) {
