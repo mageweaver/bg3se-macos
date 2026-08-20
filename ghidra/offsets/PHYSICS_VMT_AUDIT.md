@@ -303,3 +303,49 @@ do not validate the pre-existing dispatches.
 - Treat Windows declaration indices as semantic ordering evidence only.
 - For each virtual call, verify both the vtable target and the complete
   demangled ARM64 signature before exposing it to Lua.
+
+## Live VMT dump — build 4.1.1.7398727 (2026-08-20)
+
+Captured from a running vanilla session. Image base `0x100a20000`
+(slide `0xa20000`); the `ghidra` column rebases to the standard
+`0x100000000` load address used by the project's Ghidra database.
+
+    PhysicsScene instance = 0xb7bf42300
+    vtable                = 0x10927aec8
+
+| slot | runtime VA | ghidra VA | current binding in `level_manager.c` |
+|---:|---|---|---|
+| 0 | `0x1066a73fc` | `0x105c873fc` | |
+| 1 | `0x1066a7400` | `0x105c87400` | |
+| 2 | `0x1066a748c` | `0x105c8748c` | |
+| 3 | `0x1066a7494` | `0x105c87494` | |
+| 4 | `0x1066a7580` | `0x105c87580` | |
+| 5 | `0x1066a7590` | `0x105c87590` | |
+| 6 | `0x1066a7598` | `0x105c87598` | |
+| 7 | `0x1066a75a8` | `0x105c875a8` | |
+| 8 | `0x1066a7634` | `0x105c87634` | RAYCAST_CLOSEST |
+| 9 | `0x1066a7760` | `0x105c87760` | RAYCAST_ALL |
+| 10 | `0x1066a7778` | `0x105c87778` | **RAYCAST_ANY** |
+| 11 | `0x1066a7790` | `0x105c87790` | SWEEP_SPHERE_CLOSEST |
+| 12 | `0x1066a77f8` | `0x105c877f8` | SWEEP_CAPSULE_CLOSEST |
+| 13 | `0x1066a7888` | `0x105c87888` | SWEEP_BOX_CLOSEST |
+| 14 | `0x1066a78e8` | `0x105c878e8` | SWEEP_CYLINDER_CLOSEST |
+| 15 | `0x1066a78f0` | `0x105c878f0` | SWEEP_SPHERE_ALL |
+| 16 | `0x1066a7958` | `0x105c87958` | |
+| 17 | `0x1066a79cc` | `0x105c879cc` | |
+| 18 | `0x1066a7a2c` | `0x105c87a2c` | |
+| 19 | `0x1066a7a34` | `0x105c87a34` | |
+| 20 | `0x1066a7a3c` | `0x105c87a3c` | |
+| 21 | `0x1066a7a44` | `0x105c87a44` | |
+| 22 | `0x1066a7a4c` | `0x105c87a4c` | |
+
+Observation worth checking during the audit: slots 8-15 are irregularly spaced
+(`+0x12c`, `+0x18`, `+0x18`, `+0x68`, `+0x90`, `+0x60`, `+0x08`), whereas slots
+18-22 are a run of tiny 8-byte stubs. The dense-stub region is characteristic of
+thunks, so index identity should be established by decompiling each target, not
+by assuming the 7209685 ordering still holds — the previous audit already found
+nine wrong-by-one indices on this VMT.
+
+**Purpose:** decompile `0x105c87778` (slot 10) in Ghidra and confirm it is
+RaycastAny before advancing `s_raycast_any_verified_uuid` to
+`0C51CAED-6D60-3DCD-9299-8519C92631B0`. See `RAYCAST_ABI_B4A.md`.
