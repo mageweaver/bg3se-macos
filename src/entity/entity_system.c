@@ -1584,7 +1584,8 @@ static int lua_entity_create_component(lua_State *L) {
         strcmp(offsets->version, COMPONENT_OPS_VERIFIED_BUILD) != 0) {
         return create_component_fail(
             L, component,
-            "ComponentOps dispatch is verified only for game build 4.1.1.7209685");
+            "ComponentOps dispatch is verified only for game build "
+            COMPONENT_OPS_VERIFIED_BUILD);
     }
 
     const ComponentInfo *info = component_registry_lookup(component);
@@ -1685,6 +1686,25 @@ static void *remove_component_fn_for(const char *component_name) {
     return NULL;
 }
 
+/*
+ * entity:RemoveComponent(name) / entity:RemoveComponentImmediate(name)
+ *
+ * DIVERGENCE. Windows has two distinct methods (LuaEntityProxy.inl:114-123):
+ *
+ *   RemoveComponent          -> EntityWorld->Deferred()->RemoveComponent(...)
+ *                               queued on the EntityCommandBuffer, applied at
+ *                               the next ECS flush
+ *   RemoveComponentImmediate -> EntityWorld->Cache->RemoveComponent(...)
+ *                               applied to the ImmediateWorldCache at once
+ *
+ * macOS emits no generic runtime-TypeIndex entry point, so this port dispatches
+ * through per-type ImmediateWorldCache::RemoveComponent<T> specializations —
+ * i.e. the *immediate* path. Both Lua names are bound to it, which makes
+ * RemoveComponentImmediate exact and RemoveComponent differ from Windows in
+ * timing: the removal lands now instead of at the next flush. Mods that rely on
+ * the deferred ordering will observe the change one flush early. Wiring the
+ * deferred path needs the EntityCommandBuffer layout, which is not yet mapped.
+ */
 static int lua_entity_remove_component(lua_State *L) {
     EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
     const char *component = luaL_checkstring(L, 2);
@@ -1718,12 +1738,18 @@ static int lua_entity_remove_component(lua_State *L) {
         return 1;
     }
 
-    typedef void (*RemoveComponentFn)(void *cache, uint64_t entity);
-    ((RemoveComponentFn)fn)(cache, (uint64_t)ud->handle);
+    /* ImmediateWorldCache::RemoveComponent<T> returns bool: false when the
+     * entity has no committed component of that type, or when a pending change
+     * already exists for it (EntitySystem.cpp:395). Propagating that return
+     * gives the Windows result semantics and makes a call against an absent
+     * component a safe, honest no-op rather than a fabricated success. */
+    typedef bool (*RemoveComponentFn)(void *cache, uint64_t entity);
+    bool removed = ((RemoveComponentFn)fn)(cache, (uint64_t)ud->handle);
 
-    LOG_ENTITY_DEBUG("RemoveComponent('%s') dispatched for entity 0x%llx",
-                     component, (unsigned long long)ud->handle);
-    lua_pushboolean(L, 1);
+    LOG_ENTITY_DEBUG("RemoveComponent('%s') dispatched for entity 0x%llx -> %s",
+                     component, (unsigned long long)ud->handle,
+                     removed ? "removed" : "not present");
+    lua_pushboolean(L, removed);
     return 1;
 }
 
@@ -2138,6 +2164,14 @@ static int lua_entity_index(lua_State *L) {
     }
     if (strcmp(key, "CreateComponent") == 0) {
         lua_pushcfunction(L, lua_entity_create_component);
+        return 1;
+    }
+    /* The dispatch table holds ImmediateWorldCache::RemoveComponent<T>
+     * specializations, which is precisely Windows' RemoveComponentImmediate.
+     * Expose it under that name too; see the divergence note on
+     * lua_entity_remove_component. */
+    if (strcmp(key, "RemoveComponentImmediate") == 0) {
+        lua_pushcfunction(L, lua_entity_remove_component);
         return 1;
     }
     if (strcmp(key, "RemoveComponent") == 0) {

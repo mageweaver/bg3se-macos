@@ -888,3 +888,60 @@ Windows `ECSChangeTracerOptions` additionally follows the entity command buffer,
 the immediate world cache, replication, and in-place component *modifications*.
 macOS observes component add/remove signals only, so modification tracking
 remains absent.
+
+## entity:RemoveComponent — findings 2026-08-20
+
+### It genuinely works
+
+Live testing removed a real component from a live entity and the effect was
+immediately observable (see the crash note below). That validates the whole
+chain: the 666-entry specialization table, the slide correction, the build gate,
+and the `EntityWorld + 0x3f0` ImmediateWorldCache pointer.
+
+### DIVERGENCE — the port implements the wrong one of two Windows methods
+
+Windows exposes two distinct methods (`LuaEntityProxy.inl:114-123`):
+
+    RemoveComponent          -> EntityWorld->Deferred()->RemoveComponent(...)
+                                queued on the EntityCommandBuffer, applied at
+                                the next ECS flush
+    RemoveComponentImmediate -> EntityWorld->Cache->RemoveComponent(...)
+                                applied to the ImmediateWorldCache at once
+
+The generated table holds `ecs::legacy::ImmediateWorldCache::RemoveComponent<T>`
+specializations — the *immediate* path — but it was bound only to the name
+`RemoveComponent`. Both names are now bound to it: `RemoveComponentImmediate` is
+exact, while `RemoveComponent` still differs from Windows in timing (the removal
+lands now rather than at the next flush). Mods depending on deferred ordering
+will observe the change one flush early. Wiring the real deferred path requires
+the EntityCommandBuffer layout, which is not mapped.
+
+### Return value was fabricated
+
+The specialization returns bool — false when there is no committed component of
+that type, or when a pending change already exists (`EntitySystem.cpp:395`). It
+was being invoked through a `void`-returning function pointer, so the result was
+discarded and every call reported success. Now propagated.
+
+### `HasRawComponent` false negative (separate pre-existing bug)
+
+`HasRawComponent("ls::VisualComponent")` returned false for the host character,
+which demonstrably *had* it: removing it freed the visual and the render thread
+segfaulted in `ls::CascadedShadowBufferStage::Submit` -> Metal `setResource`.
+The debug trace shows the cause:
+
+    ComponentTypeToIndex lookup: type=1998 ... initial_idx=-1
+    Type 1998 not found in this storage class
+    Failed: Component type not in this storage class
+
+`component_lookup_by_index` resolves through the entity's committed storage
+class and reports absence when the type is not in that class, while the game's
+own `GetCommittedComponent` finds it. HasRawComponent therefore cannot be used
+as a safety predicate for destructive operations. Root-causing the storage-class
+resolution is tracked separately; it is not introduced by RemoveComponent.
+
+### Testing rule learned
+
+Never choose a removal target by scanning for a component the entity appears to
+lack, and never test removal against the player character. Confine mutation to a
+spawned throwaway item and remove only a component created for the test.
