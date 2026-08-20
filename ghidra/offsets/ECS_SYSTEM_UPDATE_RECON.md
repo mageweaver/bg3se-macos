@@ -778,3 +778,51 @@ pair equals that index.
 If it does, `OnSystemUpdate` works today for covered systems and only the
 name-coverage gap (73 of 454) remains. If it does not, the problem is the
 TypeIndex source, not the table walk.
+
+## VERIFIED WORKING (2026-08-20) — OnSystemUpdate/OnSystemPostUpdate credited
+
+Live probe of the server `EntityWorld` on 4.1.1.7398727:
+
+    buffer @ world+0x30 = 0x861a84010
+    capacity @ +0x38    = 934
+    size     @ +0x3c    = 934
+    506 entries populated, first at slot 311
+    491 of 506 have entry+0x08 == slot
+    501 of 506 have a non-null UpdateProc at +0x18
+    slot 0 reads +0x08 = 0xffffffff, the "unset" sentinel the decompiled
+      registration initialises with
+
+An earlier scan reported "populated=0" only because it stopped at slot 300 --
+entirely inside the empty prefix. The layout was right all along.
+
+**Subscription works.** 16 of 24 sampled system names subscribed successfully,
+and a `ServerPassive` hook fired **462 times in ~12s** (~38Hz server tick)
+before unsubscribing cleanly. Both APIs are credited.
+
+### Three real limitations, none of them layout bugs
+
+1. **`Client*` systems fail against the server world.** All seven sampled
+   `Client*`/`PickingHelper` names returned "system entry is absent" while every
+   `Server*` name but `ServerDialog` succeeded. Client systems live in the
+   client `EntityWorld`; resolve them there.
+
+2. **One hook kind per system.** Subscribing `OnSystemPostUpdate` to a system
+   that already has an `OnSystemUpdate` hook fails with "original UpdateProc is
+   outside the executable game image" -- the first hook replaced the proc with
+   our trampoline and `pointer_is_game_text` correctly rejects it. Working as
+   designed, but worth documenting for callers.
+
+3. **`entry+0x0c` is not reliably a duplicate index.** 15 of 506 populated
+   entries have `+0x08 == slot` but `+0x0c` holding something else
+   (e.g. -8388605, 8388606). `resolve_system_entry` currently requires
+   *both* to equal the index (`level_manager`-style guard at
+   `ecs_system_update.c:296`), so those systems are rejected. Loosening that to
+   validate only `+0x08` would widen coverage; it was left unchanged here
+   because no sampled name needed it and tightening/loosening a safety guard
+   deserves its own evidence.
+
+### Still open: name coverage
+
+The generated table carries **73** of the **454** exported `ecs::SystemsContext`
+TypeIds, so most systems still report "Unknown system type". Widening the
+extractor's system filter is mechanical (`nm | grep ecs14SystemsContext`).

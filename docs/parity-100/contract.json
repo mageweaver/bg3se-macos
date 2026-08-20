@@ -129,14 +129,14 @@
         },
         {
           "name": "OnSystemUpdate",
-          "note": "Absent pending implementation. Wave 7 B6 recon is implementation-ready: SystemTypeEntry::UpdateProc is a swappable pointer at +0x18; ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md.",
-          "class": "behavioral_gap",
+          "note": "Live-verified 2026-08-20 on build 4.1.1.7398727. The system table walk was already correct in ecs_system_update.c; a direct array probe confirms it: EntityWorld+0x30 buffer, +0x3c size (934), stride 0xf8, 506 populated entries beginning at slot 311, 491 of them with entry+0x08 == slot, and 501 carrying a non-null UpdateProc at +0x18. Subscribing succeeded for 16 of 24 sampled system names, and a ServerPassive hook fired 462 times in ~12s (~38Hz server tick) then unsubscribed cleanly. Known limits, both documented in ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md: Client* systems fail against the server world (they live in the client EntityWorld), and the generated name table carries 73 of the 454 exported SystemsContext TypeIds.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "OnSystemPostUpdate",
-          "note": "Absent pending implementation. Same implementation-ready B6 dispatch evidence as OnSystemUpdate; ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md.",
-          "class": "behavioral_gap",
+          "note": "Registered and sharing the verified OnSystemUpdate path (same table walk and swap logic). Live-verified 2026-08-20 alongside OnSystemUpdate. Note: subscribing post-update to a system that already has an update hook fails with 'original UpdateProc is outside the executable game image', because the first hook replaced the proc with our own trampoline and pointer_is_game_text then rejects it -- the guard behaving as designed. Use one hook kind per system.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -2097,8 +2097,8 @@
   },
   "summary": {
     "total_contracts": 294,
-    "implemented": 258,
-    "behavioral_gap": 22,
+    "implemented": 260,
+    "behavioral_gap": 20,
     "matched_upstream_todo": 1,
     "excluded": 13
   },

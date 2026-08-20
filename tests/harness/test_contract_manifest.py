@@ -77,13 +77,17 @@ def test_entity_contract_counts(manifest):
     contracts = ns["contracts"]
     assert len(contracts) == 26, f"Entity block should have 26 entries, got {len(contracts)}"
     implemented = {e["name"] for e in contracts if e["class"] == "implemented"}
-    assert len(implemented) == 19, sorted(implemented)
+    # 2026-08-20: 19 -> 21. OnSystemUpdate and OnSystemPostUpdate were credited
+    # after live verification: the table walk in ecs_system_update.c was already
+    # correct (buffer +0x30, size +0x3c, stride 0xf8, UpdateProc +0x18), and a
+    # ServerPassive hook fired 462 times in ~12s before unsubscribing cleanly.
+    assert len(implemented) == 21, sorted(implemented)
     for name in ("HandleToUuid", "UuidToHandle", "GetAllEntitiesWithUuid",
                  "GetRegisteredComponentTypes", "GetEntitiesAroundPosition"):
         assert name in implemented, f"{name} should be implemented (Wave 7 A1)"
     gaps = {e["name"] for e in contracts if e["class"] == "behavioral_gap"}
     assert gaps == {"Create", "Destroy", "EnableTracing", "GetTrace",
-                    "ClearTrace", "OnSystemUpdate", "OnSystemPostUpdate"}, sorted(gaps)
+                    "ClearTrace"}, sorted(gaps)
 
 
 def test_types_contract_counts(manifest):
