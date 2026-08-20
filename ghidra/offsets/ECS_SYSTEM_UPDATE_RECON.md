@@ -945,3 +945,34 @@ resolution is tracked separately; it is not introduced by RemoveComponent.
 Never choose a removal target by scanning for a component the entity appears to
 lack, and never test removal against the player character. Confine mutation to a
 spawned throwaway item and remove only a component created for the test.
+
+## BUG — `entity:CreateComponent` can abort the process
+
+Found 2026-08-20 while testing RemoveComponent.
+
+    entity:CreateComponent("esv::status::DifficultyModifiersComponent")
+
+on a status entity terminates the game:
+
+    std::terminate -> abort (SIGABRT)
+      libbg3se.dylib lua_entity_create_component
+      ... luaV_execute
+
+`lua_entity_create_component` validates the build gate, the registry index, the
+ComponentOps entry, the vtable pointer and the AddImmediateDefaultComponent slot
+— all of which pass — and then calls the slot directly:
+
+    ((AddImmediateDefaultComponentFn)add_immediate)(ops, handle, 0);
+
+For component types that cannot be default-constructed this way the game raises a
+C++ exception, which unwinds into our C frame where there is no handler, so the
+runtime aborts. Note the failure is *not* caught by `pcall`: the process dies
+rather than the Lua call erroring.
+
+Names that are simply unregistered fail safely ("unknown component name");
+the hazard is a name that *is* registered and passes every pointer check but is
+not valid for default construction. There is currently no way to tell those apart
+before calling, so CreateComponent is unsafe for arbitrary component types.
+
+This is pre-existing and independent of RemoveComponent, which fails closed
+correctly on the same entity.
