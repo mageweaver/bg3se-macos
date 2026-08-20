@@ -265,7 +265,14 @@ def test_raycast_any_binding_is_gated():
 
     # Version + UUID gate; arm64-only with an x86_64 fail-closed fallback.
     assert "version_detect_matches()" in source
-    assert "9a, 0x64, 0x73, 0x11" in source  # audited LC_UUID gate bytes
+    # Audited LC_UUID gate bytes. These track the build whose physics VMT has
+    # actually been re-audited, and must only move together with a fresh audit
+    # in ghidra/offsets/PHYSICS_VMT_AUDIT.md -- never to make a test pass.
+    # 2026-08-20: advanced from 7209685 (9a 64 73 11 ...) to 7398727 after
+    # confirming from shipped symbols that slot 10 is
+    # phx::SimplePhysXScene::RaycastAny and slots 8/9/11-17 match their
+    # PHYSICS_VMT_* constants.
+    assert "0x0c, 0x51, 0xca, 0xed" in source  # 4.1.1.7398727 LC_UUID (arm64)
     assert "#if defined(__aarch64__)" in source
 
     # The audited RaycastAny VMT index is slot 10.

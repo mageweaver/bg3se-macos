@@ -795,8 +795,8 @@
         },
         {
           "name": "RaycastAny",
-          "note": "Warn-once stub returning false. By-value optional lock ABI unverified. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Live stress ladder PASSED 6/6 on 2026-08-20, build 4.1.1.7398727, in a loaded vanilla session. Discriminator (ray straight down through terrain from the host's position) returned true where the closed gate returned false; high-sky segment false (no false positives); include-all hits while exclude-all misses (masks honored); 5000 casts -> 2550 hits in 41ms (~8us/cast, no crash/leak); zero-length and origin rays return safe booleans. Gate advanced to this build's UUID only after re-auditing all 18 physics VMT slots from shipped symbols (ghidra/offsets/PHYSICS_VMT_AUDIT.md); slot 10 disassembles to phx::SimplePhysXScene::RaycastAny with the exact by-value ls::Optional<PhysicsSceneScopedReadLock&> signature proven GO in RAYCAST_ABI_B4A.md.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -2097,8 +2097,8 @@
   },
   "summary": {
     "total_contracts": 294,
-    "implemented": 255,
-    "behavioral_gap": 25,
+    "implemented": 256,
+    "behavioral_gap": 24,
     "matched_upstream_todo": 1,
     "excluded": 13
   },
