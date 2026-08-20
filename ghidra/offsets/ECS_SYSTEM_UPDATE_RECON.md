@@ -826,3 +826,65 @@ before unsubscribing cleanly. Both APIs are credited.
 The generated table carries **73** of the **454** exported `ecs::SystemsContext`
 TypeIds, so most systems still report "Unknown system type". Widening the
 extractor's system filter is mechanical (`nm | grep ecs14SystemsContext`).
+
+## Entity tracing: verified 2026-08-20 (build 4.1.1.7398727, vanilla Tav fixture)
+
+`Ext.Entity.EnableTracing` / `GetTrace` / `ClearTrace` were previously implemented
+but never verified in-game. Live testing found two real defects, both now fixed.
+
+### Defect 1 — tracing captured nothing (the significant one)
+
+Signal connections are injected per component type, and `entity_events_bind`
+installs hooks only for *types that already have a Lua subscription*. Because
+`EnableTracing` merely set an observer callback and installed no hooks of its
+own, `GetTrace()` returned an empty `Entities` table unless the mod happened to
+independently subscribe to the very same component type. Measured: 0 entities
+captured after applying a status; the same stimulus with a matching subscription
+captured 1.
+
+This is a genuine divergence from Windows, whose `ECSChangeTracer` hooks the ECS
+framework itself and therefore sees the whole world.
+
+Fixed with `entity_events_enable_global_capture(bool)`, which injects
+create/destroy connections across every CCR type on enable. Ownership is tracked
+in a bitmask so disable removes only our own connections and never tears down a
+connection belonging to a real Lua subscription. Measured on the fixture:
+1425 types hooked / 1290 skipped (NULL ComponentCallbacks) out of CCR 2715,
+clean removal on disable, 11 entities and 33 component entries captured with no
+subscriptions active.
+
+### Defect 2 — Lua surface did not match Windows
+
+Windows exposes (`PropertyMaps/CommonTypes.inl`, `ExtIdeHelpers.lua`):
+
+    ECSEntityLog    { Entity : EntityHandle, Components, Create, Dead,
+                      Destroy, Ignore, Immediate }
+    ECSComponentLog { Name, Type, Create, Destroy, OneFrame, Replicate,
+                      ReplicatedComponent }
+
+`Flags` is `P_BITMASK`, so on Windows it surfaces as *named booleans*, not an
+integer. The port emitted `Entity` as a bare integer and only integer `Flags` /
+`ComponentType`, so Windows mod code reading `c.Name` or `log.Entities[h].Create`
+got nil. `Entity` is now a real `BG3Entity` proxy (method calls verified) and both
+logs carry the Windows boolean fields; `Name`/`Type` come from the ECS component
+registry, which covers every CCR type, rather than the property-layout table,
+which only describes the subset whose fields are mapped. The integer
+`ComponentType`/`Flags` are retained as macOS extras alongside them.
+
+### Known limitation — `OneFrame` is always false
+
+One-frame status is encoded as bit `0x8000` of the component type index. The
+index reaching us in the signal payload (`FunctionStorage + 0x18`) has that bit
+already stripped, and the component registry stores the stripped value too —
+confirmed by `esv::hit::HitNotificationEventOneFrameComponent`, which reports
+`OneFrame=false` despite its name. Neither available source carries the bit, so
+the field is emitted as false rather than inferred from a name suffix. This
+affects the pre-existing registry consumers (`Ext.Entity` component info) equally
+and is not introduced by tracing.
+
+### Still divergent from Windows
+
+Windows `ECSChangeTracerOptions` additionally follows the entity command buffer,
+the immediate world cache, replication, and in-place component *modifications*.
+macOS observes component add/remove signals only, so modification tracking
+remains absent.

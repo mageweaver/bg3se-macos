@@ -188,6 +188,22 @@ void entity_events_set_transition(bool in_transition);
  * Set the process-wide observer invoked for create/destroy notifications.
  * Pass NULL to remove the observer. The callback may run on a worker thread.
  */
+/**
+ * Enable or disable global component-change capture.
+ *
+ * Injects (or removes) create/destroy signal connections for every component
+ * type in the CCR, so Ext.Entity.EnableTracing observes the whole world the way
+ * the Windows ECSChangeTracer does, rather than only the types that happen to
+ * have a Lua subscription.
+ *
+ * Only connections installed by this call are removed on disable; connections
+ * owned by real Lua subscriptions are left in place.
+ *
+ * @return number of component types hooked (enable) or unhooked (disable),
+ *         or -1 if the entity world is not bound.
+ */
+int entity_events_enable_global_capture(bool enable);
+
 void entity_events_set_observer(EntityEventsObserver observer);
 
 /**

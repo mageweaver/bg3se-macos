@@ -18,6 +18,10 @@
 #include "entity_tracing.h"
 
 #include "entity_events.h"
+#include "entity_system.h"
+#include "component_property.h"
+#include "component_registry.h"
+#include "../lifetime/lifetime.h"
 #include "../core/logging.h"
 
 #include <lauxlib.h>
@@ -125,7 +129,18 @@ static int entity_tracing_lua_enable(lua_State *L) {
     g_entity_tracing_enabled = enable;
     pthread_mutex_unlock(&g_entity_tracing_mutex);
 
-    log_message("[INFO] [EntityTracing] Capture %s", enable ? "enabled" : "disabled");
+    /* Without global capture the observer only ever sees component types that
+     * some mod already subscribed to, which made tracing appear to work while
+     * silently recording nothing. */
+    int types = entity_events_enable_global_capture(enable);
+    if (types < 0) {
+        log_message("[WARN] [EntityTracing] Global capture unavailable "
+                    "(entity world not bound) — trace will only observe "
+                    "component types with active subscriptions");
+    }
+
+    log_message("[INFO] [EntityTracing] Capture %s (%d types)",
+                enable ? "enabled" : "disabled", types);
     lua_pushboolean(L, true);
     return 1;
 }
@@ -135,6 +150,7 @@ static int entity_tracing_lua_disable(lua_State *L) {
     g_entity_tracing_enabled = false;
     pthread_mutex_unlock(&g_entity_tracing_mutex);
 
+    entity_events_enable_global_capture(false);
     log_message("[INFO] [EntityTracing] Capture disabled");
     lua_pushboolean(L, true);
     return 1;
@@ -159,6 +175,48 @@ static int entity_tracing_lua_disable(lua_State *L) {
  * so Components entries reflect those; there is no modification tracking. The
  * Enabled/Dropped fields are macOS extras retained for diagnostics.
  */
+/*
+ * Windows exposes ECSEntityLog::Entity as an EntityHandle, which surfaces in
+ * Lua as an entity proxy — not a bare integer. Mirror that so mod code can do
+ * `log.Entities[h].Entity:GetComponent(...)` exactly as it does on Windows.
+ */
+static void trace_push_entity(lua_State *L, uint64_t handle) {
+    EntityUserdata *ud = (EntityUserdata*)lua_newuserdata(L, sizeof(EntityUserdata));
+    ud->handle = (EntityHandle)handle;
+    ud->lifetime = lifetime_lua_get_current(L);
+    luaL_getmetatable(L, "BG3Entity");
+    lua_setmetatable(L, -2);
+}
+
+/* Windows ECSComponentLog exposes Name (StringView) and Type (ExtComponentType?).
+ *
+ * The name comes from the ECS component registry, which covers every CCR type,
+ * not from the property-layout table — that only describes the subset of
+ * components whose fields we have mapped, so it leaves Name nil for most of the
+ * types global tracing now observes. */
+static void trace_set_component_name(lua_State *L, uint16_t type_index) {
+    const ComponentInfo *info = component_registry_lookup_by_index(type_index);
+    if (info && info->name && info->name[0]) {
+        lua_pushstring(L, info->name);
+        lua_setfield(L, -2, "Name");
+        lua_pushstring(L, info->name);
+        lua_setfield(L, -2, "Type");
+        /* Windows sources OneFrame from the component type itself. */
+        lua_pushboolean(L, info->is_one_frame);
+        lua_setfield(L, -2, "OneFrame");
+        return;
+    }
+    const ComponentLayoutDef *def = component_property_get_layout_by_index(type_index);
+    if (def && def->componentName) {
+        lua_pushstring(L, def->componentName);
+        lua_setfield(L, -2, "Name");
+        if (def->shortName) {
+            lua_pushstring(L, def->shortName);
+            lua_setfield(L, -2, "Type");
+        }
+    }
+}
+
 static int entity_tracing_lua_get_trace(lua_State *L) {
     EntityTracingSnapshot snapshot;
 
@@ -193,10 +251,16 @@ static int entity_tracing_lua_get_trace(lua_State *L) {
             lua_pop(L, 1);
             lua_createtable(L, 0, 3);
 
-            lua_pushinteger(L, (lua_Integer)r->entity_handle);
+            trace_push_entity(L, r->entity_handle);
             lua_setfield(L, -2, "Entity");
             lua_pushinteger(L, 0);
             lua_setfield(L, -2, "Flags");
+            /* Windows ECSEntityLog bitmask, flattened to named booleans. */
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Create");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Destroy");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Dead");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Ignore");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Immediate");
             lua_newtable(L);
             lua_setfield(L, -2, "Components");
 
@@ -211,6 +275,8 @@ static int entity_tracing_lua_get_trace(lua_State *L) {
         lua_pop(L, 1);
         lua_pushinteger(L, flags | (lua_Integer)entity_flag);
         lua_setfield(L, -2, "Flags");
+        lua_pushboolean(L, 1);
+        lua_setfield(L, -2, (r->op == ENTITY_TRACING_OP_CREATE) ? "Create" : "Destroy");
 
         /* Components[typeIndex] : fetch-or-create, then OR the flag */
         lua_getfield(L, -1, "Components");
@@ -223,6 +289,13 @@ static int entity_tracing_lua_get_trace(lua_State *L) {
             lua_setfield(L, -2, "ComponentType");
             lua_pushinteger(L, 0);
             lua_setfield(L, -2, "Flags");
+            /* Windows ECSComponentLog bitmask, flattened to named booleans. */
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Create");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Destroy");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "OneFrame");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "Replicate");
+            lua_pushboolean(L, 0); lua_setfield(L, -2, "ReplicatedComponent");
+            trace_set_component_name(L, r->type_index);
 
             lua_pushinteger(L, (lua_Integer)r->type_index);
             lua_pushvalue(L, -2);
@@ -233,6 +306,8 @@ static int entity_tracing_lua_get_trace(lua_State *L) {
         lua_pop(L, 1);
         lua_pushinteger(L, cflags | (lua_Integer)entity_flag);
         lua_setfield(L, -2, "Flags");
+        lua_pushboolean(L, 1);
+        lua_setfield(L, -2, (r->op == ENTITY_TRACING_OP_CREATE) ? "Create" : "Destroy");
 
         lua_pop(L, 2);   /* component log, Components */
         lua_pop(L, 1);   /* entity log */

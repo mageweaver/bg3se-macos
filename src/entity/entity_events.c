@@ -1075,6 +1075,96 @@ void entity_events_fire_deferred(lua_State *L) {
     g_deferred_unsub_count = 0;
 }
 
+// ============================================================================
+// Global trace capture
+// ============================================================================
+//
+// Windows' ECSChangeTracer hooks the ECS framework itself, so EnableTracing
+// observes every component change in the world. Our signal-injection design is
+// per-component-type, and hooks are normally installed only for types that have
+// a Lua subscription — which made tracing silently capture nothing unless the
+// mod happened to also subscribe to the same type.
+//
+// Global capture closes that gap by injecting into every CCR type on enable.
+// Types we install are recorded in g_trace_mask so that disabling removes only
+// our own connections and leaves genuine Lua subscriptions untouched.
+
+static uint8_t *g_trace_mask = NULL;
+static uint32_t g_trace_mask_size = 0;
+
+int entity_events_enable_global_capture(bool enable) {
+    if (!g_initialized || !g_bound_world) return -1;
+
+    void *ccr_buf = NULL;
+    uint32_t ccr_size = 0;
+    if (!safe_memory_read_pointer(
+            (mach_vm_address_t)((uintptr_t)g_bound_world + CCR_BUF_OFFSET), &ccr_buf)) return -1;
+    if (!safe_memory_read_u32(
+            (mach_vm_address_t)((uintptr_t)g_bound_world + CCR_SIZE_OFFSET), &ccr_size)) return -1;
+    if (!ccr_buf || ccr_size == 0 || ccr_size >= 65535) return -1;
+
+    if (enable) {
+        if (!g_trace_mask) {
+            g_trace_mask = (uint8_t*)calloc((ccr_size + 7) / 8, 1);
+            if (!g_trace_mask) return -1;
+            g_trace_mask_size = ccr_size;
+        }
+
+        int installed = 0, skipped = 0;
+        for (uint32_t i = 0; i < ccr_size && i < g_trace_mask_size; i++) {
+            if (g_trace_mask[i >> 3] & (uint8_t)(1u << (i & 7))) continue;
+
+            // Skip types with no ComponentCallbacks rather than letting
+            // install_signal_hook log a warning for each of them.
+            void *callbacks = NULL;
+            if (!safe_memory_read_pointer(
+                    (mach_vm_address_t)((uintptr_t)ccr_buf + (uintptr_t)i * 8), &callbacks)
+                || !callbacks) { skipped++; continue; }
+
+            if (!ensure_signal_hooks_capacity((uint16_t)i)) { skipped++; continue; }
+
+            // Only claim ownership of hooks that did not already exist, so a
+            // later disable cannot tear down a real subscription's connection.
+            bool preexisting = g_signal_hooks[i].construct_registrant != SIGNAL_HOOK_NONE
+                            || g_signal_hooks[i].destroy_registrant != SIGNAL_HOOK_NONE;
+
+            if (install_signal_hook((uint16_t)i,
+                                    ENTITY_EVENT_CREATE | ENTITY_EVENT_DESTROY)) {
+                if (!preexisting) {
+                    g_trace_mask[i >> 3] |= (uint8_t)(1u << (i & 7));
+                    installed++;
+                }
+            } else {
+                skipped++;
+            }
+        }
+
+        log_message("[INFO] [EntityEvents] Global trace capture ON "
+                    "(%d types hooked, %d skipped, CCR %u)", installed, skipped, ccr_size);
+        return installed;
+    }
+
+    if (!g_trace_mask) return 0;
+
+    int removed = 0;
+    for (uint32_t i = 0; i < g_trace_mask_size; i++) {
+        if (!(g_trace_mask[i >> 3] & (uint8_t)(1u << (i & 7)))) continue;
+        // A Lua subscription may have appeared for this type while tracing was
+        // active; in that case the hook must survive.
+        if (!is_type_hooked((uint16_t)i)) {
+            remove_signal_hook((uint16_t)i);
+            removed++;
+        }
+        g_trace_mask[i >> 3] &= (uint8_t)~(1u << (i & 7));
+    }
+    free(g_trace_mask);
+    g_trace_mask = NULL;
+    g_trace_mask_size = 0;
+
+    log_message("[INFO] [EntityEvents] Global trace capture OFF (%d types unhooked)", removed);
+    return removed;
+}
+
 void entity_events_on_create(uint16_t type_index, uint64_t entity_handle,
                               void *component, lua_State *L) {
     if (!g_initialized || !L) return;
