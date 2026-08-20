@@ -1145,3 +1145,53 @@ reads is cheap next to branching into std::terminate.
 
 Both previously-wrong directions are now correct, and this is the probe that
 should have been used to verify Ext.Entity.Destroy in the first place.
+
+## BUG — `Ext.StaticData.GetAll` returned mostly misaligned garbage (2026-08-20)
+
+`ActionResource` enumeration used `entry_size = 0x80`. Sampling the
+`ResourceUUID` of every enumerated entry in-game showed a clean period-3
+pattern:
+
+    [1] 734cbcfb-8922-4b6d-3083-a7b2c1e46a4b   real
+    [2] 6f430000-0ff2-17c0-0300-000002000000   garbage
+    [3] 00000000-0000-0000-0000-000000000000   zero
+    [4] d136c5d9-0ff0-43da-ceac-4aa7f807bfd6   real
+    [7] f82e9e53-1391-4555-b395-52adb8c359e2   real
+
+Grouping all 87 entries by index mod 3:
+
+    residue 0: 29/29 well-formed      <- 100%
+    residue 1: 16/29
+    residue 2:  7/29
+
+A residue class that is 100% valid while the others are not is the signature of
+a stride exactly three times too small, so the true entry size is
+`3 * 0x80 = 0x180`. Two thirds of what `GetAll("ActionResource")` returned were
+misaligned reads presented to Lua as real resources.
+
+Note the UUIDs still *pattern-match* a GUID (hex and dashes in the right places),
+so a shape check does not catch this; only entropy does. Roughly 40% of entries
+were all-zero or near-all-zero.
+
+### Method note — a retracted argument
+
+An intermediate reading of this claimed the stride was corroborated because
+consecutive entries' `_ptr` values were 0x80 apart. That was circular: the port
+computes those pointers as `array + i * entry_size`, so they are 0x80 apart by
+construction regardless of the true layout. The residue analysis above is the
+actual evidence.
+
+### Other types
+
+`Background` shows the same disease (only ~59% of entries well-formed) but its
+22 entries were too few to identify the true multiple — the best candidate was 6
+at 75% over 4 samples. Its `BACKGROUND_SIZE` is left unchanged and explicitly
+annotated as unverified rather than guessed. `ORIGIN_SIZE` is likewise still an
+estimate. The remaining types had no entries loaded in this session, so they
+could not be measured.
+
+Related: `staticdata_get_guid` assumes the UUID sits at `+0x08` for every type,
+verified only for Feat. Windows models every static-data type as deriving from
+`resource::GuidResource { void* VMT; Guid ResourceUUID; }`, which puts the UUID
+at +0x08 uniformly, and the 29/29 valid ActionResource reads at that offset
+support it. macOS ships no `GuidResource` symbol to confirm the name directly.

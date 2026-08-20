@@ -64,7 +64,12 @@
 #define ORIGIN_OFFSET_NAME            0x1C   // FixedString Name (aligned after uint8_t)
 
 // Background structure - NO Name field, only DisplayName (TranslatedString)
-#define BACKGROUND_SIZE               0x80   // Estimate
+/* UNVERIFIED estimate. Measured 2026-08-20: enumeration yields well-formed
+ * ResourceUUIDs for only ~59% of entries, so this stride is probably wrong too,
+ * but 22 entries were too few to identify the true multiple with confidence
+ * (best candidate was 6 at 75% over 4 samples). Left alone deliberately rather
+ * than guessed. */
+#define BACKGROUND_SIZE               0x80   // Estimate — see note above
 #define BACKGROUND_OFFSET_NAME        0      // No FixedString Name field!
 
 // God structure
@@ -104,7 +109,12 @@ static const ManagerConfig g_manager_configs[STATICDATA_COUNT] = {
     // STATICDATA_PROGRESSION
     { 0x7C, 0x80, 0x200, 0x18, "/tmp/bg3se_progressionmanager.txt" },
     // STATICDATA_ACTIONRESOURCE
-    { 0x7C, 0x80, 0x80, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
+    // entry_size measured in-game 2026-08-20, not estimated: with 0x80 only
+    // every third enumerated entry carried a well-formed ResourceUUID
+    // (residue 0 mod 3 was 29/29 valid, the other residues 16/29 and 7/29),
+    // which is the signature of a stride three times too small. GetAll was
+    // therefore returning ~2/3 misaligned garbage.
+    { 0x7C, 0x80, 0x180, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
     // STATICDATA_FEATDESCRIPTION
     { 0x7C, 0x80, 0x80, 0, "/tmp/bg3se_featdescmanager.txt" },  // Has TranslatedString, not FixedString
 };
