@@ -184,6 +184,16 @@ EntityHandle entity_get_by_guid(const char *guid_str);
 bool entity_is_alive(EntityHandle handle);
 
 /**
+ * True if a game function pointer is a compiled-out std::terminate stub.
+ *
+ * macOS ships many template specializations whose body is only:
+ *     stp x29, x30, [sp, #-0x10]! ; mov x29, sp ; bl <__stubs -> std::terminate>
+ * The pointer is valid, so null and bounds checks do not catch it; branching in
+ * kills the process. Check before any indirect call into such a family.
+ */
+bool game_fn_is_terminate_stub(void *fn);
+
+/**
  * Get a component from an entity.
  * Returns NULL if entity doesn't have the component.
  */

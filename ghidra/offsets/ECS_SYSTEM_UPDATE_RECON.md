@@ -1096,3 +1096,42 @@ This also exercises the working side of the CreateComponent stub fix:
 AddImmediateDefaultComponent, and it succeeds, while
 `esv::status::DifficultyModifiersComponent` (a std::terminate stub) now returns
 false instead of killing the process.
+
+## `entity:IsAlive` was a stub — now a real liveness query (2026-08-20)
+
+`entity_is_alive` returned true for any well-formed handle:
+
+    if (!entity_is_valid(handle) || !g_EntityWorld) return false;
+    // TODO: Check entity storage for validity
+    return true;
+
+so `IsAlive` was wrong in *both* directions — true for a handle that was never
+created, and still true after the engine destroyed the entity. This is worse
+than a missing API, because a mod can reasonably use IsAlive as a guard before
+touching an entity. It is also what made the first two attempts at verifying
+Ext.Entity.Destroy meaningless.
+
+It now routes through `component_lookup_get_storage_data`, which calls the
+game's own `EntityStorageContainer::TryGet`, and additionally confirms the
+handle has an entry in that storage class via InstanceToPageMap. Only the Lua
+binding calls it, so there is no internal regression surface.
+
+Caveat: an entity holding no components at all may belong to no storage class
+and is reported not-alive. That is the conservative direction for a guard.
+
+Note `Ext.Entity.GetByHandle` still resolves any well-formed handle and does not
+imply the entity exists; it was returning proxies for freshly created handles
+before any flush. Its semantics are left alone here.
+
+## Terminate-stub audit of the RemoveComponent table
+
+Since 1922 of 2647 AddImmediateDefaultComponent slots are compiled-out
+`std::terminate` stubs, the 666 `ImmediateWorldCache::RemoveComponent<T>`
+addresses the port dispatches through were audited the same way:
+
+    666 entries -> 666 real bodies, 0 terminate stubs, 0 outside __text
+
+So RemoveComponent is not exposed to this failure mode on 4.1.1.7398727. The
+check was still generalized to `game_fn_is_terminate_stub()` and applied on that
+path, because a future build could compile any specialization out and three word
+reads is cheap next to branching into std::terminate.

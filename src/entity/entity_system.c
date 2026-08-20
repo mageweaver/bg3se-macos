@@ -929,13 +929,43 @@ static const char* entity_get_guid_from_cache(EntityHandle handle) {
     return NULL;
 }
 
+/*
+ * Real liveness, not a handle-shape check.
+ *
+ * This previously returned true for any well-formed handle, which made
+ * entity:IsAlive wrong in both directions: true for a handle that was never
+ * created, and still true for one the engine had already destroyed. Mods can
+ * reasonably treat IsAlive as a guard before touching an entity, so a
+ * permanently-true answer is worse than no answer.
+ *
+ * component_lookup_get_storage_data routes through the game's own
+ * EntityStorageContainer::TryGet, so a NULL result means the engine does not
+ * know this entity. Confirming the handle also has an entry in that storage
+ * class via InstanceToPageMap rules out a stale storage pointer.
+ *
+ * Caveat: an entity carrying no components at all may not belong to any storage
+ * class, and is reported not-alive. That is the conservative direction for a
+ * guard, and the case is rare outside the tick in which an entity is created.
+ */
 bool entity_is_alive(EntityHandle handle) {
     if (!entity_is_valid(handle) || !g_EntityWorld) {
         return false;
     }
 
-    // TODO: Check entity storage for validity
-    return true;
+    if (!component_lookup_ready()) {
+        /* Without the storage lookup we cannot answer; say no rather than
+         * inventing a yes. */
+        return false;
+    }
+
+    void *storage_data = component_lookup_get_storage_data((uint64_t)handle);
+    if (!storage_data) {
+        return false;
+    }
+
+    EntityStorageIndex index;
+    return storage_data_get_instance_index(storage_data, (uint64_t)handle,
+                                           &index);
 }
 
 void* entity_get_component(EntityHandle handle, ComponentType type) {
@@ -1643,7 +1673,7 @@ static int lua_entity_destroy(lua_State *L) {
 }
 
 /*
- * Is this AddImmediateDefaultComponent slot a std::terminate stub?
+ * Is this game function a compiled-out std::terminate stub?
  *
  * macOS ships 2647 ecs::ComponentOps<T>::AddImmediateDefaultComponent
  * specializations, but only 725 are real. The other 1922 (72.6%) are compiled
@@ -1659,7 +1689,7 @@ static int lua_entity_destroy(lua_State *L) {
  * not help: there is nothing to unwind and no exception to catch. The only safe
  * option is to recognise the shape and refuse before branching.
  */
-static bool add_immediate_is_terminate_stub(void *fn) {
+bool game_fn_is_terminate_stub(void *fn) {
     if (!fn) return true;
     uint32_t w[3];
     for (int i = 0; i < 3; i++) {
@@ -1744,7 +1774,7 @@ static int lua_entity_create_component(lua_State *L) {
     /* Most of these slots are compiled out to a std::terminate stub on macOS.
      * Entering one kills the process outright, so the shape must be checked
      * before the branch is taken. */
-    if (add_immediate_is_terminate_stub(add_immediate)) {
+    if (game_fn_is_terminate_stub(add_immediate)) {
         return create_component_fail(
             L, component,
             "AddImmediateDefaultComponent is not implemented for this component "
@@ -1857,6 +1887,17 @@ static int lua_entity_remove_component(lua_State *L) {
      * ComponentTypeIndex) is a *different*, non-template function. Reading a
      * return value here would just be reading whatever happens to be in w0, so
      * true means only "a specialization existed and was dispatched". */
+    /* All 666 covered specializations are real bodies on 4.1.1.7398727, but a
+     * future build could compile any of them out to a terminate stub the way
+     * most AddImmediateDefaultComponent slots are. Three word reads is cheap
+     * insurance against branching into one. */
+    if (game_fn_is_terminate_stub(fn)) {
+        LOG_ENTITY_DEBUG("RemoveComponent('%s'): specialization is a "
+                         "std::terminate stub on this build", component);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
     typedef void (*RemoveComponentFn)(void *cache, uint64_t entity);
     ((RemoveComponentFn)fn)(cache, (uint64_t)ud->handle);
 
