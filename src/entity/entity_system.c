@@ -8,6 +8,8 @@
 #include "entity_system.h"
 #include "entity_events.h"
 #include "generated_remove_component.h"
+#include "component_ops_guard.h"
+#include "entity_lifecycle.h"
 #include "component_registry.h"
 #include "component_lookup.h"
 #include "component_typeid.h"
@@ -1572,6 +1574,75 @@ static int create_component_fail(lua_State *L, const char *component,
 //   idx = ComponentTypeId & 0x7fff
 //   ops = EntityWorld.ComponentOpsRegistry[idx]
 //   ops->vptr[5](ops, EntityHandle, 0)
+/*
+ * Ext.Entity.Create() -> entity proxy | nil, error
+ *
+ * Queues creation on this thread's EntityCommandBuffer; the entity materializes
+ * when the buffer is flushed, matching Windows, where entity lifecycle goes
+ * through EntityWorld->Deferred(). The returned handle is already minted by
+ * EntityHandleGenerator, so it is valid to hold immediately, but component
+ * queries against it only succeed after the flush.
+ */
+static int lua_entity_create(lua_State *L) {
+    if (!entity_lifecycle_available()) {
+        lua_pushnil(L);
+        lua_pushstring(L, "Entity lifecycle is verified only for game build "
+                          "4.1.1.7398727");
+        return 2;
+    }
+    void *world = g_ServerEntityWorld;
+    if (!world) {
+        lua_pushnil(L);
+        lua_pushstring(L, "Server EntityWorld is unavailable");
+        return 2;
+    }
+    uint64_t handle = entity_lifecycle_create(world);
+    if (!handle) {
+        lua_pushnil(L);
+        lua_pushstring(L, "EntityCommandBuffer unavailable on this thread");
+        return 2;
+    }
+    EntityUserdata *ud = (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
+    ud->handle = (EntityHandle)handle;
+    ud->lifetime = lifetime_lua_get_current(L);
+    luaL_getmetatable(L, "BG3Entity");
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+/*
+ * Ext.Entity.Destroy(entity|handle) -> boolean
+ * Queues destruction on the command buffer; applied at the next flush.
+ */
+static int lua_entity_destroy(lua_State *L) {
+    if (!entity_lifecycle_available()) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "Entity lifecycle is verified only for game build "
+                          "4.1.1.7398727");
+        return 2;
+    }
+    uint64_t handle = 0;
+    if (lua_isuserdata(L, 1)) {
+        EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+        if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+            return lifetime_lua_expired_error(L, "Entity");
+        }
+        handle = (uint64_t)ud->handle;
+    } else if (lua_isinteger(L, 1)) {
+        handle = (uint64_t)lua_tointeger(L, 1);
+    } else {
+        return luaL_error(L, "Destroy: expected an entity or handle");
+    }
+    void *world = g_ServerEntityWorld;
+    if (!world) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "Server EntityWorld is unavailable");
+        return 2;
+    }
+    lua_pushboolean(L, entity_lifecycle_destroy(world, handle) ? 1 : 0);
+    return 1;
+}
+
 static int lua_entity_create_component(lua_State *L) {
     EntityUserdata *ud = (EntityUserdata*)luaL_checkudata(L, 1, "BG3Entity");
     if (!lifetime_lua_is_valid(L, ud->lifetime)) {
@@ -1640,8 +1711,16 @@ static int lua_entity_create_component(lua_State *L) {
             L, component, "ComponentOps AddImmediateDefaultComponent slot is null");
     }
 
-    ((AddImmediateDefaultComponentFn)add_immediate)(
-        ops, (uint64_t)ud->handle, 0);
+    /* Not every registered component type is default-constructible; the game
+     * throws for those. A C caller gives the unwinder no handler to find, so the
+     * process aborts through std::terminate before pcall can see anything. Call
+     * through a C++ frame so a throw becomes a false return instead. */
+    if (!bg3se_add_immediate_default_component_guarded(
+            add_immediate, ops, (uint64_t)ud->handle, 0)) {
+        return create_component_fail(
+            L, component,
+            "component type is not default-constructible (call threw)");
+    }
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -3283,6 +3362,11 @@ void entity_register_lua(lua_State *L) {
     lua_setfield(L, -2, "DumpUuidMap");
 
     // Entity enumeration API
+    lua_pushcfunction(L, lua_entity_create);
+    lua_setfield(L, -2, "Create");
+    lua_pushcfunction(L, lua_entity_destroy);
+    lua_setfield(L, -2, "Destroy");
+
     lua_pushcfunction(L, lua_entity_get_all);
     lua_setfield(L, -2, "GetAllEntities");
 

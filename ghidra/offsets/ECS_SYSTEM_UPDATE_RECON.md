@@ -1005,3 +1005,55 @@ before calling, so CreateComponent is unsafe for arbitrary component types.
 
 This is pre-existing and independent of RemoveComponent, which fails closed
 correctly on the same entity.
+
+## Entity lifecycle unlocked — EntityCommandBuffer reached (2026-08-20)
+
+`Ext.Entity.Create`/`Destroy` were deferred as "engine entity lifecycle
+(allocator + handle mint) not recovered". Both are now implemented, because the
+command buffer turned out to be directly reachable.
+
+Symbols exist for the entry points:
+
+    0x10636764c  ecs::EntityCommandBuffer::CreateEntity()
+    0x10636769c  ecs::EntityCommandBuffer::DestroyEntity(ls::ID<EntityHandleTraits>)
+    0x1063676ec  ecs::EntityCommandBuffer::Flush(ecs::ECBExecutor&)
+
+`CreateEntity` disassembles to a short, unambiguous body:
+
+    x0 = [this]                    ; +0x00 EntityHandleGenerator*
+    bl EntityHandleGenerator::Create -> handle in x0
+    x0 = this+0x10, x2 = [this+0x8]  ; +0x10 change map, +0x08 FrameAllocator*
+    bl PagedHashMap::EnsureUniversal  -> ECBEntityChange*
+    [x0+0x28] |= 1                   ; bit0 = Create
+    ret handle
+
+`DestroyEntity` is the same shape, sets bit1, returns void.
+
+The missing piece was how to obtain the buffer. Scanning `__text` for BL
+instructions targeting either function found exactly four call sites
+(0x1036837a4, 0x1037812b4, 0x104a6455c, 0x105202fd4), and every one uses an
+identical sequence:
+
+    ldr    x20, [x27]              ; EntityWorld*
+    bl     ls::ThreadRegistry::RequestThreadIndex()   ; 0x1065401c0
+    ldr    x8,  [x20, #0x230]      ; per-thread EntityCommandBuffer array
+    mov    w9,  #0xc0              ; stride 192
+    smaddl x0,  w0, w9, x8         ; ecb = array + threadIndex * 0xC0
+    bl     CreateEntity / DestroyEntity
+
+So:
+
+    EntityWorld + 0x230  -> EntityCommandBuffer[]   (per thread, stride 0xC0)
+
+Because the buffer is per-thread, it must be resolved on the submitting thread;
+a cached pointer would post commands into another thread's frame storage. The
+port resolves it per call and shape-checks +0x00 and +0x08 before use.
+
+Both operations are deferred and land at the next flush, which matches Windows,
+where entity lifecycle goes through `EntityWorld->Deferred()`.
+
+Note this also identifies the container Windows' *deferred* `RemoveComponent`
+uses. `ecs::EntityCommandBuffer` exposes only CreateEntity, DestroyEntity,
+`AccessAddStorage<T>` and `Flush` as symbols, so the deferred remove path is
+inlined or templated and is not yet callable; the RemoveComponent timing
+divergence therefore still stands.
