@@ -1213,3 +1213,45 @@ slots are still reading something that is not a resource UUID — either the rea
 element count is below 87, or those slots hold a different record. 85 of 87 are
 clean and distinct, so the enumeration is now sound in the main; this is logged
 as a known residual rather than papered over.
+
+## Static-data strides: measured, and a correction to the earlier "fix"
+
+Final state, both confirmed by an independent probe *and* by clean enumeration:
+
+    Background      cfg 0x70 = measured 0x70, 22 records, 22/22 valid, 22 distinct
+    ActionResource  cfg 0x60 = measured 0x60, 87 records, 87/87 valid, 87 distinct
+
+### The 0x180 value committed earlier was wrong
+
+ActionResource's true stride is `0x60`. Both previous values failed differently:
+
+- `0x80` is not a multiple of `0x60`, so reads realigned with real record
+  boundaries only every `0x180`. That produced exactly the period-3
+  real/garbage/garbage pattern observed, and 29/87 valid.
+- `0x180` is `4 * 0x60`, so every read landed *on* a boundary. All 87 UUIDs came
+  back well-formed and the stated prediction appeared to hold — while silently
+  returning only every fourth resource and running far past the end of the
+  array. The lone "duplicate" at indices 33 and 65 was a symptom of reading off
+  the end, not a real duplicate.
+
+**An all-valid enumeration is not evidence of a correct stride** — only of a
+stride that is some multiple of the true one. Entropy of the resulting UUIDs
+cannot distinguish those two cases; only locating record boundaries can.
+
+### Method
+
+Records in a bank share a C++ type and therefore a vtable pointer, so matching
+the first record's vtable is an exact 64-bit test for a record boundary. The gap
+histogram then gives the stride directly. An earlier version of the probe looked
+for high-entropy bytes at +0x08 instead and matched at nearly every 8-byte step,
+reporting a stride of 8 — heap bytes pass an entropy test far too easily.
+
+The measured record counts (22 and 87) match each bank's `count@+0x7C`
+independently, and `0x60` also agrees with the ~0x68 that Windows'
+`ActionResource` struct sums to, which was initially dismissed as disagreeing
+with 0x180.
+
+Remaining types (Feat, Race, Origin, God, Class, Progression, FeatDescription)
+have no manager captured in a normal session, so their entry sizes are still
+unverified estimates. `Ext.StaticData.ProbeStride(type)` will measure any of
+them the moment its manager is captured.
