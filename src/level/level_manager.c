@@ -1607,6 +1607,93 @@ static bool physics_raycast_any_arm64(void *function, void *scene,
 }
 
 /*
+ * RaycastClosest — macOS ARM64 VMT[8]. Audited signature:
+ *
+ *   phx::SimplePhysXScene::RaycastClosest(Vector3f const&, Vector3f const&,
+ *       ls::PhysicsHit&, ls::EPhysicsType, unsigned, unsigned,
+ *       ls::EPhysicsContext, unsigned, unsigned,
+ *       ls::Function<bool (ls::PhysicsShape const*)>) const
+ *
+ * The registry quarantined this because the trailing by-value ls::Function had
+ * "unverified C representation, construction, destruction, and ownership".
+ * Decompiling the thunk and PhysXSceneHelpers::RaycastClosest settles all four:
+ *
+ *   ls::Function is 0x40 bytes: MethodTable* at +0x00, Storage at +0x08.
+ *   Being larger than 16 bytes it is passed INDIRECTLY under AAPCS64 -- the
+ *   caller places a pointer to the value on the stack.
+ *
+ *   The callee branches on the MethodTable pointer:
+ *       lVar4 = *fn;
+ *       if (lVar4 == 0)  ... s_IgnoreFilterClosest ...   <-- engine default
+ *       else             ... copy-construct / wrap / destroy ...
+ *
+ * So an all-zero Function is a first-class "no shape filter" value that selects
+ * the engine's own static filter. It needs no construction and no destruction,
+ * and the copy/destroy paths in the else-branch never run. This mirrors the
+ * disengaged optional already proven for RaycastAny/RaycastAll.
+ *
+ * Incoming layout recovered from the thunk (ldr x8,[x29,#0x18] for the Function
+ * pointer; ldp w28,w27,[x29,#0x10] for the two trailing unsigneds):
+ *
+ *   x0 this   x1 src   x2 dst   x3 hit   w4 physicsType
+ *   x5 includeGroup    x6 excludeGroup   x7 context
+ *   [sp+0x00] trailing uint #1
+ *   [sp+0x04] trailing uint #2
+ *   [sp+0x08] pointer to the 0x40-byte Function value
+ */
+static bool physics_raycast_closest_arm64(void *function, void *scene,
+                                          const float source[3],
+                                          const float destination[3],
+                                          LevelPhysicsHit *hit,
+                                          uint32_t physics_type,
+                                          uint32_t include_group,
+                                          uint32_t exclude_group,
+                                          int context) {
+    uint32_t result = 0;
+    uint64_t context_arg = (uint32_t)context;
+
+    __asm__ volatile(
+        "sub sp, sp, #0x50\n"
+        /* zero the 0x40-byte ls::Function value at sp+0x10 (NULL MethodTable) */
+        "stp xzr, xzr, [sp, #0x10]\n"
+        "stp xzr, xzr, [sp, #0x20]\n"
+        "stp xzr, xzr, [sp, #0x30]\n"
+        "stp xzr, xzr, [sp, #0x40]\n"
+        /* outgoing stack args: two uints, then the pointer to that value */
+        "mov w9, #-1\n"
+        "str w9, [sp]\n"
+        "str w9, [sp, #4]\n"
+        "add x9, sp, #0x10\n"
+        "str x9, [sp, #8]\n"
+        "mov x0, %[scene]\n"
+        "mov x1, %[source]\n"
+        "mov x2, %[destination]\n"
+        "mov x3, %[hit]\n"
+        "mov w4, %w[physics_type]\n"
+        "mov x5, %[include_group]\n"
+        "mov x6, %[exclude_group]\n"
+        "mov x7, %[context]\n"
+        "blr %[function]\n"
+        "mov %w[result], w0\n"
+        "add sp, sp, #0x50\n"
+        : [result] "=r"(result)
+        : [function] "r"(function),
+          [scene] "r"(scene),
+          [source] "r"(source),
+          [destination] "r"(destination),
+          [hit] "r"(hit),
+          [physics_type] "r"(physics_type),
+          [include_group] "r"((uint64_t)include_group),
+          [exclude_group] "r"((uint64_t)exclude_group),
+          [context] "r"(context_arg)
+        : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+          "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+          "x16", "x17", "x30", "cc", "memory");
+
+    return result != 0;
+}
+
+/*
  * RaycastAll — macOS ARM64 VMT[9]. Audited signature (PHYSICS_VMT_AUDIT.md):
  *
  *   phx::SimplePhysXScene::RaycastAll(Vector3f const&, Vector3f const&,
@@ -2078,6 +2165,24 @@ bool level_raycast_closest(const float src[3], const float dst[3],
                            uint32_t exclude_group,
                            int context) {
     if (hit) memset(hit, 0, sizeof(*hit));
+#if defined(__aarch64__)
+    /* Shares RaycastAny's audited-image gate. */
+    if (!src || !dst || !hit || !raycast_any_gate_matches()) return false;
+
+    void *physics = level_get_physics_scene();
+    if (!physics) return false;
+
+    void *function = read_vmt_entry(physics, PHYSICS_VMT_RAYCAST_CLOSEST);
+    if (!function) {
+        log_message("[Level] RaycastClosest VMT entry not found at index %d",
+                    PHYSICS_VMT_RAYCAST_CLOSEST);
+        return false;
+    }
+
+    return physics_raycast_closest_arm64(function, physics, src, dst, hit,
+                                         physics_type, include_group,
+                                         exclude_group, context);
+#endif
     (void)src;
     (void)dst;
     (void)physics_type;

@@ -197,43 +197,21 @@ def test_physics_vmt_constants_match_audited_indices():
     assert _parse_physics_indices() == EXPECTED_INDICES
 
 
-def test_quarantined_raycast_bindings_warn_once_and_fail_closed():
-    # Only RaycastClosest remains deferred. It ends in a by-value
-    # ls::Function<bool(ls::PhysicsShape const*)> whose construction, lifetime
-    # and ownership are still unproven -- a different ABI from the disengaged
-    # optional the other two use.
-    #
-    # RaycastAny (Wave 7 B4b) and RaycastAll (2026-08-20) both dispatch real VMT
-    # slots behind the audited-image gate; see test_raycast_any_binding_is_gated
-    # and test_raycast_all_binding_is_gated.
+def test_no_raycast_bindings_remain_quarantined():
+    """All three raycasts now dispatch real VMT slots.
+
+    RaycastAny (Wave 7 B4b), RaycastAll and RaycastClosest (both 2026-08-20) are
+    implemented behind the audited-image gate; each has its own gate test below.
+    This test pins that none of them has regressed back to a warn-once stub.
+    """
     source = LUA_LEVEL_C.read_text()
-    contracts = {
-        "lua_level_raycast_closest": ("RaycastClosest", "lua_pushnil(L)"),
-    }
-    for function, (api_name, result_statement) in contracts.items():
+    for function in ("lua_level_raycast_closest",
+                     "lua_level_raycast_all",
+                     "lua_level_raycast_any"):
         body = _function_body(source, function)
-        assert "static bool warned = false;" in body
-        assert "warn_deferred_once(" in body
-        assert f'"{api_name}"' in body
-        assert result_statement in body
-        assert f"level_{function.removeprefix('lua_level_')}(" not in body
-
-    # RaycastAny is no longer a deferred stub: it must dispatch its real helper
-    # and must NOT warn-once or fail-closed unconditionally.
-    any_body = _function_body(source, "lua_level_raycast_any")
-    assert "level_raycast_any(" in any_body
-    assert "warn_deferred_once(" not in any_body
-
-    tier2 = LUA_EXT_C.read_text()
-    assert "Parity.Level.RaycastClosestDeferred" in tier2
-    assert "deferred RaycastClosest must return nil" in tier2
-    assert "Parity.Level.RaycastAllDeferred" in tier2
-    assert "deferred RaycastAll must return nil" in tier2
-    # RaycastAny deferral test retired; the real binding is exercised by
-    # Wave7.Level.RaycastAny (callable + returns boolean without crashing).
-    assert "Parity.Level.RaycastAnyDeferred" not in tier2
-    assert "Wave7.Level.RaycastAny" in tier2
-
+        assert "warn_deferred_once(" not in body, f"{function} regressed to a stub"
+        called = "level_" + function.removeprefix("lua_level_") + "("
+        assert called in body, f"{function} does not call {called}"
 
 def test_repaired_query_calls_use_arm64_reference_shapes():
     source = LEVEL_MANAGER_C.read_text()
@@ -249,12 +227,34 @@ def test_repaired_query_calls_use_arm64_reference_shapes():
     assert "return test(physics, pos, extents, out," in source
     assert "return test(physics, pos, radius, out," in source
 
-    # Only RaycastClosest is still a deferred stub and must not dispatch a VMT
-    # entry. RaycastAny and RaycastAll intentionally do dispatch real slots and
-    # are validated by their own gate tests below.
-    for function in ("level_raycast_closest",):
+    # No raycast remains a stub: all three dispatch real VMT slots and are
+    # validated by their own gate tests below.
+    for function in ("level_raycast_closest", "level_raycast_all",
+                     "level_raycast_any"):
         body = _function_body(source, function)
-        assert "read_vmt_entry" not in body
+        assert "read_vmt_entry(" in body
+        assert "raycast_any_gate_matches()" in body
+
+
+def test_raycast_closest_binding_is_gated():
+    """RaycastClosest dispatches VMT slot 8 behind the audited-image gate and
+    passes its trailing by-value ls::Function as 0x40 zeroed bytes (NULL
+    MethodTable), which the engine services with s_IgnoreFilterClosest
+    (PHYSICS_VMT_AUDIT.md 2026-08-20)."""
+    source = LEVEL_MANAGER_C.read_text()
+    body = _function_body(source, "level_raycast_closest")
+
+    assert "read_vmt_entry(" in body
+    assert "PHYSICS_VMT_RAYCAST_CLOSEST" in body
+    assert "raycast_any_gate_matches()" in body
+    assert "physics_raycast_closest_arm64(" in body
+
+    shim = _function_body(source, "physics_raycast_closest_arm64")
+    # 0x40-byte Function value zeroed, and passed INDIRECTLY by pointer.
+    assert "stp xzr, xzr, [sp, #0x10]" in shim
+    assert "stp xzr, xzr, [sp, #0x40]" in shim
+    assert "add x9, sp, #0x10" in shim
+    assert "str x9, [sp, #8]" in shim
 
 
 def test_raycast_all_binding_is_gated():

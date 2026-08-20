@@ -194,14 +194,33 @@ static int lua_level_get_aigrid(lua_State *L) {
  *   context: integer (raycast context)
  *   Returns: hit table {Normal={x,y,z}, Position={x,y,z}, Distance=n, PhysicsGroup=n} or nil
  */
+/**
+ * Ext.Level.RaycastClosest(src, dst, physType, includeGroup, excludeGroup, context)
+ *   Returns: hit table or nil
+ *
+ * Undeferred 2026-08-20. The trailing by-value ls::Function<bool(PhysicsShape
+ * const*)> is passed as 0x40 zeroed bytes (NULL MethodTable), which the engine
+ * treats as "no shape filter" and services with its own s_IgnoreFilterClosest.
+ * See ghidra/offsets/PHYSICS_VMT_AUDIT.md.
+ */
 static int lua_level_raycast_closest(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "RaycastClosest",
-        "the audited ARM64 signature requires an ls::Function filter whose "
-        "C representation and ownership are not verified; returning nil");
-    lua_pushnil(L);
-    return 1;
+    float src[3], dst[3];
+    if (!read_vec3(L, 1, src)) {
+        return luaL_error(L, "Ext.Level.RaycastClosest: src must be a {x,y,z} table");
+    }
+    if (!read_vec3(L, 2, dst)) {
+        return luaL_error(L, "Ext.Level.RaycastClosest: dst must be a {x,y,z} table");
+    }
+
+    uint32_t physics_type  = (uint32_t)luaL_optinteger(L, 3, 1);
+    uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
+    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
+    int context            = (int)luaL_optinteger(L, 6, 0);
+
+    LevelPhysicsHit hit;
+    bool found = level_raycast_closest(src, dst, &hit, physics_type,
+                                       include_group, exclude_group, context);
+    return push_hit_or_nil(L, found, &hit);
 }
 
 /**
