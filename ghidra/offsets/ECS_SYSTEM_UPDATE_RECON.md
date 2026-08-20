@@ -975,36 +975,44 @@ Never choose a removal target by scanning for a component the entity appears to
 lack, and never test removal against the player character. Confine mutation to a
 spawned throwaway item and remove only a component created for the test.
 
-## BUG — `entity:CreateComponent` can abort the process
+## BUG — `entity:CreateComponent` aborts the process on most component types
 
-Found 2026-08-20 while testing RemoveComponent.
+Found 2026-08-20. Root-caused and fixed.
 
-    entity:CreateComponent("esv::status::DifficultyModifiersComponent")
+macOS ships 2647 `ecs::ComponentOps<T>::AddImmediateDefaultComponent`
+specializations. Only **725 (27.4%)** are real. The other **1922 (72.6%)** are
+compiled out to an identical three-instruction body:
 
-on a status entity terminates the game:
+    stp  x29, x30, [sp, #-0x10]!    ; 0xa9bf7bfd
+    mov  x29, sp                    ; 0x910003fd
+    bl   <__TEXT,__stubs>           ; -> __DATA,__la_symbol_ptr 0x10888CC78
 
-    std::terminate -> abort (SIGABRT)
-      libbg3se.dylib lua_entity_create_component
-      ... luaV_execute
+and that lazy-bind slot resolves to `libc++/__ZSt9terminatev` — `std::terminate`.
+Entering such a slot kills the process immediately.
 
-`lua_entity_create_component` validates the build gate, the registry index, the
-ComponentOps entry, the vtable pointer and the AddImmediateDefaultComponent slot
-— all of which pass — and then calls the slot directly:
+`lua_entity_create_component` validated the build gate, the registry index, the
+ComponentOps entry, the vtable pointer and the slot pointer — all of which pass
+for a stubbed type, because the pointer is perfectly valid — and then branched
+into it. So CreateComponent was roughly a 3-in-4 chance of killing the game for
+any name that cleared the registry check. Reproduced with
+`esv::status::DifficultyModifiersComponent`.
 
-    ((AddImmediateDefaultComponentFn)add_immediate)(ops, handle, 0);
+### A C++ try/catch does NOT fix this — retraction
 
-For component types that cannot be default-constructed this way the game raises a
-C++ exception, which unwinds into our C frame where there is no handler, so the
-runtime aborts. Note the failure is *not* caught by `pcall`: the process dies
-rather than the Lua call erroring.
+An intermediate commit added a C++ shim so the call site would have an exception
+handler. That was wrong and has been removed. The stub *calls* `std::terminate`
+directly; there is no exception in flight, nothing to unwind, and nothing to
+catch. Verified in game: with the shim in place the process still aborted, now
+with `bg3se_add_immediate_default_component_guarded` in the crash frame above
+`lua_entity_create_component`.
 
-Names that are simply unregistered fail safely ("unknown component name");
-the hazard is a name that *is* registered and passes every pointer check but is
-not valid for default construction. There is currently no way to tell those apart
-before calling, so CreateComponent is unsafe for arbitrary component types.
+### Fix
 
-This is pre-existing and independent of RemoveComponent, which fails closed
-correctly on the same entity.
+Recognise the stub before branching. The three-instruction shape is checked at
+the slot address and the call is refused with a clear message when it matches,
+so the ~27% of component types that have real implementations still work while
+the rest fail closed instead of terminating the process.
+
 
 ## Entity lifecycle unlocked — EntityCommandBuffer reached (2026-08-20)
 

@@ -171,7 +171,6 @@ add_library(bg3se SHARED
     src/pak/pak_reader.c
     src/entity/entity_system.c
     src/entity/entity_lifecycle.c
-    src/entity/component_ops_guard.cpp
     src/entity/replication_flags.h
     src/entity/replication_flags.c
     src/entity/guid_lookup.c

@@ -8,7 +8,6 @@
 #include "entity_system.h"
 #include "entity_events.h"
 #include "generated_remove_component.h"
-#include "component_ops_guard.h"
 #include "entity_lifecycle.h"
 #include "component_registry.h"
 #include "component_lookup.h"
@@ -1643,6 +1642,37 @@ static int lua_entity_destroy(lua_State *L) {
     return 1;
 }
 
+/*
+ * Is this AddImmediateDefaultComponent slot a std::terminate stub?
+ *
+ * macOS ships 2647 ecs::ComponentOps<T>::AddImmediateDefaultComponent
+ * specializations, but only 725 are real. The other 1922 (72.6%) are compiled
+ * out to an identical three-instruction body:
+ *
+ *     stp  x29, x30, [sp, #-0x10]!    ; 0xa9bf7bfd
+ *     mov  x29, sp                    ; 0x910003fd
+ *     bl   <__TEXT,__stubs slot>      ; -> libc++ __ZSt9terminatev
+ *
+ * The branch target is a lazy-binding stub for std::terminate itself, so the
+ * process dies the moment the slot is entered. That is a direct call, not a
+ * thrown exception, which is why wrapping the call site in a C++ try/catch does
+ * not help: there is nothing to unwind and no exception to catch. The only safe
+ * option is to recognise the shape and refuse before branching.
+ */
+static bool add_immediate_is_terminate_stub(void *fn) {
+    if (!fn) return true;
+    uint32_t w[3];
+    for (int i = 0; i < 3; i++) {
+        if (!safe_memory_read_u32(
+                (mach_vm_address_t)((uintptr_t)fn + (uintptr_t)i * 4), &w[i])) {
+            return true;  /* unreadable: refuse rather than branch into it */
+        }
+    }
+    return w[0] == 0xa9bf7bfdu       /* stp x29, x30, [sp, #-0x10]! */
+        && w[1] == 0x910003fdu       /* mov x29, sp                 */
+        && (w[2] >> 26) == 0x25u;    /* bl                          */
+}
+
 static int lua_entity_create_component(lua_State *L) {
     EntityUserdata *ud = (EntityUserdata*)luaL_checkudata(L, 1, "BG3Entity");
     if (!lifetime_lua_is_valid(L, ud->lifetime)) {
@@ -1711,16 +1741,18 @@ static int lua_entity_create_component(lua_State *L) {
             L, component, "ComponentOps AddImmediateDefaultComponent slot is null");
     }
 
-    /* Not every registered component type is default-constructible; the game
-     * throws for those. A C caller gives the unwinder no handler to find, so the
-     * process aborts through std::terminate before pcall can see anything. Call
-     * through a C++ frame so a throw becomes a false return instead. */
-    if (!bg3se_add_immediate_default_component_guarded(
-            add_immediate, ops, (uint64_t)ud->handle, 0)) {
+    /* Most of these slots are compiled out to a std::terminate stub on macOS.
+     * Entering one kills the process outright, so the shape must be checked
+     * before the branch is taken. */
+    if (add_immediate_is_terminate_stub(add_immediate)) {
         return create_component_fail(
             L, component,
-            "component type is not default-constructible (call threw)");
+            "AddImmediateDefaultComponent is not implemented for this component "
+            "type on macOS (the slot is a std::terminate stub)");
     }
+
+    ((AddImmediateDefaultComponentFn)add_immediate)(
+        ops, (uint64_t)ud->handle, 0);
     lua_pushboolean(L, 1);
     return 1;
 }
