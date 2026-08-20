@@ -1255,3 +1255,36 @@ Remaining types (Feat, Race, Origin, God, Class, Progression, FeatDescription)
 have no manager captured in a normal session, so their entry sizes are still
 unverified estimates. `Ext.StaticData.ProbeStride(type)` will measure any of
 them the moment its manager is captured.
+
+## All nine static-data banks measured and verified (2026-08-20)
+
+`Ext.StaticData.ForceCapture()` brings every manager online, so all nine banks
+could be measured rather than estimated. Final state — configured equals
+measured everywhere, and every entry enumerates valid and distinct:
+
+| Bank | Was | Now | Records | Entries valid/distinct |
+|---|---|---|---|---|
+| Feat | 0x128 | 0x128 | 41 | 41 / 41 |
+| Race | 0x200 | **0x168** | 156 | 156 / 156 |
+| Background | 0x80 | **0x70** | 22 | 22 / 22 |
+| Origin | 0x180 | **0x190** | 27 | 27 / 27 |
+| God | 0x60 | 0x60 | 24 | 24 / 24 |
+| Class | 0x100 | **0x110** | 70 | 70 / 70 |
+| Progression | 0x200 | **0x148** | 1004 | 1004 / 1004 |
+| ActionResource | 0x80 | **0x60** | 87 | 87 / 87 |
+| FeatDescription | 0x80 | **0x60** | 41 | 41 / 41 |
+
+Seven of the nine entry sizes were wrong; only Feat and God were already right.
+1472 records total now enumerate cleanly.
+
+Two independent checks back each result:
+
+1. The probe located exactly `count` record boundaries for every bank, where
+   `count` is the bank's own `+0x7C` field. A wrong stride does not produce that
+   agreement.
+2. The probe independently reproduces `0x128` for Feat — the single value the
+   code already marked "Verified via Ghidra" by a different method.
+
+Each wrong stride meant `Ext.StaticData.GetAll` returned entries read off record
+boundaries, exposing unrelated bytes as `ResourceUUID`. Those bytes still
+pattern-match a GUID, so nothing downstream flagged them.
