@@ -151,6 +151,31 @@ static int lua_template_get_cache(lua_State* L) {
 }
 
 /**
+ * Ext.Template.GetLocalTemplate(templateId)
+ * Single-key lookup into the current server level's LocalTemplateManager.
+ * Windows: ServerTemplate.inl GetLocalTemplate() -- returns nil when there is
+ * no current level, matching the nullptr return there.
+ */
+static int lua_template_get_local(lua_State* L) {
+    const char* guid_str = luaL_checkstring(L, 1);
+
+    GameObjectTemplate* tmpl = template_get_by_guid(TEMPLATE_MANAGER_LOCAL, guid_str);
+    return push_template_to_lua(L, tmpl);
+}
+
+/**
+ * Ext.Template.GetLocalCacheTemplate(templateId)
+ * Single-key lookup into the current server level's CacheTemplateManager.
+ * Windows: ServerTemplate.inl GetLocalCacheTemplate().
+ */
+static int lua_template_get_local_cache(lua_State* L) {
+    const char* guid_str = luaL_checkstring(L, 1);
+
+    GameObjectTemplate* tmpl = template_get_by_guid(TEMPLATE_MANAGER_LOCAL_CACHE, guid_str);
+    return push_template_to_lua(L, tmpl);
+}
+
+/**
  * Ext.Template.GetAllRootTemplates()
  * Returns an array of all templates in GlobalTemplateBank.
  */
@@ -365,6 +390,9 @@ static const struct luaL_Reg template_functions[] = {
     {"Get",                       lua_template_get},
     {"GetRootTemplate",           lua_template_get_root},
     {"GetCacheTemplate",          lua_template_get_cache},
+    {"GetTemplate",               lua_template_get},
+    {"GetLocalTemplate",          lua_template_get_local},
+    {"GetLocalCacheTemplate",     lua_template_get_local_cache},
     {"GetAllRootTemplates",       lua_template_get_all_root},
     {"GetAllCacheTemplates",      lua_template_get_all_cache},
     {"GetAllLocalCacheTemplates", lua_template_get_all_local_cache},

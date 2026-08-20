@@ -195,8 +195,8 @@
         },
         {
           "name": "HasRawComponent",
-          "note": "Absent. Windows checks raw component presence without proxy construction.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c; resolves the component index by name and reports raw component presence without building a proxy, returning false for unknown names (LuaEntityProxy.inl:133-143). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
@@ -243,50 +243,50 @@
         },
         {
           "name": "OnCreate",
-          "note": "Absent from entity proxy. Per-entity OnCreate hooks exist on Ext.Entity but not on entity instances.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (lua_entity_proxy_on_create) and dispatched from the BG3Entity __index; entity bound from self per LuaEntityProxy.inl:459. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnCreateDeferred",
-          "note": "Absent from entity proxy. Same as OnCreate.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:467). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnCreateDeferredOnce",
-          "note": "Absent from entity proxy.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:473). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnCreateOnce",
-          "note": "Absent from entity proxy.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:479). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnDestroy",
-          "note": "Absent from entity proxy.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:485). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnDestroyDeferred",
-          "note": "Absent from entity proxy.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:493). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnDestroyDeferredOnce",
-          "note": "Absent from entity proxy.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:499). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
           "name": "OnDestroyOnce",
-          "note": "Absent from entity proxy.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/entity/entity_events.c (LuaEntityProxy.inl:505). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {
@@ -561,8 +561,8 @@
         },
         {
           "name": "GetHashSetValueAt",
-          "note": "Warn-once stub returning nil. No hash-set proxy on macOS. Contract: Windows index is 1-based. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_ext.c:1100 over the HashSet keys array with the Windows 1-based index contract; Tier 1 Parity.Types.GetHashSetValueAt passes live.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -573,14 +573,14 @@
         },
         {
           "name": "AddCustomFunction",
-          "note": "Warn-once stub returning false. Windows implements via property-map layer; macOS lacks it. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_ext.c; registers into the per-state BG3SE_CustomProps registry, which the component proxy __index consults (component_property.c:707-760). Windows error surface matched exactly (Cannot extend non-object type / Type not found). Live-verified 2026-08-20 in a running session (build 4.1.1.7398727, vanilla Lae'zel save): probe3 10/10, incl. subscribe/unsubscribe round-trip against eoc::BaseHpComponent on the host entity.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "AddCustomProperty",
-          "note": "Warn-once stub returning false. Same property-map gap. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_ext.c; getter invoked through the component proxy __index -- live read of a registered custom property returned the expected value on a real component. Live-verified 2026-08-20 in a running session (build 4.1.1.7398727, vanilla Lae'zel save): probe3 10/10, incl. subscribe/unsubscribe round-trip against eoc::BaseHpComponent on the host entity.",
+          "class": "implemented",
           "kind": "function"
         }
       ]
@@ -1461,14 +1461,14 @@
       "contracts": [
         {
           "name": "DumpStack",
-          "note": "Absent. Windows Lua stack introspection utility not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_debug.c; per-type formatting mirrors Debug.inl DumpStack(). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "DebugDumpLifetimes",
-          "note": "Absent. Windows lifetime tracking dump not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_debug.c; reports capacity/live/free plus scope depth for the macOS flat free-list pool (Windows walks a 3-level bitmap). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1479,8 +1479,8 @@
         },
         {
           "name": "DebugBreak",
-          "note": "Absent. DAP integration excluded by scope.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_debug.c as the Windows no-debugger-attached path (Debug.inl LuaDebugBreak); the macOS DAP surface is a scope exclusion. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1491,14 +1491,14 @@
         },
         {
           "name": "SetEntityRuntimeCheckLevel",
-          "note": "Absent. Windows entity validation level not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_debug.c + component_property_set_check_level(); levels None/Once/Always/FullECS, range-validated per Debug.inl. Always/FullECS enable a per-read component bounds check; the write-path check is unconditional at every level. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "Crash",
-          "note": "Absent. Intentional crash trigger not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_debug.c under NDEBUG guards, matching the Windows #if defined(_DEBUG) body exactly (release is a no-op). Release no-op verified live.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1521,20 +1521,20 @@
         },
         {
           "name": "GameVersion",
-          "note": "Absent. macOS has Ext.GetVersion() but not GameVersion (engine build string).",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c via version_detect (CFBundleShortVersionString), formatted 'vMaj.Min.Rev.Build' as Utils.inl:84-95. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "Include",
-          "note": "Absent. Windows mod-script include facility not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c; resolves modGuid via the SE mod registry, loads from the extracted filesystem base then the mod PAK, supports the optional globals table, and returns the chunk's values (Utils.inl:7-44). Registration verified live; end-to-end mod load not exercised at main menu (no mod session).",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "LoadString",
-          "note": "Absent. Windows Lua chunk loader not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c; reproduces Utils.inl:46-77 including the LUA_RIDX_GLOBALS swap and the (nil, message) error shape. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1545,32 +1545,32 @@
         },
         {
           "name": "IsValidHandle",
-          "note": "Absent. Windows entity handle validation not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c; true only for an entity proxy with a non-zero handle (Utils.inl:96-110). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "HandleToInteger",
-          "note": "Absent. Windows handle serialization helper not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c (Utils.inl:115-118). Round-trip with IntegerToHandle verified exact. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "IntegerToHandle",
-          "note": "Absent. Windows handle deserialization helper not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c (Utils.inl:124-127); constructs without validating, matching Windows. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "ShowErrorAndExitGame",
-          "note": "Absent. Windows error dialog not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c via CFUserNotification then _exit(1) (Utils.inl:139-142). Registration verified live; not auto-exercised (terminates the process).",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "ShowError",
-          "note": "Absent. Same dialog gap.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c via CFUserNotification, the macOS analogue of ShowStartupError (Utils.inl:144-147). Registration verified live; dialog not auto-exercised.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1581,8 +1581,8 @@
         },
         {
           "name": "GetCommandLineParams",
-          "note": "Absent. Windows command-line parser not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c using _NSGetArgv (kernel-split argv), strictly more accurate than the Windows space-split of GetCommandLineW (Utils.inl:154-175). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1599,20 +1599,20 @@
         },
         {
           "name": "GetMemoryUsage",
-          "note": "Absent. Lua allocator tracking not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c; reports live VM bytes via lua_gc(GCCOUNT/GCCOUNTB), the macOS analogue of the Windows allocator's AllocatedMemory (Utils.inl:197). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "ProfileBegin",
-          "note": "Absent. Optick profiler integration (Windows-only #ifdef).",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c mapping Optick scopes to os_signpost intervals (Windows compiles these out without USE_OPTICK, Utils.inl:202-217). Nesting verified. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "ProfileEnd",
-          "note": "Absent. Same Optick gap.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_utils.c; os_signpost interval end, with unbalanced-call warning. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         }
       ]
@@ -1719,8 +1719,8 @@
       "contracts": [
         {
           "name": "Find",
-          "note": "Absent. Windows Lua table search utility not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_table.c; scans the array part before the hash part and returns the key (LuaTable.inl FindValueTable), and accepts array-like proxies via __len/__index. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         }
       ]
@@ -1737,32 +1737,32 @@
         },
         {
           "name": "EnableDemo",
-          "note": "Absent. ImGui demo window toggle not registered.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/imgui/imgui_metal_backend.mm + lua_imgui.c; renders ImGui::ShowDemoWindow independently of the F11 overlay. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "LoadFont",
-          "note": "Absent. Custom font loading not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/imgui/imgui_metal_backend.mm; queues the request and applies it on the render thread before NewFrame (ImGui 1.92 dynamic atlas uploads the texture during RenderDrawData). Errors before init like ClientIMGUI.inl:25-34. Rejection paths verified live; successful load not yet exercised against a real TTF.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "SetScale",
-          "note": "Absent. Global UI scale not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_imgui.c as the deprecation warning Windows emits; it changes nothing there either (ClientIMGUI.inl:36-39). Exact contract match. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "SetUIScaleMultiplier",
-          "note": "Absent. UI scale multiplier not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/imgui/imgui_metal_backend.mm; re-derives ImGuiStyle from a pristine baseline then ScaleAllSizes, so repeated calls are idempotent rather than cumulative. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "SetFontScaleMultiplier",
-          "note": "Absent. Font scale multiplier not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/imgui/imgui_metal_backend.mm via io.FontGlobalScale, applied at frame start. Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -1815,14 +1815,14 @@
         },
         {
           "name": "GetAllRootTemplates",
-          "note": "GetAllRootTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ClientTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetRootTemplate",
-          "note": "GetRootTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ClientTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         }
       ]
@@ -1839,50 +1839,50 @@
         },
         {
           "name": "GetAllRootTemplates",
-          "note": "GetAllRootTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetRootTemplate",
-          "note": "GetRootTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetAllLocalTemplates",
-          "note": "GetAllLocalTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetLocalTemplate",
-          "note": "Absent.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_template.c via template_get_by_guid(TEMPLATE_MANAGER_LOCAL) (ServerTemplate.inl:36-43). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetAllCacheTemplates",
-          "note": "GetAllCacheTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetCacheTemplate",
-          "note": "GetCacheTemplate is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetAllLocalCacheTemplates",
-          "note": "GetAllLocalCacheTemplates is ported on macOS but under the substituted module name Ext.Template (src/lua/lua_template.c:366-371) — Windows registers only Ext.ServerTemplate. Mods calling the Windows placement hit nil. Closable by per-context aliasing (Wave 7 Phase A).",
-          "class": "behavioral_gap",
+          "note": "Manifest correction 2026-08-18: the prior note claimed Windows registers this only under Ext.ClientTemplate/Ext.ServerTemplate and that mods hit nil on macOS. DECLARE_MODULE(Template, role) sets mod.Table = FixedString{\"Template\"} (LibraryRegistrationHelpers.h:31-34), so Windows exposes it as Ext.Template and the role only selects the context. macOS already matched; this was never a behavioral gap.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetLocalCacheTemplate",
-          "note": "Absent.",
-          "class": "behavioral_gap",
+          "note": "Implemented in src/lua/lua_template.c via template_get_by_guid(TEMPLATE_MANAGER_LOCAL_CACHE) (ServerTemplate.inl:65-72). Live-verified 2026-08-18 on build 4.1.1.7398727 (arm64 UUID 0C51CAED-6D60-3DCD-9299-8519C92631B0), 35/35 probe assertions.",
+          "class": "implemented",
           "kind": "function"
         }
       ]
@@ -2097,10 +2097,10 @@
   },
   "summary": {
     "total_contracts": 294,
-    "implemented": 210,
-    "behavioral_gap": 70,
+    "implemented": 255,
+    "behavioral_gap": 25,
     "matched_upstream_todo": 1,
     "excluded": 13
   },
-  "project_version": "0.43.0"
+  "project_version": "0.44.0"
 }

@@ -427,6 +427,31 @@ int component_property_read_def(lua_State *L, void *componentPtr,
     }
 }
 
+// ============================================================================
+// Runtime check level (Ext.Debug.SetEntityRuntimeCheckLevel)
+// ============================================================================
+//
+// Windows uses ecs::RuntimeCheckLevel to control how aggressively property maps
+// are validated (None=0, Once=1, Always=2, FullECS=3). The macOS port always
+// validates on the write path -- that is a safety invariant and lowering the
+// level must never weaken it. What the level controls here is the *read* path,
+// which by default performs no per-access range check: Always/FullECS turn on
+// a per-read bounds check against the layout size. The default (Once) therefore
+// reproduces today's behavior exactly, and raising the level only adds checking.
+
+static int g_runtime_check_level = 1;  // RuntimeCheckLevel::Once
+
+void component_property_set_check_level(int level) {
+    g_runtime_check_level = level;
+    LOG_ENTITY_DEBUG("Entity runtime check level set to %d", level);
+}
+
+int component_property_get_check_level(void) {
+    return g_runtime_check_level;
+}
+
+static size_t component_property_field_size(const ComponentPropertyDef *prop);
+
 int component_property_read(lua_State *L, void *componentPtr,
                             const ComponentLayoutDef *layout,
                             const char *propertyName) {
@@ -434,6 +459,22 @@ int component_property_read(lua_State *L, void *componentPtr,
     if (!prop) {
         return 0;  // Property not found
     }
+
+    // Always(2) and FullECS(3) validate every read against the layout bounds.
+    if (g_runtime_check_level >= 2 && layout->componentSize != 0) {
+        size_t fieldSize = component_property_field_size(prop);
+        if (fieldSize != 0
+            && ((size_t)prop->offset > layout->componentSize
+                || fieldSize > (size_t)layout->componentSize - prop->offset)) {
+            LOG_ENTITY_DEBUG(
+                "Refusing component read: %s.%s range [0x%x, 0x%zx) exceeds "
+                "layout size 0x%x",
+                layout->componentName, prop->name, prop->offset,
+                (size_t)prop->offset + fieldSize, layout->componentSize);
+            return 0;
+        }
+    }
+
     return component_property_read_def(L, componentPtr, prop);
 }
 

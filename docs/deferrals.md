@@ -11,7 +11,9 @@ rationale beats a guessed offset. Deferrals convert to implementations only
 when instruction-level evidence (a `ghidra/offsets/` report) proves the
 layout and ABI; they are never promoted by porting Windows constants.
 
-Last audited: 2026-08-03 (Wave 7 A/B-series close-out, v0.43.0, game build 4.1.1.7209685).
+Last audited: 2026-08-18 (v0.44.0, game build 4.1.1.7398727, arm64 LC_UUID
+`0C51CAED-6D60-3DCD-9299-8519C92631B0` — first live-verified session on this build:
+154/154 offset-audit checks and Tier 1 112/114 passed).
 
 ## Ext.Level
 
@@ -77,10 +79,24 @@ FixedString intern path and verifies both lookup directions plus count growth.
 
 | API | Returns | Why deferred | Evidence | Unlock path |
 |---|---|---|---|---|
-| `Construct(typeName)` | errors or 0 values | **Matched contract, not a gap**: Wave 7 A3 now matches Windows Types.inl:286-302 exactly. It raises `Unknown type name '%s'`, `Unable to construct non-object type '%s'`, or `Type '%s' is not constructible`; valid object types pass all checks and reach the shared upstream `// TODO`, returning 0 values. Removed from the parity denominator. | `src/lua/lua_ext.c`; `bg3se/BG3Extender/Lua/Libs/Types.inl:286-302` | Track upstream; per-type constructor recovery if Windows implements the TODO |
-| `GetHashSetValueAt` | warn + `nil` | No hash-set proxy exists on macOS. Contract note: the Windows index is **1-based** (Lua convention); any implementation must preserve that. | same | Implement an ls::HashSet layout proxy |
-| `AddCustomFunction` | warn + `false` | **Scored gap** (Wave 7 Phase 0 correction — a prior entry wrongly claimed this sits "outside the 15-function Windows baseline"; the 15 was manufactured). Windows registers it inside its 14-function Types block and implements it *functionally* as Lua-side custom-property registration (`GetCustomProperties().RegisterProperty`, `Types.inl:328`) — no engine call involved. macOS lacks the property-map layer the proxies would consult. | `bg3se/BG3Extender/Lua/Libs/Types.inl:328` | Wave 7 Phase A2: per-state custom-property registry consulted by proxy `__index`/`__newindex` |
-| `AddCustomProperty` | warn + `false` | Same correction as AddCustomFunction — functional on Windows (`Types.inl:347`), scored gap here. | `bg3se/BG3Extender/Lua/Libs/Types.inl:347` | Same (Wave 7 Phase A2) |
+| `Construct(typeName)` | errors or 0 values | **Matched contract, not a gap**: Wave 7 A3 matches Windows Types.inl:286-302 exactly, reaching the shared upstream `// TODO` and returning 0 values. Outside the parity denominator. | `src/lua/lua_ext.c` | Track upstream |
+
+**2026-08-18 correction.** `GetHashSetValueAt`, `AddCustomFunction`, and
+`AddCustomProperty` are **implemented**, not stubs — this registry and the
+contract manifest were both stale. `GetHashSetValueAt` reads the HashSet keys
+array through a guarded proxy with the Windows 1-based index contract
+(`lua_ext.c:1100`), and passed Tier 1 `Parity.Types.GetHashSetValueAt` live on
+build 4.1.1.7398727. `AddCustomFunction`/`AddCustomProperty` register into a
+per-state custom-property registry (`BG3SE_CustomProps`) that the component
+proxy `__index` actually consults, including getter invocation
+(`component_property.c:707-760`) — the property-map layer this registry
+previously recorded as missing exists.
+
+`AddCustomFunction`/`AddCustomProperty` still earn **no parity credit**: the
+Tier 1 `Parity.Types.CustomProps` assertion fails at the main menu with
+`Type not found: eoc::CharacterComponent`, because component TypeIds are not
+discovered until a session loads. Crediting them requires a Tier 2 run with a
+save loaded.
 
 ## Excluded by scope decision (not deferrals)
 

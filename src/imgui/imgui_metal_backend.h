@@ -89,6 +89,19 @@ bool imgui_metal_is_visible(void);
  *
  * @param capture true to capture input, false to pass through
  */
+/**
+ * Ext.IMGUI parity surface (BG3Extender/Lua/Libs/ClientIMGUI.inl).
+ * Scale setters and LoadFont are safe to call from the Lua thread; the work is
+ * applied on the render thread at frame start.
+ */
+void imgui_metal_set_demo_enabled(bool enabled);
+bool imgui_metal_get_demo_enabled(void);
+void imgui_metal_set_ui_scale_multiplier(float scale);
+float imgui_metal_get_ui_scale_multiplier(void);
+void imgui_metal_set_font_scale_multiplier(float scale);
+float imgui_metal_get_font_scale_multiplier(void);
+bool imgui_metal_load_font(const char *name, const char *path, float size);
+
 void imgui_metal_set_input_capture(bool capture);
 
 /**

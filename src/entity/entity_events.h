@@ -190,6 +190,21 @@ void entity_events_set_observer(EntityEventsObserver observer);
  * Register Ext.Entity event functions with Lua state.
  * Replaces stub implementations with real C functions.
  */
+/**
+ * Entity-proxy subscription methods (Windows LuaEntityProxy.inl placement).
+ * Signature: entity:OnX(component, func[, deferred, once]) -> subscription id.
+ * Dispatched from the BG3Entity metatable __index in entity_system.c.
+ */
+int lua_entity_proxy_on_create(struct lua_State *L);
+int lua_entity_proxy_on_create_deferred(struct lua_State *L);
+int lua_entity_proxy_on_create_once(struct lua_State *L);
+int lua_entity_proxy_on_create_deferred_once(struct lua_State *L);
+int lua_entity_proxy_on_destroy(struct lua_State *L);
+int lua_entity_proxy_on_destroy_deferred(struct lua_State *L);
+int lua_entity_proxy_on_destroy_once(struct lua_State *L);
+int lua_entity_proxy_on_destroy_deferred_once(struct lua_State *L);
+int lua_entity_proxy_has_raw_component(struct lua_State *L);
+
 void entity_events_register_lua(struct lua_State *L);
 
 #ifdef __cplusplus

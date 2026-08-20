@@ -15,6 +15,9 @@
 
 #include "entity_events.h"
 #include "component_registry.h"
+#include "entity_system.h"
+#include "component_lookup.h"
+#include "../lifetime/lifetime.h"
 #include "ecs_system_update.h"
 #include "../core/logging.h"
 #include "../lua/lua_runtime.h"
@@ -1275,6 +1278,108 @@ static int lua_entity_subscribe_impl(lua_State *L, uint32_t events,
 
     lua_pushinteger(L, (lua_Integer)id);
     return 1;
+}
+
+// ============================================================================
+// Entity-proxy subscription methods (Windows LuaEntityProxy.inl:459-514)
+// ============================================================================
+//
+// Same subscription machinery as the Ext.Entity.On* family, but the entity is
+// taken from the proxy (self) rather than an optional trailing argument:
+//   entity:OnCreate(component, func[, deferred, once])
+// Windows binds these on the entity proxy metatable; mods written against that
+// placement previously hit nil on macOS.
+
+static int lua_entity_proxy_subscribe_impl(lua_State *L, uint32_t events,
+                                           bool force_deferred, bool force_once) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    uint16_t type_index = resolve_component_type(L, 2);
+    if (type_index == COMPONENT_INDEX_UNDEFINED) {
+        return luaL_error(L, "Unknown component type: %s", lua_tostring(L, 2));
+    }
+
+    luaL_checktype(L, 3, LUA_TFUNCTION);
+
+    uint32_t flags = 0;
+    if (force_deferred) {
+        flags |= ENTITY_EVENT_FLAG_DEFERRED;
+    } else if (lua_gettop(L) >= 4 && lua_toboolean(L, 4)) {
+        flags |= ENTITY_EVENT_FLAG_DEFERRED;
+    }
+    if (force_once) {
+        flags |= ENTITY_EVENT_FLAG_ONCE;
+    } else if (lua_gettop(L) >= 5 && lua_toboolean(L, 5)) {
+        flags |= ENTITY_EVENT_FLAG_ONCE;
+    }
+
+    lua_pushvalue(L, 3);
+    int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    EntitySubscriptionId id = entity_events_subscribe(
+        type_index, (uint64_t)ud->handle, events, flags, ref, L);
+
+    if (id == ENTITY_SUB_INVALID) {
+        luaL_unref(L, LUA_REGISTRYINDEX, ref);
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_pushinteger(L, (lua_Integer)id);
+    return 1;
+}
+
+// entity:HasRawComponent(componentName) -> boolean
+// Windows LuaEntityProxy.inl:133-143 resolves the component index by name and
+// reports whether the raw component pointer exists, without constructing a
+// Lua proxy for it. Returns false for unknown component names rather than
+// raising, matching the Windows early-out.
+int lua_entity_proxy_has_raw_component(lua_State *L) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    uint16_t type_index = resolve_component_type(L, 2);
+    if (type_index == COMPONENT_INDEX_UNDEFINED) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    const ComponentInfo *info = component_registry_lookup_by_index(type_index);
+    void *ptr = component_lookup_by_index((uint64_t)ud->handle, type_index,
+                                          info ? info->size : 0,
+                                          info ? info->is_proxy : false);
+    lua_pushboolean(L, ptr != NULL);
+    return 1;
+}
+
+int lua_entity_proxy_on_create(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_CREATE, false, false);
+}
+int lua_entity_proxy_on_create_deferred(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_CREATE, true, false);
+}
+int lua_entity_proxy_on_create_once(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_CREATE, false, true);
+}
+int lua_entity_proxy_on_create_deferred_once(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_CREATE, true, true);
+}
+int lua_entity_proxy_on_destroy(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_DESTROY, false, false);
+}
+int lua_entity_proxy_on_destroy_deferred(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_DESTROY, true, false);
+}
+int lua_entity_proxy_on_destroy_once(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_DESTROY, false, true);
+}
+int lua_entity_proxy_on_destroy_deferred_once(lua_State *L) {
+    return lua_entity_proxy_subscribe_impl(L, ENTITY_EVENT_DESTROY, true, true);
 }
 
 // --- Ext.Entity.OnCreate(type, func, entity?, deferred?, once?) ---

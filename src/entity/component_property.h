@@ -171,6 +171,15 @@ int component_property_read_def(lua_State *L, void *componentPtr,
  * Returns false when the property is missing, unsafe, read-only, unsupported,
  * out of bounds, or the safe-memory write fails.
  */
+/**
+ * Entity runtime check level (Ext.Debug.SetEntityRuntimeCheckLevel).
+ * ecs::RuntimeCheckLevel: None=0, Once=1, Always=2, FullECS=3.
+ * Always/FullECS enable a per-read bounds check against the layout size;
+ * the write path validates unconditionally at every level.
+ */
+void component_property_set_check_level(int level);
+int component_property_get_check_level(void);
+
 bool component_property_write(lua_State *L, void *componentPtr,
                               const ComponentLayoutDef *layout,
                               const char *propertyName, int valueIndex);

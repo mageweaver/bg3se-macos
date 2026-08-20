@@ -58,6 +58,28 @@ void imgui_metal_set_visible(bool visible) { g_metal_visible = visible; }
 bool imgui_metal_is_visible(void) { return g_metal_visible; }
 void imgui_metal_set_input_capture(bool capture) { g_metal_capturing = capture; }
 bool imgui_metal_is_capturing_input(void) { return g_metal_capturing; }
+
+// Ext.IMGUI parity surface. The standalone harness drives ImGui directly, so
+// these apply straight to the live context instead of deferring to a frame
+// hook the way the in-game Metal backend does.
+static bool  g_metal_demo_enabled = false;
+static float g_metal_ui_scale = 1.0f;
+static float g_metal_font_scale = 1.0f;
+
+void imgui_metal_set_demo_enabled(bool enabled) { g_metal_demo_enabled = enabled; }
+bool imgui_metal_get_demo_enabled(void) { return g_metal_demo_enabled; }
+void imgui_metal_set_ui_scale_multiplier(float scale) { g_metal_ui_scale = scale; }
+float imgui_metal_get_ui_scale_multiplier(void) { return g_metal_ui_scale; }
+void imgui_metal_set_font_scale_multiplier(float scale) {
+    g_metal_font_scale = scale;
+    ImGui::GetIO().FontGlobalScale = scale;
+}
+float imgui_metal_get_font_scale_multiplier(void) { return g_metal_font_scale; }
+bool imgui_metal_load_font(const char *name, const char *path, float size) {
+    (void)name;
+    if (!path || !(size > 0.0f)) return false;
+    return ImGui::GetIO().Fonts->AddFontFromFileTTF(path, size) != nullptr;
+}
 }
 
 // Forward declarations

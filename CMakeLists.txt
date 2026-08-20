@@ -196,6 +196,10 @@ add_library(bg3se SHARED
     src/enum/enum_ext.c
     src/enum/enum_definitions.c
     src/lua/lua_timer.c
+    src/lua/lua_table.h
+    src/lua/lua_table.c
+    src/lua/lua_utils.h
+    src/lua/lua_utils.c
     src/lua/lua_persistentvars.c
     src/lua/lua_events.c
     src/game/game_state.c

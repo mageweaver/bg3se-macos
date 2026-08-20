@@ -112,7 +112,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 
 ## Status
 
-**Version:** v0.42.0 | **Feature Parity:** approximately 94.8% under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
+**Version:** v0.44.0 | **Feature Parity:** **91.1%** (255/280 scored) under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
 
 | Feature | Status |
 |---------|--------|
@@ -138,7 +138,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 | Ext.Net | ✅ **Phase 4I Complete** - Full RakNet backend, PostMessageToServer/User/Client, BroadcastMessage, IsHost, IsReady, PeerVersion, **Request/Reply Callbacks** |
 | Ext.RegisterNetListener | ✅ Per-channel network message listener (MCM backbone) |
 | Net.CreateChannel | ✅ **Phase 4I Complete** - High-level channel API with SetHandler, **SetRequestHandler**, SendToServer, **RequestToServer with callbacks**, Broadcast |
-| Ext.Utils | ✅ Print, PrintWarning, PrintError, Version, MonotonicTime, GetGameState |
+| Ext.Utils | ✅ **19 functions** — Print/PrintWarning/PrintError, Version, MonotonicTime, GetGameState, plus GameVersion, Include, LoadString, IsValidHandle, HandleToInteger, IntegerToHandle, GenerateGuid, ShowError, ShowErrorAndExitGame, GetCommandLineParams, GetMemoryUsage, ProfileBegin/End (os_signpost) |
 | Ext.ModEvents | ✅ Per-mod cross-mod event system (Subscribe, Throw, Unsubscribe) |
 | Ext.Mod | ✅ IsModLoaded, GetLoadOrder, GetMod, GetBaseMod |
 | Lifetime Scoping | ✅ Prevents stale object access |

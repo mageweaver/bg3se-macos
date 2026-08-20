@@ -2203,7 +2203,62 @@ static int lua_imgui_get_viewport_size(lua_State *L) {
 // Registration
 // ============================================================================
 
+// ============================================================================
+// Windows Ext.IMGUI parity surface (BG3Extender/Lua/Libs/ClientIMGUI.inl:20-49)
+// ============================================================================
+
+// Ext.IMGUI.EnableDemo(enabled) - toggle the stock ImGui demo window.
+static int lua_imgui_enable_demo(lua_State *L) {
+    luaL_checkany(L, 1);
+    imgui_metal_set_demo_enabled(lua_toboolean(L, 1) != 0);
+    return 0;
+}
+
+// Ext.IMGUI.LoadFont(name, path, size) -> boolean
+// Windows errors out when IMGUI is not yet initialized (ClientIMGUI.inl:25-34);
+// we mirror that rather than silently queueing into a dead backend.
+static int lua_imgui_load_font(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    const char *path = luaL_checkstring(L, 2);
+    float size = (float)luaL_checknumber(L, 3);
+
+    if (!imgui_metal_is_ready()) {
+        LOG_IMGUI_ERROR("LoadFont() called before IMGUI was initialized!");
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    lua_pushboolean(L, imgui_metal_load_font(name, path, size) ? 1 : 0);
+    return 1;
+}
+
+// Ext.IMGUI.SetScale(scale)
+// Deprecated on Windows: it only emits a warning and changes nothing
+// (ClientIMGUI.inl:36-39). Matching that exactly.
+static int lua_imgui_set_scale(lua_State *L) {
+    luaL_checknumber(L, 1);
+    LOG_IMGUI_WARN("Ext.IMGUI.SetScale() is deprecated; UI scaling is managed by SE");
+    return 0;
+}
+
+// Ext.IMGUI.SetUIScaleMultiplier(scale)
+static int lua_imgui_set_ui_scale_multiplier(lua_State *L) {
+    imgui_metal_set_ui_scale_multiplier((float)luaL_checknumber(L, 1));
+    return 0;
+}
+
+// Ext.IMGUI.SetFontScaleMultiplier(scale)
+static int lua_imgui_set_font_scale_multiplier(lua_State *L) {
+    imgui_metal_set_font_scale_multiplier((float)luaL_checknumber(L, 1));
+    return 0;
+}
+
 static const luaL_Reg imgui_functions[] = {
+    {"EnableDemo", lua_imgui_enable_demo},
+    {"LoadFont", lua_imgui_load_font},
+    {"SetScale", lua_imgui_set_scale},
+    {"SetUIScaleMultiplier", lua_imgui_set_ui_scale_multiplier},
+    {"SetFontScaleMultiplier", lua_imgui_set_font_scale_multiplier},
     {"Show", lua_imgui_show},
     {"Hide", lua_imgui_hide},
     {"Toggle", lua_imgui_toggle},

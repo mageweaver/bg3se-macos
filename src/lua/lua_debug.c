@@ -13,6 +13,8 @@
 #include "../strings/fixed_string.h"
 #include "../osiris/osiris_functions.h"
 #include "../entity/entity_events.h"
+#include "../entity/component_property.h"
+#include "../lifetime/lifetime.h"
 #include "../stats/stats_manager.h"
 
 #include <stdio.h>
@@ -850,6 +852,129 @@ static int lua_debug_get_manager_status(lua_State *L) {
 // Registration
 // ============================================================================
 
+// ============================================================================
+// Windows Ext.Debug parity surface (BG3Extender/Lua/Libs/Debug.inl)
+// ============================================================================
+
+// Ext.Debug.DumpStack() - log every value currently on the Lua stack.
+// Mirrors Debug.inl DumpStack(), including the per-type formatting.
+static int lua_debug_dump_stack(lua_State *L) {
+    int top = lua_gettop(L);
+    for (int idx = 1; idx <= top; idx++) {
+        switch (lua_type(L, idx)) {
+        case LUA_TNIL:
+            LOG_LUA_INFO("<%d> nil", idx);
+            break;
+        case LUA_TBOOLEAN:
+            LOG_LUA_INFO("<%d> %s", idx, lua_toboolean(L, idx) ? "true" : "false");
+            break;
+        case LUA_TNUMBER:
+            LOG_LUA_INFO("<%d> %f", idx, (float)lua_tonumber(L, idx));
+            break;
+        case LUA_TSTRING:
+            LOG_LUA_INFO("<%d> String '%s'", idx, lua_tostring(L, idx));
+            break;
+        default:
+            LOG_LUA_INFO("<%d> %s", idx, luaL_typename(L, idx));
+            break;
+        }
+    }
+    return 0;
+}
+
+// Ext.Debug.DebugDumpLifetimes() - report lifetime pool saturation.
+// Windows walks a three-level bitmap allocator (Debug.inl:6-40). The macOS
+// lifetime pool is a flat free-list of LIFETIME_POOL_SIZE entries, so we report
+// the equivalent quantities -- capacity, live, free, and scope depth -- rather
+// than inventing L1/L2/L3 pages that do not exist here.
+static int lua_debug_dump_lifetimes(lua_State *L) {
+    LifetimeState *state = lifetime_get_state(L);
+    if (!state) {
+        LOG_LUA_WARN("Ext.Debug.DebugDumpLifetimes: no lifetime state attached");
+        return 0;
+    }
+
+    unsigned capacity = LIFETIME_POOL_SIZE;
+    unsigned freeCount = state->pool.free_count;
+    unsigned liveCount = capacity - freeCount;
+
+    LOG_LUA_INFO(" === LIFETIME STATS === ");
+    LOG_LUA_INFO("Pool: %u entries, %u live, %u free", capacity, liveCount,
+                 freeCount);
+    LOG_LUA_INFO("Scope stack depth: %d (max %d)", state->stack.top,
+                 LIFETIME_STACK_SIZE);
+    return 0;
+}
+
+// Ext.Debug.DebugBreak() - break into the attached Lua debugger.
+// Windows is a no-op when no debugger is attached (Debug.inl LuaDebugBreak).
+// The macOS DAP surface is excluded by scope (docs/deferrals.md), so no
+// debugger is ever attached and this always takes the Windows no-op path.
+static int lua_debug_debug_break(lua_State *L) {
+    (void)L;
+    return 0;
+}
+
+// Ext.Debug.Crash(type) - deliberately crash, for exercising crash reporting.
+// Windows guards the entire body with #if defined(_DEBUG), so release builds
+// take no action at all. We match that: the crash paths exist only in debug
+// builds, and a release build is a no-op.
+static int lua_debug_crash(lua_State *L) {
+#ifndef NDEBUG
+    int type = (int)luaL_optinteger(L, 1, 0);
+    switch (type) {
+    case 0: {
+        volatile int d = 0;
+        volatile int r = 1 / d;   // integer divide by zero
+        (void)r;
+        break;
+    }
+    case 1:
+        abort();
+        break;
+    case 2:
+        *(volatile uint32_t *)0 = 0;   // null write
+        break;
+    default:
+        break;
+    }
+#else
+    (void)L;
+#endif
+    return 0;
+}
+
+// Ext.Debug.SetEntityRuntimeCheckLevel(level)
+// ecs::RuntimeCheckLevel: None=0, Once=1, Always=2, FullECS=3.
+// Windows accepts Once..FullECS in release and None..FullECS in debug, and
+// logs an error for anything else (Debug.inl SetEntityRuntimeCheckLevel).
+static int lua_debug_set_entity_runtime_check_level(lua_State *L) {
+    int level = (int)luaL_checkinteger(L, 1);
+
+#ifndef NDEBUG
+    int minLevel = 0;   // RuntimeCheckLevel::None
+#else
+    int minLevel = 1;   // RuntimeCheckLevel::Once
+#endif
+    const int maxLevel = 3;  // RuntimeCheckLevel::FullECS
+
+    if (level < minLevel || level > maxLevel) {
+        LOG_LUA_ERROR("Unsupported check level: %d", level);
+        return 0;
+    }
+
+    component_property_set_check_level(level);
+    return 0;
+}
+
+// Ext.Debug.GetEntityRuntimeCheckLevel() -> integer
+// macOS extra (no Windows counterpart): lets tests observe the level that
+// SetEntityRuntimeCheckLevel installed.
+static int lua_debug_get_entity_runtime_check_level(lua_State *L) {
+    lua_pushinteger(L, component_property_get_check_level());
+    return 1;
+}
+
 void lua_ext_register_debug(lua_State *L, int ext_table_index) {
     // Initialize session start time
     if (g_session_start_time == 0) {
@@ -959,6 +1084,25 @@ void lua_ext_register_debug(lua_State *L, int ext_table_index) {
 
     lua_pushcfunction(L, lua_debug_get_manager_status);
     lua_setfield(L, -2, "GetManagerStatus");
+
+    // Windows Ext.Debug parity surface (Debug.inl)
+    lua_pushcfunction(L, lua_debug_dump_stack);
+    lua_setfield(L, -2, "DumpStack");
+
+    lua_pushcfunction(L, lua_debug_dump_lifetimes);
+    lua_setfield(L, -2, "DebugDumpLifetimes");
+
+    lua_pushcfunction(L, lua_debug_debug_break);
+    lua_setfield(L, -2, "DebugBreak");
+
+    lua_pushcfunction(L, lua_debug_crash);
+    lua_setfield(L, -2, "Crash");
+
+    lua_pushcfunction(L, lua_debug_set_entity_runtime_check_level);
+    lua_setfield(L, -2, "SetEntityRuntimeCheckLevel");
+
+    lua_pushcfunction(L, lua_debug_get_entity_runtime_check_level);
+    lua_setfield(L, -2, "GetEntityRuntimeCheckLevel");
 
     // Set Ext.Debug = table
     lua_setfield(L, ext_table_index, "Debug");

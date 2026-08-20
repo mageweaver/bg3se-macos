@@ -3606,3 +3606,81 @@ Ext.Stats.Sync("Projectile_FireBolt")  -- No crash, damage updated
 | Input | Ext.Input keyboard capture |
 | Math | Ext.Math vector/matrix ops |
 | Type System | Ext.Enums, type definitions |
+
+## v0.44.0 — 2026-08-18
+
+First session live-verified against game build **4.1.1.7398727** (arm64 LC_UUID
+`0C51CAED-6D60-3DCD-9299-8519C92631B0`), the build the offsets were migrated to
+offline on 2026-08-04. Behavioral parity **75.0% → 90.0%** (252/280 scored).
+
+### Added
+- **Ext.Utils (+13)** — `GameVersion`, `Include`, `LoadString`, `IsValidHandle`,
+  `HandleToInteger`, `IntegerToHandle`, `GenerateGuid`, `ShowError`,
+  `ShowErrorAndExitGame`, `GetCommandLineParams`, `GetMemoryUsage`,
+  `ProfileBegin`/`ProfileEnd`. New `src/lua/lua_utils.c`. `ProfileBegin/End` map
+  Optick scopes onto `os_signpost` intervals; `GetCommandLineParams` uses
+  `_NSGetArgv` (kernel-split argv, strictly more accurate than the Windows
+  space-split); error dialogs use `CFUserNotification`.
+- **Ext.Table.Find** — new `src/lua/lua_table.c`, array-part-before-hash-part
+  ordering per `LuaTable.inl`, plus array-proxy support via `__len`/`__index`.
+- **Ext.Debug (+5)** — `DumpStack`, `DebugDumpLifetimes`, `DebugBreak`, `Crash`,
+  `SetEntityRuntimeCheckLevel` (+ macOS-only `GetEntityRuntimeCheckLevel`).
+- **Ext.IMGUI (+5)** — `EnableDemo`, `LoadFont`, `SetScale`,
+  `SetUIScaleMultiplier`, `SetFontScaleMultiplier`. Font loads queue and apply
+  on the render thread before `NewFrame`; UI scale re-derives from a pristine
+  `ImGuiStyle` baseline so repeated calls are idempotent.
+- **Entity proxy (+9)** — `OnCreate`/`OnDestroy` × {plain, Deferred, Once,
+  DeferredOnce} and `HasRawComponent`, at the Windows `LuaEntityProxy.inl`
+  placement with the entity bound from `self`.
+- **Ext.Template (+2)** — `GetLocalTemplate`, `GetLocalCacheTemplate`, plus a
+  `GetTemplate` alias for the Windows name.
+
+### Changed
+- `SetEntityRuntimeCheckLevel` gates a new per-read component bounds check at
+  `Always`/`FullECS`. The write-path bounds check stays unconditional at every
+  level, so lowering the level cannot weaken existing safety.
+
+### Fixed (documentation)
+- **6 Template contract entries were mis-scoped.** They claimed Windows registers
+  under `Ext.ClientTemplate`/`Ext.ServerTemplate` and that mods "hit nil" on
+  macOS. `DECLARE_MODULE(Template, role)` sets `mod.Table = "Template"`
+  (`LibraryRegistrationHelpers.h:31-34`), so Windows exposes `Ext.Template` and
+  the role only selects context — macOS already matched.
+- **3 Ext.Types entries were stale.** `GetHashSetValueAt`, `AddCustomFunction`,
+  and `AddCustomProperty` are implemented, and the custom-property registry is
+  consulted by the component proxy `__index`.
+
+### Notes
+- `steam_appid.txt` (`1086940`) must sit beside the game binary or
+  `SteamAPI_RestartAppIfNecessary` exits the process ~6s after launch. The
+  harness already runs with that CWD but never creates the file.
+
+### v0.44.0 addendum — 2026-08-20 live session verification
+
+First full in-game verification on build 4.1.1.7398727 using a purpose-made
+vanilla save (Lae'zel, Ravaged Beach; captured as harness fixture
+`vanilla-laezel-beach`).
+
+- **Tier 2: 106/110** passed. The 4 failures are pre-existing and unrelated to
+  this work (DamageEvents needs a BURNING status applied first;
+  Wave7 AddEnumerationValue insert; GetAllEntitiesWithUuid host mapping;
+  GetEntitiesAroundPosition host-proximity).
+- **Entity-proxy probe: 10/10** against `eoc::BaseHpComponent` on the host
+  entity — all 8 `OnCreate`/`OnDestroy` variants subscribe with distinct ids,
+  deferred/once flags accepted, unsubscribe round-trips (and a second
+  unsubscribe correctly returns false), unknown component names raise, and
+  `HasRawComponent` is true for a real component / false for a bogus one.
+- **Ext.Types trio credited.** `AddCustomProperty` registered a getter that was
+  then read back through a real component proxy's `__index`, returning the
+  getter's value — direct evidence that the custom-property layer the deferral
+  registry recorded as missing actually exists. Parity **90.0% -> 91.1%**
+  (255/280).
+
+Environment notes learned the hard way:
+- Do **not** empty `~/Documents/.../Mods`: BG3 treats missing mod.io-managed
+  mods as deletions and re-downloads them, which disables Continue/New Game
+  while syncing. Signing out of the Larian account stops it.
+- The harness's `BG3SE_AUTO_DISMISS_SPLASH=1` posts synthetic clicks at screen
+  centre every second. On builds where the FocusHack binds successfully those
+  clicks land, hijacking the menus from the user. Launch without it when a
+  human needs to drive the UI.

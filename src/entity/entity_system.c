@@ -2081,6 +2081,44 @@ static int lua_entity_index(lua_State *L) {
         lua_pushcfunction(L, lua_entity_remove_component);
         return 1;
     }
+    // Windows entity-proxy placement (LuaEntityProxy.inl): per-entity
+    // subscription methods and raw component presence check.
+    if (strcmp(key, "OnCreate") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_create);
+        return 1;
+    }
+    if (strcmp(key, "OnCreateDeferred") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_create_deferred);
+        return 1;
+    }
+    if (strcmp(key, "OnCreateOnce") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_create_once);
+        return 1;
+    }
+    if (strcmp(key, "OnCreateDeferredOnce") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_create_deferred_once);
+        return 1;
+    }
+    if (strcmp(key, "OnDestroy") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_destroy);
+        return 1;
+    }
+    if (strcmp(key, "OnDestroyDeferred") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_destroy_deferred);
+        return 1;
+    }
+    if (strcmp(key, "OnDestroyOnce") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_destroy_once);
+        return 1;
+    }
+    if (strcmp(key, "OnDestroyDeferredOnce") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_on_destroy_deferred_once);
+        return 1;
+    }
+    if (strcmp(key, "HasRawComponent") == 0) {
+        lua_pushcfunction(L, lua_entity_proxy_has_raw_component);
+        return 1;
+    }
     if (strcmp(key, "GetAllComponents") == 0) {
         lua_pushcfunction(L, lua_entity_get_all_components);
         return 1;

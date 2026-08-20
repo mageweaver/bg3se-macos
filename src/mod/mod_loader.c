@@ -468,7 +468,31 @@ void mod_detect_enabled(void) {
     LOG_MOD_INFO("============================");
 
     // Scan ~/Documents/Larian Studios/Baldur's Gate 3/Mods/ for SE mods not in modsettings.lsx
+    // Windows BG3SE only bootstraps SE mods that are in the active load order.
+    // The macOS port additionally scanned the Mods folder and loaded anything
+    // with a ScriptExtender/Config.json, whether or not the player had enabled
+    // it. That is convenient with a handful of mods and catastrophic with a
+    // large library: a 1205-PAK install bootstrapped 72 unenabled mods, many of
+    // which threw during load (MCM's whole init chain among them), and the
+    // resulting cascade aborted session start so no save or new game could be
+    // entered. It also diverges from Windows, where a disabled mod is inert.
+    //
+    // Default to the Windows contract. Set BG3SE_LOAD_UNREGISTERED_MODS=1 to
+    // restore the previous scan-everything behavior.
+    bool load_unregistered = (getenv("BG3SE_LOAD_UNREGISTERED_MODS") != NULL);
+    if (!load_unregistered) {
+        LOG_MOD_INFO("=== Skipping Mods-folder scan (load order is authoritative) ===");
+        LOG_MOD_INFO("  %d SE mod(s) from modsettings.lsx will load.", se_mod_count);
+        LOG_MOD_INFO("  Set BG3SE_LOAD_UNREGISTERED_MODS=1 to also load mods "
+                     "that are installed but not enabled.");
+        LOG_MOD_INFO("=========================================");
+        return;
+    }
+
     LOG_MOD_INFO("=== Scanning Mods Folder for SE Mods ===");
+    LOG_MOD_WARN("  BG3SE_LOAD_UNREGISTERED_MODS=1: loading mods that are NOT "
+                 "in the load order. This diverges from Windows and can abort "
+                 "session start if any of them fail to bootstrap.");
     if (home) {
         char mods_dir[MAX_PATH_LEN];
         snprintf(mods_dir, sizeof(mods_dir),

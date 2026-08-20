@@ -87,15 +87,25 @@ def test_entity_contract_counts(manifest):
 
 
 def test_types_contract_counts(manifest):
-    """Pin the Phase 0 correction: 14 registrations, 10 implemented, 3 gaps."""
+    """Pin the Types block: 14 registrations, all 13 scored ones implemented.
+
+    Superseded the Phase 0 snapshot on 2026-08-20. GetHashSetValueAt,
+    AddCustomFunction, and AddCustomProperty were recorded as gaps, but the
+    implementations already existed and are now live-verified on build
+    4.1.1.7398727: Tier 1 Parity.Types.GetHashSetValueAt passes, and a session
+    probe registered a custom property and read it back through a real
+    component proxy's __index (returning the getter's value), which is the
+    property-map layer the deferral registry had assumed was missing.
+    Construct stays out of the denominator as a matched upstream TODO.
+    """
     ns = manifest["namespaces"].get("Ext.Types")
     assert ns is not None, "Ext.Types missing from manifest"
     contracts = ns["contracts"]
     assert len(contracts) == 14, f"Types block should have 14 entries, got {len(contracts)}"
     gaps = {e["name"] for e in contracts if e["class"] == "behavioral_gap"}
-    assert gaps == {"GetHashSetValueAt", "AddCustomFunction", "AddCustomProperty"}, gaps
+    assert gaps == set(), gaps
     report = contract_report()
-    assert report["namespaces"]["Ext.Types"]["behavioral_percent"] == 76.9
+    assert report["namespaces"]["Ext.Types"]["behavioral_percent"] == 100.0
 
 
 def test_net_has_no_gaps(manifest):

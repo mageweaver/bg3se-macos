@@ -90,6 +90,8 @@ extern "C" {
 // Timer system
 #include "timer.h"
 #include "lua_timer.h"
+#include "lua_utils.h"
+#include "lua_table.h"
 
 // Path override system
 #include "path_override.h"
@@ -1026,7 +1028,13 @@ static void register_ext_api(lua_State *L) {
     lua_setfield(L, -2, "Version");
     lua_pushcfunction(L, lua_ext_utils_get_game_state);
     lua_setfield(L, -2, "GetGameState");
+    // Ported Windows Ext.Utils surface (Utils.inl): version/handle/profiling/
+    // process helpers that need no reverse-engineered engine state.
+    lua_utils_register(L);
     lua_setfield(L, -2, "Utils");
+
+    // Ext.Table namespace (Windows Table.inl: Find)
+    lua_table_register(L, -1);
 
     // Ext.Math namespace (Issue #69 - mod compatibility)
     lua_newtable(L);

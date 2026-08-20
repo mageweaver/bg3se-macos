@@ -22,6 +22,9 @@
 #include "lua_imgui.h"
 #include "imgui.h"
 #include "imgui_impl_metal.h"
+
+#include <pthread.h>
+#include <unistd.h>
 #include "imgui_impl_osx.h"
 #include "logging.h"
 
@@ -54,6 +57,12 @@ static struct {
     // Frame tracking
     uint64_t frame_count;
     bool needs_font_rebuild;
+
+    // Ext.IMGUI parity surface (ClientIMGUI.inl)
+    bool demo_enabled;
+    float ui_scale_multiplier;
+    float font_scale_multiplier;
+    bool style_baseline_captured;
 } s_state = {
     IMGUI_METAL_STATE_UNINITIALIZED,  // state
     false,                              // visible
@@ -68,8 +77,179 @@ static struct {
     nil,                                // gameLayer
     nil,                                // gameWindow
     0,                                  // frame_count
-    false                               // needs_font_rebuild
+    false,                              // needs_font_rebuild
+    false,                              // demo_enabled
+    1.0f,                               // ui_scale_multiplier
+    1.0f,                               // font_scale_multiplier
+    false                               // style_baseline_captured
 };
+
+// ============================================================================
+// Ext.IMGUI parity surface: demo window, scaling, custom fonts
+// ============================================================================
+//
+// Windows reference: BG3Extender/Lua/Libs/ClientIMGUI.inl:20-49.
+//
+// Font loading cannot happen on the Lua thread: the atlas is owned by the
+// render thread and rebuilding it mid-frame invalidates the Metal font
+// texture. Requests are therefore queued here and applied at frame start,
+// which is also when the scale multipliers are re-derived.
+
+#define IMGUI_MAX_PENDING_FONTS 16
+#define IMGUI_FONT_NAME_LEN     64
+#define IMGUI_FONT_PATH_LEN     1024
+
+typedef struct {
+    char name[IMGUI_FONT_NAME_LEN];
+    char path[IMGUI_FONT_PATH_LEN];
+    float size;
+} PendingFont;
+
+static PendingFont s_pending_fonts[IMGUI_MAX_PENDING_FONTS];
+static int s_pending_font_count = 0;
+static pthread_mutex_t s_font_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Named fonts that have been successfully loaded, so Ext.IMGUI can look them
+// up later and so a duplicate LoadFont() is reported honestly.
+typedef struct {
+    char name[IMGUI_FONT_NAME_LEN];
+    ImFont *font;
+} LoadedFont;
+
+static LoadedFont s_loaded_fonts[IMGUI_MAX_PENDING_FONTS];
+static int s_loaded_font_count = 0;
+
+// Pristine style captured before any scaling, so SetUIScaleMultiplier is
+// idempotent rather than cumulative (ScaleAllSizes multiplies in place).
+static ImGuiStyle s_style_baseline;
+
+void imgui_metal_set_demo_enabled(bool enabled) {
+    s_state.demo_enabled = enabled;
+    LOG_IMGUI_INFO("ImGui demo window %s", enabled ? "enabled" : "disabled");
+}
+
+bool imgui_metal_get_demo_enabled(void) {
+    return s_state.demo_enabled;
+}
+
+void imgui_metal_set_ui_scale_multiplier(float scale) {
+    if (!(scale > 0.0f) || scale > 10.0f) {
+        LOG_IMGUI_WARN("SetUIScaleMultiplier: ignoring out-of-range scale %f", scale);
+        return;
+    }
+    s_state.ui_scale_multiplier = scale;
+    s_state.needs_font_rebuild = true;  // re-derive style at frame start
+}
+
+float imgui_metal_get_ui_scale_multiplier(void) {
+    return s_state.ui_scale_multiplier;
+}
+
+void imgui_metal_set_font_scale_multiplier(float scale) {
+    if (!(scale > 0.0f) || scale > 10.0f) {
+        LOG_IMGUI_WARN("SetFontScaleMultiplier: ignoring out-of-range scale %f", scale);
+        return;
+    }
+    s_state.font_scale_multiplier = scale;
+}
+
+float imgui_metal_get_font_scale_multiplier(void) {
+    return s_state.font_scale_multiplier;
+}
+
+bool imgui_metal_load_font(const char *name, const char *path, float size) {
+    if (!name || !path || !(size > 0.0f)) {
+        return false;
+    }
+    if (access(path, R_OK) != 0) {
+        LOG_IMGUI_ERROR("LoadFont('%s'): cannot read '%s'", name, path);
+        return false;
+    }
+
+    pthread_mutex_lock(&s_font_mutex);
+    if (s_pending_font_count >= IMGUI_MAX_PENDING_FONTS) {
+        pthread_mutex_unlock(&s_font_mutex);
+        LOG_IMGUI_ERROR("LoadFont('%s'): pending font queue is full", name);
+        return false;
+    }
+
+    PendingFont *slot = &s_pending_fonts[s_pending_font_count++];
+    snprintf(slot->name, sizeof(slot->name), "%s", name);
+    snprintf(slot->path, sizeof(slot->path), "%s", path);
+    slot->size = size;
+    pthread_mutex_unlock(&s_font_mutex);
+
+    s_state.needs_font_rebuild = true;
+    LOG_IMGUI_INFO("LoadFont('%s') queued: %s @ %.1fpx", name, path, size);
+    return true;
+}
+
+// Apply queued font loads and scale changes. Render thread only, called before
+// ImGui::NewFrame() so the atlas is not mutated mid-frame.
+static void imgui_metal_apply_pending_style(void) {
+    ImGuiIO &io = ImGui::GetIO();
+
+    if (!s_state.style_baseline_captured) {
+        s_style_baseline = ImGui::GetStyle();
+        s_state.style_baseline_captured = true;
+    }
+
+    // Font scale is a plain per-frame multiplier; no atlas work required.
+    io.FontGlobalScale = s_state.font_scale_multiplier;
+
+    if (!s_state.needs_font_rebuild) {
+        return;
+    }
+    s_state.needs_font_rebuild = false;
+
+    // Re-derive the style from the pristine baseline so repeated calls do not
+    // compound.
+    ImGuiStyle &style = ImGui::GetStyle();
+    style = s_style_baseline;
+    if (s_state.ui_scale_multiplier != 1.0f) {
+        style.ScaleAllSizes(s_state.ui_scale_multiplier);
+    }
+
+    // Drain the pending font queue.
+    pthread_mutex_lock(&s_font_mutex);
+    int count = s_pending_font_count;
+    PendingFont batch[IMGUI_MAX_PENDING_FONTS];
+    if (count > 0) {
+        memcpy(batch, s_pending_fonts, sizeof(PendingFont) * (size_t)count);
+        s_pending_font_count = 0;
+    }
+    pthread_mutex_unlock(&s_font_mutex);
+
+    if (count == 0) {
+        return;
+    }
+
+    bool added = false;
+    for (int i = 0; i < count; i++) {
+        ImFont *font = io.Fonts->AddFontFromFileTTF(batch[i].path, batch[i].size);
+        if (!font) {
+            LOG_IMGUI_ERROR("LoadFont('%s'): ImGui rejected %s", batch[i].name,
+                            batch[i].path);
+            continue;
+        }
+        added = true;
+
+        if (s_loaded_font_count < IMGUI_MAX_PENDING_FONTS) {
+            LoadedFont *slot = &s_loaded_fonts[s_loaded_font_count++];
+            snprintf(slot->name, sizeof(slot->name), "%s", batch[i].name);
+            slot->font = font;
+        }
+        LOG_IMGUI_INFO("LoadFont('%s'): loaded", batch[i].name);
+    }
+
+    if (added) {
+        // ImGui 1.92+ owns the atlas texture lifecycle: fonts added at runtime
+        // are uploaded by the Metal backend during RenderDrawData via the
+        // ImTextureData path, so no manual destroy/create is needed (and the
+        // old ImGui_ImplMetal_*FontsTexture entry points no longer exist).
+        LOG_IMGUI_INFO("Queued %d font(s) into the ImGui atlas", count);
+    }
+}
 
 // ============================================================================
 // CGEventTap Mouse Position Cache
@@ -1172,6 +1352,9 @@ static void imgui_metal_render_frame(id<CAMetalDrawable> drawable) {
                 }
             }
 
+            // Apply queued font loads / scale changes before the frame opens.
+            imgui_metal_apply_pending_style();
+
             ImGui::NewFrame();
 
             // ===========================================
@@ -1243,6 +1426,17 @@ static void imgui_metal_render_frame(id<CAMetalDrawable> drawable) {
                     }
                 }
                 ImGui::End();
+            }
+
+            // Ext.IMGUI.EnableDemo(true) shows the stock ImGui demo window.
+            // Independent of the F11 debug overlay, matching Windows where
+            // EnableDemo is its own toggle.
+            if (s_state.demo_enabled) {
+                bool open = true;
+                ImGui::ShowDemoWindow(&open);
+                if (!open) {
+                    s_state.demo_enabled = false;
+                }
             }
 
             // End frame and render

@@ -2,7 +2,7 @@
 
 macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: scope-corrected 100% parity across the supported macOS surface.
 
-**Version:** v0.43.0 | **Parity:** approximately 94.8% from the ROADMAP.md matrix (behavioral accounting with per-function contract diffs — stubs score zero, macOS-only extras earn no credit) | **Target:** 100% of the supported macOS surface | **Deferral registry:** docs/deferrals.md
+**Version:** v0.44.0 | **Parity:** **91.1%** (255/280 scored) from docs/parity-100/contract.json (behavioral accounting with per-function contract diffs — stubs score zero, macOS-only extras earn no credit) | **Target:** 100% of the supported macOS surface | **Deferral registry:** docs/deferrals.md
 
 ## Stack
 
