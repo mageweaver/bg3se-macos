@@ -584,3 +584,51 @@ correct source is the live `EntityWorld` system array, not the statics), and
 re-derive the array/buffer offsets and `0xf8` stride for 7398727. That is
 disassembly work, and it is the only remaining blocker for both
 `OnSystemUpdate` and `OnSystemPostUpdate`.
+
+### Disassembly findings (2026-08-20): `+0x28/+0x30` is the wrong structure
+
+`ecs::EntityWorld::Update(ls::GameTime const&)` is at `0x10638ec08` (Ghidra
+rebase). Its dispatch loop is unambiguous:
+
+```asm
+ldp  x9, x10, [x19, #0x80]   ; x19 = EntityWorld: divisor/count @ +0x80,
+                             ;                    buffer ptr    @ +0x88
+udiv x12, x8, x9
+msub x11, x12, x9, x8        ; x11 = index % count
+add  x9, x10, x11, lsl #7    ; entry = buffer + index*0x80  (stride 128)
+...
+add  x10, x10, x11, lsl #7
+ldr  x0, [x10, #0x8]         ; executor pointer at entry + 0x8
+bl   ecs::core::SystemDependencyExecutor::ExecuteWTKernel   ; 0x1063a057c
+```
+
+Also visible: an atomic cursor at `EntityWorld + 0x180` (`ldapr`/`casal`), and
+state words at `+0x218` / `+0x228`.
+
+So the pair this recon records as the system array (`+0x28` / `+0x30`,
+stride `0xf8`) does not describe what `Update` actually walks. What lives at
+`+0x80`/`+0x88` is a **work queue of `SystemDependencyExecutor` pointers with a
+0x80 stride**, which is why reading a "system count" from `+0x30` returned
+`1433124880` in the live probe.
+
+The `0xf8` figure does appear sound as the *descriptor* size:
+`ls::RegisterSharedSystems(ecs::EntityWorld&)` (`0x105f23118`) zeroes a stack
+descriptor spanning roughly `+0x58`..`+0xe8` before registering, consistent with
+a ~0xf8-byte `SystemTypeEntry`.
+
+**Why this stops here.** `RegisterSharedSystems` is heavily inlined: it builds
+`ls::HashTable<unsigned>` and several `ls::DynamicArray` members in place rather
+than calling a tidy `RegisterSystem(...)`, so the destination offsets are not
+recoverable from a single function's disassembly. This is the point to use the
+analyzed Ghidra project (`~/tools/ghidra-projects/BG3_7398727`) and decompile
+`RegisterSharedSystems` / `RegisterClientSystems` properly, where the member
+writes will render as structure assignments.
+
+**Corrected task list for OnSystemUpdate/OnSystemPostUpdate:**
+1. Do NOT regenerate the TypeId table -- it is byte-identical to a fresh
+   extraction (see the correction above).
+2. Decompile `RegisterSharedSystems` (`0x105f23118`) in Ghidra to recover where
+   the ~0xf8 `SystemTypeEntry` descriptors are stored on `EntityWorld`.
+3. Confirm the `UpdateProc` slot within that entry (recon says `+0x18`).
+4. Only then revisit whether the TypeIndex statics or the live table is the
+   correct lookup source.
