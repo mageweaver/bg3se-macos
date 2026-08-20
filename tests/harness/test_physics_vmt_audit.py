@@ -198,12 +198,17 @@ def test_physics_vmt_constants_match_audited_indices():
 
 
 def test_quarantined_raycast_bindings_warn_once_and_fail_closed():
-    # RaycastClosest/All remain deferred; RaycastAny is implemented in Wave 7 B4b
-    # (real VMT-slot-10 binding, gated) and is covered by the contract below.
+    # Only RaycastClosest remains deferred. It ends in a by-value
+    # ls::Function<bool(ls::PhysicsShape const*)> whose construction, lifetime
+    # and ownership are still unproven -- a different ABI from the disengaged
+    # optional the other two use.
+    #
+    # RaycastAny (Wave 7 B4b) and RaycastAll (2026-08-20) both dispatch real VMT
+    # slots behind the audited-image gate; see test_raycast_any_binding_is_gated
+    # and test_raycast_all_binding_is_gated.
     source = LUA_LEVEL_C.read_text()
     contracts = {
         "lua_level_raycast_closest": ("RaycastClosest", "lua_pushnil(L)"),
-        "lua_level_raycast_all": ("RaycastAll", "lua_pushnil(L)"),
     }
     for function, (api_name, result_statement) in contracts.items():
         body = _function_body(source, function)
@@ -244,12 +249,30 @@ def test_repaired_query_calls_use_arm64_reference_shapes():
     assert "return test(physics, pos, extents, out," in source
     assert "return test(physics, pos, radius, out," in source
 
-    # Closest/All are still deferred stubs and must not dispatch a VMT entry.
-    # RaycastAny (Wave 7 B4b) is intentionally excluded: it dispatches the real
-    # VMT slot 10 and is validated by test_raycast_any_binding_is_gated below.
-    for function in ("level_raycast_closest", "level_raycast_all"):
+    # Only RaycastClosest is still a deferred stub and must not dispatch a VMT
+    # entry. RaycastAny and RaycastAll intentionally do dispatch real slots and
+    # are validated by their own gate tests below.
+    for function in ("level_raycast_closest",):
         body = _function_body(source, function)
         assert "read_vmt_entry" not in body
+
+
+def test_raycast_all_binding_is_gated():
+    """RaycastAll must dispatch VMT slot 9 behind the same audited-image gate as
+    RaycastAny, and fail closed off-arm64 (PHYSICS_VMT_AUDIT.md 2026-08-20)."""
+    source = LEVEL_MANAGER_C.read_text()
+    body = _function_body(source, "level_raycast_all")
+
+    assert "read_vmt_entry(" in body
+    assert "PHYSICS_VMT_RAYCAST_ALL" in body
+    assert "raycast_any_gate_matches()" in body   # shares the audited-image gate
+    assert "__aarch64__" in body                  # arm64-only, x86_64 fails closed
+    assert "physics_raycast_all_arm64(" in body
+
+    # The trailing by-value ls::Optional must be passed disengaged (16 zero
+    # bytes), exactly as the proven RaycastAny shim does.
+    shim = _function_body(source, "physics_raycast_all_arm64")
+    assert "stp xzr, xzr, [sp, #8]" in shim
 
 
 def test_raycast_any_binding_is_gated():

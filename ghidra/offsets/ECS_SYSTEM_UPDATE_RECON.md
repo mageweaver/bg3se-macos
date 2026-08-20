@@ -493,3 +493,51 @@ This evidence supports implementation rather than registry-entry deferral. The
 unproved generic TypeContext enumeration can be deferred independently; it is
 not a blocker for the named systems already represented by build-specific
 TypeId globals.
+
+## 2026-08-20 — live probe: gate is OPEN, but the recon data is stale
+
+`Ext.Entity.OnSystemUpdate` / `OnSystemPostUpdate` are registered and the build
+gate passes on 4.1.1.7398727 (`ECS_SYSTEM_UPDATE_VERIFIED_BUILD` already equals
+`BG3_KNOWN_VERSION`), so subscription attempts reach the resolver rather than
+being refused. They still fail, for two distinct reasons:
+
+    OnSystemUpdate("ServerCharacterManager") -> Unknown system type
+    OnSystemUpdate("ClientCharacterManager") -> System not registered:
+                                                system entry is absent or its
+                                                stored indices disagree
+    OnSystemUpdate("NoSuchSystemXYZ")        -> Unknown system type  (correct)
+
+1. **Name coverage.** Several plausible names are absent from
+   `GENERATED_SYSTEM_TYPEID_ENTRIES` entirely (`ServerCharacterManager`), so the
+   table needs regenerating, not just re-addressing.
+
+2. **The TypeId globals read garbage.** The recorded VAs *are* correct -- e.g.
+   `ecl::CharacterManager` is `0x1088db750` in the table and `nm` agrees -- but
+   reading them at runtime with the ASLR slide (`0xa20000`) yields nonsense:
+
+   | symbol | value read |
+   |---|---:|
+   | `ecl::CharacterIconRenderSystem` | -1859477240 |
+   | `ecl::CharacterManager` | -1459607556 |
+   | `ecl::EquipmentVisualsSystem` | -1258290912 |
+   | `ecl::PickingHelperManager` | 889192234 |
+
+   The identical read technique returns valid, in-range, unique indices for the
+   `ReplicatedTypeContext` globals on the same build, so the method is sound and
+   these particular slots are simply not live TypeIndex storage.
+
+3. **The EntityWorld system array offsets look stale.** The recon records the
+   array/buffer at `+0x28`/`+0x30`, but on 7398727 that yields
+   `count = 1433124880` -- plainly not a system count.
+
+**Good news for whoever picks this up:** the SystemsContext TypeIds are exported
+symbols, exactly like the replicated-type globals. 457 of them are recoverable
+with no Ghidra at all:
+
+    nm -gU <arm64 slice> | grep 'ecs14SystemsContext' \
+      | grep '11m_TypeIndexE$' | grep -v '__ZGV'
+
+So step 1 is mechanical: regenerate the whole table from symbols (names *and*
+addresses) rather than patching entries. Step 2 -- re-deriving the EntityWorld
+system array offsets and the `0xf8` entry stride for this build -- is the part
+that still needs disassembly.

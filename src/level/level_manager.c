@@ -1605,6 +1605,74 @@ static bool physics_raycast_any_arm64(void *function, void *scene,
 
     return result != 0;
 }
+
+/*
+ * RaycastAll — macOS ARM64 VMT[9]. Audited signature (PHYSICS_VMT_AUDIT.md):
+ *
+ *   phx::SimplePhysXScene::RaycastAll(Vector3f const&, Vector3f const&,
+ *       ls::PhysicsHitAll&, ls::EPhysicsType, unsigned, unsigned,
+ *       ls::EPhysicsContext, unsigned, unsigned,
+ *       ls::Optional<ls::PhysicsSceneScopedReadLock&>) const
+ *
+ * This is RaycastAny's parameter list with ls::PhysicsHitAll& inserted at
+ * position 3, so every later argument shifts one register and the two trailing
+ * unsigneds spill to the stack:
+ *
+ *   x0 this   x1 src   x2 dst   x3 hits   w4 physicsType
+ *   x5 includeGroup   x6 excludeGroup   x7 context
+ *   [sp+0] trailing uint #1   [sp+4] trailing uint #2
+ *   [sp+8] the by-value ls::Optional, 16 bytes, zeroed (disengaged)
+ *
+ * Both halves of this ABI are already proven on this build: the disengaged
+ * 16-byte optional is the same trailing parameter RaycastAny ships
+ * (RAYCAST_ABI_B4A.md), and ls::PhysicsHitAll& is the same out-parameter the
+ * working SweepAll/TestBox bindings already pass as a plain pointer.
+ */
+static bool physics_raycast_all_arm64(void *function, void *scene,
+                                      const float source[3],
+                                      const float destination[3],
+                                      LevelPhysicsHitAll *hits,
+                                      uint32_t physics_type,
+                                      uint32_t include_group,
+                                      uint32_t exclude_group,
+                                      int context) {
+    uint32_t result = 0;
+    uint64_t context_arg = (uint32_t)context;
+
+    __asm__ volatile(
+        "sub sp, sp, #32\n"
+        "mov w9, #-1\n"
+        "str w9, [sp]\n"
+        "str w9, [sp, #4]\n"
+        "stp xzr, xzr, [sp, #8]\n"
+        "mov x0, %[scene]\n"
+        "mov x1, %[source]\n"
+        "mov x2, %[destination]\n"
+        "mov x3, %[hits]\n"
+        "mov w4, %w[physics_type]\n"
+        "mov x5, %[include_group]\n"
+        "mov x6, %[exclude_group]\n"
+        "mov x7, %[context]\n"
+        "blr %[function]\n"
+        "mov %w[result], w0\n"
+        "add sp, sp, #32\n"
+        : [result] "=r"(result)
+        : [function] "r"(function),
+          [scene] "r"(scene),
+          [source] "r"(source),
+          [destination] "r"(destination),
+          [hits] "r"(hits),
+          [physics_type] "r"(physics_type),
+          [include_group] "r"((uint64_t)include_group),
+          [exclude_group] "r"((uint64_t)exclude_group),
+          [context] "r"(context_arg)
+        : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+          "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+          "x16", "x17", "x30", "cc", "memory");
+
+    return result != 0;
+}
+
 #endif
 
 /*
@@ -1975,6 +2043,24 @@ bool level_raycast_all(const float src[3], const float dst[3],
                        uint32_t exclude_group,
                        int context) {
     if (out) memset(out, 0, sizeof(*out));
+#if defined(__aarch64__)
+    /* Shares RaycastAny's gate: same audited image, same proven optional ABI. */
+    if (!src || !dst || !out || !raycast_any_gate_matches()) return false;
+
+    void *physics = level_get_physics_scene();
+    if (!physics) return false;
+
+    void *function = read_vmt_entry(physics, PHYSICS_VMT_RAYCAST_ALL);
+    if (!function) {
+        log_message("[Level] RaycastAll VMT entry not found at index %d",
+                    PHYSICS_VMT_RAYCAST_ALL);
+        return false;
+    }
+
+    return physics_raycast_all_arm64(function, physics, src, dst, out,
+                                     physics_type, include_group,
+                                     exclude_group, context);
+#else
     (void)src;
     (void)dst;
     (void)physics_type;
@@ -1982,6 +2068,7 @@ bool level_raycast_all(const float src[3], const float dst[3],
     (void)exclude_group;
     (void)context;
     return false;
+#endif
 }
 
 bool level_raycast_closest(const float src[3], const float dst[3],

@@ -801,8 +801,8 @@
         },
         {
           "name": "RaycastAll",
-          "note": "Warn-once stub returning nil. Same ABI gap. deferrals.md.",
-          "class": "behavioral_gap",
+          "note": "Undeferred and live-verified 2026-08-20 on build 4.1.1.7398727. The registry's stated blocker -- that the trailing by-value ls::Optional<PhysicsSceneScopedReadLock&> could not be constructed safely from C -- was false: it is the same disengaged 16-byte optional RaycastAny already ships, and ls::PhysicsHitAll& is the same out-parameter the working SweepAll/TestBox bindings pass. RaycastAll is RaycastAny's register layout with one pointer inserted at position 3. Live test 5/5: a downward ray returns 16 hits whose first Position matches the host's X/Z exactly with Normal [0,1,0]; Distance is a normalized t (0.2552 x 60-unit ray = 15.3 units, the exact drop); agrees with RaycastAny on hit and miss; mask exclusion yields nothing; 300 casts -> 3138 hits in 6ms with no crash. Shares RaycastAny's version+UUID gate. See ghidra/offsets/PHYSICS_VMT_AUDIT.md.",
+          "class": "implemented",
           "kind": "function"
         },
         {
@@ -2097,8 +2097,8 @@
   },
   "summary": {
     "total_contracts": 294,
-    "implemented": 256,
-    "behavioral_gap": 24,
+    "implemented": 257,
+    "behavioral_gap": 23,
     "matched_upstream_todo": 1,
     "excluded": 13
   },

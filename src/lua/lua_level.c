@@ -215,14 +215,39 @@ static int lua_level_raycast_closest(lua_State *L) {
  *   Returns: array of hit tables {Normal={x,y,z}, Position={x,y,z}, Distance=n, PhysicsGroup=n}
  *            or empty table if no hits
  */
+/**
+ * Ext.Level.RaycastAll(src, dst, physType, includeGroup, excludeGroup, context)
+ *   Returns: array of hit tables, or nil when there are no hits
+ *
+ * Undeferred 2026-08-20. The old warn-and-nil stub claimed the trailing
+ * by-value ls::Optional<PhysicsSceneScopedReadLock&> "cannot be constructed
+ * safely from C". That is no longer true: it is the same disengaged 16-byte
+ * optional RaycastAny already ships against this audited image, and the
+ * ls::PhysicsHitAll& out-parameter is the one the working SweepAll/TestBox
+ * bindings already pass. See ghidra/offsets/PHYSICS_VMT_AUDIT.md.
+ */
 static int lua_level_raycast_all(lua_State *L) {
-    static bool warned = false;
-    warn_deferred_once(
-        &warned, "RaycastAll",
-        "the audited ARM64 trailing optional read-lock value cannot be "
-        "constructed safely from C; returning nil");
-    lua_pushnil(L);
-    return 1;
+    float src[3], dst[3];
+    if (!read_vec3(L, 1, src)) {
+        return luaL_error(L, "Ext.Level.RaycastAll: src must be a {x,y,z} table");
+    }
+    if (!read_vec3(L, 2, dst)) {
+        return luaL_error(L, "Ext.Level.RaycastAll: dst must be a {x,y,z} table");
+    }
+
+    uint32_t physics_type  = (uint32_t)luaL_optinteger(L, 3, 1);
+    uint32_t include_group = (uint32_t)luaL_optinteger(L, 4, 0x7FFFFFFF);
+    uint32_t exclude_group = (uint32_t)luaL_optinteger(L, 5, 0);
+    int context            = (int)luaL_optinteger(L, 6, 0);
+
+    LevelPhysicsHitAll hits;
+    bool found = level_raycast_all(src, dst, &hits, physics_type,
+                                   include_group, exclude_group, context);
+    if (!found) {
+        lua_pushnil(L);
+        return 1;
+    }
+    return push_hit_all(L, &hits);
 }
 
 /**
