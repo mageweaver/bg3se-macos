@@ -442,6 +442,27 @@ static int lua_staticdata_hashlookup(lua_State *L) {
 // Registration
 // ============================================================================
 
+/*
+ * Ext.StaticData.ProbeStride(type) -> measuredStride, recordsFound, configured
+ *
+ * Diagnostic for validating the per-type entry_size values, which were mostly
+ * estimates. A wrong stride does not fail loudly -- enumeration still returns
+ * entries, but ones landing off a record boundary expose unrelated bytes as a
+ * ResourceUUID. Compare the measured stride against the configured one.
+ */
+static int lua_staticdata_probestride(lua_State* L) {
+    int type = (int)luaL_checkinteger(L, 1);
+    if (type < 0 || type >= STATICDATA_COUNT) {
+        return luaL_error(L, "ProbeStride: type out of range");
+    }
+    int hits = 0;
+    int stride = staticdata_probe_stride((StaticDataType)type, &hits);
+    lua_pushinteger(L, stride);
+    lua_pushinteger(L, hits);
+    lua_pushinteger(L, staticdata_get_configured_entry_size((StaticDataType)type));
+    return 3;
+}
+
 static const luaL_Reg staticdata_funcs[] = {
     {"GetAll", lua_staticdata_getall},
     {"Get", lua_staticdata_get},
@@ -459,6 +480,7 @@ static const luaL_Reg staticdata_funcs[] = {
     {"TriggerCapture", lua_staticdata_triggercapture},
     {"ForceCapture", lua_staticdata_forcecapture},
     {"HashLookup", lua_staticdata_hashlookup},
+    {"ProbeStride", lua_staticdata_probestride},
     {NULL, NULL}
 };
 

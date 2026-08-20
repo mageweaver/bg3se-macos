@@ -309,6 +309,19 @@ typedef struct {
 bool staticdata_get_raw_info(StaticDataType type, StaticDataRawInfo* out);
 
 /**
+ * Measure a bank's real record stride (read-only diagnostic).
+ *
+ * Records start with a VMT pointer followed by the UUID, so record boundaries
+ * are the offsets carrying a plausible UUID at +0x08. Returns the most common
+ * gap between such offsets, or 0 if it could not be determined. Use this to
+ * validate entry_size rather than estimating it.
+ */
+int staticdata_probe_stride(StaticDataType type, int *out_hits);
+
+/** Configured entry_size for a type, for comparison against the measured one. */
+int staticdata_get_configured_entry_size(StaticDataType type);
+
+/**
  * Dump static data manager status to log.
  */
 void staticdata_dump_status(void);
