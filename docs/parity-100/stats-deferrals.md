@@ -277,3 +277,52 @@ Ranked attack order:
 Final judgment: passive sync is worth reconnaissance, but not a full inlined-loader reconstruction absent a usable helper. Interrupt sync should remain an honest deferral. Calling either “100% parity” after approximate struct writes would be substantially worse than reporting the capability gap accurately.
 
 Confidence is high on the blockers and container shapes, medium on effort estimates, and intentionally low on the usefulness of `Passives::Parse` until decompiled. The Ghidra HTTP bridge was not reachable during this pass, so the new symbol leads above come from the installed binary’s local symbol table rather than fresh decompiler output.
+
+## Address refresh for build 4.1.1.7398727 (2026-08-20)
+
+Every address previously listed in this document is for **4.1.1.7209685** and is
+wrong for the build now under test. Re-resolved from the shipped symbol table:
+
+| Symbol | 7398727 |
+|---|---|
+| `CRPGStats_Modifier_ValueList::Insert(ls::FixedString const&, int)` | `0x101c42014` |
+| `CNamedElementManager<CRPGStats_Modifier, int, 0, -1>::Insert(CRPGStats_Modifier*)` | `0x102103420` |
+| `CRPGStats_Modifier::GetPosition(char const*)` | `0x101c42104` |
+| `RPGStats::ParseStructureFolder(ls::Path const&)` | `0x102103b64` |
+| `eoc::Passives::Parse(eoc::Passives const&, ls::STDString const&)` | `0x101c0ca70` |
+| `eoc::Passives::Get(ls::FixedString const&) const` | `0x101c0c970` |
+| `eoc::InterruptPrototypeManager::GetPrototype(ls::FixedString const&) const` | `0x101b784c0` |
+| `esv::aigrid::CreatePathForCharacter(esv::Character const*, eoc::aigrid::ProcessedSettings const&)` | `0x0000000104820334` |
+| `esv::aigrid::ProcessSettingsForCharacter(esv::Character const&, eoc::aigrid::UnprocessedSettings const&)` | `0x` |
+
+### `AddAttribute`: blocker confirmed, not removed
+
+Disassembling `CNamedElementManager<CRPGStats_Modifier>::Insert` confirms the
+document's field guess and the shape of the remaining work:
+
+    x21 = modifier + 0xC          ; FixedString name, as documented
+    x8  = [[this] + 0x28]         ; virtual name-lookup
+    blr x8                        ; -> existing index, or -1
+    (index != -1) -> duplicate path, releases the incoming node
+
+So `Insert` registers a modifier that the **caller has already constructed and
+owns**. It does not allocate. The blocker is therefore exactly as recorded —
+allocator, default initialization (`LevelMapIndex == -1`, the zero field at +8)
+and manager ownership — and none of that is settled by having the address.
+Shipping it on a guess risks the stats schema, which is Critical once
+`RPGStats::Objects` is non-empty. Still deferred.
+
+### `BeginPathfinding`: full ABI recovered, construction still unproven
+
+    esv::aigrid::ProcessSettingsForCharacter(esv::Character const&,
+                                             eoc::aigrid::UnprocessedSettings const&)
+    esv::aigrid::CreatePathForCharacter(esv::Character const*,
+                                        eoc::aigrid::ProcessedSettings const&)
+
+This is the higher-level entry point the deferral recommended finding, and it
+removes the need to populate `AiPath` by hand. It does **not** remove the need to
+construct `UnprocessedSettings` correctly, which simply moves the
+field-population risk to a different struct — and a malformed settings block
+feeds invalid bounds into pathfinding. The request lifecycle (callback storage,
+game-thread delivery, cancellation, release) is also still unaddressed. Still
+deferred.
