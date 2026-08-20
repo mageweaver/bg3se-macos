@@ -93,3 +93,46 @@ Function but does not replace B4c runtime validation.
   `9A647311-E263-3FF2-AF98-111CEDCB3034`.
 - Keep B4b output lifetime and B4c empty-function behavior as separate gates
   per the plan's split-gate ladder.
+
+## 2026-08-20 — stress ladder attempted, gate is CLOSED on 7398727
+
+Ran the live stress ladder in a vanilla session on build 4.1.1.7398727. It
+cannot pass, because `RaycastAny` never reaches the physics VMT at all:
+
+`level_raycast_any()` early-returns on `raycast_any_gate_matches()`, which is
+`version_detect_matches() && raycast_any_uuid_matches()`. The version check
+passes, but the UUID check compares the running image's `LC_UUID` against the
+hardcoded `s_raycast_any_verified_uuid` (`level_manager.c:104`):
+
+| | UUID |
+|---|---|
+| `s_raycast_any_verified_uuid` | `9A647311-E263-3FF2-AF98-111CEDCB3034` |
+| installed arm64 image (7398727) | `0C51CAED-6D60-3DCD-9299-8519C92631B0` |
+
+The hardcoded value is build **7209685**'s. On 7398727 the gate is therefore
+closed and every call fail-closes to `false` without dispatching VMT slot 10.
+
+Ladder observations under the closed gate (all consistent with "always false",
+none informative about the binding):
+
+- high sky segment → `false` (would pass either way)
+- straight down through terrain from the host's own position → `false`
+  (**would be `true` if the binding ran**)
+- 400m horizontal sweep → `false`
+- include-all vs exclude-all masks → identical `false`
+- degenerate/zero-length rays → `false`, no crash
+
+**Do not simply update the UUID constant.** The gate exists to prevent exactly
+that: the deferral doctrine forbids promoting an implementation by porting a
+constant. `PHYSICS_VMT_RAYCAST_ANY` (slot 10) was audited on 7209685; the
+physics VMT was already found to be wrong-by-one on nine indices once before
+(`PHYSICS_VMT_AUDIT.md`), so slot 10 must be re-audited on 7398727 before the
+UUID is advanced.
+
+Unlock path:
+1. Re-audit the physics scene VMT on 7398727 and confirm the RaycastAny slot
+   index (Ghidra).
+2. Only if slot 10 still holds, update `s_raycast_any_verified_uuid` to
+   `0C51CAED-6D60-3DCD-9299-8519C92631B0` with the audit report as evidence.
+3. Re-run this ladder; the "straight down through terrain" case is the
+   discriminator — it must return `true`.
