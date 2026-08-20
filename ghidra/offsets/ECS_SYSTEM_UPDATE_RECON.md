@@ -916,12 +916,41 @@ lands now rather than at the next flush). Mods depending on deferred ordering
 will observe the change one flush early. Wiring the real deferred path requires
 the EntityCommandBuffer layout, which is not mapped.
 
-### Return value was fabricated
+### Return value — RETRACTION
 
-The specialization returns bool — false when there is no committed component of
-that type, or when a pending change already exists (`EntitySystem.cpp:395`). It
-was being invoked through a `void`-returning function pointer, so the result was
-discarded and every call reported success. Now propagated.
+An earlier revision of this document claimed the specialization returns bool and
+that the port was discarding it. That was wrong, and the "fix" that read a return
+value has been reverted.
+
+Template functions encode their return type in the mangled name, and every
+specialization is `v` (void):
+
+    _ZN3ecs6legacy19ImmediateWorldCache15RemoveComponentIN2ls12ConstructionEEEvNS3_2IDINS_18EntityHandleTraitsEEE
+    -> void ecs::legacy::ImmediateWorldCache::RemoveComponent<ls::Construction>(ls::ID<ecs::EntityHandleTraits>)
+
+The bool-returning `ImmediateWorldCache::RemoveComponent(EntityHandle,
+ComponentTypeIndex)` seen in the Windows source is a *different*, non-template
+overload. Reading a result from the macOS specialization returns whatever happens
+to be left in w0. Confirmed in game: two consecutive removals of the same
+component both reported "true".
+
+`entity:RemoveComponent` therefore returns true to mean "a specialization existed
+and was dispatched", and false only when the name is unknown or uncovered. It
+cannot report whether the entity actually had the component.
+
+### Effect is not immediately visible
+
+Removal records a pending change in the ImmediateWorldCache; it does not edit the
+committed storage class. `GetAllComponentNames` reads committed data, so a
+removed component still appears in the list within the same tick, and the
+component count does not change. Verified: removing
+`esv::replication::ReplicationDependencyComponent` from a status entity returned
+true, left the list at 10 components, and did not error. The removal is
+nonetheless real — removing `ls::VisualComponent` from the host freed the visual
+and crashed the render thread.
+
+Consequence for tests: neither the return value nor `GetAllComponentNames` can
+confirm a removal took effect. Only an observable side effect can.
 
 ### `HasRawComponent` false negative (separate pre-existing bug)
 

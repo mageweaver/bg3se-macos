@@ -1738,18 +1738,20 @@ static int lua_entity_remove_component(lua_State *L) {
         return 1;
     }
 
-    /* ImmediateWorldCache::RemoveComponent<T> returns bool: false when the
-     * entity has no committed component of that type, or when a pending change
-     * already exists for it (EntitySystem.cpp:395). Propagating that return
-     * gives the Windows result semantics and makes a call against an absent
-     * component a safe, honest no-op rather than a fabricated success. */
-    typedef bool (*RemoveComponentFn)(void *cache, uint64_t entity);
-    bool removed = ((RemoveComponentFn)fn)(cache, (uint64_t)ud->handle);
+    /* The specialization returns void -- confirmed from the mangled symbol,
+     * which encodes a template's return type:
+     *   _ZN3ecs6legacy19ImmediateWorldCache15RemoveComponentI...EEvNS3_2ID...
+     *                                                          ^ v = void
+     * Windows' bool-returning ImmediateWorldCache::RemoveComponent(EntityHandle,
+     * ComponentTypeIndex) is a *different*, non-template function. Reading a
+     * return value here would just be reading whatever happens to be in w0, so
+     * true means only "a specialization existed and was dispatched". */
+    typedef void (*RemoveComponentFn)(void *cache, uint64_t entity);
+    ((RemoveComponentFn)fn)(cache, (uint64_t)ud->handle);
 
-    LOG_ENTITY_DEBUG("RemoveComponent('%s') dispatched for entity 0x%llx -> %s",
-                     component, (unsigned long long)ud->handle,
-                     removed ? "removed" : "not present");
-    lua_pushboolean(L, removed);
+    LOG_ENTITY_DEBUG("RemoveComponent('%s') dispatched for entity 0x%llx",
+                     component, (unsigned long long)ud->handle);
+    lua_pushboolean(L, 1);
     return 1;
 }
 
