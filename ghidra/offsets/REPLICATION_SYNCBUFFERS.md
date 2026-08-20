@@ -133,17 +133,34 @@ assignment itself was not recovered.
 
 ## Confirmed replicated-type globals (runtime int32 indices, not literals)
 
-| Component | Preferred VA |
-|---|---:|
-| God | `0x108902a88` |
-| GameObjectVisual | `0x108905c30` |
-| AvailableLevel | `0x108911680` |
-| DisplayName | `0x108914de0` |
-| ActionResources | `0x10891a990` |
-| Stats | `0x10891ac90` |
-| Classes | `0x10891aca0` |
-| EocLevel | `0x10891acc0` |
-| CombatParticipant | `0x10891c7d0` |
+| Component | VA (7209685, ORIGINAL) | VA (7398727, CURRENT) |
+|---|---:|---:|
+| God | `0x108902a88` | `0x1089329b8` |
+| GameObjectVisual | `0x108905c30` | `0x108935b60` |
+| AvailableLevel | `0x108911680` | `0x1089415b0` |
+| DisplayName | `0x108914de0` | `0x108944d10` |
+| ActionResources | `0x10891a990` | `0x10894a8c0` |
+| Stats | `0x10891ac90` | `0x10894abc0` |
+| Classes | `0x10891aca0` | `0x10894abd0` |
+| EocLevel | `0x10891acc0` | `0x10894abf0` |
+| CombatParticipant | `0x10891c7d0` | `0x10894c700` |
+
+**The left column is for build 7209685 and is stale.** Every row shifted by
+exactly `+0x2FF30` for 7398727. `src/entity/generated_typeids.h` already
+carries the correct 7398727 values (they were migrated with the rest of the
+offset table); only this document lagged.
+
+**These indices do not need Ghidra.** They are exported symbols and can be
+regenerated for any build directly from the shipped binary:
+
+    nm -gU "<BG3 binary>" \
+      | grep '4sync21ReplicatedTypeContext' \
+      | grep '11m_TypeIndexE$' | grep -v '__ZGV'
+
+That yields exactly **582** symbols on 7398727 — matching the observed
+SyncBuffers pool size of 582, i.e. one pool slot per replicated type. Beware
+the `__ZGV` guard-variable symbols, which sit 8 bytes after the real
+`m_TypeIndex` and are easy to grab by mistake.
 
 These are separate from ordinary component TypeIds (Wave 7 plan line 70).
 
@@ -208,35 +225,29 @@ The `EntityReplicationAuthority + 0x10` embedding can therefore be treated as
 CONFIRMED: reading back one qword from the sync pointer recovers the owning
 world.
 
-### Failures — replicated-type globals are only partly correct on 7398727
+### RETRACTED: "replicated-type globals are partly wrong"
 
-Only **5 of 9** globals read as plausible indices (`0 <= idx < 582`):
+An earlier revision of this section claimed 4 of 9 globals were out of range and
+that `God`/`AvailableLevel` collided on index 257. **That was an artifact of the
+probe, not a defect.** The probe read the *stale 7209685 VAs from this document*
+rather than the current values already present in
+`src/entity/generated_typeids.h`. Re-running against the correct 7398727
+addresses gives a clean result:
 
-| Component | Value @ slid VA | Verdict |
-|---|---:|---|
-| DisplayName | 39 | plausible, **pool populated** |
-| Stats | 178 | plausible, pool empty |
-| God | 257 | plausible, pool empty |
-| AvailableLevel | 257 | plausible, pool empty — **duplicate of God** |
-| Classes | 332 | plausible, pool empty |
-| GameObjectVisual | 154295240 | **out of range** |
-| ActionResources | 154376152 | **out of range** |
-| EocLevel | 154381440 | **out of range** |
-| CombatParticipant | 154393640 | **out of range** |
+| Component | index | pool key capacity |
+|---|---:|---:|
+| ActionResources | 10 | 128 |
+| Classes | 47 | 256 |
+| DisplayName | 69 | 1024 |
+| GameObjectVisual | 82 | 0 |
+| EocLevel | 108 | 16 |
+| Stats | 157 | 256 |
+| CombatParticipant | 260 | 16 |
+| AvailableLevel | 286 | 16 |
+| God | 297 | 1 |
 
-Two independent problems:
-
-1. **Four VAs do not hold int32 replication indices on this build.** Their
-   values (~1.5e8) look like pointers or unrelated data, not pool indices.
-   They need re-deriving for 7398727.
-2. **`God` and `AvailableLevel` both read 257.** Distinct components cannot
-   share a replication index, so at least one is wrong even though both pass a
-   naive range check. A range check alone is not sufficient validation —
-   uniqueness must also be asserted.
-
-Of the five in-range indices, only `DisplayName` addresses a populated pool;
-the other four point at all-zero slots (`buckets = keys = values = 0x0`),
-consistent with those indices also being wrong rather than merely unused.
+**9/9 in range (pool size 582), zero duplicates.** The shipped table is correct
+for this build; no re-derivation is required.
 
 ### CORRECTION: the pools are empty, and `GetReplicationFlags` is right
 
@@ -274,27 +285,26 @@ single-player probing advances this deferral beyond the chain checks above.
 
 ### Verdict
 
-**The deferral stays closed and earns no parity credit** — but the reason is
-different from what the first pass concluded. The chain (world → sync → pool)
-is solid, the ownership relation is now proven, and the reader is not
-demonstrably broken. What blocks credit is that **replication is unobservable
-in single-player**: all 582 pools are empty, so nothing exercises the read
-path, the dirty bit, or the bitset modes.
+**The deferral stays closed and earns no parity credit — but nothing in the
+implementation is known to be wrong.** Corrected findings:
 
-Two independent workstreams remain:
+- The `world -> sync -> pool` chain is CONFIRMED live.
+- `*(sync - 0x8)` equals the owning world, upgrading the
+  `EntityReplicationAuthority + 0x10` embedding from PROBABLE to CONFIRMED.
+- The replicated-type index table in `generated_typeids.h` is **correct** for
+  7398727: 9/9 in range, no duplicates, sensible pool capacities.
+- The recovered `Array<T>{ptr, capacity@+0x08, size@+0x0c}` layout is correct.
+- `entity:GetReplicationFlags(...)` returning `0` is **correct behaviour**.
 
-**A. Fix the replicated-type global table (single-player work, Ghidra).**
-Only 5 of 9 VAs read as plausible indices, and `God`/`AvailableLevel` collide
-on 257, so at least one of those is wrong too. Re-derive all nine for 7398727
-and assert **uniqueness** as well as range — a range check alone passed the
-duplicate.
+The single blocker is environmental: **all 582 pools are empty in
+single-player** (capacities allocated, sizes 0). Nothing exercises the read
+path, the dirty bit, or the bitset modes, so none of it can be validated here.
 
-**B. Validate the read path (requires multiplayer).** Stand up a session with a
-second connected client, then run the remaining checklist items: resolve a
-known entity in a populated pool, compare qword-zero against
-`ent:GetReplicationFlags("DisplayName")`, exercise a component change and watch
-dirty `0 → 1`, observe the authority sync clearing it, exercise a >64-bit
-bitset to validate heap mode, and confirm client-side writes stay fail-closed.
+**Remaining work requires a multiplayer session with a second connected
+client.** Then run the outstanding checklist items: resolve a known entity in a
+populated pool, compare qword-zero against `ent:GetReplicationFlags`, exercise
+a component change and watch dirty `0 -> 1`, observe the authority sync
+clearing it, exercise a >64-bit bitset for heap mode, and confirm client-side
+writes stay fail-closed.
 
-A can proceed now; B cannot be done on this machine without a multiplayer
-setup. Both must land before `entity:Replicate()` can be implemented.
+There is no longer any known single-player work outstanding on this deferral.
