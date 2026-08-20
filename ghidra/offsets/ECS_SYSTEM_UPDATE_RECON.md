@@ -632,3 +632,103 @@ writes will render as structure assignments.
 3. Confirm the `UpdateProc` slot within that entry (recon says `+0x18`).
 4. Only then revisit whether the TypeIndex statics or the live table is the
    correct lookup source.
+
+## RESOLVED (2026-08-20): full layout recovered by decompilation
+
+### Retraction of the previous section
+
+The disassembly section above concluded that `EntityWorld + 0x28/+0x30` "is the
+wrong structure" and that the real table was the `+0x80/+0x88` queue. **That was
+wrong, and so was the live probe that motivated it.** The original recon was
+correct. What follows supersedes it.
+
+The `+0x80/+0x88` finding is still true as far as it goes -- `EntityWorld::Update`
+does walk a 0x80-stride queue of `SystemDependencyExecutor` there -- but that is
+the *scheduler*, not the system table, and it is not what `OnSystemUpdate` needs.
+
+### Why the live probe misread it
+
+The probe did `ReadPtr(world + 0x28)` and `ReadI32(world + 0x30)`, treating
+`+0x28` as a buffer and `+0x30` as a count. In fact `+0x28` is the *start of the
+array object* and `+0x30` is its **buffer pointer**. Reading a pointer as an
+int32 produced `1433124880`, which is simply that pointer's low word. Nothing
+was stale.
+
+### Recovered layout (decompiled, not inferred)
+
+`ls::RegisterSharedSystems(ecs::EntityWorld&)` at `0x105f23118` ends with:
+
+```c
+if (*(uint *)(param_1 + 0x38) <= uVar1) {
+  ls::DEPRECATED_Array<ecs::core::SystemTypeEntry,...>::SetSize(
+      param_1 + 0x28, *(uint *)(param_1 + 0x44) + uVar1);
+}
+ls::DEPRECATED_Array<ecs::core::SystemTypeEntry,...>::SetAt(
+      param_1 + 0x28, uVar1, &descriptor);
+```
+
+`uVar1` is the system's `ecs::SystemsContext` TypeIndex, read through the GOT
+slot for `ls::TypeId<T, ecs::SystemsContext>::m_TypeIndex`. **The TypeIndex is
+the array index.**
+
+`SetAt` (`0x100c81890`) gives the array's internals:
+
+```c
+plVar1 = (long *)(*(long *)(param_1 + 8) + param_2 * 0xf8);   // buffer @ +0x08, stride 0xf8
+if (*(uint *)(param_1 + 0x14) <= param_2)
+  *(int *)(param_1 + 0x14) = (int)param_2 + 1;                 // size   @ +0x14
+*(int *)(param_1 + 0x18) += iVar2;                             // counter@ +0x18
+```
+
+Combining, relative to `EntityWorld`:
+
+| Field | Offset | Notes |
+|---|---:|---|
+| `DEPRECATED_Array<SystemTypeEntry>` object | `+0x28` | array base |
+| entry buffer pointer | `+0x30` | array `+0x08` |
+| capacity | `+0x38` | array `+0x10`; guard in RegisterSharedSystems |
+| size | `+0x3c` | array `+0x14`; bumped by SetAt |
+| counter | `+0x40` | array `+0x18` |
+| growth count | `+0x44` | array `+0x1c` |
+
+`SystemTypeEntry` is **0xf8** bytes. Within it, the descriptor built by
+`RegisterSharedSystems` places
+`ecs::_private::SystemRegistrationHelper::SystemUpdate<T>` at **`+0x18`**,
+confirming the original recon's `UpdateProc` slot. `+0x00` holds a vtable-like
+pointer (the teardown path calls `(**(code **)(*entry + 8))()`), and `+0x08`
+holds the TypeIndex duplicated into both halves of a 64-bit word
+(`CONCAT44(uVar1, uVar1)`).
+
+### Entry address formula
+
+    entry = *(void **)(EntityWorld + 0x30) + TypeIndex * 0xf8
+    updateProc = *(void **)(entry + 0x18)
+
+valid when `TypeIndex < *(uint32 *)(EntityWorld + 0x3c)`.
+
+### Remaining work
+
+Everything needed to implement `OnSystemUpdate`/`OnSystemPostUpdate` is now
+recovered. What is left is engineering, not RE: verify the formula live against
+a known system, then wire the existing `ecs_system_update.c` swap logic to these
+offsets. The name-coverage gap still stands separately -- the generated table
+carries 73 of the 454 exported `SystemsContext` TypeIds, so uncovered names will
+still report "Unknown system type" until the extractor's filter is widened.
+
+### Tooling note: Ghidra ships no Apple Silicon decompiler
+
+This was only reachable after building one. Ghidra 12.1.3 ships
+`os/linux_x86_64` and `os/win_x86_64` decompiler binaries but **no
+`mac_arm_64`**, so every decompile fails with
+`os/mac_arm_64/decompile does not exist`. The bundled source builds it, but the
+Makefile hardcodes Intel (it carries a literal
+`TODO: need to revise to support arm64/aarch64 arch`):
+
+    cd Ghidra/Features/Decompiler/src/decompile/cpp
+    make ghidra_opt -j8 ARCH_TYPE="-arch arm64" \
+         ADDITIONAL_FLAGS="-mmacosx-version-min=11.0 -w" OSDIR=mac_arm_64
+    mkdir -p ../../../os/mac_arm_64
+    cp ghidra_opt ../../../os/mac_arm_64/decompile
+
+Headless decompilation works after that. This is plausibly why prior RE on this
+project stopped at recon.
