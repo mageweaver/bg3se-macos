@@ -326,3 +326,48 @@ field-population risk to a different struct — and a malformed settings block
 feeds invalid bounds into pathfinding. The request lifecycle (callback storage,
 game-thread delivery, cancellation, release) is also still unaddressed. Still
 deferred.
+
+## `AddEnumerationValue` unblocked and verified (2026-08-20)
+
+This was recorded as implemented but was gated to `4.1.1.7209685` — a build
+nobody runs — so it failed closed on every runnable build. The pin's own comment
+said "no live insertion has ever succeeded" and asked for a round trip on
+7398727 before moving. That round trip has now been done.
+
+Verified live on 4.1.1.7398727 with the real gate and no opt-in:
+
+    insert 'Damage Type' / 'BG3SE_GateProof_7398727' -> 14 (integer)
+    EnumLabelToIndex  -> 14        (nil before the insert)
+    EnumIndexToLabel  -> the label (round trips)
+    duplicate insert  -> false
+    unknown enum      -> false
+    Slashing/Piercing/Bludgeoning/Fire/Cold/Acid still resolve both ways
+    StatusData count and Ext.Stats.Get('BLESS') unaffected
+
+The call shape is independently corroborated by the game's own loader.
+`CRPGStats_Modifier_ValueList::Insert` has exactly three callers
+(`RPGStats::FinishAndCleanCurrentParsedType` and two in
+`RPGStats::ParseStructureFolder`), and each calls
+`Insert(list, &FixedString, index)` with the index loaded from the list's item
+count. Their field accesses — item count at `+0x18`, bucket count at `+0x08`,
+buckets at `+0x10` — match the offsets the port already used.
+
+Return value corrected: Windows returns `std::optional<int32_t>` holding the new
+value (`Stats.inl:633`); the port pushed a boolean, so callers using the
+returned index received `true`.
+
+## `AddAttribute` — the documented RE path does not exist
+
+This document proposed decompiling
+`CNamedElementManager<CRPGStats_Modifier>::Insert` (0x102103420 on 7398727) to
+recover manager growth, duplicate-name behaviour, assigned handle and ownership.
+
+A `BL` scan of `__text` finds **zero direct callers** of that function. The stats
+loader creates modifiers through inlined code and never calls it. So there are
+no call sites to learn ownership semantics from, and invoking it would exercise
+a code path the shipping game never runs.
+
+The blocker is therefore worse than recorded, not better: allocation, default
+initialization and ownership cannot be inferred from observed behaviour, and the
+consequence of guessing is a corrupted stats schema (Critical once
+`RPGStats::Objects` is non-empty). Still deferred.
