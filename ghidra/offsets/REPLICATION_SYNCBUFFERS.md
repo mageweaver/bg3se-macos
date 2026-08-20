@@ -238,34 +238,63 @@ Of the five in-range indices, only `DisplayName` addresses a populated pool;
 the other four point at all-zero slots (`buckets = keys = values = 0x0`),
 consistent with those indices also being wrong rather than merely unused.
 
-### `GetReplicationFlags` returns 0 even where the pool is populated
+### CORRECTION: the pools are empty, and `GetReplicationFlags` is right
 
-`entity:GetReplicationFlags(...)` is correctly placed on the entity proxy and
-never errors, but returns `0` for every component tried (DisplayName, Stats,
-ActionResources, God, EocLevel) on the host entity
-(handle `0x200000100000086`) — including `DisplayName`, whose pool holds 256
-values. So the zeros are fail-closed, not real reads: the hash-chain walk is
-not locating the entity.
+The first pass of this probe misread the pool header, reporting `DisplayName`
+as "256 values but 0 keys" and blaming the key-size offset. That was wrong. A
+raw dump of the full `0x40` header shows four consecutive `Array<T>` records of
+`{ptr, capacity@+0x08, size@+0x0c}`:
 
-One suspicious observation for whoever picks this up: the `DisplayName` pool
-reports **256 values but 0 keys** (`keys` buffer `0xb94e79000`, size field at
-`+0x2c` reads 0). Either the key-size offset is wrong in the recovered layout,
-or key storage is organised differently than `+0x20/+0x28/+0x2c` assumes. That
-mismatch is the most likely reason the walk finds nothing.
+| Array | ptr | capacity | size |
+|---|---|---:|---:|
+| buckets `+0x00` | `0xb3d818700` | 389 | **0** |
+| nextIndex `+0x10` | `0xb93035c00` | 256 | **0** |
+| keys `+0x20` | `0xb94e79000` | 256 | **0** |
+| values `+0x30` | `0xb69190000` | 256 | **0** |
+
+The `256` first read as a value *count* is the **capacity** at `+0x38`; the
+size at `+0x3c` is 0. Every array is allocated but empty. The `+0x28/+0x2c`
+key capacity/size offsets recorded in the layout table above are correct as
+written — there is no discrepancy to chase.
+
+Sweeping all 582 pools: **87 allocated, 0 non-empty.** The whole replication
+table is empty.
+
+`entity:GetReplicationFlags(...)` returning `0` is therefore **correct
+behaviour, not a fail-closed miss** — there are no flags to read. The reader
+may be entirely correct; single-player never populates these buffers, exactly
+as the deferral registry predicted ("masked in single-player, unproven in
+multiplayer").
+
+**Consequence for validation: replication cannot be exercised in single-player
+at all.** Confirming the read path, the dirty `0 -> 1` transition, the
+authority sync clearing it, and >64-bit heap bitsets each require a
+**multiplayer session with a second connected client**. No amount of
+single-player probing advances this deferral beyond the chain checks above.
 
 ### Verdict
 
-**The deferral stays closed and earns no parity credit.** The confirmed chain
-(world → sync → pool) is solid and the ownership relation is now proven, but
-`entity:Replicate()` cannot be built on a type-index table that is 4/9 wrong,
-contains a duplicate, and whose reader returns nothing against a populated
-pool.
+**The deferral stays closed and earns no parity credit** — but the reason is
+different from what the first pass concluded. The chain (world → sync → pool)
+is solid, the ownership relation is now proven, and the reader is not
+demonstrably broken. What blocks credit is that **replication is unobservable
+in single-player**: all 582 pools are empty, so nothing exercises the read
+path, the dirty bit, or the bitset modes.
 
-Next steps, in order:
-1. Re-derive the 9 replicated-type global VAs for 7398727; assert **uniqueness**
-   as well as range.
-2. Resolve the keys-size discrepancy on a populated pool (`DisplayName`, index
-   39) before trusting any traversal.
-3. Only then re-run this checklist; the remaining unexercised items (dirty
-   `0 → 1` on a component change, authority sync clearing it, >64-bit heap
-   bitsets, client-side fail-closed writes) all depend on a working read first.
+Two independent workstreams remain:
+
+**A. Fix the replicated-type global table (single-player work, Ghidra).**
+Only 5 of 9 VAs read as plausible indices, and `God`/`AvailableLevel` collide
+on 257, so at least one of those is wrong too. Re-derive all nine for 7398727
+and assert **uniqueness** as well as range — a range check alone passed the
+duplicate.
+
+**B. Validate the read path (requires multiplayer).** Stand up a session with a
+second connected client, then run the remaining checklist items: resolve a
+known entity in a populated pool, compare qword-zero against
+`ent:GetReplicationFlags("DisplayName")`, exercise a component change and watch
+dirty `0 → 1`, observe the authority sync clearing it, exercise a >64-bit
+bitset to validate heap mode, and confirm client-side writes stay fail-closed.
+
+A can proceed now; B cannot be done on this machine without a multiplayer
+setup. Both must land before `entity:Replicate()` can be implemented.
