@@ -823,6 +823,29 @@ static void send_client_hello(void) {
 // ============================================================================
 
 int net_hooks_sync_active_peers(void) {
+    /*
+     * Resolve the GameServer lazily for read-only peer enumeration.
+     *
+     * s_game_server is otherwise only set by net_hooks_capture_peer, which runs
+     * exclusively on the BG3SE_NET_RAKNET path. The default path logs
+     * "local in-process transport; game net untouched" and never captures, so
+     * peer enumeration silently returned zero and Ext.Entity.GetPeers reported
+     * only the locally-registered host even with a remote client connected --
+     * which is why the console never appeared during crossplay testing.
+     *
+     * Reading EocServer+OFFSET_EOCSERVER_GAMESERVER is a plain pointer read; it
+     * installs nothing and does not touch the game's networking.
+     */
+    if (!s_game_server) {
+        void *eoc_server = entity_get_eoc_server();
+        if (eoc_server) {
+            s_game_server = safe_read_ptr(eoc_server, OFFSET_EOCSERVER_GAMESERVER);
+            if (s_game_server) {
+                LOG_NET_INFO("sync_active_peers: resolved GameServer=%p lazily "
+                             "(read-only, no hooks installed)", s_game_server);
+            }
+        }
+    }
     if (!s_game_server) return 0;
 
     // Read peer array data pointer
