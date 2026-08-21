@@ -497,6 +497,82 @@ void osi_func_cache_from_event(uint32_t funcId) {
 // Enumeration
 // ============================================================================
 
+/* One-shot empirical probe for the def field that yields the dispatch handle.
+ *
+ * Every offset guess so far has been wrong: def+0x38 (OsiFunctionId) is zero
+ * for all story functions, and Key[4] at def+0x28 failed the type check on
+ * 20073 of 20078 defs, meaning the id path's handle encoding has been silently
+ * falling back to handle=funcId all along.
+ *
+ * So measure instead of guess. The id path gives 1300+ defs whose true dispatch
+ * handle is known to equal their funcId. For each, scan the def and record
+ * which offsets hold (a) the handle verbatim, and (b) the decoded funcIndex for
+ * the type's encoding. An offset that matches across nearly all samples is the
+ * field; story defs can then be keyed off that same offset.
+ */
+static void osi_probe_def_layout(void) {
+    if (!s_pfn_pFunctionData || !s_ppOsiFunctionMan || !*s_ppOsiFunctionMan) return;
+    void *funcMan = *s_ppOsiFunctionMan;
+
+    #define PROBE_SPAN 0x80
+    int hitHandle[PROBE_SPAN / 4] = {0};
+    int hitIndex[PROBE_SPAN / 4]  = {0};
+    int samples = 0;
+    uint8_t typeSeen[9] = {0};
+
+    for (int i = 0; i < g_funcCacheCount && samples < 400; i++) {
+        uint32_t fid = g_funcCache[i].id;
+        if (fid == 0) continue;
+        void *def = s_pfn_pFunctionData(funcMan, fid);
+        if (!def) continue;
+
+        uint8_t ftype = 0;
+        safe_memory_read_u8((mach_vm_address_t)def + 0x24, &ftype);
+        if (ftype <= 8) typeSeen[ftype] = 1;
+
+        /* Invert osi_encode_handle for this type to get the expected index. */
+        uint32_t idx = (ftype < OSI_FUNC_DATABASE) ? ((fid >> 3) & 0x1FFFFFF)
+                                                   : ((fid >> 3) & 0x1FFFF);
+        samples++;
+        for (int off = 0; off < PROBE_SPAN; off += 4) {
+            uint32_t v = 0;
+            if (!safe_memory_read_u32((mach_vm_address_t)def + off, &v)) continue;
+            if (v == fid) hitHandle[off / 4]++;
+            if (v == idx && idx != 0) hitIndex[off / 4]++;
+        }
+    }
+
+    if (samples == 0) return;
+
+    char hbuf[256], ibuf[256];
+    int hn = 0, in = 0;
+    for (int k = 0; k < PROBE_SPAN / 4; k++) {
+        /* Report only offsets matching a clear majority -- noise matches a few. */
+        if (hitHandle[k] * 2 > samples && hn < (int)sizeof(hbuf) - 24) {
+            hn += snprintf(hbuf + hn, sizeof(hbuf) - (size_t)hn, "%s0x%02x:%d/%d",
+                           hn ? " " : "", k * 4, hitHandle[k], samples);
+        }
+        if (hitIndex[k] * 2 > samples && in < (int)sizeof(ibuf) - 24) {
+            in += snprintf(ibuf + in, sizeof(ibuf) - (size_t)in, "%s0x%02x:%d/%d",
+                           in ? " " : "", k * 4, hitIndex[k], samples);
+        }
+    }
+    hbuf[hn] = 0; ibuf[in] = 0;
+
+    char tbuf[64];
+    int tn = 0;
+    for (int t = 0; t <= 8; t++) {
+        if (typeSeen[t]) tn += snprintf(tbuf + tn, sizeof(tbuf) - (size_t)tn, "%s%d", tn ? "," : "", t);
+    }
+    tbuf[tn] = 0;
+
+    LOG_OSIRIS_INFO("Def layout probe (%d samples, types present=[%s]): "
+                    "offsets holding handle verbatim = [%s]; "
+                    "offsets holding decoded funcIndex = [%s]",
+                    samples, tbuf, hn ? hbuf : "none", in ? ibuf : "none");
+    #undef PROBE_SPAN
+}
+
 void osi_func_enumerate(void) {
     if (!s_pfn_pFunctionData || !s_ppOsiFunctionMan || !*s_ppOsiFunctionMan) {
         LOG_OSIRIS_DEBUG("Cannot enumerate - pFunctionData or OsiFunctionMan not available");
@@ -547,6 +623,11 @@ void osi_func_enumerate(void) {
 
     LOG_OSIRIS_DEBUG("Enumeration complete: %d functions cached", found_count);
 
+    {   /* Locate the handle field empirically; runs once. */
+        static int probed = 0;
+        if (!probed) { probed = 1; osi_probe_def_layout(); }
+    }
+
     // Log some key functions we're looking for
     const char *key_funcs[] = {
         "QRY_IsTagged", "IsTagged", "GetDistanceTo", "QRY_GetDistance",
@@ -563,25 +644,46 @@ void osi_func_enumerate(void) {
     }
 }
 
-/* Compute the dispatch handle for a def from Key[4] at def+0x28.
+/* Derive a def's dispatch handle, then prove it before returning it.
  *
- * OsiFunctionId (def+0x38) is only populated for *native* DIV functions -- the
- * ~1300 the id probe finds. Story-defined procs, user queries and databases
- * carry 0 there, which is why gating on it cached none of the 12k+ non-database
- * defs in the name index and left every story function "not yet discovered".
+ * Measured on build 4.1.1.7398727 by probing 400 defs whose true handle is
+ * known (the id path guarantees handle == funcId for native functions):
+ *   def+0x38  holds the handle verbatim  400/400  -- OsiFunctionId, 0 for story
+ *   def+0x30  holds the decoded funcIndex 399/400 -- i.e. Key[2]
+ * So Key[4] does sit at def+0x28 and osi_encode_handle was always right; what
+ * was wrong was the guard. The old code required Key[0] (def+0x28) to be a
+ * valid function type and it is not one -- that check rejected 20073 of 20078
+ * defs, silently reducing the encoding to the handle=funcId fallback. The type
+ * comes from def+0x24, which the histogram confirmed is genuine.
  *
- * The id is not what dispatch uses anyway: osi_dynamic_call passes funcId
- * straight through as the handle, and that works precisely because for native
- * functions the encoded handle equals the id (GetHostCharacter: Key={2,0,113,1}
- * -> 0x8000038A == funcId). So derive the handle from Key[4] and key the cache
- * on it; native entries land on the same value they already had.
- *
- * Returns 0 if Key[0] is not a valid function type. */
+ * A wrong handle passed to the DIV call/query pointer is a crash, so this fails
+ * closed: the manager must map the computed handle back to the very same def or
+ * we return 0 and leave the function uncached. Counters are reported by the
+ * caller so a rejection is visible rather than silent.
+ */
+static int g_handleVerified = 0;   /* round-tripped through the manager */
+static int g_handleRejected = 0;   /* computed but did not round-trip   */
+
 static uint32_t osi_func_handle_from_def(void *funcDef) {
-    uint32_t keys[4] = {0};
-    if (!safe_memory_read((mach_vm_address_t)funcDef + 0x28, keys, sizeof(keys))) return 0;
-    if (keys[0] < OSI_FUNC_EVENT || keys[0] > OSI_FUNC_USERQUERY) return 0;
-    return osi_encode_handle(keys[0], keys[1], keys[2], keys[3]);
+    uint8_t type = 0;
+    if (!safe_memory_read_u8((mach_vm_address_t)funcDef + 0x24, &type)) return 0;
+    if (type < OSI_FUNC_EVENT || type > OSI_FUNC_USERQUERY) return 0;
+
+    /* Key[1], Key[2], Key[3] -- Key[0] is not the type, despite its position. */
+    uint32_t k[3] = {0};
+    if (!safe_memory_read((mach_vm_address_t)funcDef + 0x2c, k, sizeof(k))) return 0;
+
+    uint32_t handle = osi_encode_handle(type, k[0], k[1], k[2]);
+    if (handle == 0) return 0;
+
+    if (s_pfn_pFunctionData && s_ppOsiFunctionMan && *s_ppOsiFunctionMan) {
+        if (s_pfn_pFunctionData(*s_ppOsiFunctionMan, handle) != funcDef) {
+            g_handleRejected++;
+            return 0;
+        }
+    }
+    g_handleVerified++;
+    return handle;
 }
 
 /* Extract name/arity/type/handle from a resolved OsiFunctionData* and cache it
@@ -778,8 +880,10 @@ void osi_func_enumerate_by_name(void) {
     #undef OSI_MAX_VISITS
 
     LOG_OSIRIS_INFO("Name-index enumeration: %d new entries (%d visits); "
-                    "databases registered=%d (%d callable), DB_Players %s",
+                    "databases registered=%d (%d callable), handles verified=%d "
+                    "rejected=%d, DB_Players %s",
                     found, totalVisits, osi_db_count(), dbWithIds,
+                    g_handleVerified, g_handleRejected,
                     osi_db_lookup("DB_Players") ? "FOUND" : "missing");
 
     {

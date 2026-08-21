@@ -2126,9 +2126,17 @@ static int osi_dynamic_call(lua_State *L) {
         }
     }
     if (funcId == INVALID_FUNCTION_ID) {
-        LOG_OSIRIS_DEBUG("Osi.%s: Function not found in cache (not yet discovered)", funcName);
-        lua_pushnil(L);
-        return 1;
+        /* Do NOT return nil here. Silently yielding nil makes a call that never
+         * reached Osiris indistinguishable from one that succeeded: a mod team
+         * spent days reading "PROC_GLO_PartyMembers_Add returns ok, but engine
+         * state never changes" when in truth the proc was never dispatched. On
+         * Windows an unknown Osi.<name> is nil and calling it raises, so raising
+         * here is both the honest signal and the parity behaviour. */
+        LOG_OSIRIS_WARN("Osi.%s: not resolvable -- call did NOT reach Osiris. "
+                        "Nothing was dispatched and no engine state changed.",
+                        funcName);
+        return luaL_error(L, "Osi.%s: Osiris function could not be resolved; "
+                             "the call did not reach Osiris", funcName);
     }
 
     // Get function info to determine type
