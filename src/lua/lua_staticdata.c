@@ -16,6 +16,8 @@
 #include <lauxlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "../core/safe_memory.h"
+#include <string.h>
 
 // ============================================================================
 // Helper Functions
@@ -463,6 +465,125 @@ static int lua_staticdata_probestride(lua_State* L) {
     return 3;
 }
 
+/* Format a raw 16-byte Guid the same way staticdata_get_guid_string does. */
+static void push_guid_string(lua_State *L, const uint8_t *g) {
+    char buf[40];
+    uint32_t d1; uint16_t d2, d3;
+    memcpy(&d1, g + 0, 4);
+    memcpy(&d2, g + 4, 2);
+    memcpy(&d3, g + 6, 2);
+    snprintf(buf, sizeof(buf),
+             "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             d1, d2, d3, g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
+    lua_pushstring(L, buf);
+}
+
+/*
+ * Ext.StaticData.GetSources(type) -> { [modGuid] = { resourceGuid, ... } }
+ *
+ * Windows returns bank_->ResourceGuidsByMod directly
+ * (Lua/Libs/StaticData.inl:120).
+ */
+static int lua_staticdata_getsources(lua_State *L) {
+    const char *type_name = luaL_checkstring(L, 1);
+    int type = staticdata_type_from_name(type_name);
+    if (type < 0) {
+        return luaL_error(L, "Unknown static data type: %s", type_name);
+    }
+
+    void *keys = NULL, *values = NULL;
+    uint32_t count = 0;
+    if (!staticdata_get_sources_shape((StaticDataType)type, &keys, &values, &count)) {
+        lua_pushnil(L);
+        lua_pushstring(L, "ResourceGuidsByMod unavailable for this type");
+        return 2;
+    }
+
+    lua_createtable(L, 0, (int)count);
+    for (uint32_t i = 0; i < count; i++) {
+        uint8_t modguid[16];
+        if (!safe_memory_read((mach_vm_address_t)((uintptr_t)keys + i * 16),
+                             modguid, 16)) {
+            continue;
+        }
+        /* value is an Array<Guid> header: buf, capacity, size */
+        void *buf = NULL; uint32_t n = 0;
+        uintptr_t vh = (uintptr_t)values + (uintptr_t)i * 16;
+        if (!safe_memory_read_pointer((mach_vm_address_t)vh, &buf) ||
+            !safe_memory_read_u32((mach_vm_address_t)(vh + 0x0C), &n)) {
+            continue;
+        }
+        if (n > 200000) n = 0;
+
+        push_guid_string(L, modguid);
+        lua_createtable(L, (int)n, 0);
+        for (uint32_t j = 0; j < n && buf; j++) {
+            uint8_t rg[16];
+            if (!safe_memory_read(
+                    (mach_vm_address_t)((uintptr_t)buf + (uintptr_t)j * 16), rg, 16)) {
+                break;
+            }
+            push_guid_string(L, rg);
+            lua_rawseti(L, -2, (int)(j + 1));
+        }
+        lua_rawset(L, -3);
+    }
+    return 1;
+}
+
+/*
+ * Ext.StaticData.GetByModId(type, modGuid) -> { resourceGuid, ... } | nil
+ * Windows does try_get on the same map (StaticData.inl:125).
+ */
+static int lua_staticdata_getbymodid(lua_State *L) {
+    const char *type_name = luaL_checkstring(L, 1);
+    const char *want = luaL_checkstring(L, 2);
+    int type = staticdata_type_from_name(type_name);
+    if (type < 0) {
+        return luaL_error(L, "Unknown static data type: %s", type_name);
+    }
+
+    void *keys = NULL, *values = NULL;
+    uint32_t count = 0;
+    if (!staticdata_get_sources_shape((StaticDataType)type, &keys, &values, &count)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        uint8_t modguid[16];
+        if (!safe_memory_read((mach_vm_address_t)((uintptr_t)keys + i * 16),
+                             modguid, 16)) {
+            continue;
+        }
+        push_guid_string(L, modguid);
+        const char *have = lua_tostring(L, -1);
+        int match = (have && strcasecmp(have, want) == 0);
+        lua_pop(L, 1);
+        if (!match) continue;
+
+        void *buf = NULL; uint32_t n = 0;
+        uintptr_t vh = (uintptr_t)values + (uintptr_t)i * 16;
+        if (!safe_memory_read_pointer((mach_vm_address_t)vh, &buf) ||
+            !safe_memory_read_u32((mach_vm_address_t)(vh + 0x0C), &n)) {
+            break;
+        }
+        if (n > 200000) n = 0;
+        lua_createtable(L, (int)n, 0);
+        for (uint32_t j = 0; j < n && buf; j++) {
+            uint8_t rg[16];
+            if (!safe_memory_read(
+                    (mach_vm_address_t)((uintptr_t)buf + (uintptr_t)j * 16), rg, 16)) {
+                break;
+            }
+            push_guid_string(L, rg);
+            lua_rawseti(L, -2, (int)(j + 1));
+        }
+        return 1;
+    }
+    lua_pushnil(L);
+    return 1;
+}
+
 static const luaL_Reg staticdata_funcs[] = {
     {"GetAll", lua_staticdata_getall},
     {"Get", lua_staticdata_get},
@@ -481,6 +602,8 @@ static const luaL_Reg staticdata_funcs[] = {
     {"ForceCapture", lua_staticdata_forcecapture},
     {"HashLookup", lua_staticdata_hashlookup},
     {"ProbeStride", lua_staticdata_probestride},
+    {"GetSources", lua_staticdata_getsources},
+    {"GetByModId", lua_staticdata_getbymodid},
     {NULL, NULL}
 };
 

@@ -5,6 +5,7 @@
  */
 
 #include "staticdata_manager.h"
+#include "../entity/entity_storage.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
@@ -1692,6 +1693,62 @@ int staticdata_probe_stride(StaticDataType type, int *out_hits) {
         if (c > best_count) { best_count = c; best_gap = gap; }
     }
     return best_gap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Resource sources: which mod contributed which resource GUIDs.
+ *
+ * Windows reads these straight off the bank
+ * (Lua/Libs/StaticData.inl: GetSources returns &bank_->ResourceGuidsByMod,
+ * GetByModId does try_get on the same map). GuidResourceBankBase is
+ *
+ *     vptr (8) | FixedString LSXRegionName (4) | FixedString LSXResourceNodeName (4)
+ *     HashMap<Guid, Array<Guid>> ResourceGuidsByMod
+ *
+ * so the map begins at bank + 0x10, and with the engine HashMap layout the key
+ * array lands at bank + 0x30 and the value array at bank + 0x40.
+ *
+ * That offset is a prediction from the Windows struct, so it is validated
+ * before use rather than trusted: the key array must be a plausible count of
+ * 16-byte GUIDs and the value array must have the same length.
+ * -------------------------------------------------------------------------*/
+
+#define BANK_RESOURCE_GUIDS_BY_MOD_OFFSET 0x10
+#define STATICDATA_MAX_SOURCE_MODS        4096
+
+bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
+                                  void **out_values, uint32_t *out_count) {
+    if (out_keys) *out_keys = NULL;
+    if (out_values) *out_values = NULL;
+    if (out_count) *out_count = 0;
+
+    StaticDataRawInfo info;
+    if (!staticdata_get_raw_info(type, &info) || !info.manager_ptr) return false;
+
+    uintptr_t map = (uintptr_t)info.manager_ptr + BANK_RESOURCE_GUIDS_BY_MOD_OFFSET;
+
+    GenericArray keys, values;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET),
+                                  &keys.buf) ||
+        !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET + 0x0C),
+                              &keys.size) ||
+        !safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET),
+                                  &values.buf) ||
+        !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET + 0x0C),
+                              &values.size)) {
+        return false;
+    }
+
+    /* Validation: a mod list is small, both arrays must agree, and both
+     * pointers must be present. A wrong offset fails all three. */
+    if (!keys.buf || !values.buf) return false;
+    if (keys.size == 0 || keys.size > STATICDATA_MAX_SOURCE_MODS) return false;
+    if (keys.size != values.size) return false;
+
+    if (out_keys) *out_keys = keys.buf;
+    if (out_values) *out_values = values.buf;
+    if (out_count) *out_count = keys.size;
+    return true;
 }
 
 int staticdata_get_configured_entry_size(StaticDataType type) {

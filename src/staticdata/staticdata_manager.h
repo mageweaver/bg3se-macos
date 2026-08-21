@@ -322,6 +322,16 @@ int staticdata_probe_stride(StaticDataType type, int *out_hits);
 int staticdata_get_configured_entry_size(StaticDataType type);
 
 /**
+ * Locate the bank's ResourceGuidsByMod map (mod GUID -> resource GUIDs).
+ *
+ * Returns the raw key array (16-byte Guids), the value array (Array<Guid>
+ * headers) and their shared length. Validates the offset before returning, so
+ * false means the map could not be identified rather than that it is empty.
+ */
+bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
+                                  void **out_values, uint32_t *out_count);
+
+/**
  * Dump static data manager status to log.
  */
 void staticdata_dump_status(void);
