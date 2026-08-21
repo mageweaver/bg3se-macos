@@ -3849,7 +3849,7 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
  * Mangled name: _ZN7COsiris5EventEjP16COsiArgumentDesc
  * Signature: void COsiris::Event(unsigned int funcId, COsiArgumentDesc* args)
  */
-static void fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
+static bool fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
     event_call_count++;
 
     // Poll for console commands and run tick systems
@@ -4080,9 +4080,11 @@ after_tick:
         dispatch_event_to_lua(funcName, arity, args, "before");
     }
 
-    // Call original
+    /* Call original and PRESERVE its return value. Work done after this call
+     * clobbers x0, so the result must be captured here and returned below. */
+    bool result = false;
     if (orig_Event) {
-        ((OsiEventFn)orig_Event)(thisPtr, funcId, args);
+        result = ((OsiEventFn)orig_Event)(thisPtr, funcId, args);
     }
 
     // Dispatch to "after" callbacks
@@ -4091,6 +4093,7 @@ after_tick:
     }
 
     lua_context_set(prevCtx);
+    return result;
 }
 
 /**

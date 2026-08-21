@@ -194,7 +194,23 @@ typedef struct {
 // Function Pointer Types
 // ============================================================================
 
-typedef void (*OsiEventFn)(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args);
+/*
+ * COsiris::Event(unsigned int, COsiArgumentDesc*) returns a value.
+ *
+ * This was declared void, which made the hook drop the original's result and
+ * then clobber x0 with its own post-call work, so every caller read garbage
+ * from the return register. Confirmed from the function's epilogue in
+ * libOsiris.dylib:
+ *
+ *     mov  w19, #0x1
+ *     ...
+ *     mov  x0, x19        <- return value
+ *     ret
+ *
+ * and from `cset w0, ne` on another path. Measured 2026-08-20 while tracking
+ * down BG3SE making multiplayer unstartable.
+ */
+typedef bool (*OsiEventFn)(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args);
 typedef int (*InternalQueryFn)(uint32_t funcId, OsiArgumentDesc *args);
 typedef int (*InternalCallFn)(uint32_t funcId, void *params);
 typedef void* (*pFunctionDataFn)(void *funcMan, uint32_t funcId);
