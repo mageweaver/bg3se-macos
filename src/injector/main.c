@@ -1484,6 +1484,105 @@ static void osi_push_typed_value(lua_State *L, mach_vm_address_t tv) {
  *   inline at the tuple base when cap < 9, else *(tuple+0x00) is a heap
  *   pointer. Column i COsiTypedValue @ values + i*0x10.
  */
+/* ---- Osiris string table -------------------------------------------------
+ *
+ * A TypedValue string is NOT a char* -- it is a refcounted handle into the
+ * engine string table. Storing a pointer where the engine expects a handle is
+ * a crash, and it is exactly the mistake our existing OsiArgumentDesc path
+ * would invite, since that one legitimately carries char* for the native
+ * Call/Query route.
+ *
+ * Entry points from libOsiris' own symbol table (arm64 slice), with the
+ * calling convention read from AddStr's prologue rather than assumed:
+ *   cbz x1 / mov x0,x1 / bl strlen  -> x1 = char const *str
+ *   mov x22, x2                     -> x2 = bool isGuidString
+ *   mov x20, x0 / ldr x19,[x20]     -> x0 = this
+ * So it is an ordinary member function returning the handle in x0 (no sret).
+ * _OsiStringTable is 8 bytes wide (next symbol sits at +8), i.e. a POINTER to
+ * the table, matching Norbyte's *globals.StringTable.
+ */
+#define OSI_STRTAB_PTR    0x96cb8
+#define OSI_FN_ADDSTR     0x37a7c
+#define OSI_FN_GETSTR     0x39c30
+#define OSI_FN_ADDSTRREF  0x39544
+#define OSI_FN_REMOVESTR  0x395a8
+
+static uintptr_t osi_lib_base(void) {
+    if (!g_pOsiFunctionMan) return 0;
+    return (uintptr_t)g_pOsiFunctionMan - 0x9f348;
+}
+
+static void *osi_string_table(void) {
+    uintptr_t base = osi_lib_base();
+    if (!base) return NULL;
+    void *tbl = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(base + OSI_STRTAB_PTR), &tbl)) return NULL;
+    return tbl;
+}
+
+static uint64_t osi_string_add(const char *str, bool isGuid) {
+    void *tbl = osi_string_table();
+    uintptr_t base = osi_lib_base();
+    if (!tbl || !base || !str) return 0;
+    typedef uint64_t (*AddStrFn)(void *, const char *, bool);
+    return ((AddStrFn)(base + OSI_FN_ADDSTR))(tbl, str, isGuid);
+}
+
+static const char *osi_string_get(uint64_t handle) {
+    void *tbl = osi_string_table();
+    uintptr_t base = osi_lib_base();
+    if (!tbl || !base || handle == 0) return NULL;
+    typedef const char *(*GetStrFn)(void *, uint64_t);
+    return ((GetStrFn)(base + OSI_FN_GETSTR))(tbl, handle);
+}
+
+static void osi_string_release(uint64_t handle) {
+    void *tbl = osi_string_table();
+    uintptr_t base = osi_lib_base();
+    if (!tbl || !base || handle == 0) return;
+    typedef void (*RemoveStrFn)(void *, uint64_t);
+    ((RemoveStrFn)(base + OSI_FN_REMOVESTR))(tbl, handle);
+}
+
+/* Prove the string path before anything is built on top of it: a handle we
+ * make must read back as the same bytes. Runs once. Nothing downstream fires
+ * unless this passes -- a wrong handle is the crash we are avoiding. */
+static int g_osiStringPathOk = 0;
+
+static void osi_string_selftest(void) {
+    static int done = 0;
+    if (done) return;
+    done = 1;
+    if (!osi_string_table()) {
+        LOG_OSIRIS_WARN("String table: pointer unavailable -- string path DISABLED");
+        return;
+    }
+
+    const char *plain = "BG3SE_StringTable_SelfTest";
+    const char *guid  = "6f670444-5369-22b2-506f-3c6349303d1b";
+    int ok = 1;
+
+    uint64_t hp = osi_string_add(plain, false);
+    const char *rp = osi_string_get(hp);
+    if (!hp || !rp || strcmp(rp, plain) != 0) ok = 0;
+
+    /* GUIDSTRING columns must be interned with isGuidString=true; both the
+     * proc and the database in the failing recruit path take GUIDSTRING. */
+    uint64_t hg = osi_string_add(guid, true);
+    const char *rg = osi_string_get(hg);
+    if (!hg || !rg || strcmp(rg, guid) != 0) ok = 0;
+
+    LOG_OSIRIS_INFO("String table self-test: plain handle=0x%llx readback=%s | "
+                    "guid handle=0x%llx readback=%s | VERDICT=%s",
+                    (unsigned long long)hp, rp ? rp : "(null)",
+                    (unsigned long long)hg, rg ? rg : "(null)",
+                    ok ? "PASS" : "FAIL");
+
+    if (hp) osi_string_release(hp);
+    if (hg) osi_string_release(hg);
+    g_osiStringPathOk = ok;
+}
+
 /* Resolve any def -> its Rete node. Split out of osi_db_resolve because that
  * one additionally demands a CReteDBase, which only databases have -- it
  * rejected PROC_GLO_PartyMembers_Add outright even though the proc's node
@@ -1720,6 +1819,26 @@ static void osi_report_node_classes(void) {
         LOG_OSIRIS_INFO("  node probe %-36s type=%u nodeId=%u resolved=%d isDataNode=%d "
                         "cols=%u class=%s", targets[t], ftype, nodeId, resolved,
                         isData, cols, cls);
+
+        /* Report the VMT slot targets as libOsiris-relative offsets so they can
+         * be mapped back to exported symbols offline. Norbyte's slot numbers
+         * come from the Windows build; this is what proves they hold here.
+         * Naming the function at +0x50 also names its parameter type, which is
+         * the TuplePtrLL layout I still need. */
+        if (resolved && vt) {
+            const int slots[] = {0x18, 0x20, 0x50, 0x58, 0x60, 0xb8};
+            char line[240]; int n = 0;
+            for (size_t i = 0; i < sizeof(slots) / sizeof(slots[0]); i++) {
+                void *fn = NULL;
+                safe_memory_read_pointer((mach_vm_address_t)vt + slots[i], &fn);
+                n += snprintf(line + n, sizeof(line) - (size_t)n, "%s+0x%02x=libOsiris+0x%lx",
+                              n ? " " : "", slots[i],
+                              fn ? (unsigned long)((uintptr_t)fn - base) : 0UL);
+                if (n >= (int)sizeof(line) - 32) break;
+            }
+            line[n] = 0;
+            LOG_OSIRIS_INFO("    vmt slots: %s", line);
+        }
     }
 }
 
@@ -4255,6 +4374,7 @@ after_tick:
         LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
                         "discover databases", funcName);
         osi_func_enumerate_by_name();
+        osi_string_selftest();
         osi_report_node_classes();
     } else if (!g_dbNamesEnumerated && funcName &&
                strcmp(funcName, "LevelGameplayStarted") == 0) {
@@ -4262,6 +4382,7 @@ after_tick:
         LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
                         "discover databases", funcName);
         osi_func_enumerate_by_name();
+        osi_string_selftest();
         osi_report_node_classes();
     }
 
