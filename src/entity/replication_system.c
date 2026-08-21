@@ -146,13 +146,36 @@ bool replication_system_replicate_to_peer(void *world, uint64_t entity, int peer
     return true;
 }
 
+/*
+ * DISABLED — crashes the game, cause not established.
+ *
+ * Two attempts, both fatal, with the log ending exactly at the line before the
+ * call each time:
+ *
+ *   1. Called as a normal member (system, world, entity). Wrong: the prologue
+ *      shows x0 is the EntityWorld, so this dereferenced system+0x3f0 as an
+ *      ImmediateWorldCache.
+ *   2. Called with the corrected static convention (world, entity). Still
+ *      fatal, so the calling convention was not the only problem.
+ *
+ * The prologue reads EntityWorld+0x253 and EntityWorld+0x3f0 and calls
+ * ImmediateWorldCache::GetChange, all of which we supply correctly the second
+ * time, so the remaining explanations are preconditions not visible from the
+ * prologue: it may require the replication system in a particular state, or to
+ * run inside the ECS tick rather than from a script callback.
+ *
+ * Left failing closed rather than removed, so the address and analysis survive
+ * for a future attempt with a way to observe the result. ReplicateToPeer is
+ * unaffected and works.
+ */
 bool replication_system_stop_replicate(void *world, uint64_t entity) {
-    if (!entity || !world) return false;
-    StopReplicateWithFn fn = (StopReplicateWithFn)resolve_va(VA_STOP_REPLICATE_WITH);
-    if (!fn) return false;
-    /* Static: no `this`. x0 is the EntityWorld. */
-    fn(world, entity);
-    LOG_ENTITY_DEBUG("StopReplicateWith(world=%p, entity=0x%llx) dispatched",
-                     world, (unsigned long long)entity);
-    return true;
+    (void)world; (void)entity;
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        LOG_ENTITY_DEBUG("StopReplicateWith is disabled: it crashed the game in "
+                         "both tested calling conventions and the cause is not "
+                         "established. See replication_system.c.");
+    }
+    return false;
 }

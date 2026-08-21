@@ -443,3 +443,39 @@ Resolution is exposed separately from invocation. Calling ReplicateToPeer with
 no peer connected would pass a peer id that does not exist, and there would be
 nothing to observe either way. It should first be called with a real peer
 present, where success is visible on the client.
+
+## StopReplicateWith: crashes, disabled (2026-08-20)
+
+Two attempts, both fatal, each with the log ending exactly at the line before
+the call:
+
+1. Called as a normal member `(system, world, entity)`. Wrong — the prologue
+   shows x0 is the EntityWorld:
+
+       mov  x19, x1              ; entity handle
+       ldrb w8,  [x0, #0x253]
+       ldr  x20, [x0, #0x3f0]    ; EntityWorld + 0x3f0 = ImmediateWorldCache
+       bl   ImmediateWorldCache::GetChange
+
+   so this dereferenced system+0x3f0 as a cache pointer.
+
+2. Called with the corrected static convention `(world, entity)`. Still fatal,
+   so the convention was not the only problem.
+
+Since the second call supplies exactly what the prologue reads, the remaining
+explanations are preconditions invisible at the prologue: the replication system
+may need to be in a particular state, or the call may only be valid inside the
+ECS tick rather than from a script callback.
+
+Disabled and failing closed rather than removed, so the address and analysis
+survive. `ReplicateToPeer` is unaffected: its prologue reads a hash map at
+[x0+0xac]/[x0+0xb0], confirming x0 is genuinely `this`, and it has been called
+repeatedly without incident.
+
+### Method note
+
+C++ mangling does not distinguish static from non-static member functions, so a
+demangled signature cannot tell you the arity. That has to come from the
+prologue. This is the third form of the same lesson in one session, after two
+hooked Osiris functions whose return types had to be read from their epilogues
+and one that genuinely was void.
