@@ -676,11 +676,38 @@ static uint32_t osi_func_handle_from_def(void *funcDef) {
     uint32_t handle = osi_encode_handle(type, k[0], k[1], k[2]);
     if (handle == 0) return 0;
 
+    /* Dump raw field values for a bounded sample of both outcomes. The
+     * round-trip below can only ever confirm functions already in the id
+     * index (it IS the id index), so "rejected" does not mean "wrong" -- it
+     * mostly means "story function". These samples are what actually pin the
+     * encoding: they show how Type@0x24 relates to Key[0]@0x28 and to the low
+     * bits of a handle we know to be true (OsiFunctionId@0x38, non-zero only
+     * for native functions). */
+    uint32_t osiId = 0;
+    safe_memory_read_u32((mach_vm_address_t)funcDef + 0x38, &osiId);
+
+    int roundTrips = 1;
     if (s_pfn_pFunctionData && s_ppOsiFunctionMan && *s_ppOsiFunctionMan) {
-        if (s_pfn_pFunctionData(*s_ppOsiFunctionMan, handle) != funcDef) {
-            g_handleRejected++;
-            return 0;
-        }
+        roundTrips = (s_pfn_pFunctionData(*s_ppOsiFunctionMan, handle) == funcDef);
+    }
+
+    static int dumpedOk = 0, dumpedNo = 0;
+    if ((roundTrips && dumpedOk < 6) || (!roundTrips && dumpedNo < 14)) {
+        if (roundTrips) dumpedOk++; else dumpedNo++;
+        uint32_t k0 = 0;
+        safe_memory_read_u32((mach_vm_address_t)funcDef + 0x28, &k0);
+        const char *nm = extract_func_name_from_def(funcDef);
+        LOG_OSIRIS_INFO("  def sample [%s] %-34s Type@0x24=%u Key0@0x28=0x%08x(&7=%u) "
+                        "Key1=0x%08x Key2=%u Key3=0x%08x | OsiId@0x38=0x%08x(&7=%u) "
+                        "computed=0x%08x",
+                        roundTrips ? "rt-ok" : "rt-no", nm ? nm : "?",
+                        type, k0, k0 & 7, k[0], k[1], k[2],
+                        osiId, osiId & 7, handle);
+    }
+
+    if (!roundTrips) {
+        g_handleRejected++;
+        return 0;
     }
     g_handleVerified++;
     return handle;
@@ -734,7 +761,11 @@ static int osi_func_cache_def(void *funcDef, uint32_t funcId) {
 // id-based function cache. Instead we register name -> COsiFunctionData* so the
 // Facts reader (osi_db_read_facts in main.c) can resolve them.
 
-#define MAX_DATABASES 8192
+/* Sized for the whole name index (~20k defs), not just databases. Story
+ * functions carry no dispatch handle -- their Key[4] block and OsiFunctionId
+ * are all zero -- so name -> def is the only way to reach them, and that makes
+ * this registry the dispatch path for procs as well as databases. */
+#define MAX_DATABASES 32768
 typedef struct { char name[96]; void *def; } DbRegEntry;
 static DbRegEntry g_dbReg[MAX_DATABASES];
 static int g_dbRegCount = 0;
@@ -835,12 +866,14 @@ void osi_func_enumerate_by_name(void) {
                 uint8_t ftype = 0;
                 safe_memory_read_u8((mach_vm_address_t)def + 0x24, &ftype);  /* Type @ def+0x24 */
                 typeHist[ftype]++;
-                if (ftype == OSI_FUNC_DATABASE) {
-                    /* Register name -> def so the Facts reader can resolve them. */
-                    const char *dbName = extract_func_name_from_def(def);
-                    if (osi_db_register(dbName, def)) {
-                        found++;
-                    }
+                /* Register name -> def for EVERY def. Databases need it for
+                 * the Facts reader; procs and user queries need it because a
+                 * measured sample showed their Key[4] and OsiFunctionId are
+                 * entirely zero, so there is no handle to dispatch by and the
+                 * def (and its Rete node) is the only route to them. */
+                const char *defName = extract_func_name_from_def(def);
+                if (osi_db_register(defName, def)) {
+                    found++;
                 }
 
                 /* Cache every def -- database or not -- under its dispatch

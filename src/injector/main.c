@@ -1484,6 +1484,58 @@ static void osi_push_typed_value(lua_State *L, mach_vm_address_t tv) {
  *   inline at the tuple base when cap < 9, else *(tuple+0x00) is a heap
  *   pointer. Column i COsiTypedValue @ values + i*0x10.
  */
+/* Resolve any def -> its Rete node. Split out of osi_db_resolve because that
+ * one additionally demands a CReteDBase, which only databases have -- it
+ * rejected PROC_GLO_PartyMembers_Add outright even though the proc's node
+ * resolves fine (nodeId=12491). Story functions are dispatched through this
+ * node, never through a handle: BG3SE's OsiInsert does node->InsertTuple(&t)
+ * and never reads OsiFunctionId, which is why all 12209 story defs carry 0
+ * there. Node ids are 1-BASED (Nodes->Db.Elements[Node.Id - 1]). */
+static bool osi_node_resolve(void *def, void **outNode) {
+    if (outNode) *outNode = NULL;
+    if (!def || !g_pOsiFunctionMan) return false;
+    uintptr_t base = (uintptr_t)g_pOsiFunctionMan - 0x9f348;
+
+    void *factory = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x9f338), &factory) || !factory)
+        return false;
+
+    uint32_t nodeId = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)def + 0x20, &nodeId) || nodeId == 0) return false;
+
+    void *fbegin = NULL, *fend = NULL, *node = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)factory + 0x08, &fbegin) || !fbegin) return false;
+    safe_memory_read_pointer((mach_vm_address_t)factory + 0x10, &fend);
+    if (fend && (uintptr_t)nodeId > ((uintptr_t)fend - (uintptr_t)fbegin) / 8) return false;
+    if (!safe_memory_read_pointer((mach_vm_address_t)fbegin + (uintptr_t)(nodeId - 1) * 8, &node) || !node)
+        return false;
+
+    /* The node stores its own id at +0x08; mismatch means layout drift. */
+    uint32_t nodeChk = 0;
+    safe_memory_read_u32((mach_vm_address_t)node + 0x08, &nodeChk);
+    if (nodeChk != nodeId) return false;
+
+    if (outNode) *outNode = node;
+    return true;
+}
+
+/* NodeVMT byte offsets, from Norbyte's Osiris.h via the windows-box session. */
+#define NODEVMT_IS_DATA_NODE  0x18
+#define NODEVMT_IS_VALID      0x20
+#define NODEVMT_INSERT_TUPLE  0x50
+#define NODEVMT_DELETE_TUPLE  0x60
+
+/* node->IsDataNode(). BG3SE routes FunctionType::Database on this rather than
+ * on the node's class, so read the vcall instead of inferring from the vtable. */
+static bool osi_node_is_data_node(void *node) {
+    void *vmt = NULL;
+    if (!node || !safe_memory_read_pointer((mach_vm_address_t)node, &vmt) || !vmt) return false;
+    void *fn = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)vmt + NODEVMT_IS_DATA_NODE, &fn) || !fn)
+        return false;
+    return ((bool (*)(void *))fn)(node);
+}
+
 /* Resolve a database def -> (RETE fact node, CReteDBase, column count).
  * Shared by the Facts reader and the Wave 7 A5 delete path. Returns false
  * (with warn logs) on any validation or layout-drift check failure. */
@@ -1545,9 +1597,9 @@ static bool osi_db_resolve(void *def, void **outNode, void **outDb,
         return false;
     }
 
-    *outNode = node;
-    *outDb = db;
-    *outColCount = colCount;
+    if (outNode) *outNode = node;
+    if (outDb) *outDb = db;
+    if (outColCount) *outColCount = colCount;
     return true;
 }
 
@@ -1603,6 +1655,74 @@ static int osi_db_tuple_matches(lua_State *L, mach_vm_address_t values,
     }
     return 1;
 }
+
+
+/* Identify the Rete node behind a story function.
+ *
+ * Measured: story defs (PROC_*, DB_*) carry an all-zero Key[4] and
+ * OsiFunctionId==0, so they have no DIV dispatch handle and never will. What
+ * they do carry is a node id at def+0x20 -- the same field the Facts reader
+ * already follows successfully. Osiris invokes a proc, and asserts a database
+ * fact, by pushing a tuple into that node, so the node's concrete class decides
+ * which engine entry point we can legitimately call.
+ *
+ * This only reads and reports; it dispatches nothing. */
+static void osi_report_node_classes(void) {
+    static int reported = 0;
+    if (reported || !g_pOsiFunctionMan) return;
+    reported = 1;
+
+    uintptr_t base = (uintptr_t)g_pOsiFunctionMan - 0x9f348;
+    const struct { const char *name; uintptr_t off; } vtables[] = {
+        {"CReteNode",          0x090aa8}, {"CReteChildNode",  0x090b78},
+        {"CReteStartNode",     0x090c48}, {"CReteUnaryNode",  0x090d18},
+        {"CReteBinaryNode",    0x090de8}, {"CReteFact",       0x090eb8},
+        {"CReteEvent",         0x090f88}, {"CReteQuery",      0x091058},
+        {"CReteDIVQuery",      0x091138}, {"CReteOsiQuery",   0x091218},
+        {"CReteInternalQuery", 0x0912f8}, {"CReteAnd",        0x0913d8},
+        {"CReteNAnd",          0x0914a8}, {"CReteRelCondition", 0x091578},
+        {"CReteRuleActionPart", 0x091648},
+    };
+    const char *targets[] = {
+        "PROC_GLO_PartyMembers_Add", "DB_GLO_PartyMembers_DefaultFaction",
+        "PROC_GLO_PartyMembers_Initialize", "DB_Players",
+        "PROC_ORI_SetupCamp", "DialogGetSpeaker", NULL
+    };
+
+    for (int t = 0; targets[t]; t++) {
+        void *def = osi_db_lookup(targets[t]);
+        if (!def) {
+            LOG_OSIRIS_INFO("  node probe %-36s NOT IN NAME INDEX", targets[t]);
+            continue;
+        }
+        uint8_t ftype = 0; uint32_t nodeId = 0;
+        safe_memory_read_u8((mach_vm_address_t)def + 0x24, &ftype);
+        safe_memory_read_u32((mach_vm_address_t)def + 0x20, &nodeId);
+
+        void *node = NULL, *db = NULL; uint8_t cols = 0;
+        /* Node first: works for procs too. The DB resolver additionally needs a
+         * CReteDBase and legitimately fails on a proc. */
+        int resolved = osi_node_resolve(def, &node);
+        int isData = resolved ? osi_node_is_data_node(node) : 0;
+        osi_db_resolve(def, NULL, &db, &cols);
+
+        const char *cls = "unknown";
+        void *vt = NULL;
+        if (resolved && node && safe_memory_read_pointer((mach_vm_address_t)node, &vt) && vt) {
+            for (size_t i = 0; i < sizeof(vtables) / sizeof(vtables[0]); i++) {
+                /* vtable symbol points at the header; the stored pointer is +0x10. */
+                if ((uintptr_t)vt == base + vtables[i].off + 0x10 ||
+                    (uintptr_t)vt == base + vtables[i].off) {
+                    cls = vtables[i].name; break;
+                }
+            }
+        }
+        LOG_OSIRIS_INFO("  node probe %-36s type=%u nodeId=%u resolved=%d isDataNode=%d "
+                        "cols=%u class=%s", targets[t], ftype, nodeId, resolved,
+                        isData, cols, cls);
+    }
+}
+
 
 static int osi_db_read_facts(lua_State *L, void *def) {
     int nfilter = lua_gettop(L) - 1;      /* filter args at stack 2..top */
@@ -4135,12 +4255,14 @@ after_tick:
         LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
                         "discover databases", funcName);
         osi_func_enumerate_by_name();
+        osi_report_node_classes();
     } else if (!g_dbNamesEnumerated && funcName &&
                strcmp(funcName, "LevelGameplayStarted") == 0) {
         g_dbNamesEnumerated = 1;
         LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
                         "discover databases", funcName);
         osi_func_enumerate_by_name();
+        osi_report_node_classes();
     }
 
     // Osiris events are server-side. After bootstrap, the context is left at
