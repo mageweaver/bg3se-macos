@@ -460,7 +460,15 @@ void replication_flags_debug_dump(void *entity_world) {
 static bool s_repl_sample_latched = false;
 
 void replication_flags_sample(void *entity_world) {
-    if (s_repl_sample_latched || !entity_world) return;
+    if (s_repl_sample_latched) return;
+
+    /* Prove the instrument runs before trusting a negative result: a sampler
+     * that silently no-ops looks identical to "pools never populate". */
+    static int s_calls = 0;
+    if (++s_calls == 1) {
+        log_message("[Replication] sampler active (world=%p)", entity_world);
+    }
+    if (!entity_world) return;
 
     void *sync_ptr = NULL;
     if (!read_pointer_at((uintptr_t)entity_world, 0, &sync_ptr) || !sync_ptr) return;
@@ -471,6 +479,13 @@ void replication_flags_sample(void *entity_world) {
     if (!read_pointer_at(sync, SYNC_POOLS_OFFSET, &pools_ptr) || !pools_ptr) return;
     if (!read_i32_at(sync, SYNC_POOL_COUNT_OFFSET, &pool_count)) return;
     if (pool_count <= 0 || pool_count > 4096) return;
+
+    static int s_reported = 0;
+    if (!s_reported) {
+        s_reported = 1;
+        log_message("[Replication] sampler reached pools: count=%d (scanning each call)",
+                    pool_count);
+    }
 
     uint8_t dirty = 0;
     safe_memory_read_u8((mach_vm_address_t)(sync + 0x10), &dirty);
