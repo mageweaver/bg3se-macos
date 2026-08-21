@@ -514,3 +514,38 @@ Not verified: a visible client-side effect. Replicating an entity the client can
 already see is a no-op, and `StopReplicateWith` — the one unambiguous observable
 — crashes in both tested calling conventions and is disabled. Proving effect
 needs an entity the client does not yet have, or a working stop path.
+
+## Why Get/SetReplicationFlags have no equivalent here
+
+Windows' flags are a per-(entity, component) `BitSet` living in
+`SyncBuffers::ComponentPools[replicationTypeIndex]` — the pools indexed by
+*component* type. That structure is present on this build but never populated,
+as established above.
+
+`ReplicationSystem` is not a substitute, because it is keyed differently. From
+`ReplicateToPeer`'s body:
+
+    ldr  w8,  [x0, #0xac]      ; bucket count
+    sxtw x23, w2               ; peer id (second argument)
+    udiv x9,  x23, x8
+    msub x24, x9, x8, x23      ; peer_id % bucket_count
+    ldr  x8,  [x0, #0xb0]      ; bucket array
+    add  x22, x8, x24, lsl #3
+    ldr  x22, [x22]            ; walk the chain
+    ldr  w8,  [x22, #0x8]      ; node key
+    cmp  w8,  w20
+
+It hashes on the **peer id** and walks a per-peer chain. Replication here is
+tracked per peer, and per entity within that — there is no component dimension
+anywhere in the structure.
+
+So `GetReplicationFlags` and `SetReplicationFlags` cannot be repointed at it:
+the concept they expose (which *components* of an entity are flagged for
+replication) does not exist on this build. They stay gaps permanently rather
+than pending, and the honest note is that the Windows API has no macOS analogue,
+not that the port has failed to find one.
+
+A different API *would* be implementable from this structure — "which peers is
+this entity replicated to", by walking the per-peer chains — but that is a new
+function rather than parity for the Windows one, and would need the node layout
+beyond +0x8/+0x18 recovered first.

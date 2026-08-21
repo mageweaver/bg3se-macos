@@ -225,13 +225,13 @@
         },
         {
           "name": "GetReplicationFlags",
-          "note": "Reads SyncBuffers component pools, which are dead on this build: a verified sampler running from a hot hook never observed any of 582 pools populated, including with a crossplay peer connected and replication visibly working. The walk itself is correct, so this returns 0 for every entity and component rather than failing - a confidently wrong answer. Demoted from implemented on that evidence.",
+          "note": "No macOS analogue. Windows' flags are a per-(entity, component) BitSet in SyncBuffers::ComponentPools, indexed by component type; those pools exist here but are never populated (verified sampler, live crossplay peer). ReplicationSystem cannot substitute: ReplicateToPeer hashes on peer id (peer_id % bucketCount at +0xac/+0xb0) and walks a per-peer chain, so replication is tracked per peer and per entity with no component dimension. Permanent gap rather than pending work.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
         {
           "name": "SetReplicationFlags",
-          "note": "Same dead SyncBuffers path as GetReplicationFlags; writes would land in pools the engine does not read on this build.",
+          "note": "No macOS analogue. Windows' flags are a per-(entity, component) BitSet in SyncBuffers::ComponentPools, indexed by component type; those pools exist here but are never populated (verified sampler, live crossplay peer). ReplicationSystem cannot substitute: ReplicateToPeer hashes on peer id (peer_id % bucketCount at +0xac/+0xb0) and walks a per-peer chain, so replication is tracked per peer and per entity with no component dimension. Permanent gap rather than pending work.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
