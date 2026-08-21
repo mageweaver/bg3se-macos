@@ -237,7 +237,7 @@
         },
         {
           "name": "Replicate",
-          "note": "Write path implemented (locate bitset, OR flags, set SyncBuffers::Dirty at sync+0x10) and verified to fail closed. Still a gap: refuses when the entity has no replication entry, which is every entity in single-player, because creating one needs pool.add_key on a live engine HashMap. Also limited to the 9 recovered ReplicatedTypeContext globals.",
+          "note": "Windows' SyncBuffers mechanism is NOT how this build replicates: a verified latching sampler never observed any of 582 pools populated, including with a crossplay peer connected and replication visibly working. The real path is esv::replication::ReplicationSystem::ReplicateToPeer(EntityHandle, PeerID) at 0x105630d70; the system instance now resolves (verified in game, double-index check passes). Not yet invoked - needs a live peer to call safely and to observe an effect. See REPLICATION_SYNCBUFFERS.md",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },

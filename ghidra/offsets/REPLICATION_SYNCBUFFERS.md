@@ -397,3 +397,49 @@ useless by construction rather than merely limited.
 Hook the ECS flush and dump SyncBuffers from inside it. That distinguishes (1)
 from (2) directly, and does not require a live multiplayer session to develop —
 only to confirm.
+
+## The real mechanism: ReplicationSystem (2026-08-20)
+
+### SyncBuffers is ruled out, not merely unproven
+
+The sampler was given a self-check first, because an instrument that silently
+no-ops is indistinguishable from "the pools never populate":
+
+    sampler active (world=0xb3102a800)
+    sampler reached pools: count=582 (scanning each call)
+
+It runs, resolves a live world, reaches the pool array and scans all 582 pools
+per call. It never fired — not in single-player, and not with a console client
+joined over crossplay while both characters were visible on both devices. So the
+pools are genuinely unused on this build; the reader was never the problem.
+
+### What the binary actually exports
+
+    0x105630d70  esv::replication::ReplicationSystem::ReplicateToPeer(
+                     ls::ID<ecs::EntityHandleTraits>,
+                     ls::TypeWrap<int, net::PeerIDClassname, true>)
+    0x1056442f0  esv::replication::ReplicationSystem::StopReplicateWith(
+                     ecs::EntityWorld*, ls::ID<ecs::EntityHandleTraits>)
+
+Plain member calls: x0 = system, x1 = entity handle, w2 = peer id.
+
+### Instance resolution — verified
+
+    ls::TypeId<esv::replication::ReplicationSystem, ecs::SystemsContext>::m_TypeIndex
+        @ 0x10892fcf8
+
+Read the type index there, then index the world's system array
+(world+0x30 buffer, stride 0xf8, instance at entry+0x00), exactly as
+ecs_system_update.c already does for 82 other systems. Confirmed in game:
+
+    ReplicationSystem instance = 0x9e8f74e00 (world=0x9eb338a00)
+
+The entry stores its own index at +0x08 and +0x0c; both must equal the looked-up
+index, so a wrong stride fails rather than yielding an unrelated object.
+
+### Deliberately not yet called
+
+Resolution is exposed separately from invocation. Calling ReplicateToPeer with
+no peer connected would pass a peer id that does not exist, and there would be
+nothing to observe either way. It should first be called with a real peer
+present, where success is visible on the client.
