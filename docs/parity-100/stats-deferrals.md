@@ -435,3 +435,52 @@ modules. A wrong offset cannot produce that agreement.
 Lesson: the failure was assuming one engine container layout applies to all of
 them. Reading the container's own accessor settled in minutes what three
 offset theories could not.
+
+## `StaticData.Create`: mechanism fully recovered, not shipped
+
+Windows' `Create` is `bank_->Resources.add_key(guid)` plus copying the VMT from
+an existing resource (StaticData.inl:76). The insert is the whole problem, and
+it is now understood rather than guessed.
+
+### `ls::HashTable<K, Ops>` layout
+
+Read from `ls::HashTable<ls::Guid, HashTableOpsDefault>::Ensure` @ `0x100c0217c`:
+
+    +0x00  bucket heads (int32*)
+    +0x08  bucket count
+    +0x10  chain/next indices buffer (int32*)
+    +0x18  chain capacity
+    +0x1c  chain count
+    +0x20  keys buffer (raw, 16-byte Guid elements)
+    +0x28  key capacity
+    +0x2c  key count
+
+### The insert algorithm
+
+    grow keys via DynamicArray<Guid, TaggedAllocator>::Reserve if full
+    keys[n] = guid; keyCount++
+    grow chain via DynamicArray<int, TaggedAllocator>::Reallocate if full
+    next[n] = -1; chainCount++
+    if (bucketCount < keyCount * 1.5) Rehash()      ; 0x100c022dc
+    else link n into buckets[hash % bucketCount]
+
+The hash is `guid.lo ^ guid.hi` (`eor x11, x9, x8`) reduced by `udiv`/`msub`.
+
+### Why it is not implemented here
+
+`Ensure` is exported, so the correct approach is to **call it** rather than
+reimplement hashing and rehashing — which is also how `AddLoadedObject` does it:
+`add x0, x21, #0x50` then `bl Ensure`, followed by separate management of the
+values array at bank +0x78/+0x80/+0x88.
+
+What stops it is not knowledge but verifiability. This mutates a live resource
+bank, and a rehash rewrites every bucket in it. Windows itself refuses to expand
+by default and gates growth behind `allowUnsafeExpansion` with the comment
+"This leaks memory!" and a warning that it may break existing resource
+references. A wrong value-slot write would corrupt a bank that the running save
+depends on, and there is no cheap way to observe corruption before it matters.
+
+Shipping a live-mutation path that cannot be verified is the pattern that caused
+this session's crashes. The recovery above removes the unknowns, so an
+implementation attempt can start from measurements rather than guesses whenever
+it can be tested against a disposable profile.

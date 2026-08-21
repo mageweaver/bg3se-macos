@@ -1689,7 +1689,7 @@
         },
         {
           "name": "Create",
-          "note": "Absent. Windows GUID resource creation not ported.",
+          "note": "Absent. Mechanism fully recovered: ls::HashTable layout (bucket heads +0x00, bucket count +0x08, chain +0x10/+0x18/+0x1c, keys +0x20/+0x28/+0x2c), the insert algorithm including the keyCount*1.5 rehash trigger, and the exported Ensure entry point at 0x100c0217c that performs it correctly. Not shipped because it mutates a live resource bank and a rehash rewrites every bucket; Windows itself gates growth behind allowUnsafeExpansion with a memory-leak warning. Needs a disposable profile to verify against. See docs/parity-100/stats-deferrals.md",
           "class": "behavioral_gap",
           "kind": "function"
         }
