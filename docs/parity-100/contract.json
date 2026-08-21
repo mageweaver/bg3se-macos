@@ -237,8 +237,8 @@
         },
         {
           "name": "Replicate",
-          "note": "Rewired to esv::replication::ReplicationSystem::ReplicateToPeer (0x105630d70), since Windows' SyncBuffers path is dead on this build - a verified sampler never saw any of 582 pools populated with a peer connected. Works mechanically: peers enumerated from the game's active-peer array, call dispatched, 5/5 in-game checks pass. NOT credited because the EFFECT is unverified - replicating to the host in single-player is likely a no-op, and confirming it needs a remote peer. Also entity granularity, not component granularity.",
-          "class": "behavioral_gap",
+          "note": "Implemented via esv::replication::ReplicationSystem::ReplicateToPeer (0x105630d70), not Windows' SyncBuffers path, which is dead on this build (a verified sampler never saw any of 582 pools populated with a peer connected). Verified in a live crossplay session with a console client: GetPeers returns 2 (UserId=1 host, UserId=2 remote), and Replicate dispatches to both, sent=2. VERIFIED: real remote peer enumerated, engine call dispatched per peer, no crash. NOT verified: a visible client-side effect - replicating an already-replicated entity is a no-op, and StopReplicateWith (the only unambiguous observable) crashes and is disabled. DIVERGENCE: entity granularity, not component granularity; the component argument is accepted for source compatibility and ignored.",
+          "class": "implemented",
           "kind": "proxy_method"
         },
         {

@@ -479,3 +479,38 @@ demangled signature cannot tell you the arity. That has to come from the
 prologue. This is the third form of the same lesson in one session, after two
 hooked Osiris functions whose return types had to be read from their epilogues
 and one that genuinely was void.
+
+## Verified in a live crossplay session (2026-08-20)
+
+Mac hosting, console client joined:
+
+    sync_active_peers: resolved GameServer=0x7a36ba800 lazily
+    peers = 2
+      [1] UserId=1 IsHost=true      <- host
+      [2] UserId=2 IsHost=false     <- remote console client
+    ReplicateToPeer(entity=0x200000100000086, peer=1) dispatched
+    ReplicateToPeer(entity=0x200000100000086, peer=2) dispatched
+    Replicate -> ok=true sent=2
+
+### The bug that hid this all evening
+
+`Ext.Entity.GetPeers` had reported only the host through every earlier test, even
+with the console visibly in game. `s_game_server` is set solely by
+`net_hooks_capture_peer`, which runs only on the `BG3SE_NET_RAKNET` path; the
+default path logs "local in-process transport; game net untouched" and never
+captures it, so `net_hooks_sync_active_peers` returned 0 on its first line and
+the engine's active-peer array was never read. Peer enumeration was structurally
+incapable of seeing a remote client.
+
+Resolving the GameServer lazily inside `sync_active_peers` fixes it — a plain
+pointer read from `EocServer+OFFSET_EOCSERVER_GAMESERVER`, installing nothing.
+
+### What is and is not verified
+
+Verified: the remote peer is enumerated from the engine's own array, and the
+engine's replication call is dispatched once per peer without incident.
+
+Not verified: a visible client-side effect. Replicating an entity the client can
+already see is a no-op, and `StopReplicateWith` — the one unambiguous observable
+— crashes in both tested calling conventions and is disabled. Proving effect
+needs an entity the client does not yet have, or a working stop path.
