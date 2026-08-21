@@ -1575,7 +1575,7 @@
         },
         {
           "name": "GetGlobalSwitches",
-          "note": "Absent. GlobalSwitches struct not recovered on macOS.",
+          "note": "Absent. PROVEN not portable from the Windows struct: SkipSplashScreen sits at 0x6AC on macOS (recovered by disassembly) vs 0x13E6 on Windows, and Windows declares a float at 0x6AC. Layout diverges wholesale, and misreads would be silent. Needs per-field recovery or a property-name registration table. See ghidra/offsets/GLOBALSWITCHES_LAYOUT.md",
           "class": "behavioral_gap",
           "kind": "function"
         },
