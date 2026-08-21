@@ -406,3 +406,32 @@ Osiris hooks: find a function that reads this field and take the offset from its
 instructions, rather than deriving it from a struct that evidently does not
 match. Until then both functions fail closed and return nil rather than serving
 fabricated GUIDs.
+
+### Resolved 2026-08-20: it was the container layout, not the offset
+
+Windows' predicted `+0x10` was correct the whole time. What was wrong was the
+HashMap layout applied to it.
+
+`ls::ModdableFilesLoader` (what BG3SE calls `GuidResourceBank`) stores its
+Resources table at `+0x50` — `AddLoadedObject` does `add x0, x21, #0x50` before
+calling Ensure — and `vptr + 2 FixedStrings + a 0x40-byte map` lands exactly
+there, confirming ResourceGuidsByMod occupies `0x10..0x50`.
+
+The container is `ls::HashTable`, whose layout was read from
+`ls::HashTable<ls::Guid, HashTableOpsDefault>::Ensure` (0x100c0217c):
+
+    +0x00  bucket heads (int32*)
+    +0x08  bucket count
+    +0x20  keys buffer -- a RAW pointer to 16-byte Guids, not an Array header
+
+Three earlier attempts applied the ECS HashMap layout (Keys as an Array header
+at +0x20), so every scan matched int32 bucket-head arrays and concluded the map
+was not there.
+
+Verified: per-mod resource lists sum exactly to each bank's total — Feat 41/41,
+Background 22/22, ActionResource 87/87, Race 156/156, Class 70/70 — across 13
+modules. A wrong offset cannot produce that agreement.
+
+Lesson: the failure was assuming one engine container layout applies to all of
+them. Reading the container's own accessor settled in minutes what three
+offset theories could not.

@@ -1677,14 +1677,14 @@
         },
         {
           "name": "GetSources",
-          "note": "Absent. Windows resource-source enumeration not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented and verified. ResourceGuidsByMod is at bank+0x10 using the ls::HashTable layout (bucket heads +0x00, bucket count +0x08, keys as a RAW buffer of 16-byte Guids at +0x20), read from ls::HashTable<ls::Guid,HashTableOpsDefault>::Ensure at 0x100c0217c - not the ECS HashMap layout three earlier attempts assumed. Cross-checked in game: per-mod resource lists sum exactly to each bank's total (Feat 41/41, Background 22/22, ActionResource 87/87, Race 156/156, Class 70/70) across 13 modules.",
+          "class": "implemented",
           "kind": "function"
         },
         {
           "name": "GetByModId",
-          "note": "Absent. Windows per-mod GUID resource filter not ported.",
-          "class": "behavioral_gap",
+          "note": "Implemented and verified. ResourceGuidsByMod is at bank+0x10 using the ls::HashTable layout (bucket heads +0x00, bucket count +0x08, keys as a RAW buffer of 16-byte Guids at +0x20), read from ls::HashTable<ls::Guid,HashTableOpsDefault>::Ensure at 0x100c0217c - not the ECS HashMap layout three earlier attempts assumed. Cross-checked in game: per-mod resource lists sum exactly to each bank's total (Feat 41/41, Background 22/22, ActionResource 87/87, Race 156/156, Class 70/70) across 13 modules.",
+          "class": "implemented",
           "kind": "function"
         },
         {
