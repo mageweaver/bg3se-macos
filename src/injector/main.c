@@ -3297,7 +3297,26 @@ static void fake_RegisterDIVFunctions(void *thisPtr, DivFunctions *functions) {
  * Mangled name: _ZN7COsiris8InitGameEv
  * This is a member function, so 'this' pointer is first arg
  */
-static void fake_InitGame(void *thisPtr) {
+/*
+ * COsiris::InitGame() returns a value in x0.
+ *
+ * This hook was declared void, so it dropped the original's result, ran its own
+ * post-call work (function enumeration, deferred session init, logging) which
+ * clobbers x0, and returned garbage. The game checks that result when creating
+ * a session, which made multiplayer unstartable with BG3SE loaded -- bisected
+ * 2026-08-20 to exactly this hook.
+ *
+ * Confirmed from libOsiris.dylib rather than inferred; the epilogue is
+ *
+ *     mov  x0, x23        <- return value
+ *     add  sp, sp, #0x230
+ *     ...
+ *     ret
+ *
+ * and the other return path loads x0 as well. The value is passed through as a
+ * 64-bit word so it survives whatever it actually is (bool, int or pointer).
+ */
+static uint64_t fake_InitGame(void *thisPtr) {
     initGame_call_count++;
     LOG_OSIRIS_DEBUG(">>> COsiris::InitGame called! (count: %d, this: %p)", initGame_call_count, thisPtr);
 
@@ -3314,9 +3333,11 @@ static void fake_InitGame(void *thisPtr) {
         }
     }
 
-    // Call original
+    /* Call original and PRESERVE its return value: everything below clobbers
+     * x0, so it must be captured here and returned at the end. */
+    uint64_t result = 0;
     if (orig_InitGame) {
-        ((void (*)(void*))orig_InitGame)(thisPtr);
+        result = ((uint64_t (*)(void*))orig_InitGame)(thisPtr);
     }
 
     LOG_OSIRIS_DEBUG(">>> COsiris::InitGame returned");
@@ -3363,6 +3384,7 @@ static void fake_InitGame(void *thisPtr) {
         }
     }
     lua_gate_unlock();
+    return result;
 }
 
 /**
