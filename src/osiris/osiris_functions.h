@@ -19,9 +19,24 @@ extern "C" {
 // Configuration
 // ============================================================================
 
-#define MAX_CACHED_FUNCTIONS 4096
-#define FUNC_HASH_SIZE 8192
-#define FUNC_NAME_HASH_SIZE 8192
+/*
+ * Osiris function cache capacity.
+ *
+ * Was 4096, which silently truncated: a vanilla install plus one mod enumerates
+ * 7869 Osiris functions, so roughly half were dropped and osi_func_cache
+ * returned without a word. Lookups then reported "not yet discovered", which
+ * reads like a discovery failure rather than a full cache. It broke mod procs
+ * and stock functions alike (DialogGetSpeaker among them).
+ *
+ * 32768 leaves ~4x headroom over an observed 7869 and stays within the int32_t
+ * hash-table index type. At ~140 bytes per entry this costs about 4.6 MB, which
+ * is a reasonable trade against silently losing half of Osiris.
+ */
+#define MAX_CACHED_FUNCTIONS 32768
+#define FUNC_HASH_SIZE 65536
+/* Sized well above MAX_CACHED_FUNCTIONS so the load factor stays low; at 8192
+ * with 7869 entries almost every lookup degraded to the linear fallback. */
+#define FUNC_NAME_HASH_SIZE 65536
 #define MAX_SEEN_FUNC_IDS 256
 
 // ============================================================================

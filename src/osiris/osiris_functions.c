@@ -19,10 +19,10 @@ static CachedFunction g_funcCache[MAX_CACHED_FUNCTIONS];
 static int g_funcCacheCount = 0;
 
 // Hash table for fast ID lookup (-1 = empty, else index into g_funcCache)
-static int16_t g_funcIdHashTable[FUNC_HASH_SIZE];
+static int32_t g_funcIdHashTable[FUNC_HASH_SIZE];   /* int16_t overflowed past 32767 */
 
 // Hash table for fast name lookup (-1 = empty, else index into g_funcCache)
-static int16_t g_funcNameHashTable[FUNC_NAME_HASH_SIZE];
+static int32_t g_funcNameHashTable[FUNC_NAME_HASH_SIZE];
 
 // Tracked function IDs (for analysis)
 static uint32_t g_seenFuncIds[MAX_SEEN_FUNC_IDS];
@@ -299,6 +299,16 @@ void osi_func_cache_set_known_events(KnownEvent *events) {
 
 void osi_func_cache(const char *name, uint32_t funcId, uint8_t arity, uint8_t type) {
     if (g_funcCacheCount >= MAX_CACHED_FUNCTIONS) {
+        /* Never drop silently again: a full cache previously looked identical
+         * to "function not discovered" at the call site. */
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_OSIRIS_WARN("Function cache FULL at %d entries — further Osiris "
+                            "functions are being dropped and will report as "
+                            "'not yet discovered'. Raise MAX_CACHED_FUNCTIONS.",
+                            MAX_CACHED_FUNCTIONS);
+        }
         return;
     }
 
@@ -783,7 +793,7 @@ uint32_t osi_func_lookup_id(const char *name) {
 
     // Fast path: name hash table
     int hash = func_name_hash(name);
-    int16_t idx = g_funcNameHashTable[hash];
+    int32_t idx = g_funcNameHashTable[hash];
     if (idx >= 0 && strcmp(g_funcCache[idx].name, name) == 0) {
         return g_funcCache[idx].id;
     }
@@ -814,7 +824,7 @@ int osi_func_get_info(const char *name, uint8_t *out_arity, uint8_t *out_type) {
 
     // Fast path: name hash table
     int hash = func_name_hash(name);
-    int16_t idx = g_funcNameHashTable[hash];
+    int32_t idx = g_funcNameHashTable[hash];
     if (idx >= 0 && strcmp(g_funcCache[idx].name, name) == 0) {
         if (out_arity) *out_arity = g_funcCache[idx].arity;
         if (out_type) *out_type = g_funcCache[idx].type;
@@ -838,7 +848,7 @@ uint32_t osi_func_get_handle(const char *name) {
 
     // Fast path: name hash table
     int hash = func_name_hash(name);
-    int16_t idx = g_funcNameHashTable[hash];
+    int32_t idx = g_funcNameHashTable[hash];
     if (idx >= 0 && strcmp(g_funcCache[idx].name, name) == 0) {
         return g_funcCache[idx].handle;
     }
