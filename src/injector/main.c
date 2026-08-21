@@ -4302,7 +4302,7 @@ static void install_hooks(void) {
     int hook_count = 0;
 
     // Hook COsiris::InitGame
-    if (initGameAddr) {
+    if (initGameAddr && !hook_group_disabled("BG3SE_NO_HOOK_INITGAME")) {
         int result = DobbyHook(initGameAddr, (void *)fake_InitGame, &orig_InitGame);
         if (result == 0) {
             LOG_HOOKS_INFO("  COsiris::InitGame hooked successfully (orig: %p)", orig_InitGame);
@@ -4315,7 +4315,7 @@ static void install_hooks(void) {
     }
 
     // Hook COsiris::Load
-    if (loadAddr) {
+    if (loadAddr && !hook_group_disabled("BG3SE_NO_HOOK_LOAD")) {
         int result = DobbyHook(loadAddr, (void *)fake_Load, &orig_Load);
         if (result == 0) {
             LOG_HOOKS_INFO("  COsiris::Load hooked successfully (orig: %p)", orig_Load);
@@ -4328,7 +4328,7 @@ static void install_hooks(void) {
     }
 
     // Hook COsiris::Event - this is the key hook for event interception!
-    if (eventAddr) {
+    if (eventAddr && !hook_group_disabled("BG3SE_NO_HOOK_EVENT")) {
         int result = DobbyHook(eventAddr, (void *)fake_Event, &orig_Event);
         if (result == 0) {
             LOG_HOOKS_INFO("  COsiris::Event hooked successfully (orig: %p)", orig_Event);
@@ -4341,7 +4341,7 @@ static void install_hooks(void) {
     }
 
     // Hook RegisterDIVFunctions - captures Call/Query dispatch pointers (Issue #66)
-    if (regDivAddr) {
+    if (regDivAddr && !hook_group_disabled("BG3SE_NO_HOOK_REGDIV")) {
         int result = DobbyHook(regDivAddr, (void *)fake_RegisterDIVFunctions, &orig_RegisterDIVFunctions);
         if (result == 0) {
             LOG_HOOKS_INFO("  RegisterDIVFunctions hooked successfully (orig: %p)", orig_RegisterDIVFunctions);
