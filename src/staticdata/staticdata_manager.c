@@ -1793,6 +1793,28 @@ int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid
     return -1;
 }
 
+/*
+ * ResourceGuidsByMod lives at bank+0x10, using the ls::HashTable layout read
+ * from ls::HashTable<ls::Guid, HashTableOpsDefault>::Ensure (0x100c0217c):
+ *
+ *     +0x00  bucket heads (int32*)
+ *     +0x08  bucket count
+ *     +0x20  keys buffer  -- RAW pointer, 16-byte Guid elements
+ *
+ * Three earlier attempts failed because they applied the ECS HashMap layout
+ * (Keys as an Array header at +0x20), so every scan matched int32 bucket arrays
+ * rather than Guid keys. Verified in game: the keys read as real mod Guids, and
+ * the same set appears across Feat, Background and ActionResource, which is
+ * what per-module attribution should look like.
+ *
+ * Relative to the bank: map at +0x10, keys buffer at +0x30, key capacity at
+ * +0x38, key count at +0x3c, values buffer at +0x40 (Array<Guid> headers).
+ */
+#define BANK_SOURCES_KEYS_BUF   0x30
+#define BANK_SOURCES_KEY_CAP    0x38
+#define BANK_SOURCES_KEY_COUNT  0x3c
+#define BANK_SOURCES_VALUES_BUF 0x40
+
 bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
                                   void **out_values, uint32_t *out_count) {
     if (out_keys) *out_keys = NULL;
@@ -1801,61 +1823,35 @@ bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
 
     StaticDataRawInfo info;
     if (!staticdata_get_raw_info(type, &info) || !info.manager_ptr) return false;
+    uintptr_t bank = (uintptr_t)info.manager_ptr;
 
-    uintptr_t map = (uintptr_t)info.manager_ptr + BANK_RESOURCE_GUIDS_BY_MOD_OFFSET;
-
-    GenericArray keys, values;
-    if (!safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET),
-                                  &keys.buf) ||
-        !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET + 0x0C),
-                              &keys.size) ||
-        !safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET),
-                                  &values.buf) ||
-        !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET + 0x0C),
-                              &values.size)) {
+    void *keys = NULL, *values = NULL;
+    uint32_t cap = 0, count = 0;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(bank + BANK_SOURCES_KEYS_BUF), &keys) ||
+        !safe_memory_read_u32((mach_vm_address_t)(bank + BANK_SOURCES_KEY_CAP), &cap) ||
+        !safe_memory_read_u32((mach_vm_address_t)(bank + BANK_SOURCES_KEY_COUNT), &count) ||
+        !safe_memory_read_pointer((mach_vm_address_t)(bank + BANK_SOURCES_VALUES_BUF), &values)) {
+        return false;
+    }
+    if (!keys || count == 0 || count > STATICDATA_MAX_SOURCE_MODS || count > cap) {
         return false;
     }
 
-    /* Validation. Two candidate offsets have already produced plausible-looking
-     * but wrong results here (Windows' predicted +0x10 fails outright; +0x00
-     * yields a 13-entry map whose keys are not Guids and whose value arrays are
-     * all empty), so the checks below are deliberately strict: a wrong offset
-     * must fail rather than hand Lua garbage.
-     *
-     * Require the arrays to agree in length, be plausibly sized, and -- the
-     * check that rejects offset 0 -- the first key must look like a real Guid
-     * and at least one mod must actually own resources. */
-    if (keys.size != values.size) return false;
-    if (keys.size == 0 || keys.size > STATICDATA_MAX_SOURCE_MODS) return false;
-    if (!keys.buf || !values.buf) return false;
-
-    uint8_t first_key[16];
-    if (!safe_memory_read((mach_vm_address_t)keys.buf, first_key, sizeof(first_key))) {
-        return false;
-    }
+    /* The first key must look like a real Guid; a wrong offset yields bucket
+     * sentinels (mostly 0xff) or zeros, which is how the earlier attempts
+     * failed. */
+    uint8_t first[16];
+    if (!safe_memory_read((mach_vm_address_t)keys, first, sizeof(first))) return false;
     int zeros = 0, ffs = 0;
     for (int i = 0; i < 16; i++) {
-        if (first_key[i] == 0x00) zeros++;
-        if (first_key[i] == 0xFF) ffs++;
+        if (first[i] == 0x00) zeros++;
+        if (first[i] == 0xFF) ffs++;
     }
-    if (zeros > 8 || ffs > 6) return false;   /* not a Guid */
+    if (zeros > 8 || ffs > 6) return false;
 
-    /* A real ResourceGuidsByMod has at least one non-empty resource list. */
-    bool any_resources = false;
-    for (uint32_t i = 0; i < values.size && i < 64; i++) {
-        uint32_t n = 0;
-        if (safe_memory_read_u32(
-                (mach_vm_address_t)((uintptr_t)values.buf + (uintptr_t)i * 16 + 0x0C), &n)
-            && n > 0) {
-            any_resources = true;
-            break;
-        }
-    }
-    if (!any_resources) return false;
-
-    if (out_keys) *out_keys = keys.buf;
-    if (out_values) *out_values = values.buf;
-    if (out_count) *out_count = keys.size;
+    if (out_keys) *out_keys = keys;
+    if (out_values) *out_values = values;
+    if (out_count) *out_count = count;
     return true;
 }
 
