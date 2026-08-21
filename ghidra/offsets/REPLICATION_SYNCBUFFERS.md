@@ -347,3 +347,53 @@ with nothing to detect it. Confirming it needs a multiplayer session.
 Coverage ceiling, independent of the above: only 9 ReplicatedTypeContext globals
 have been recovered, so no other component can be replicated on this build even
 once entry creation works.
+
+## Multiplayer session findings (2026-08-20)
+
+Tested with the Mac hosting and a console client joined via crossplay — both
+characters visible on both devices, so server->client replication was
+demonstrably working.
+
+### The walk resolves, the pools are empty
+
+    SyncBuffers=0x7f4bbebb8 pools=0x7b27a4000 capacity=582 count=582 dirty=0
+    populated pools: 0 of 582
+
+582 pools with capacity == count is a plausible replicated-type count, and the
+offsets are self-consistent with the engine HashMap layout used elsewhere
+(keys at map+0x20, values at map+0x30, Array<T> = {buf, capacity@8, size@0xC},
+stride 0x40 == HASHMAP_STRUCT_SIZE). So the structure is being located, not
+missed.
+
+Every pool was empty at every sample, and `Dirty` was never set, including
+immediately after issuing status and teleport changes. `GetReplicationFlags`
+returned 0 for all 2844 entity/type combinations scanned with the peer connected.
+
+### What this rules in and out
+
+The reader is not obviously wrong — it finds a sane structure. Two explanations
+remain and polling from Lua cannot separate them:
+
+1. SyncBuffers is a per-frame change buffer: entries are added during the ECS
+   flush, replicated, and cleared before script ever runs. Sampling from Lua
+   would then always observe zero, which matches every measurement taken.
+2. This build replicates through a different mechanism and these pools are
+   vestigial.
+
+Note the caveat on the change test: `Osi.ApplyStatus` and
+`Osi.TeleportToPosition` are deferred, so "dump immediately after" did not
+actually sample the same tick as the mutation.
+
+### Consequence for Replicate
+
+If (1) holds, then an entity having no entry is the **normal** state rather than
+an anomaly, and Windows' `pool.add_key` is not an edge case — it is the entire
+mechanism. `Replicate` exists to *create* the entry that requests replication.
+The current implementation, which refuses when no entry exists, is therefore
+useless by construction rather than merely limited.
+
+### Next step
+
+Hook the ECS flush and dump SyncBuffers from inside it. That distinguishes (1)
+from (2) directly, and does not require a live multiplayer session to develop —
+only to confirm.
