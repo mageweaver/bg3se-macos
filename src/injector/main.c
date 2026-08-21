@@ -1942,6 +1942,36 @@ static int lua_osi_db_get(lua_State *L) {
  * Create a generic Osi.DB_<name> accessor table.
  * The table has a :Get() method and stores the db_name for dispatch.
  */
+/* Defined below; the DB __call handler forwards to it. */
+static int osi_dynamic_call(lua_State *L);
+
+/*
+ * Osi.DB_<name>(...) -- calling a database inserts a row.
+ *
+ * In Osiris a database is a proc: `DB_Foo(a, b)` adds a fact, and that is how
+ * mods populate databases (recruitment flows write to DBs like
+ * DB_GLO_PartyMembers_DefaultFaction). Windows BG3SE supports it because its
+ * Osi.<name> is always callable.
+ *
+ * Here osi_index_handler intercepts any DB_ prefix and returned a plain table
+ * carrying Get and Delete, with no __call, so calling one raised "attempt to
+ * call a table value" and DB inserts were impossible. The dispatch itself was
+ * never missing: osi_dynamic_call already has an OSI_FUNC_DATABASE case for
+ * exactly this ("data insert or user query").
+ *
+ * Give the accessor a __call that drops the implicit self and forwards to that
+ * dispatch, so a database behaves as both a table (Get/Delete) and a callable.
+ */
+static int osi_db_call_handler(lua_State *L) {
+    /* Stack: accessor table, args... — drop the table so the argument list
+     * matches a normal Osi.<name>(...) call. The database name is carried as
+     * this closure's upvalue, which is what osi_dynamic_call reads. */
+    if (lua_gettop(L) >= 1 && lua_istable(L, 1)) {
+        lua_remove(L, 1);
+    }
+    return osi_dynamic_call(L);
+}
+
 static void osi_push_db_accessor(lua_State *L, const char *db_name) {
     lua_newtable(L);
     lua_pushstring(L, db_name);
@@ -1950,6 +1980,13 @@ static void osi_push_db_accessor(lua_State *L, const char *db_name) {
     lua_setfield(L, -2, "Get");
     lua_pushcfunction(L, lua_osi_db_delete);
     lua_setfield(L, -2, "Delete");
+
+    /* Make it callable: Osi.DB_Foo(a, b) inserts a row. */
+    lua_newtable(L);                                  /* metatable */
+    lua_pushstring(L, db_name);                       /* upvalue: db name */
+    lua_pushcclosure(L, osi_db_call_handler, 1);
+    lua_setfield(L, -2, "__call");
+    lua_setmetatable(L, -2);
 }
 
 // ============================================================================
