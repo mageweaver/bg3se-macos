@@ -19,6 +19,7 @@
 
 /* Defined below; referenced by the entity metatable dispatch above them. */
 static int lua_entity_replicate_to_peer(struct lua_State *L);
+static int lua_entity_stop_replicate(struct lua_State *L);
 static int lua_entity_debug_replication_system(struct lua_State *L);
 #include "logging.h"
 #include "../core/version_detect.h"
@@ -2442,6 +2443,10 @@ static int lua_entity_index(lua_State *L) {
         lua_pushcfunction(L, lua_entity_get_replication_flags);
         return 1;
     }
+    if (strcmp(key, "StopReplicateWith") == 0) {
+        lua_pushcfunction(L, lua_entity_stop_replicate);
+        return 1;
+    }
     if (strcmp(key, "ReplicateToPeer") == 0) {
         lua_pushcfunction(L, lua_entity_replicate_to_peer);
         return 1;
@@ -2716,6 +2721,29 @@ static int lua_entity_init_component_registry(lua_State *L) {
  * actually provides. Resolution is exposed separately from the call so the
  * instance lookup can be confirmed before anything is invoked.
  */
+/*
+ * entity:StopReplicateWith() -> boolean
+ *
+ * esv::replication::ReplicationSystem::StopReplicateWith(EntityWorld*, EntityHandle).
+ * Used to prove the replication mechanism is real: stopping replication of a
+ * character that a remote peer can currently see should make it disappear on
+ * that client, and ReplicateToPeer should restore it. That is the only
+ * unambiguous observable available, since replicating an already-replicated
+ * entity is a no-op.
+ */
+static int lua_entity_stop_replicate(lua_State *L) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+    void *w = entity_get_world_for_context(true);
+    bool ok = replication_system_stop_replicate(w, (uint64_t)ud->handle);
+    log_message("[Replication] StopReplicateWith(entity=0x%llx) -> %s",
+                (unsigned long long)ud->handle, ok ? "dispatched" : "failed");
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
 static int lua_entity_debug_replication_system(lua_State *L) {
     void *w = entity_get_world_for_context(true);
     void *sys = replication_system_get(w);
