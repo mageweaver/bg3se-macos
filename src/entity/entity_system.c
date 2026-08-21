@@ -2630,6 +2630,57 @@ static int lua_entity_init_component_registry(lua_State *L) {
 
 // Ext.Entity.SetGetRawComponentAddr(addr) -> boolean
 // Sets the GetRawComponent address discovered via Frida
+/*
+ * Ext.Entity.DebugDumpComponentFloats(entity, componentName, count) -> table
+ *
+ * Read-only diagnostic. The generated component layouts derive their field
+ * offsets from Windows x64 headers (generated_property_defs.h notes they are
+ * "Windows x64 estimates (may differ on ARM64)"), and a wrong offset does not
+ * fail loudly -- it returns whatever floats live at that offset. Dumping the
+ * raw words lets a known-good value from another source (Osi.GetPosition, say)
+ * be located in memory, which identifies the true offset instead of trusting
+ * the estimate.
+ */
+static int lua_entity_debug_dump_component_floats(lua_State *L) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    const char *name = luaL_checkstring(L, 2);
+    int count = (int)luaL_optinteger(L, 3, 32);
+    if (count < 1) count = 1;
+    if (count > 128) count = 128;
+
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    const ComponentInfo *info = component_registry_lookup(name);
+    if (!info || info->index == COMPONENT_INDEX_UNDEFINED) {
+        lua_pushnil(L);
+        lua_pushstring(L, "unknown component");
+        return 2;
+    }
+    void *comp = component_lookup_by_index((uint64_t)ud->handle, info->index,
+                                           info->size, info->is_proxy);
+    if (!comp) {
+        lua_pushnil(L);
+        lua_pushstring(L, "component not present on entity");
+        return 2;
+    }
+
+    lua_createtable(L, count, 0);
+    for (int i = 0; i < count; i++) {
+        uint32_t bits = 0;
+        if (!safe_memory_read_u32(
+                (mach_vm_address_t)((uintptr_t)comp + (uintptr_t)i * 4), &bits)) {
+            break;
+        }
+        float f;
+        memcpy(&f, &bits, sizeof(f));
+        lua_pushnumber(L, (lua_Number)f);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
 static int lua_entity_set_get_raw_component_addr(lua_State *L) {
     lua_Integer addr = luaL_checkinteger(L, 1);
 
@@ -3421,6 +3472,9 @@ void entity_register_lua(lua_State *L) {
 
     lua_pushcfunction(L, lua_entity_init_component_registry);
     lua_setfield(L, -2, "InitComponentRegistry");
+
+    lua_pushcfunction(L, lua_entity_debug_dump_component_floats);
+    lua_setfield(L, -2, "DebugDumpComponentFloats");
 
     lua_pushcfunction(L, lua_entity_set_get_raw_component_addr);
     lua_setfield(L, -2, "SetGetRawComponentAddr");

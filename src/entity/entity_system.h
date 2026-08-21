@@ -74,10 +74,27 @@ typedef enum {
 // Transform Component
 // ============================================================================
 
+/*
+ * ls::TransformComponent
+ *
+ * Field order measured in-game 2026-08-20 against a known position, not
+ * assumed. Dumping the raw floats for the host character while Osiris reported
+ * (262.430, 0.643, 208.435):
+ *
+ *   +0x00 = 0.000, 0.999, 0.000, -0.045   normalized quaternion
+ *   +0x10 = 262.430, 0.643, 208.435       translate  <- matches Osiris
+ *   +0x1C = 1.000, 1.000, 1.000           scale
+ *
+ * This matches the Windows property map order (RotationQuat, Translate,
+ * Scale). The previous declaration put position first, so Position read the
+ * quaternion's first three components -- (0, 1, 0) for the host -- and every
+ * consumer of TransformComponent.Position received a rotation instead of a
+ * location.
+ */
 typedef struct {
-    float position[3];      // x, y, z
-    float rotation[4];      // quaternion (x, y, z, w)
-    float scale[3];         // x, y, z
+    float rotation[4];      // +0x00 quaternion (x, y, z, w)
+    float position[3];      // +0x10 translate  (x, y, z)
+    float scale[3];         // +0x1C scale      (x, y, z)
 } TransformComponent;
 
 // ============================================================================
