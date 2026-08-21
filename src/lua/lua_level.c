@@ -260,11 +260,13 @@ static int lua_level_raycast_all(lua_State *L) {
     int context            = (int)luaL_optinteger(L, 6, 0);
 
     LevelPhysicsHitAll hits;
+    memset(&hits, 0, sizeof(hits));
     bool found = level_raycast_all(src, dst, &hits, physics_type,
                                    include_group, exclude_group, context);
+    /* Windows returns an empty PhysicsHitAll rather than null on a miss
+     * (Level.inl:277), so callers can index the arrays unconditionally. */
     if (!found) {
-        lua_pushnil(L);
-        return 1;
+        memset(&hits, 0, sizeof(hits));
     }
     return push_hit_all(L, &hits);
 }
@@ -388,15 +390,36 @@ static int push_hit_or_nil(lua_State *L, bool found, const LevelPhysicsHit *hit)
  * VERIFIED: Normals/Positions are Array<glm::vec3> where glm::vec3 = float[3] (12 bytes, no padding).
  * Stride is 3 floats per element — confirmed from Windows BG3SE Physics.h:PhysicsHitAll.
  */
+/*
+ * Windows returns phx::PhysicsHitAll, which is a struct of parallel arrays
+ * (ExtIdeHelpers.lua @class PhxPhysicsHitAll: Distances[], Normals[],
+ * Positions[], PhysicsGroup[], ...). The port returned an array of per-hit
+ * tables instead, so Windows mod code reading result.Positions[i] got nil.
+ *
+ * Emit both shapes on the same table: the integer-keyed per-hit entries the
+ * port already produced, plus the named parallel arrays Windows exposes. That
+ * gains parity without breaking anything already reading the array form.
+ */
 static int push_hit_all(lua_State *L, const LevelPhysicsHitAll *hits) {
     lua_newtable(L);
 
-    // Guard against NULL inner pointers — game engine may return partial data
-    if (!hits->normals_ptr || !hits->positions_ptr || !hits->distances_ptr) {
-        return 1;  // return empty table
+    uint32_t count = 0;
+    bool usable = hits && hits->normals_ptr && hits->positions_ptr &&
+                  hits->distances_ptr;
+
+    /* Windows' RaycastAll never returns null -- on a miss it yields an object
+     * whose arrays are empty (Level.inl:277, `return &gHits;`). Always emit the
+     * named arrays so callers can index them unconditionally. */
+    lua_newtable(L); lua_setfield(L, -2, "Positions");
+    lua_newtable(L); lua_setfield(L, -2, "Normals");
+    lua_newtable(L); lua_setfield(L, -2, "Distances");
+    lua_newtable(L); lua_setfield(L, -2, "PhysicsGroup");
+
+    if (!usable) {
+        return 1;  // empty result, matching Windows' empty PhysicsHitAll
     }
 
-    uint32_t count = hits->normals_size;
+    count = hits->normals_size;
     if (hits->positions_size < count) count = hits->positions_size;
     if (hits->distances_size < count) count = hits->distances_size;
 
@@ -424,6 +447,36 @@ static int push_hit_all(lua_State *L, const LevelPhysicsHitAll *hits) {
         lua_setfield(L, -2, "PhysicsGroup");
 
         lua_rawseti(L, -2, (int)(i + 1));
+
+        /* mirror into the Windows-shaped parallel arrays */
+        lua_getfield(L, -1, "Positions");
+        lua_newtable(L);
+        for (int j = 0; j < 3; j++) {
+            lua_pushnumber(L, hits->positions_ptr[i * 3 + j]);
+            lua_rawseti(L, -2, j + 1);
+        }
+        lua_rawseti(L, -2, (int)(i + 1));
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "Normals");
+        lua_newtable(L);
+        for (int j = 0; j < 3; j++) {
+            lua_pushnumber(L, hits->normals_ptr[i * 3 + j]);
+            lua_rawseti(L, -2, j + 1);
+        }
+        lua_rawseti(L, -2, (int)(i + 1));
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "Distances");
+        lua_pushnumber(L, hits->distances_ptr[i]);
+        lua_rawseti(L, -2, (int)(i + 1));
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "PhysicsGroup");
+        lua_pushinteger(L, (hits->physics_group_ptr && i < hits->physics_group_size)
+                             ? hits->physics_group_ptr[i] : 0);
+        lua_rawseti(L, -2, (int)(i + 1));
+        lua_pop(L, 1);
     }
     return 1;
 }
