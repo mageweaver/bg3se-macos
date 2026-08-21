@@ -1587,7 +1587,7 @@
         },
         {
           "name": "GetDialogManager",
-          "note": "Absent. Dialog system access not ported.",
+          "note": "Absent. System resolution is solved - ls::TypeId<esv::DialogSystem, ecs::SystemsContext>::m_TypeIndex @ 0x10891a888, resolvable via the same path replication_system.c already uses. Blocked on two things: the GameInterface.DialogManager offset (esv::DialogSystem exports no methods to read it from), and that DialogManager is a ~20-field object of nested LegacyRefMaps rather than an opaque handle, so parity means porting that whole graph - GlobalSwitches scale, with the same silent-misread risk. See ghidra/offsets/DIALOG_MANAGER.md",
           "class": "behavioral_gap",
           "kind": "function"
         },
