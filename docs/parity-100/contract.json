@@ -225,19 +225,19 @@
         },
         {
           "name": "GetReplicationFlags",
-          "note": "Warn-once stub returning nil. No replication infrastructure. deferrals.md.",
+          "note": "Read path works: all 9 recovered replicated types resolve, and both short (\"Stats\") and fully-qualified (\"eoc::StatsComponent\") spellings are accepted. Returns 0 when the entity has no entry.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
         {
           "name": "SetReplicationFlags",
-          "note": "Absent. Replication infrastructure not recovered.",
+          "note": "Same code path as Replicate with explicit flags/qword; same two limits (no entry creation, no BitSet growth).",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
         {
           "name": "Replicate",
-          "note": "No-op. Highest-demand deferral (5/11 vetted mods). deferrals.md.",
+          "note": "Write path implemented (locate bitset, OR flags, set SyncBuffers::Dirty at sync+0x10) and verified to fail closed. Still a gap: refuses when the entity has no replication entry, which is every entity in single-player, because creating one needs pool.add_key on a live engine HashMap. Also limited to the 9 recovered ReplicatedTypeContext globals.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },

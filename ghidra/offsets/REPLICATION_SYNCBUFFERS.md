@@ -308,3 +308,42 @@ clearing it, exercise a >64-bit bitset for heap mode, and confirm client-side
 writes stay fail-closed.
 
 There is no longer any known single-player work outstanding on this deferral.
+
+## Replicate write path implemented (2026-08-20)
+
+Windows' `ReplicateComponent` (LuaEntityProxy.inl:357) is three steps: locate the
+entity's BitSet in `SyncBuffers::ComponentPools[replicationIdx]`, OR the flags
+in, and set `SyncBuffers::Dirty`. The port already had the full read walk, so the
+write reuses it through a shared locator (`replication_locate`) rather than a
+second copy that could drift.
+
+`SyncBuffers` is `Array<HashMap<EntityHandle, BitSet<>>> ComponentPools; bool
+Dirty;` (EntitySystem.h:417), and an Array is 16 bytes, so `Dirty` is at
+`sync + 0x10`.
+
+### Verified
+
+    all 9 recovered replicated types resolve and read (value 0)
+    both "Stats" and "eoc::StatsComponent" spellings accepted
+    unknown component fails closed, no crash
+
+The lookup table is keyed by the short API name; accepting the fully-qualified
+name too was added here, since every other Ext.Entity entry point takes either.
+
+### Why it is still a gap
+
+`Replicate` refuses whenever the entity has no existing entry in the pool — and
+in single-player **no entity has one**, because replication pools are populated
+only when there is a client to sync to. Windows handles this with
+`pool.add_key(entity)`, which inserts into a live engine HashMap.
+
+That insert is implementable without allocating: the map is open-hashed
+(bucket heads + next indices + keys + values), a BitSet with capacity <= 64 uses
+inline storage, and an append is possible whenever count < capacity. What is
+missing is a way to *verify* it. Replication has no observable effect in
+single-player, so a wrong insert would silently corrupt the pool's bucket chain
+with nothing to detect it. Confirming it needs a multiplayer session.
+
+Coverage ceiling, independent of the above: only 9 ReplicatedTypeContext globals
+have been recovered, so no other component can be replicated on this build even
+once entry creation works.

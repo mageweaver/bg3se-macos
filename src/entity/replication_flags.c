@@ -106,7 +106,14 @@ static const ReplicatedTypeGlobal *find_replicated_type(
          i < sizeof(k_replicated_type_globals) /
                  sizeof(k_replicated_type_globals[0]);
          i++) {
-        if (strcmp(component_name, k_replicated_type_globals[i].name) == 0) {
+        /* Accept either spelling. The table is keyed by the short API name
+         * ("Stats"), but every other Ext.Entity entry point also takes the
+         * fully-qualified engine name ("eoc::StatsComponent"), and callers
+         * reasonably pass whichever they already have. */
+        if (strcmp(component_name, k_replicated_type_globals[i].name) == 0 ||
+            (k_replicated_type_globals[i].component_name &&
+             strcmp(component_name,
+                    k_replicated_type_globals[i].component_name) == 0)) {
             return &k_replicated_type_globals[i];
         }
     }
