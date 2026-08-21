@@ -371,3 +371,38 @@ The blocker is therefore worse than recorded, not better: allocation, default
 initialization and ownership cannot be inferred from observed behaviour, and the
 consequence of guessing is a corrupted stats schema (Critical once
 `RPGStats::Objects` is non-empty). Still deferred.
+
+## `StaticData.GetSources` / `GetByModId`: three theories, all wrong — stopping
+
+Windows implements both as a direct read of `bank_->ResourceGuidsByMod`
+(StaticData.inl:120/125), so this reduces to one field offset. Three attempts:
+
+1. **`+0x10`**, predicted by `GuidResourceBankBase` (vptr + 2 FixedStrings).
+   Fails validation outright.
+2. **`+0x00`**, inferred from the bank header dump — `Resources` appeared to sit
+   at ptr+0x40, leaving 0x00..0x40 for the map. Produced a 13-entry map whose
+   keys were not GUIDs and whose value arrays were all empty.
+3. **Shape scan** across the first 0x400 bytes for a HashMap with equal-length
+   key and value arrays. Found 14 candidates — and dumping their contents shows
+   why they are all wrong:
+
+       cand bank+0x0   n=13  raw: f2 ff ff ff f5 ff ff ff 00 00 00 00 01 00 00 00
+       cand bank+0x40  n=41  raw: d1 ff ff ff e8 ff ff ff bb ff ff ff fc ff ff ff
+       cand bank+0xE0  n=24  raw: e0 ff ff ff ea ff ff ff fd ff ff ff ed ff ff ff
+
+   Those are negative int32 sentinels — hash bucket heads — not GUIDs. The scan
+   was matching `StaticArray<int32_t>` arrays, so the assumed HashMap layout
+   (`Keys` at map+0x20, as used elsewhere in the port) does not describe these
+   banks.
+
+Note candidate `bank+0x40` has exactly 41 entries and Feat has 41 resources, so
+the arithmetic looked confirmatory while the contents disproved it. That is the
+same trap as the 0x180 stride: a number agreeing does not make the
+interpretation right.
+
+**Stopping here deliberately.** Each theory has been plausible and wrong, and
+the correct technique is the one that worked for TransformComponent and the
+Osiris hooks: find a function that reads this field and take the offset from its
+instructions, rather than deriving it from a struct that evidently does not
+match. Until then both functions fail closed and return nil rather than serving
+fabricated GUIDs.
