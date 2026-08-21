@@ -1358,3 +1358,25 @@ a read-only way to check any offset against a value obtained independently.
 
 Note the direction of the error here: the Windows reference was correct and the
 port's hand-written override was wrong.
+
+### Generated component layouts validated against Osiris (2026-08-20)
+
+After the TransformComponent bug, the concern was that the 519 layouts in
+`generated_property_defs.h` — whose offsets come from Windows x64 headers, with
+the file warning they "may differ on ARM64" — might be broadly wrong. Spot
+checks against independent Osiris queries on the fixture say they are not:
+
+| Component | Field | Component value | Osiris | |
+|---|---|---|---|---|
+| `eoc::HealthComponent` | Hp / MaxHp | 14 / 14 | 14 / 14 | match |
+| `eoc::StatsComponent` | Abilities[2..7] | 17,13,15,8,12,10 | 17,13,15,8,12,10 | 6/6 match |
+| `eoc::BaseStatsComponent` | BaseAbilities | all 10 | — | plausible pre-racial base |
+
+`Abilities` is a 7-element array whose index 1 is the `AbilityId::None` slot, so
+STR..CHA occupy 2..7. That is faithful to the game rather than an off-by-one:
+aligning at offset 1 matches all six, at offsets 0 and 2 matches none.
+
+So the risk is concentrated in the *hand-written* structs in `entity_system.h`,
+not the generated table. Of those six, only TransformComponent was ever
+dereferenced, and it was wrong; the other five are unused and now annotated as
+unverified.
