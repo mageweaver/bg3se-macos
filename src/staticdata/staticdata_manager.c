@@ -1751,65 +1751,46 @@ int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid
     (void)mod_guid;
     StaticDataRawInfo info;
     if (!staticdata_get_raw_info(type, &info) || !info.manager_ptr) return -1;
+    uintptr_t bank = (uintptr_t)info.manager_ptr;
 
-    int first = -1, candidates = 0;
-    for (int off = 0; off <= 0x400; off += 8) {
-        uintptr_t map = (uintptr_t)info.manager_ptr + off;
-        void *kbuf = NULL, *vbuf = NULL;
-        uint32_t kcap = 0, ksize = 0, vcap = 0, vsize = 0;
-        if (!safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET), &kbuf) ||
-            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET + 8), &kcap) ||
-            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET + 12), &ksize) ||
-            !safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET), &vbuf) ||
-            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET + 8), &vcap) ||
-            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET + 12), &vsize)) {
-            continue;
+    /*
+     * ls::HashTable<K, Ops> layout, read from
+     * ls::HashTable<ls::Guid, HashTableOpsDefault>::Ensure (0x100c0217c):
+     *
+     *     ldr   x10, [x19]         ; +0x00 bucket heads (int32*)
+     *     ldrsw x10, [x0, #0x8]    ; +0x08 bucket count
+     *     ldr   x10, [x19, #0x20]  ; +0x20 keys buffer, RAW pointer, 16-byte elements
+     *
+     * This is not the ECS HashMap layout (Keys as an Array header at +0x20)
+     * that earlier attempts assumed, which is why every scan matched int32
+     * bucket arrays instead of Guid keys.
+     *
+     * ls::ModdableFilesLoader is what BG3SE calls GuidResourceBank. Its own
+     * Resources HashTable sits at +0x50 (AddLoadedObject does `add x0, x21,
+     * #0x50` before calling Ensure), and vptr + 2 FixedStrings + a 0x40-byte
+     * map lands exactly there - so ResourceGuidsByMod is at +0x10, as the
+     * Windows struct predicted all along.
+     */
+    for (int map_off = 0x10; map_off <= 0x10; map_off += 0x10) {
+        int32_t buckets = 0;
+        void *keys = NULL;
+        if (!safe_memory_read_i32((mach_vm_address_t)(bank + map_off + 0x08), &buckets)) continue;
+        if (!safe_memory_read_pointer((mach_vm_address_t)(bank + map_off + 0x20), &keys)) continue;
+        log_message("[StaticData] map@bank+0x%X: buckets=%d keysBuf=%p",
+                    map_off, buckets, keys);
+        if (!keys) continue;
+        for (int i = 0; i < 4; i++) {
+            uint8_t g[16];
+            if (!safe_memory_read((mach_vm_address_t)((uintptr_t)keys + (uintptr_t)i * 16),
+                                  g, sizeof(g))) break;
+            uint32_t d1; uint16_t d2, d3;
+            memcpy(&d1, g, 4); memcpy(&d2, g + 4, 2); memcpy(&d3, g + 6, 2);
+            log_message("[StaticData]   key[%d] = %08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                        i, d1, d2, d3, g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
         }
-        if (!kbuf || !vbuf) continue;
-        if (ksize == 0 || ksize != vsize) continue;
-        if (ksize > 512 || kcap < ksize || vcap < vsize) continue;
-
-        /* The first key should read as 16 plausible Guid bytes. */
-        uint8_t g[16];
-        if (!safe_memory_read((mach_vm_address_t)kbuf, g, sizeof(g))) continue;
-        int zeros = 0;
-        for (int i = 0; i < 16; i++) if (g[i] == 0) zeros++;
-        if (zeros > 8) continue;
-
-        candidates++;
-        if (first < 0) first = off;
-        /* Shape alone was not enough last time - two candidate offsets both
-         * looked plausible and both were wrong. Print the first key so the
-         * contents can be judged, not just the geometry. */
-        /* 16 bytes * 3 chars ("xx ") + NUL. The previous [48] was one short:
-         * the final write at hex+45 with size 4 touched index 48 and tripped
-         * _FORTIFY_SOURCE. Size from the loop bounds and pass the remaining
-         * space so the bound cannot drift from the buffer again. */
-        char hex[16 * 3 + 1];
-        for (int b = 0; b < 16; b++) {
-            snprintf(hex + b * 3, sizeof(hex) - (size_t)(b * 3), "%02x ", g[b]);
-        }
-        uint32_t d1; uint16_t d2, d3;
-        memcpy(&d1, g + 0, 4); memcpy(&d2, g + 4, 2); memcpy(&d3, g + 6, 2);
-        log_message("[StaticData] cand bank+0x%-4X n=%-4u key0=%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                    off, ksize, d1, d2, d3,
-                    g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
-        log_message("[StaticData]      raw: %s", hex);
+        return map_off;
     }
-    if (candidates > 1) {
-        log_message("[StaticData] WARNING: %d candidate maps; offset is ambiguous",
-                    candidates);
-    }
-    /* Dump the raw Array headers across the bank header so the layout can be
-     * read directly instead of inferred. */
-    for (int off = 0; off <= 0x90; off += 0x10) {
-        void *b = NULL; uint32_t cap = 0, sz = 0;
-        safe_memory_read_pointer((mach_vm_address_t)((uintptr_t)info.manager_ptr + off), &b);
-        safe_memory_read_u32((mach_vm_address_t)((uintptr_t)info.manager_ptr + off + 8), &cap);
-        safe_memory_read_u32((mach_vm_address_t)((uintptr_t)info.manager_ptr + off + 12), &sz);
-        log_message("[StaticData]   bank+0x%02X: ptr=%p cap=%u size=%u", off, b, cap, sz);
-    }
-    return first;
+    return -1;
 }
 
 bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
