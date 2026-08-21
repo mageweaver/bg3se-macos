@@ -520,3 +520,51 @@ so no further session re-derives it.
 Note the contrast with `AddEnumerationValue`, which *is* implemented and
 verified: `CRPGStats_Modifier_ValueList::Insert` is called by the loader in two
 places, so its behaviour is exercised, observable and safe to reuse.
+
+## `ExecuteFunctors`: still open, and genuinely tractable (2026-08-20)
+
+Unlike `AddAttribute`, this is *not* absent from the engine. It is unfinished
+work with a clear path, and the pieces already in place are worth stating.
+
+### Already established
+
+- **ABI confirmed**: `(result_out, StatsFunctorList const*, context)` in x0..x2,
+  with the hidden `esv::functor::Result` materialised by the caller. Dropping
+  `result_out` shifts every register and crashes — learned on 7209685 and
+  recorded in `docs/bugs/wave2-functor-crash-analysis.md`.
+- **The hooks already receive real objects.** Every
+  `hook_ExecuteFunctors_*` gets a genuine engine-built `StatsFunctorList*` and
+  context. The missing piece for invocation is not the list — it is a *live*
+  one.
+- **`esv::functor::Result::~Result()` is exported**, so a Result can be
+  destroyed correctly rather than leaked.
+- **Result is ≥ 0x200 bytes**: its destructor dereferences `[x0, #0x1f8]`,
+  consistent with the known `HitResult` layout (Results at 0x1D0).
+
+### What the MVP actually requires
+
+The deferral suggests "execute an existing game-parsed functor list", which is
+right, but the binding constraint is **context lifetime**, not list sourcing.
+Contexts are stack-allocated by the caller, so a pointer captured in a hook is
+dangling the moment that call returns. Replaying a captured pair later would
+execute against freed stack.
+
+That makes the safe MVP narrower and clearer than previously written:
+
+> `Ext.Stats.ExecuteFunctors` valid **only inside a functor event callback**,
+> re-running the same list against the still-live context, with a zeroed
+> Result buffer of at least 0x200 bytes destroyed via the exported `~Result`.
+
+That is implementable without constructing contexts or functors by hand — the
+two hardest items in the original estimate — because both come from the engine.
+
+### Why it is not shipped here
+
+Executing a functor list applies real effects: damage, statuses, surface
+changes. Verifying it means firing one and confirming the effect landed, on a
+live character, with a Result buffer whose exact size is bounded but not known.
+That is a mutation this session is not in a position to verify safely.
+
+Estimated remaining: one focused session, materially less than the original
+"3–5 MVP", because the ABI, the Result destructor, the size floor and the hook
+plumbing are all now settled.

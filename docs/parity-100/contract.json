@@ -405,7 +405,7 @@
         },
         {
           "name": "ExecuteFunctors",
-          "note": "Partial. Full param-block construction unverified for all functor types. deferrals.md.",
+          "note": "Partial, and tractable - unfinished rather than impossible. ABI confirmed (result_out, StatsFunctorList*, context) in x0..x2; hooks already receive real engine-built lists and contexts; esv::functor::Result::~Result is exported and Result is >=0x200 bytes (destructor reads [x0,#0x1f8]). Binding constraint is context lifetime: contexts are caller stack-allocated, so a captured pointer dangles after the hook returns. Safe MVP is execution restricted to inside a functor event callback against the still-live context. Not shipped because executing functors applies real damage/status effects and needs live verification. See docs/parity-100/stats-deferrals.md",
           "class": "behavioral_gap",
           "kind": "function"
         },
