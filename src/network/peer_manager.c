@@ -278,3 +278,23 @@ bool peer_manager_can_send_extender(int32_t user_id) {
 
     return s_peers[slot].proto_version > 0;
 }
+
+/*
+ * Enumerate active peers.
+ *
+ * Needed by entity:Replicate: the engine's ReplicateToPeer takes a peer id, so
+ * replicating "to everyone" requires knowing who is connected. Copies out to
+ * avoid handing callers a pointer into the live table.
+ *
+ * Returns the number written.
+ */
+int peer_manager_list_peers(PeerInfo *out, int max_out) {
+    if (!out || max_out <= 0) return 0;
+    int n = 0;
+    for (int i = 0; i < MAX_PEERS && n < max_out; i++) {
+        if (s_peers[i].active) {
+            out[n++] = s_peers[i];
+        }
+    }
+    return n;
+}

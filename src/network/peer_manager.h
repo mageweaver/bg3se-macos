@@ -97,6 +97,12 @@ PeerInfo *peer_manager_get_host(void);
 int peer_manager_get_peer_count(void);
 
 /**
+ * Copy out all active peers. Returns the count written.
+ * Used to replicate an entity to every connected peer.
+ */
+int peer_manager_list_peers(PeerInfo *out, int max_out);
+
+/**
  * Set the negotiated protocol version for a peer.
  *
  * @param user_id       User ID

@@ -16,6 +16,8 @@
 #include "arm64_call.h"
 #include "replication_flags.h"
 #include "replication_system.h"
+#include "../network/peer_manager.h"
+#include "../network/net_hooks.h"
 
 /* Defined below; referenced by the entity metatable dispatch above them. */
 static int lua_entity_replicate_to_peer(struct lua_State *L);
@@ -2167,8 +2169,57 @@ static int lua_entity_replicate_impl(lua_State *L, uint64_t flags, uint32_t qwor
     return 2;
 }
 
+/*
+ * entity:Replicate([component]) -> boolean, count
+ *
+ * Windows marks a component dirty in SyncBuffers (LuaEntityProxy.inl:357). That
+ * mechanism is dead on this build: a verified sampler never observed any of the
+ * 582 pools populated, including with a remote peer connected and replication
+ * visibly working, so writing them would accomplish nothing.
+ *
+ * What the engine actually provides is
+ * esv::replication::ReplicationSystem::ReplicateToPeer(entity, peerId), so
+ * Replicate asks the engine to replicate this entity to every connected peer.
+ *
+ * Divergence, deliberate and recorded: this is entity granularity, not
+ * component granularity, so the optional component argument is accepted for
+ * source compatibility and ignored. A mod relying on replicating one component
+ * while leaving others alone will get more than it asked for, not less.
+ */
 static int lua_entity_replicate(lua_State *L) {
-    return lua_entity_replicate_impl(L, UINT64_MAX, 0);
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+
+    void *world = entity_get_world_for_context(true);
+    if (!world) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "Changes can only be replicated from the server");
+        return 2;
+    }
+
+    net_hooks_sync_active_peers();
+    PeerInfo peers[16];
+    int n = peer_manager_list_peers(peers, 16);
+
+    int sent = 0;
+    for (int i = 0; i < n; i++) {
+        if (replication_system_replicate_to_peer(world, (uint64_t)ud->handle,
+                                                 peers[i].user_id)) {
+            sent++;
+        }
+    }
+
+    if (sent == 0 && !s_replicate_warned) {
+        s_replicate_warned = 1;
+        log_message("[WARN] [Entity] entity:Replicate: no peers accepted the "
+                    "request (%d known). Replication has no effect without a "
+                    "connected client.", n);
+    }
+    lua_pushboolean(L, sent > 0);
+    lua_pushinteger(L, sent);
+    return 2;
 }
 
 static int lua_entity_set_replication_flags(lua_State *L) {
@@ -2741,6 +2792,33 @@ static int lua_entity_stop_replicate(lua_State *L) {
     log_message("[Replication] StopReplicateWith(entity=0x%llx) -> %s",
                 (unsigned long long)ud->handle, ok ? "dispatched" : "failed");
     lua_pushboolean(L, ok);
+    return 1;
+}
+
+/*
+ * Ext.Entity.GetPeers() -> { {UserId=, IsHost=, Character=}, ... }
+ *
+ * Syncs from the game's active-peer array first, so this reflects who is
+ * actually connected rather than only what the port happened to observe. The
+ * port's own peer log never recorded a remote join during crossplay testing, so
+ * the game's array is the authoritative source.
+ */
+static int lua_entity_get_peers(lua_State *L) {
+    net_hooks_sync_active_peers();
+
+    PeerInfo peers[16];
+    int n = peer_manager_list_peers(peers, 16);
+    lua_createtable(L, n, 0);
+    for (int i = 0; i < n; i++) {
+        lua_createtable(L, 0, 3);
+        lua_pushinteger(L, peers[i].user_id);
+        lua_setfield(L, -2, "UserId");
+        lua_pushboolean(L, peers[i].is_host);
+        lua_setfield(L, -2, "IsHost");
+        lua_pushstring(L, peers[i].character_guid);
+        lua_setfield(L, -2, "Character");
+        lua_rawseti(L, -2, i + 1);
+    }
     return 1;
 }
 
@@ -3602,6 +3680,9 @@ void entity_register_lua(lua_State *L) {
 
     lua_pushcfunction(L, lua_entity_init_component_registry);
     lua_setfield(L, -2, "InitComponentRegistry");
+
+    lua_pushcfunction(L, lua_entity_get_peers);
+    lua_setfield(L, -2, "GetPeers");
 
     lua_pushcfunction(L, lua_entity_debug_replication_system);
     lua_setfield(L, -2, "DebugReplicationSystem");
