@@ -2113,14 +2113,65 @@ static int lua_entity_get_component(lua_State *L) {
 
 static int s_replicate_warned = 0;
 
-static int lua_entity_replicate(lua_State *L) {
-    (void)luaL_checkudata(L, 1, "BG3Entity");
-    const char *component = luaL_optstring(L, 2, "unknown");
-    if (!s_replicate_warned) {
-        log_message("[INFO] [Entity] entity:Replicate(\"%s\") called — replication not yet supported on macOS (stub no-op)", component);
-        s_replicate_warned = 1;
+/*
+ * entity:Replicate(component) -> boolean
+ * entity:SetReplicationFlags(component, flags, qword?) -> boolean
+ *
+ * Windows ORs flags into the entity's replication BitSet and sets
+ * SyncBuffers::Dirty (LuaEntityProxy.inl:357). Replicate is that with every bit
+ * set in qword 0.
+ *
+ * Divergence, reported rather than hidden: Windows creates the entry when the
+ * entity has none (pool.add_key) and grows the BitSet when the requested qword
+ * is past its end (EnsureSize). Both mutate engine-owned container storage, so
+ * this port refuses instead and returns false.
+ */
+static int lua_entity_replicate_impl(lua_State *L, uint64_t flags, uint32_t qword) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
     }
-    return 0;
+    const char *component = luaL_checkstring(L, 2);
+
+    void *server_world = entity_get_world_for_context(true);
+    if (!server_world) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "Changes can only be replicated from the server");
+        return 2;
+    }
+
+    bool changed = false;
+    if (!replication_flags_set(server_world, (uint64_t)ud->handle, component,
+                               qword, flags, &changed)) {
+        if (!s_replicate_warned) {
+            s_replicate_warned = 1;
+            log_message("[WARN] [Entity] entity:Replicate(\"%s\"): no existing "
+                        "replication entry for this entity/component, or the "
+                        "requested qword is beyond the bitset. Creating entries "
+                        "and growing the bitset are not supported on macOS.",
+                        component);
+        }
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "component has no replication entry for this entity");
+        return 2;
+    }
+
+    lua_pushboolean(L, 1);
+    lua_pushboolean(L, changed);
+    return 2;
+}
+
+static int lua_entity_replicate(lua_State *L) {
+    return lua_entity_replicate_impl(L, UINT64_MAX, 0);
+}
+
+static int lua_entity_set_replication_flags(lua_State *L) {
+    lua_Integer flags = luaL_checkinteger(L, 3);
+    lua_Integer qword = luaL_optinteger(L, 4, 0);
+    if (qword < 0 || (lua_Unsigned)qword > UINT32_MAX) {
+        return luaL_error(L, "SetReplicationFlags: qword out of range");
+    }
+    return lua_entity_replicate_impl(L, (uint64_t)flags, (uint32_t)qword);
 }
 
 // entity:GetReplicationFlags(component_name, qword?) -> number|nil
@@ -2384,6 +2435,10 @@ static int lua_entity_index(lua_State *L) {
     }
     if (strcmp(key, "GetReplicationFlags") == 0) {
         lua_pushcfunction(L, lua_entity_get_replication_flags);
+        return 1;
+    }
+    if (strcmp(key, "SetReplicationFlags") == 0) {
+        lua_pushcfunction(L, lua_entity_set_replication_flags);
         return 1;
     }
 

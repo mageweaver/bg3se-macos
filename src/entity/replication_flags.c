@@ -114,48 +114,67 @@ static const ReplicatedTypeGlobal *find_replicated_type(
     return NULL;
 }
 
-bool replication_flags_get(void *entity_world, uint64_t entity_handle,
-                           const char *component_name, uint32_t qword,
-                           uint64_t *out_flags) {
-    if (!entity_world || !out_flags || !version_detect_matches()) {
-        return false;
+/*
+ * Shared lookup for both the read and write paths.
+ *
+ * Walks EntityWorld->Replication (SyncBuffers) -> ComponentPools[replicationIdx]
+ * -> HashMap<EntityHandle, BitSet<>> and reports where this entity's BitSet
+ * lives, so replication_flags_get and replication_flags_set cannot drift apart.
+ *
+ * Result codes distinguish "no entry for this entity" (a legitimate empty
+ * answer for a reader, but not something a writer may silently ignore) from a
+ * hard failure.
+ */
+typedef enum {
+    REPL_LOCATE_ERROR = 0,   /* unusable state; callers must fail */
+    REPL_LOCATE_FOUND = 1,   /* out_bitset / out_sync are valid */
+    REPL_LOCATE_ABSENT = 2   /* pool exists but this entity has no entry */
+} ReplLocateResult;
+
+static ReplLocateResult replication_locate(void *entity_world,
+                                           uint64_t entity_handle,
+                                           const char *component_name,
+                                           uintptr_t *out_bitset,
+                                           uintptr_t *out_sync) {
+    if (!entity_world || !version_detect_matches()) {
+        return REPL_LOCATE_ERROR;
     }
 
     const ReplicatedTypeGlobal *replicated_type =
         find_replicated_type(component_name);
     if (!replicated_type) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     const char *detected_build = version_detect_get_version();
     if (!detected_build ||
         strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) != 0 ||
         strcmp(replicated_type->build_id, GENERATED_TYPEIDS_BUILD_ID) != 0) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     void *binary_base_ptr = version_detect_get_binary_base();
     if (!binary_base_ptr || replicated_type->replicated_type_va < GHIDRA_BASE) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     uintptr_t replicated_type_address = 0;
     if (!checked_add((uintptr_t)binary_base_ptr,
                      replicated_type->replicated_type_va - GHIDRA_BASE,
                      &replicated_type_address)) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     int32_t replication_index = -1;
     if (!safe_memory_read_i32((mach_vm_address_t)replicated_type_address,
                               &replication_index) ||
         replication_index < 0) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     void *sync_ptr = NULL;
     if (!read_pointer_at((uintptr_t)entity_world, 0, &sync_ptr) || !sync_ptr) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
     uintptr_t sync = (uintptr_t)sync_ptr;
 
@@ -166,19 +185,19 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
         pool_capacity < 0 || pool_count < 0 || pool_count > pool_capacity ||
         (uint32_t)pool_count > MAX_REPLICATION_POOLS ||
         replication_index >= pool_count) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     void *pools_ptr = NULL;
     if (!read_pointer_at(sync, SYNC_POOLS_OFFSET, &pools_ptr) || !pools_ptr) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     uintptr_t pool = 0;
     uintptr_t pool_offset =
         (uintptr_t)(uint32_t)replication_index * REPLICATION_POOL_STRIDE;
     if (!checked_add((uintptr_t)pools_ptr, pool_offset, &pool)) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     void *bucket_heads_ptr = NULL;
@@ -202,7 +221,7 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
         !read_i32_at(pool, MAP_KEY_COUNT_OFFSET, &key_count) ||
         !read_pointer_at(pool, MAP_VALUES_OFFSET, &values_ptr) ||
         !read_u32_at(pool, MAP_VALUE_COUNT_OFFSET, &value_count)) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     if (bucket_count < 0 || next_capacity < 0 || next_count < 0 ||
@@ -212,17 +231,16 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
         (uint32_t)key_count > MAX_MAP_ENTRIES ||
         value_count > MAX_MAP_ENTRIES || next_count < key_count ||
         value_count < (uint32_t)key_count) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     if (key_count == 0) {
-        *out_flags = 0;
-        return true;
+        return REPL_LOCATE_ABSENT;
     }
 
     if (bucket_count == 0 || !bucket_heads_ptr || !next_indices_ptr ||
         !keys_ptr || !values_ptr) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     uint32_t bucket =
@@ -230,19 +248,19 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
     int32_t node = -1;
     if (!read_i32_at((uintptr_t)bucket_heads_ptr,
                      (uintptr_t)bucket * sizeof(int32_t), &node)) {
-        return false;
+        return REPL_LOCATE_ERROR;
     }
 
     for (uint32_t visited = 0; node >= 0; visited++) {
         if (visited >= (uint32_t)key_count || node >= key_count ||
             node >= next_count) {
-            return false;
+            return REPL_LOCATE_ERROR;
         }
 
         uint64_t key = 0;
         if (!read_u64_at((uintptr_t)keys_ptr,
                          (uintptr_t)(uint32_t)node * sizeof(uint64_t), &key)) {
-            return false;
+            return REPL_LOCATE_ERROR;
         }
 
         if (key == entity_handle) {
@@ -251,43 +269,121 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
                 !checked_add((uintptr_t)values_ptr,
                              (uintptr_t)(uint32_t)node * BITSET_STRIDE,
                              &bitset)) {
-                return false;
+                return REPL_LOCATE_ERROR;
             }
-
-            uint32_t size = 0;
-            uint32_t capacity = 0;
-            if (!read_u32_at(bitset, BITSET_SIZE_OFFSET, &size) ||
-                !read_u32_at(bitset, BITSET_CAPACITY_OFFSET, &capacity) ||
-                size > capacity) {
-                return false;
-            }
-
-            uint64_t qword_count = ((uint64_t)size + 63U) / 64U;
-            if ((uint64_t)qword >= qword_count) {
-                *out_flags = 0;
-                return true;
-            }
-
-            if (capacity <= 64U) {
-                return read_u64_at(bitset, BITSET_STORAGE_OFFSET, out_flags);
-            }
-
-            void *heap_ptr = NULL;
-            if (!read_pointer_at(bitset, BITSET_STORAGE_OFFSET, &heap_ptr) ||
-                !heap_ptr) {
-                return false;
-            }
-
-            return read_u64_at((uintptr_t)heap_ptr,
-                               (uintptr_t)qword * sizeof(uint64_t), out_flags);
+            if (out_bitset) *out_bitset = bitset;
+            if (out_sync) *out_sync = sync;
+            return REPL_LOCATE_FOUND;
         }
 
         if (!read_i32_at((uintptr_t)next_indices_ptr,
                          (uintptr_t)(uint32_t)node * sizeof(int32_t), &node)) {
-            return false;
+            return REPL_LOCATE_ERROR;
         }
     }
 
-    *out_flags = 0;
+    return REPL_LOCATE_ABSENT;
+}
+
+/* Read one qword of an entity's replication flags. Absent entry reads as 0,
+ * matching the previous behaviour of this function. */
+bool replication_flags_get(void *entity_world, uint64_t entity_handle,
+                           const char *component_name, uint32_t qword,
+                           uint64_t *out_flags) {
+    if (!out_flags) return false;
+
+    uintptr_t bitset = 0, sync = 0;
+    ReplLocateResult r = replication_locate(entity_world, entity_handle,
+                                            component_name, &bitset, &sync);
+    if (r == REPL_LOCATE_ERROR) return false;
+    if (r == REPL_LOCATE_ABSENT) { *out_flags = 0; return true; }
+
+    uint32_t size = 0, capacity = 0;
+    if (!read_u32_at(bitset, BITSET_SIZE_OFFSET, &size) ||
+        !read_u32_at(bitset, BITSET_CAPACITY_OFFSET, &capacity) ||
+        size > capacity) {
+        return false;
+    }
+    uint64_t qword_count = ((uint64_t)size + 63U) / 64U;
+    if ((uint64_t)qword >= qword_count) { *out_flags = 0; return true; }
+
+    if (capacity <= 64U) {
+        return read_u64_at(bitset, BITSET_STORAGE_OFFSET, out_flags);
+    }
+    void *heap_ptr = NULL;
+    if (!read_pointer_at(bitset, BITSET_STORAGE_OFFSET, &heap_ptr) || !heap_ptr) {
+        return false;
+    }
+    return read_u64_at((uintptr_t)heap_ptr,
+                       (uintptr_t)qword * sizeof(uint64_t), out_flags);
+}
+
+/*
+ * OR flags into an entity's replication bitset and mark SyncBuffers dirty,
+ * which is what Windows' ReplicateComponent does
+ * (LuaEntityProxy.inl:357 -> GetOrCreateReplicationFlags + Dirty = true).
+ *
+ * Two things Windows does are deliberately NOT done here:
+ *
+ *   - GetOrCreate: Windows calls pool.add_key(entity) when the entity has no
+ *     entry yet, which grows the hash map. Inserting into a live engine
+ *     container is not something to attempt without proving the growth and
+ *     rehash path, so an absent entry fails closed.
+ *   - EnsureSize: Windows grows the BitSet to (qword+1)*64 bits. Growing means
+ *     reallocating engine-owned storage, so a qword beyond the current size
+ *     fails closed instead.
+ *
+ * Both refusals are reported, so a caller learns the request was rejected
+ * rather than silently dropped.
+ */
+bool replication_flags_set(void *entity_world, uint64_t entity_handle,
+                           const char *component_name, uint32_t qword,
+                           uint64_t flags, bool *out_changed) {
+    if (out_changed) *out_changed = false;
+
+    uintptr_t bitset = 0, sync = 0;
+    ReplLocateResult r = replication_locate(entity_world, entity_handle,
+                                            component_name, &bitset, &sync);
+    if (r != REPL_LOCATE_FOUND) return false;
+
+    uint32_t size = 0, capacity = 0;
+    if (!read_u32_at(bitset, BITSET_SIZE_OFFSET, &size) ||
+        !read_u32_at(bitset, BITSET_CAPACITY_OFFSET, &capacity) ||
+        size > capacity) {
+        return false;
+    }
+    uint64_t qword_count = ((uint64_t)size + 63U) / 64U;
+    if ((uint64_t)qword >= qword_count) {
+        return false;   /* would require EnsureSize; see note above */
+    }
+
+    uintptr_t slot;
+    if (capacity <= 64U) {
+        if (qword != 0) return false;
+        slot = bitset + BITSET_STORAGE_OFFSET;
+    } else {
+        void *heap_ptr = NULL;
+        if (!read_pointer_at(bitset, BITSET_STORAGE_OFFSET, &heap_ptr) || !heap_ptr) {
+            return false;
+        }
+        slot = (uintptr_t)heap_ptr + (uintptr_t)qword * sizeof(uint64_t);
+    }
+
+    uint64_t current = 0;
+    if (!read_u64_at(slot, 0, &current)) return false;
+
+    uint64_t updated = current | flags;
+    if (updated != current) {
+        if (!safe_memory_write((mach_vm_address_t)slot, &updated, sizeof(updated))) {
+            return false;
+        }
+        /* SyncBuffers::Dirty sits immediately after the ComponentPools array
+         * (Array is 16 bytes: buf, capacity, size), i.e. sync + 0x10. */
+        uint8_t dirty = 1;
+        if (!safe_memory_write((mach_vm_address_t)(sync + 0x10), &dirty, sizeof(dirty))) {
+            return false;
+        }
+        if (out_changed) *out_changed = true;
+    }
     return true;
 }
