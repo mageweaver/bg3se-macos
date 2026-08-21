@@ -753,13 +753,13 @@
         },
         {
           "name": "BeginPathfinding",
-          "note": "Warn-once stub returning nil. Incomplete field population. deferrals.md.",
+          "note": "Full ABI recovered: ProcessSettingsForCharacter (0x10481fc64) -> CreatePathForCharacter (0x104820334), path id in w0, -1337 failure sentinel, ProcessedSettings 0x120 bytes, offsets agreed by two independent callers. Blocked on constructing UnprocessedSettings: CharacterMover::Teleport builds it from its own parameters (two doubles and a float that are teleport-specific) plus an allocated ls::Function, and AiHelpers::UpdateRequest copies a local built from live request data, so no static default exists to copy. Remaining fields need semantic understanding, and a malformed block feeds invalid bounds into the pathfinder. See docs/parity-100/level-deferrals.md",
           "class": "behavioral_gap",
           "kind": "function"
         },
         {
           "name": "BeginPathfindingImmediate",
-          "note": "Absent. Not registered on macOS; same underlying gap as BeginPathfinding.",
+          "note": "Full ABI recovered: ProcessSettingsForCharacter (0x10481fc64) -> CreatePathForCharacter (0x104820334), path id in w0, -1337 failure sentinel, ProcessedSettings 0x120 bytes, offsets agreed by two independent callers. Blocked on constructing UnprocessedSettings: CharacterMover::Teleport builds it from its own parameters (two doubles and a float that are teleport-specific) plus an allocated ls::Function, and AiHelpers::UpdateRequest copies a local built from live request data, so no static default exists to copy. Remaining fields need semantic understanding, and a malformed block feeds invalid bounds into the pathfinder. See docs/parity-100/level-deferrals.md",
           "class": "behavioral_gap",
           "kind": "function"
         },

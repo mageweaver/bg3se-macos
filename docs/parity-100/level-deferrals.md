@@ -267,3 +267,53 @@ The practical route toward maximum parity is:
 5. Reject manual `BeginPathfinding` construction. Reconsider it only if a stable higher-level `CreatePathForCharacter` ABI and complete callback/ownership lifecycle can be called directly.
 
 No files were modified during this analysis.
+
+## `BeginPathfinding` — full recon, still blocked (2026-08-20, final)
+
+The recommended unlock ("prefer discovering and calling a higher-level engine
+routine") was found, and it is not sufficient.
+
+### Recovered
+
+    0x10481fc64  esv::aigrid::ProcessSettingsForCharacter(
+                     esv::Character const&, eoc::aigrid::UnprocessedSettings const&)
+    0x104820334  esv::aigrid::CreatePathForCharacter(
+                     esv::Character const*, eoc::aigrid::ProcessedSettings const&)
+
+Call shape, identical across all 19 call sites:
+
+    add    x0, sp, #<processed>     ; sret out-buffer
+    add    x2, sp, #<unprocessed>   ; in
+    mov    x1, <Character*>
+    bl     ProcessSettingsForCharacter
+    add    x1, sp, #<processed>
+    mov    x0, <Character*>
+    bl     CreatePathForCharacter   ; -> int path id in w0
+    cmn    w0, #0x539               ; failure sentinel is -1337
+
+`ProcessedSettings` is 0x120 bytes; `UnprocessedSettings` spans at least 0xD0.
+Two independent callers agree on field offsets (+0x38, +0xB0).
+
+### Why it is still blocked
+
+Constructing `UnprocessedSettings` remains the whole problem, and neither caller
+provides a reusable template:
+
+- **`esv::CharacterMover::Teleport`** initialises it field by field, but three of
+  the values are its own parameters — `d1` at +0x00, `s0` at +0x08 (Teleport's
+  float argument) and `d0` at +0x20 (from a constant table). Transplanting a
+  teleport's distances into a generic pathfinding request would be guesswork.
+  It also allocates a 16-byte `ls::Function` at +0x18 via
+  `ls::MemoryManager::Allocate(16, 16)`.
+- **`esv::AiHelpers::UpdateRequest`** copies a settings blob wholesale, which
+  looked promising, but the source is `[sp, #0x4c0]` — a local built from live
+  request data, not a static default.
+
+So there is no default `UnprocessedSettings` in the binary to copy, and the
+remaining fields would have to be understood semantically rather than
+transcribed. That is the multi-session work the original estimate described, and
+a malformed settings block feeds invalid bounds into the engine's pathfinder —
+the risk that had this rated 5/5 in the first place.
+
+Recorded so the next attempt starts from the ABI, the sentinel and the two
+analysed callers rather than repeating the recon.
