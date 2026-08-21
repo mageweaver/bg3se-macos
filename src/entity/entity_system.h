@@ -98,6 +98,26 @@ typedef struct {
 } TransformComponent;
 
 // ============================================================================
+// UNVERIFIED, UNUSED component structs
+//
+// The five structs below are not cast or dereferenced anywhere in the port --
+// component field access goes through the generated layouts in
+// generated_property_defs.h, which are checked against the live game. Their
+// field offsets have never been validated on ARM64.
+//
+// They are landmines for exactly the reason TransformComponent was: reading a
+// component at a wrong offset does not fail, it returns plausible values.
+// TransformComponent (above) declared position first when the real layout is
+// quaternion/translate/scale, so Position returned a rotation until it was
+// measured in-game on 2026-08-20.
+//
+// Before using any of these, verify each offset against a value obtained
+// independently -- Ext.Entity.DebugDumpComponentFloats plus an Osiris query is
+// how the Transform layout was recovered -- or delete the struct and use the
+// generated layout instead.
+// ============================================================================
+
+// ============================================================================
 // Stats Component (simplified - full version has ~40 fields)
 // ============================================================================
 
