@@ -225,19 +225,19 @@
         },
         {
           "name": "GetReplicationFlags",
-          "note": "Read path works: all 9 recovered replicated types resolve, and both short (\"Stats\") and fully-qualified (\"eoc::StatsComponent\") spellings are accepted. Returns 0 when the entity has no entry.",
+          "note": "Reads SyncBuffers component pools, which are dead on this build: a verified sampler running from a hot hook never observed any of 582 pools populated, including with a crossplay peer connected and replication visibly working. The walk itself is correct, so this returns 0 for every entity and component rather than failing - a confidently wrong answer. Demoted from implemented on that evidence.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
         {
           "name": "SetReplicationFlags",
-          "note": "Same code path as Replicate with explicit flags/qword; same two limits (no entry creation, no BitSet growth).",
+          "note": "Same dead SyncBuffers path as GetReplicationFlags; writes would land in pools the engine does not read on this build.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
         {
           "name": "Replicate",
-          "note": "Windows' SyncBuffers mechanism is NOT how this build replicates: a verified latching sampler never observed any of 582 pools populated, including with a crossplay peer connected and replication visibly working. The real path is esv::replication::ReplicationSystem::ReplicateToPeer(EntityHandle, PeerID) at 0x105630d70; the system instance now resolves (verified in game, double-index check passes). Not yet invoked - needs a live peer to call safely and to observe an effect. See REPLICATION_SYNCBUFFERS.md",
+          "note": "Rewired to esv::replication::ReplicationSystem::ReplicateToPeer (0x105630d70), since Windows' SyncBuffers path is dead on this build - a verified sampler never saw any of 582 pools populated with a peer connected. Works mechanically: peers enumerated from the game's active-peer array, call dispatched, 5/5 in-game checks pass. NOT credited because the EFFECT is unverified - replicating to the host in single-player is likely a no-op, and confirming it needs a remote peer. Also entity granularity, not component granularity.",
           "class": "behavioral_gap",
           "kind": "proxy_method"
         },
