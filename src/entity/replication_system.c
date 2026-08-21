@@ -54,7 +54,27 @@
 #define REPLICATION_VERIFIED_BUILD "4.1.1.7398727"
 
 typedef void (*ReplicateToPeerFn)(void *system, uint64_t entity, int peer_id);
-typedef void (*StopReplicateWithFn)(void *system, void *world, uint64_t entity);
+/*
+ * StopReplicateWith is a STATIC member function: (EntityWorld*, EntityHandle).
+ * There is no `this`.
+ *
+ * C++ mangling does not distinguish static from non-static member functions, so
+ * the demangled name reads identically either way and the arity has to come
+ * from the disassembly. Its prologue is
+ *
+ *     mov  x19, x1              ; x1 = entity handle
+ *     ldrb w8,  [x0, #0x253]
+ *     ldr  x20, [x0, #0x3f0]    ; EntityWorld + 0x3f0 = ImmediateWorldCache
+ *     bl   ImmediateWorldCache::GetChange
+ *
+ * so x0 is the EntityWorld. Calling it as a normal member (system, world,
+ * entity) put the system pointer in x0 and crashed dereferencing
+ * system+0x3f0 as a cache. Confirmed by crashing the game exactly there.
+ *
+ * ReplicateToPeer, by contrast, IS a normal member: its prologue reads a hash
+ * map at [x0+0xac]/[x0+0xb0], i.e. x0 is genuinely the system.
+ */
+typedef void (*StopReplicateWithFn)(void *world, uint64_t entity);
 
 static void *resolve_va(uint64_t va) {
     void *base = version_detect_get_binary_base();
@@ -128,10 +148,11 @@ bool replication_system_replicate_to_peer(void *world, uint64_t entity, int peer
 
 bool replication_system_stop_replicate(void *world, uint64_t entity) {
     if (!entity || !world) return false;
-    void *system = replication_system_get(world);
-    if (!system) return false;
     StopReplicateWithFn fn = (StopReplicateWithFn)resolve_va(VA_STOP_REPLICATE_WITH);
     if (!fn) return false;
-    fn(system, world, entity);
+    /* Static: no `this`. x0 is the EntityWorld. */
+    fn(world, entity);
+    LOG_ENTITY_DEBUG("StopReplicateWith(world=%p, entity=0x%llx) dispatched",
+                     world, (unsigned long long)entity);
     return true;
 }
