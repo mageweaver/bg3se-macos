@@ -1781,9 +1781,13 @@ int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid
         /* Shape alone was not enough last time - two candidate offsets both
          * looked plausible and both were wrong. Print the first key so the
          * contents can be judged, not just the geometry. */
-        char hex[48];
+        /* 16 bytes * 3 chars ("xx ") + NUL. The previous [48] was one short:
+         * the final write at hex+45 with size 4 touched index 48 and tripped
+         * _FORTIFY_SOURCE. Size from the loop bounds and pass the remaining
+         * space so the bound cannot drift from the buffer again. */
+        char hex[16 * 3 + 1];
         for (int b = 0; b < 16; b++) {
-            snprintf(hex + b * 3, 4, "%02x ", g[b]);
+            snprintf(hex + b * 3, sizeof(hex) - (size_t)(b * 3), "%02x ", g[b]);
         }
         uint32_t d1; uint16_t d2, d3;
         memcpy(&d1, g + 0, 4); memcpy(&d2, g + 4, 2); memcpy(&d3, g + 6, 2);
