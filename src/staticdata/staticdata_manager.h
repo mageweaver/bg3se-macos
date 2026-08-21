@@ -328,6 +328,9 @@ int staticdata_get_configured_entry_size(StaticDataType type);
  * headers) and their shared length. Validates the offset before returning, so
  * false means the map could not be identified rather than that it is empty.
  */
+/** Find the byte offset of ResourceGuidsByMod in the bank, or -1. */
+int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid);
+
 bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
                                   void **out_values, uint32_t *out_count);
 

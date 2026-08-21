@@ -1713,8 +1713,88 @@ int staticdata_probe_stride(StaticDataType type, int *out_hits) {
  * 16-byte GUIDs and the value array must have the same length.
  * -------------------------------------------------------------------------*/
 
-#define BANK_RESOURCE_GUIDS_BY_MOD_OFFSET 0x10
+/*
+ * Offset of ResourceGuidsByMod relative to the pointer this port captures.
+ *
+ * Windows' GuidResourceBankBase is vptr + 2 FixedStrings + ResourceGuidsByMod,
+ * predicting +0x10 from the object base. Measured on 4.1.1.7398727 it is 0,
+ * because the pointer the Get<T> hook captures is already 0x10 into the object.
+ * The bank header dump makes this unambiguous:
+ *
+ *   ptr+0x20  cap=16 size=13   <- ResourceGuidsByMod keys  (13 base modules)
+ *   ptr+0x30  cap=16 size=13   <- ResourceGuidsByMod values
+ *   ptr+0x60  cap=64 size=41   <- Resources keys (41 == Feat count)
+ *   ptr+0x70  cap=64 size=41   <- Resources values
+ *
+ * Resources therefore begins at ptr+0x40, leaving ptr+0x00..0x40 for
+ * ResourceGuidsByMod, which is where the map actually is.
+ */
+#define BANK_RESOURCE_GUIDS_BY_MOD_OFFSET 0x00
 #define STATICDATA_MAX_SOURCE_MODS        4096
+
+/*
+ * Locate ResourceGuidsByMod empirically, by shape rather than by content.
+ *
+ * The Windows struct predicts bank+0x10 but that fails validation here, and
+ * matching a known mod Guid did not work either -- mod Guids may not be stored
+ * in the byte order their string form implies. What is reliable is the shape:
+ * a HashMap<Guid, Array<Guid>> has a key Array and a value Array of identical
+ * length, both with live buffers, at map+0x20 and map+0x30.
+ *
+ * Scans the first 0x400 bytes of the bank for that pattern and reports every
+ * candidate, so an ambiguous result is visible rather than silently taking the
+ * first hit.
+ *
+ * Returns the offset of the first candidate, or -1.
+ */
+int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid) {
+    (void)mod_guid;
+    StaticDataRawInfo info;
+    if (!staticdata_get_raw_info(type, &info) || !info.manager_ptr) return -1;
+
+    int first = -1, candidates = 0;
+    for (int off = 0; off <= 0x400; off += 8) {
+        uintptr_t map = (uintptr_t)info.manager_ptr + off;
+        void *kbuf = NULL, *vbuf = NULL;
+        uint32_t kcap = 0, ksize = 0, vcap = 0, vsize = 0;
+        if (!safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET), &kbuf) ||
+            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET + 8), &kcap) ||
+            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_KEYS_OFFSET + 12), &ksize) ||
+            !safe_memory_read_pointer((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET), &vbuf) ||
+            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET + 8), &vcap) ||
+            !safe_memory_read_u32((mach_vm_address_t)(map + HASHMAP_VALUES_OFFSET + 12), &vsize)) {
+            continue;
+        }
+        if (!kbuf || !vbuf) continue;
+        if (ksize == 0 || ksize != vsize) continue;
+        if (ksize > 512 || kcap < ksize || vcap < vsize) continue;
+
+        /* The first key should read as 16 plausible Guid bytes. */
+        uint8_t g[16];
+        if (!safe_memory_read((mach_vm_address_t)kbuf, g, sizeof(g))) continue;
+        int zeros = 0;
+        for (int i = 0; i < 16; i++) if (g[i] == 0) zeros++;
+        if (zeros > 8) continue;
+
+        candidates++;
+        if (first < 0) first = off;
+        log_message("[StaticData] sources candidate at bank+0x%X: %u entries", off, ksize);
+    }
+    if (candidates > 1) {
+        log_message("[StaticData] WARNING: %d candidate maps; offset is ambiguous",
+                    candidates);
+    }
+    /* Dump the raw Array headers across the bank header so the layout can be
+     * read directly instead of inferred. */
+    for (int off = 0; off <= 0x90; off += 0x10) {
+        void *b = NULL; uint32_t cap = 0, sz = 0;
+        safe_memory_read_pointer((mach_vm_address_t)((uintptr_t)info.manager_ptr + off), &b);
+        safe_memory_read_u32((mach_vm_address_t)((uintptr_t)info.manager_ptr + off + 8), &cap);
+        safe_memory_read_u32((mach_vm_address_t)((uintptr_t)info.manager_ptr + off + 12), &sz);
+        log_message("[StaticData]   bank+0x%02X: ptr=%p cap=%u size=%u", off, b, cap, sz);
+    }
+    return first;
+}
 
 bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
                                   void **out_values, uint32_t *out_count) {
@@ -1739,11 +1819,42 @@ bool staticdata_get_sources_shape(StaticDataType type, void **out_keys,
         return false;
     }
 
-    /* Validation: a mod list is small, both arrays must agree, and both
-     * pointers must be present. A wrong offset fails all three. */
-    if (!keys.buf || !values.buf) return false;
-    if (keys.size == 0 || keys.size > STATICDATA_MAX_SOURCE_MODS) return false;
+    /* Validation. Two candidate offsets have already produced plausible-looking
+     * but wrong results here (Windows' predicted +0x10 fails outright; +0x00
+     * yields a 13-entry map whose keys are not Guids and whose value arrays are
+     * all empty), so the checks below are deliberately strict: a wrong offset
+     * must fail rather than hand Lua garbage.
+     *
+     * Require the arrays to agree in length, be plausibly sized, and -- the
+     * check that rejects offset 0 -- the first key must look like a real Guid
+     * and at least one mod must actually own resources. */
     if (keys.size != values.size) return false;
+    if (keys.size == 0 || keys.size > STATICDATA_MAX_SOURCE_MODS) return false;
+    if (!keys.buf || !values.buf) return false;
+
+    uint8_t first_key[16];
+    if (!safe_memory_read((mach_vm_address_t)keys.buf, first_key, sizeof(first_key))) {
+        return false;
+    }
+    int zeros = 0, ffs = 0;
+    for (int i = 0; i < 16; i++) {
+        if (first_key[i] == 0x00) zeros++;
+        if (first_key[i] == 0xFF) ffs++;
+    }
+    if (zeros > 8 || ffs > 6) return false;   /* not a Guid */
+
+    /* A real ResourceGuidsByMod has at least one non-empty resource list. */
+    bool any_resources = false;
+    for (uint32_t i = 0; i < values.size && i < 64; i++) {
+        uint32_t n = 0;
+        if (safe_memory_read_u32(
+                (mach_vm_address_t)((uintptr_t)values.buf + (uintptr_t)i * 16 + 0x0C), &n)
+            && n > 0) {
+            any_resources = true;
+            break;
+        }
+    }
+    if (!any_resources) return false;
 
     if (out_keys) *out_keys = keys.buf;
     if (out_values) *out_values = values.buf;

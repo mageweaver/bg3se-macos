@@ -584,6 +584,27 @@ static int lua_staticdata_getbymodid(lua_State *L) {
     return 1;
 }
 
+/* Ext.StaticData.ProbeSourcesOffset(type, modGuidString) -> offset | -1 */
+static int lua_staticdata_probesources(lua_State *L) {
+    const char *type_name = luaL_checkstring(L, 1);
+    const char *guid = luaL_checkstring(L, 2);
+    int type = staticdata_type_from_name(type_name);
+    if (type < 0) return luaL_error(L, "Unknown static data type: %s", type_name);
+
+    unsigned int d1, d2, d3, b[8];
+    if (sscanf(guid, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
+               &d1,&d2,&d3,&b[0],&b[1],&b[2],&b[3],&b[4],&b[5],&b[6],&b[7]) != 11) {
+        return luaL_error(L, "bad guid");
+    }
+    uint8_t g[16];
+    uint32_t v1 = (uint32_t)d1; uint16_t v2 = (uint16_t)d2, v3 = (uint16_t)d3;
+    memcpy(g + 0, &v1, 4); memcpy(g + 4, &v2, 2); memcpy(g + 6, &v3, 2);
+    for (int i = 0; i < 8; i++) g[8 + i] = (uint8_t)b[i];
+
+    lua_pushinteger(L, staticdata_probe_sources_offset((StaticDataType)type, g));
+    return 1;
+}
+
 static const luaL_Reg staticdata_funcs[] = {
     {"GetAll", lua_staticdata_getall},
     {"Get", lua_staticdata_get},
@@ -604,6 +625,7 @@ static const luaL_Reg staticdata_funcs[] = {
     {"ProbeStride", lua_staticdata_probestride},
     {"GetSources", lua_staticdata_getsources},
     {"GetByModId", lua_staticdata_getbymodid},
+    {"ProbeSourcesOffset", lua_staticdata_probesources},
     {NULL, NULL}
 };
 
