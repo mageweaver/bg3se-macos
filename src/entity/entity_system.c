@@ -15,6 +15,11 @@
 #include "component_property.h"
 #include "arm64_call.h"
 #include "replication_flags.h"
+#include "replication_system.h"
+
+/* Defined below; referenced by the entity metatable dispatch above them. */
+static int lua_entity_replicate_to_peer(struct lua_State *L);
+static int lua_entity_debug_replication_system(struct lua_State *L);
 #include "logging.h"
 #include "../core/version_detect.h"
 #include "../core/offset_table.h"
@@ -2437,6 +2442,10 @@ static int lua_entity_index(lua_State *L) {
         lua_pushcfunction(L, lua_entity_get_replication_flags);
         return 1;
     }
+    if (strcmp(key, "ReplicateToPeer") == 0) {
+        lua_pushcfunction(L, lua_entity_replicate_to_peer);
+        return 1;
+    }
     if (strcmp(key, "SetReplicationFlags") == 0) {
         lua_pushcfunction(L, lua_entity_set_replication_flags);
         return 1;
@@ -2697,6 +2706,36 @@ static int lua_entity_init_component_registry(lua_State *L) {
  * the estimate.
  */
 /* Ext.Entity.DebugReplicationInfo() -> dumps SyncBuffers structure to the log */
+/*
+ * Ext.Entity.DebugReplicationSystem() -> bool
+ * Ext.Entity.ReplicateToPeer(entity, peerId) -> bool
+ *
+ * The SyncBuffers pools this build exposes were never observed populated, even
+ * with a live crossplay peer, so entity:Replicate cannot work through them.
+ * esv::replication::ReplicationSystem::ReplicateToPeer is what the binary
+ * actually provides. Resolution is exposed separately from the call so the
+ * instance lookup can be confirmed before anything is invoked.
+ */
+static int lua_entity_debug_replication_system(lua_State *L) {
+    void *w = entity_get_world_for_context(true);
+    void *sys = replication_system_get(w);
+    log_message("[Replication] ReplicationSystem instance = %p (world=%p)", sys, w);
+    lua_pushboolean(L, sys != NULL);
+    return 1;
+}
+
+static int lua_entity_replicate_to_peer(lua_State *L) {
+    EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
+    if (!lifetime_lua_is_valid(L, ud->lifetime)) {
+        return lifetime_lua_expired_error(L, "Entity");
+    }
+    lua_Integer peer = luaL_optinteger(L, 2, 1);
+    void *w = entity_get_world_for_context(true);
+    bool ok = replication_system_replicate_to_peer(w, (uint64_t)ud->handle, (int)peer);
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
 static int lua_entity_debug_replication_info(lua_State *L) {
     void *w = entity_get_world_for_context(true);
     replication_flags_debug_dump(w);
@@ -3535,6 +3574,9 @@ void entity_register_lua(lua_State *L) {
 
     lua_pushcfunction(L, lua_entity_init_component_registry);
     lua_setfield(L, -2, "InitComponentRegistry");
+
+    lua_pushcfunction(L, lua_entity_debug_replication_system);
+    lua_setfield(L, -2, "DebugReplicationSystem");
 
     lua_pushcfunction(L, lua_entity_debug_replication_info);
     lua_setfield(L, -2, "DebugReplicationInfo");
