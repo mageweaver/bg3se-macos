@@ -1778,7 +1778,19 @@ int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid
 
         candidates++;
         if (first < 0) first = off;
-        log_message("[StaticData] sources candidate at bank+0x%X: %u entries", off, ksize);
+        /* Shape alone was not enough last time - two candidate offsets both
+         * looked plausible and both were wrong. Print the first key so the
+         * contents can be judged, not just the geometry. */
+        char hex[48];
+        for (int b = 0; b < 16; b++) {
+            snprintf(hex + b * 3, 4, "%02x ", g[b]);
+        }
+        uint32_t d1; uint16_t d2, d3;
+        memcpy(&d1, g + 0, 4); memcpy(&d2, g + 4, 2); memcpy(&d3, g + 6, 2);
+        log_message("[StaticData] cand bank+0x%-4X n=%-4u key0=%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                    off, ksize, d1, d2, d3,
+                    g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
+        log_message("[StaticData]      raw: %s", hex);
     }
     if (candidates > 1) {
         log_message("[StaticData] WARNING: %d candidate maps; offset is ambiguous",
