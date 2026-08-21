@@ -425,5 +425,47 @@ void lua_template_register(lua_State* L, int ext_table_index) {
     // Set Ext.Template
     lua_setfield(L, ext_table_index, "Template");
 
-    log_message("[Lua] Registered Ext.Template API");
+    /*
+     * Windows exposes these under Ext.ClientTemplate and Ext.ServerTemplate
+     * rather than a single Ext.Template (ExtIdeHelpers.lua: @class
+     * Ext_ClientTemplate, @class Ext_ServerTemplate). The port implemented all
+     * of the functions but registered them only on Ext.Template, so a Windows
+     * mod calling Ext.ServerTemplate.GetLocalTemplate(...) got a nil index
+     * error even though the implementation was present.
+     *
+     * Register both namespaces over the same implementations. The port's
+     * lookups are not context-partitioned, so the client table carries the
+     * three functions Windows exposes there and the server table all nine.
+     */
+    static const char *client_fns[] = {
+        "GetTemplate", "GetRootTemplate", "GetAllRootTemplates", NULL
+    };
+    static const char *server_fns[] = {
+        "GetTemplate", "GetRootTemplate", "GetAllRootTemplates",
+        "GetLocalTemplate", "GetAllLocalTemplates",
+        "GetCacheTemplate", "GetAllCacheTemplates",
+        "GetLocalCacheTemplate", "GetAllLocalCacheTemplates", NULL
+    };
+
+    struct { const char *ns; const char **names; } aliases[] = {
+        { "ClientTemplate", client_fns },
+        { "ServerTemplate", server_fns },
+    };
+
+    for (size_t i = 0; i < sizeof(aliases) / sizeof(aliases[0]); i++) {
+        lua_newtable(L);
+        for (const char **n = aliases[i].names; *n; n++) {
+            for (const struct luaL_Reg *func = template_functions; func->name; func++) {
+                if (strcmp(func->name, *n) == 0) {
+                    lua_pushcfunction(L, func->func);
+                    lua_setfield(L, -2, *n);
+                    break;
+                }
+            }
+        }
+        lua_setfield(L, ext_table_index, aliases[i].ns);
+    }
+
+    log_message("[Lua] Registered Ext.Template, Ext.ClientTemplate and "
+                "Ext.ServerTemplate APIs");
 }

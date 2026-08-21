@@ -1053,6 +1053,23 @@ static void register_ext_api(lua_State *L) {
         "Ext.Utils.GameTime = Ext.Timer.GameTime\n"
     );
 
+    /* Windows exposes these two functions from a second namespace as well
+     * (ExtIdeHelpers.lua: GetValueType on both Ext_Types and Ext_Utils,
+     * GenerateIdeHelpers on both Ext_Types and Ext_Debug). The port registered
+     * only the Ext.Types copies, so Windows mod code calling
+     * Ext.Utils.GetValueType(...) or Ext.Debug.GenerateIdeHelpers(...) indexed
+     * nil even though the implementation was present. */
+    luaL_dostring(L,
+        "if Ext.Types then\n"
+        "  if Ext.Utils and Ext.Types.GetValueType then\n"
+        "    Ext.Utils.GetValueType = Ext.Types.GetValueType\n"
+        "  end\n"
+        "  if Ext.Debug and Ext.Types.GenerateIdeHelpers then\n"
+        "    Ext.Debug.GenerateIdeHelpers = Ext.Types.GenerateIdeHelpers\n"
+        "  end\n"
+        "end\n"
+    );
+
     // Register Ext.ModEvents (Issue #68 - MCM event system)
     // Per-mod event tables with :Throw(data) and :Subscribe(callback)
     // Uses max_id tracking to avoid ipairs hole bug when Unsubscribe sets entries to nil
