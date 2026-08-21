@@ -1484,6 +1484,82 @@ static void osi_push_typed_value(lua_State *L, mach_vm_address_t tv) {
  *   inline at the tuple base when cap < 9, else *(tuple+0x00) is a heap
  *   pointer. Column i COsiTypedValue @ values + i*0x10.
  */
+/* Locate FunctionParamDesc::Type by measurement.
+ *
+ * Story functions have no funcId, so our param reader (which indexes the DIV
+ * registration table by handle) cannot serve them -- the types must come from
+ * the def's own Signature. Signature@0x18 and Params@0x10 are already known and
+ * in production for arity; List<T> is {Head@0x00, Size@0x08} per Norbyte, and
+ * our working arity read of paramList+0x10 being Size puts Params.Head at
+ * paramList+0x08. What is NOT known is where Type sits inside the by-value
+ * ListNode::Item at node+0x10.
+ *
+ * Native functions are the oracle: osi_read_param_defs returns their true
+ * declared types, and they are present in the name index too (the histogram's
+ * type 1/2/3 buckets sum to 1303, the native count). So walk the list for those
+ * and record which offset inside Item reproduces the known type. Read-only. */
+static void osi_probe_signature_layout(void) {
+    static int done = 0;
+    if (done) return;
+    done = 1;
+
+    #define ITEM_SPAN 16
+    int hit16[ITEM_SPAN] = {0}, hit32[ITEM_SPAN] = {0};
+    int samples = 0, params = 0, walkFail = 0;
+
+    for (int i = 0; i < osi_db_count() && samples < 120; i++) {
+        const char *nm = NULL; void *def = NULL;
+        if (!osi_db_entry(i, &nm, &def) || !def || !nm) continue;
+
+        uint32_t fid = osi_func_lookup_id(nm);
+        if (fid == INVALID_FUNCTION_ID) continue;          /* story fn: no oracle */
+        OsiParamDef pdefs[20];
+        int pcount = osi_read_param_defs(fid, pdefs, 20);
+        if (pcount <= 0) continue;
+
+        void *sig = NULL, *plist = NULL, *head = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)def + 0x18, &sig) || !sig) continue;
+        if (!safe_memory_read_pointer((mach_vm_address_t)sig + 0x10, &plist) || !plist) continue;
+        if (!safe_memory_read_pointer((mach_vm_address_t)plist + 0x08, &head) || !head) continue;
+
+        /* Sentinel-headed circular list: first real node is Head->Next. */
+        void *node = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)head, &node) || !node) continue;
+
+        samples++;
+        for (int pi = 0; pi < pcount && node && node != head; pi++) {
+            mach_vm_address_t item = (mach_vm_address_t)node + 0x10;
+            params++;
+            for (int off = 0; off < ITEM_SPAN; off += 2) {
+                uint16_t v16 = 0;
+                if (safe_memory_read(item + off, &v16, sizeof(v16)) && v16 == pdefs[pi].type)
+                    hit16[off]++;
+            }
+            for (int off = 0; off < ITEM_SPAN; off += 4) {
+                uint32_t v32 = 0;
+                if (safe_memory_read_u32(item + off, &v32) && v32 == pdefs[pi].type)
+                    hit32[off]++;
+            }
+            void *nxt = NULL;
+            if (!safe_memory_read_pointer((mach_vm_address_t)node, &nxt)) { walkFail++; break; }
+            node = nxt;
+        }
+    }
+
+    char b[220]; int n = 0;
+    for (int off = 0; off < ITEM_SPAN; off += 2)
+        if (hit16[off] * 2 > params && n < (int)sizeof(b) - 32)
+            n += snprintf(b + n, sizeof(b) - (size_t)n, "%su16@+0x%x:%d/%d", n ? " " : "", off, hit16[off], params);
+    for (int off = 0; off < ITEM_SPAN; off += 4)
+        if (hit32[off] * 2 > params && n < (int)sizeof(b) - 32)
+            n += snprintf(b + n, sizeof(b) - (size_t)n, "%su32@+0x%x:%d/%d", n ? " " : "", off, hit32[off], params);
+    b[n] = 0;
+    LOG_OSIRIS_INFO("Signature probe: %d native fns, %d params walked, %d walk breaks. "
+                    "Item offsets reproducing the declared type: [%s]",
+                    samples, params, walkFail, n ? b : "NONE");
+    #undef ITEM_SPAN
+}
+
 /* ---- Osiris string table -------------------------------------------------
  *
  * A TypedValue string is NOT a char* -- it is a refcounted handle into the
@@ -4375,6 +4451,7 @@ after_tick:
                         "discover databases", funcName);
         osi_func_enumerate_by_name();
         osi_string_selftest();
+        osi_probe_signature_layout();
         osi_report_node_classes();
     } else if (!g_dbNamesEnumerated && funcName &&
                strcmp(funcName, "LevelGameplayStarted") == 0) {

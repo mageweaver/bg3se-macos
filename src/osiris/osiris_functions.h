@@ -91,6 +91,9 @@ void osi_func_enumerate_by_name(void);
  */
 bool osi_func_refresh_if_stale(void);
 
+/** Iterate the name -> def registry. Returns 0 past the end. */
+int osi_db_entry(int i, const char **outName, void **outDef);
+
 /**
  * Database registry (databases have OsiFunctionId==0 and cannot be id-cached).
  * osi_db_register: name -> COsiFunctionData* (returns 1 if newly added).

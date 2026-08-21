@@ -798,6 +798,15 @@ void *osi_db_lookup(const char *name) {
 
 int osi_db_count(void) { return g_dbRegCount; }
 
+/* Iterate the name -> def registry so callers can measure def layout against
+ * functions whose true values are known from another source. */
+int osi_db_entry(int i, const char **outName, void **outDef) {
+    if (i < 0 || i >= g_dbRegCount) return 0;
+    if (outName) *outName = g_dbReg[i].name;
+    if (outDef) *outDef = g_dbReg[i].def;
+    return 1;
+}
+
 /* Walk the Osiris name index (CSearchIndex<COsiFunctionData*, COsiString, 1023>)
  * that lives at the start of COsiFunctionMan and cache every function BY NAME.
  *
