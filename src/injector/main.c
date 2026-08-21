@@ -4163,6 +4163,25 @@ static void resolve_osiris_function_pointers(void *osiris) {
 /**
  * Install Dobby hooks on Osiris functions
  */
+/*
+ * Granular hook toggles.
+ *
+ * BG3SE_NO_HOOKS disables every code patch at once, which is too coarse to
+ * identify which patch is responsible for a symptom. These per-group switches
+ * exist so a failure can be bisected without rebuilding:
+ *
+ *   BG3SE_NO_OSIRIS_HOOKS      COsiris::InitGame / Load / Event / RegisterDivFunctions
+ *   BG3SE_NO_STATICDATA_HOOKS  resource manager Get<T> interception
+ *   BG3SE_NO_VIDEOSKIP         Bink intro video patch
+ *
+ * Added 2026-08-20 while tracking down BG3SE making multiplayer unstartable:
+ * the game refuses to start a session with hooks installed, works with
+ * BG3SE_NO_HOOKS=1, so the responsible patch is one of the groups above.
+ */
+static bool hook_group_disabled(const char *env_name) {
+    return getenv(env_name) != NULL;
+}
+
 static void install_hooks(void) {
 #if ENABLE_HOOKS
     // Get libOsiris handle - try various paths
@@ -4200,6 +4219,13 @@ static void install_hooks(void) {
         // init_subsystems checks no_hooks again to skip the code-patching
         // initializers (StaticData, VideoSkip) — see the gates below.
         goto init_subsystems;
+    }
+
+    if (hook_group_disabled("BG3SE_NO_OSIRIS_HOOKS")) {
+        LOG_HOOKS_INFO("BG3SE_NO_OSIRIS_HOOKS=1: skipping COsiris hooks "
+                       "(InitGame/Load/Event/RegisterDivFunctions)");
+        hooks_installed = 1;
+        return;
     }
 
     LOG_HOOKS_INFO("Installing Dobby hooks...");
@@ -4393,7 +4419,7 @@ init_subsystems:
                     // must honor BG3SE_NO_HOOKS: a stale offset here once patched
                     // the middle of gui::HotbarSystem::Update and crashed every
                     // session (docs/bugs/codex-debugger-nohooks-2026-07-28.md).
-                    if (!no_hooks) {
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_STATICDATA_HOOKS")) {
                         staticdata_manager_init(binary_base);
                         LOG_CORE_INFO("StaticData manager initialized (managers captured via hooks)");
                     } else {
@@ -4429,7 +4455,7 @@ init_subsystems:
 
                     // Initialize video skip hook (suppresses Bink intro videos).
                     // Patches BinkManager::LoadVideo, so it honors BG3SE_NO_HOOKS.
-                    if (!no_hooks) {
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_VIDEOSKIP")) {
                         video_skip_init(binary_base);
                     } else {
                         LOG_CORE_INFO("VideoSkip SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
