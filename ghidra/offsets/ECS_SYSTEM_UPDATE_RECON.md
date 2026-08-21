@@ -1288,3 +1288,30 @@ Two independent checks back each result:
 Each wrong stride meant `Ext.StaticData.GetAll` returned entries read off record
 boundaries, exposing unrelated bytes as `ResourceUUID`. Those bytes still
 pattern-match a GUID, so nothing downstream flagged them.
+
+## Credited-API reachability audit (2026-08-20)
+
+Every entry the contract marks `implemented` with `kind: function` was checked
+against the live game for existence and callability — 244 functions across 24
+namespaces.
+
+Result before the fix: **14 credited functions were unreachable** under the
+names Windows uses.
+
+- `Ext.ClientTemplate` (3) and `Ext.ServerTemplate` (9) did not exist. All nine
+  template lookups were implemented, but registered only on `Ext.Template`, so
+  a Windows mod calling `Ext.ServerTemplate.GetLocalTemplate(...)` indexed nil
+  despite a working implementation sitting behind a different name.
+- `Ext.Utils.GetValueType` and `Ext.Debug.GenerateIdeHelpers` were nil. Windows
+  exposes each function from two namespaces (`GetValueType` on `Ext_Types` and
+  `Ext_Utils`; `GenerateIdeHelpers` on `Ext_Types` and `Ext_Debug`), and the
+  port registered only the `Ext.Types` copies.
+
+After: **244 present, 0 missing.**
+
+Method note: the first version of the audit indexed nested namespaces such as
+`Ext.Stats.TreasureTable` as a single table key, which falsely reported four
+namespaces missing. Those were real registrations all along. The corrected
+script walks the dotted path. Two of the six original hits were script bugs and
+four were real — worth remembering that an audit's own failures look identical
+to the failures it is looking for.
