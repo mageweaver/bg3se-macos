@@ -44,6 +44,7 @@ extern "C" {
 
 // Entity Component System
 #include "entity_system.h"
+#include "replication_flags.h"
 #include "entity_events.h"
 #include "entity_tracing.h"
 #include "ecs_system_update.h"
@@ -4100,6 +4101,16 @@ after_tick:
     // Dispatch to "before" callbacks if we know the function name
     if (funcName) {
         dispatch_event_to_lua(funcName, arity, args, "before");
+    }
+
+    /* Sample the replication pools from this hot path. Lua-level polling never
+     * observed a non-empty pool even with a live peer; if SyncBuffers is filled
+     * and drained inside the ECS flush, only a high-frequency sampler can catch
+     * it. Latches after the first hit and is gated to every 16th event. */
+    if ((event_call_count & 0xF) == 0) {
+        extern void *entity_get_world_for_context(bool server);
+        void *w = entity_get_world_for_context(true);
+        if (w) replication_flags_sample(w);
     }
 
     /* Call original and PRESERVE its return value. Work done after this call

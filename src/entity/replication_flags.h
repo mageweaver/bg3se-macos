@@ -28,6 +28,9 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
 /** Read-only structural dump of SyncBuffers and its pools (diagnostic). */
 void replication_flags_debug_dump(void *entity_world);
 
+/** Latching sampler: logs once if any replication pool is ever non-empty. */
+void replication_flags_sample(void *entity_world);
+
 bool replication_flags_set(void *entity_world, uint64_t entity_handle,
                            const char *component_name, uint32_t qword,
                            uint64_t flags, bool *out_changed);

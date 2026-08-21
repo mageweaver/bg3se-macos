@@ -448,3 +448,44 @@ void replication_flags_debug_dump(void *entity_world) {
     log_message("[Replication] populated pools: %d of %d", populated, pool_count);
 }
 
+/*
+ * High-frequency sampler: report the first moment any pool holds entries.
+ *
+ * Polling from Lua always observed zero pools even with a live remote peer and
+ * replication visibly working. If SyncBuffers is filled and cleared inside the
+ * ECS flush, script-level sampling can never catch it. This is cheap enough to
+ * call from a hot hook (early-exits on the first non-empty pool) and latches
+ * once, so it answers "do these pools EVER populate" without flooding the log.
+ */
+static bool s_repl_sample_latched = false;
+
+void replication_flags_sample(void *entity_world) {
+    if (s_repl_sample_latched || !entity_world) return;
+
+    void *sync_ptr = NULL;
+    if (!read_pointer_at((uintptr_t)entity_world, 0, &sync_ptr) || !sync_ptr) return;
+    uintptr_t sync = (uintptr_t)sync_ptr;
+
+    void *pools_ptr = NULL;
+    int32_t pool_count = 0;
+    if (!read_pointer_at(sync, SYNC_POOLS_OFFSET, &pools_ptr) || !pools_ptr) return;
+    if (!read_i32_at(sync, SYNC_POOL_COUNT_OFFSET, &pool_count)) return;
+    if (pool_count <= 0 || pool_count > 4096) return;
+
+    uint8_t dirty = 0;
+    safe_memory_read_u8((mach_vm_address_t)(sync + 0x10), &dirty);
+
+    for (int i = 0; i < pool_count; i++) {
+        uintptr_t pool = (uintptr_t)pools_ptr + (uintptr_t)i * REPLICATION_POOL_STRIDE;
+        int32_t key_count = 0;
+        if (!read_i32_at(pool, MAP_KEY_COUNT_OFFSET, &key_count)) continue;
+        if (key_count > 0 && key_count < 100000) {
+            s_repl_sample_latched = true;
+            log_message("[Replication] *** POOLS DO POPULATE *** pool[%d] has %d "
+                        "entities (dirty=%u). Sampled from a hot hook, not script.",
+                        i, key_count, dirty);
+            return;
+        }
+    }
+}
+
