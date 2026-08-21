@@ -484,3 +484,39 @@ Shipping a live-mutation path that cannot be verified is the pattern that caused
 this session's crashes. The recovery above removes the unknowns, so an
 implementation attempt can start from measurements rather than guesses whenever
 it can be tested against a disposable profile.
+
+## `AddAttribute`: the engine has no such code path (2026-08-20, final)
+
+Earlier this document proposed decompiling
+`CNamedElementManager<CRPGStats_Modifier>::Insert` (0x102103420) to recover
+ownership semantics. A BL scan found it has **zero callers**. Tracing what the
+loader actually does explains why.
+
+`RPGStats::FinishAndCleanCurrentParsedType` — the function that commits a parsed
+stats type — calls:
+
+    CNamedElementManager<CRPGStats_Modifier_List>::Insert(...)       x1
+    CNamedElementManager<CRPGStats_Modifier_ValueList>::Insert(...)  x1
+    CRPGStats_Modifier_ValueList::Insert(FixedString const&, int)    x1
+
+It inserts whole **ModifierLists** and **ValueLists**, never an individual
+modifier. Attributes are built inline as part of constructing a list, and the
+finished list is inserted once.
+
+So there is no "append one attribute to an existing ModifierList" operation
+anywhere in the shipping game. `CNamedElementManager<CRPGStats_Modifier>::Insert`
+exists as an instantiated template that nothing calls.
+
+Implementing `AddAttribute` therefore means allocating a modifier with the
+game's allocator and driving a code path the engine itself never exercises,
+against a schema that every already-parsed stats object depends on. Windows
+requires it strictly during `StatsStructureLoaded`, before any objects exist,
+which is not a window this port can reach or verify from script.
+
+This is a stronger statement than the previous "blocker not removed": the
+operation is absent from the engine, not merely undocumented. Recorded as such
+so no further session re-derives it.
+
+Note the contrast with `AddEnumerationValue`, which *is* implemented and
+verified: `CRPGStats_Modifier_ValueList::Insert` is called by the loader in two
+places, so its behaviour is exercised, observable and safe to reuse.

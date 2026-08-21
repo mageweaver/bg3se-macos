@@ -393,7 +393,7 @@
         },
         {
           "name": "AddAttribute",
-          "note": "Returns false. Runtime modifier-list mutation unverified. deferrals.md.",
+          "note": "Returns false. The engine has no such operation: RPGStats::FinishAndCleanCurrentParsedType inserts whole ModifierLists and ValueLists, never an individual modifier, and CNamedElementManager<CRPGStats_Modifier>::Insert has zero callers. Appending an attribute to an existing list is a code path the shipping game never takes, so implementing it means driving unexercised code against a schema every parsed stats object depends on. Contrast AddEnumerationValue, which is implemented because its Insert is called by the loader and therefore exercised.",
           "class": "behavioral_gap",
           "kind": "function"
         },
