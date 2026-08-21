@@ -1315,3 +1315,46 @@ namespaces missing. Those were real registrations all along. The corrected
 script walks the dotted path. Two of the six original hits were script bugs and
 four were real — worth remembering that an audit's own failures look identical
 to the failures it is looking for.
+
+## BUG — `TransformComponent.Position` returned the rotation (2026-08-20)
+
+`Ext.Entity` reported the host character at `(0.00, 1.00, 0.00)` while Osiris
+reported `(262.430, 0.643, 208.435)`.
+
+Dumping the component's raw floats against that known-good position gives the
+layout directly:
+
+    +0x00   0.000, 0.999, 0.000, -0.045    normalized quaternion
+    +0x10   262.430, 0.643, 208.435        translate   <- matches Osiris
+    +0x1C   1.000, 1.000, 1.000            scale
+
+so the real order is quaternion, translate, scale — which is also the order the
+Windows property map lists (`BEGIN_CLS(Transform)`: RotationQuat, Translate,
+Scale). The port's hand-written struct declared `position` first, so `Position`
+returned the quaternion's first three components and `Rotation`/`Scale` were
+shifted with it.
+
+The struct is read-only in the port, so this served wrong data rather than
+corrupting the component. Had anything written through it, positions would have
+been written into a rotation quaternion.
+
+Verified after the fix:
+
+    Position (262.430, 0.643, 208.435)  == Osiris
+    Scale    (1.000, 1.000, 1.000)
+    Rotation (0.000, 0.999, 0.000, -0.045), |q| = 1.0000
+
+The quaternion norm is an independent check: a misplaced offset does not produce
+a unit-norm 4-vector.
+
+### Why this matters beyond one struct
+
+`generated_property_defs.h` covers 519 component layouts whose field offsets are
+generated from Windows x64 headers, and the file's own header says sizes are
+"Windows x64 estimates (may differ on ARM64)". A wrong offset there does not
+fail loudly — it returns plausible-looking floats, exactly as this one did.
+`Ext.Entity.DebugDumpComponentFloats(entity, componentName, count)` was added as
+a read-only way to check any offset against a value obtained independently.
+
+Note the direction of the error here: the Windows reference was correct and the
+port's hand-written override was wrong.
