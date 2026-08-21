@@ -2117,7 +2117,15 @@ static int osi_dynamic_call(lua_State *L) {
     // Look up function ID (native Osiris function)
     uint32_t funcId = osi_func_lookup_id(funcName);
     if (funcId == INVALID_FUNCTION_ID) {
-        // Function not yet discovered - return nil gracefully
+        // A miss usually means the cache is stale, not that the function is
+        // absent: enumeration is latched one-shot and fires as soon as the
+        // function manager exists, which is before the story loads. Refresh
+        // (rate-limited) and retry before giving up.
+        if (osi_func_refresh_if_stale()) {
+            funcId = osi_func_lookup_id(funcName);
+        }
+    }
+    if (funcId == INVALID_FUNCTION_ID) {
         LOG_OSIRIS_DEBUG("Osi.%s: Function not found in cache (not yet discovered)", funcName);
         lua_pushnil(L);
         return 1;

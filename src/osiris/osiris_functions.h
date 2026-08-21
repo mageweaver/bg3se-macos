@@ -83,6 +83,15 @@ void osi_func_enumerate(void);
 void osi_func_enumerate_by_name(void);
 
 /**
+ * Re-run enumeration after a cache miss, rate-limited.
+ *
+ * The initial enumeration is latched and runs before the story loads, so
+ * functions registered later never appear. Call this on a miss before
+ * concluding a function does not exist. Returns true if new functions appeared.
+ */
+bool osi_func_refresh_if_stale(void);
+
+/**
  * Database registry (databases have OsiFunctionId==0 and cannot be id-cached).
  * osi_db_register: name -> COsiFunctionData* (returns 1 if newly added).
  * osi_db_lookup: returns the COsiFunctionData* for a DB name, or NULL.

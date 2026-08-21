@@ -5,6 +5,7 @@
 #include "osiris_functions.h"
 #include "logging.h"
 #include "safe_memory.h"
+#include "timer.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -333,13 +334,13 @@ void osi_func_cache(const char *name, uint32_t funcId, uint8_t arity, uint8_t ty
 
     // Add to ID hash table (simple - just store first match at hash location)
     if (g_funcIdHashTable[hash] < 0) {
-        g_funcIdHashTable[hash] = (int16_t)g_funcCacheCount;
+        g_funcIdHashTable[hash] = (int32_t)g_funcCacheCount;
     }
 
     // Add to name hash table for O(1) name→index lookups
     int nameHash = func_name_hash(cf->name);
     if (g_funcNameHashTable[nameHash] < 0) {
-        g_funcNameHashTable[nameHash] = (int16_t)g_funcCacheCount;
+        g_funcNameHashTable[nameHash] = (int32_t)g_funcCacheCount;
     }
 
     g_funcCacheCount++;
@@ -684,6 +685,12 @@ void osi_func_enumerate_by_name(void) {
     void *stack[OSI_WALK_STACK];
     int found = 0;
     int totalVisits = 0;
+    int dbWithIds = 0;   /* databases carrying a callable OsiFunctionId */
+    /* Histogram of the byte read as Type. A previous run classified all 7869
+     * visited defs as DATABASE, which cannot be right -- procs, queries and
+     * calls all exist -- so record the distribution to confirm def+0x24 is
+     * actually the Type field and not a constant. */
+    int typeHist[256] = {0};
 
     for (int b = 0; b < OSI_NAME_BUCKETS; b++) {
         mach_vm_address_t bucket = (mach_vm_address_t)manager +
@@ -704,12 +711,28 @@ void osi_func_enumerate_by_name(void) {
             if (safe_memory_read_pointer((mach_vm_address_t)node + OSI_NODE_VALUE, &def) && def) {
                 uint8_t ftype = 0;
                 safe_memory_read_u8((mach_vm_address_t)def + 0x24, &ftype);  /* Type @ def+0x24 */
+                typeHist[ftype]++;
                 if (ftype == OSI_FUNC_DATABASE) {
-                    /* Databases have OsiFunctionId==0 (not id-cacheable); register
-                     * name -> def so the Facts reader can resolve them. */
+                    /* Register name -> def so the Facts reader can resolve them. */
                     const char *dbName = extract_func_name_from_def(def);
                     if (osi_db_register(dbName, def)) {
                         found++;
+                    }
+                    /* A database is also a callable proc: Osi.DB_Foo(a,b) inserts
+                     * a fact. Osi.DB_* routes through osi_dynamic_call, which only
+                     * searches the *function* cache -- so registering as a DB alone
+                     * makes reads work while every insert reports "not yet
+                     * discovered". This branch previously assumed databases carry
+                     * OsiFunctionId==0 and skipped caching entirely; test that
+                     * rather than assume it, and cache whenever an id is present. */
+                    uint32_t dbOsiId = 0;
+                    if (safe_memory_read_u32((mach_vm_address_t)def + 0x38, &dbOsiId) &&
+                        dbOsiId != 0) {
+                        dbWithIds++;
+                        if (osi_func_get_name(dbOsiId) == NULL &&
+                            osi_func_cache_def(def, dbOsiId)) {
+                            found++;
+                        }
                     }
                 } else {
                     uint32_t osiId = 0;
@@ -744,8 +767,24 @@ void osi_func_enumerate_by_name(void) {
     #undef OSI_MAX_VISITS
 
     LOG_OSIRIS_INFO("Name-index enumeration: %d new entries (%d visits); "
-                    "databases registered=%d, DB_Players %s", found, totalVisits,
-                    osi_db_count(), osi_db_lookup("DB_Players") ? "FOUND" : "missing");
+                    "databases registered=%d (%d callable), DB_Players %s",
+                    found, totalVisits, osi_db_count(), dbWithIds,
+                    osi_db_lookup("DB_Players") ? "FOUND" : "missing");
+
+    {
+        char hist[256];
+        int n = 0;
+        for (int t = 0; t < 256 && n < (int)sizeof(hist) - 16; t++) {
+            if (typeHist[t]) {
+                n += snprintf(hist + n, sizeof(hist) - (size_t)n, "%s%d:%d",
+                              n ? " " : "", t, typeHist[t]);
+            }
+        }
+        hist[n] = 0;
+        LOG_OSIRIS_INFO("Osiris def Type histogram (def+0x24) = [%s] "
+                        "(DATABASE=%d); a single bucket means the offset is wrong.",
+                        hist, OSI_FUNC_DATABASE);
+    }
 }
 
 // ============================================================================
@@ -764,7 +803,7 @@ const char *osi_func_get_name(uint32_t funcId) {
 
     // Check hash table (fast path for dynamic cache)
     int hash = func_id_hash(funcId);
-    int16_t idx = g_funcIdHashTable[hash];
+    int32_t idx = g_funcIdHashTable[hash];
     if (idx >= 0 && g_funcCache[idx].id == funcId) {
         return g_funcCache[idx].name;
     }
@@ -777,6 +816,51 @@ const char *osi_func_get_name(uint32_t funcId) {
     }
 
     return NULL;
+}
+
+/*
+ * Re-enumerate when a lookup misses, rate-limited.
+ *
+ * Enumeration is latched one-shot at both call sites and fires as soon as the
+ * function manager exists — which is long before the story loads. On a real
+ * session that captured only 1303 functions, so stock functions
+ * (DialogGetSpeaker) and mod procs (PROC_GLO_PartyMembers_Add,
+ * DB_GLO_PartyMembers_DefaultFaction) reported "not yet discovered" forever and
+ * mod recruitment flows failed.
+ *
+ * Rather than guess which load event is the right one to hook, treat a miss as
+ * the signal that the cache is stale. Enumeration is idempotent — osi_func_cache
+ * dedups by id and cached ids are skipped — so re-running is safe. Rate-limited
+ * because a full pass probes tens of thousands of ids and must not run per-call.
+ *
+ * Returns true if a refresh actually ran.
+ */
+static uint64_t s_lastRefreshMs = 0;
+static int s_refreshCount = 0;
+#define OSI_REFRESH_MIN_INTERVAL_MS 5000
+#define OSI_REFRESH_MAX_ATTEMPTS    12
+
+bool osi_func_refresh_if_stale(void) {
+    if (s_refreshCount >= OSI_REFRESH_MAX_ATTEMPTS) return false;
+
+    uint64_t now = (uint64_t)timer_get_monotonic_ms();
+    if (s_lastRefreshMs != 0 &&
+        (now - s_lastRefreshMs) < OSI_REFRESH_MIN_INTERVAL_MS) {
+        return false;
+    }
+    s_lastRefreshMs = now;
+    s_refreshCount++;
+
+    int before = g_funcCacheCount;
+    osi_func_enumerate();
+    osi_func_enumerate_by_name();
+    int gained = g_funcCacheCount - before;
+
+    LOG_OSIRIS_INFO("Cache refresh #%d after a lookup miss: %d -> %d functions "
+                    "(+%d). Initial enumeration runs before the story loads, so "
+                    "late-registered functions only appear on a refresh.",
+                    s_refreshCount, before, g_funcCacheCount, gained);
+    return gained > 0;
 }
 
 uint32_t osi_func_lookup_id(const char *name) {
