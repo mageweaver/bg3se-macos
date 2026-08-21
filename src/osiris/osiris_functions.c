@@ -563,6 +563,27 @@ void osi_func_enumerate(void) {
     }
 }
 
+/* Compute the dispatch handle for a def from Key[4] at def+0x28.
+ *
+ * OsiFunctionId (def+0x38) is only populated for *native* DIV functions -- the
+ * ~1300 the id probe finds. Story-defined procs, user queries and databases
+ * carry 0 there, which is why gating on it cached none of the 12k+ non-database
+ * defs in the name index and left every story function "not yet discovered".
+ *
+ * The id is not what dispatch uses anyway: osi_dynamic_call passes funcId
+ * straight through as the handle, and that works precisely because for native
+ * functions the encoded handle equals the id (GetHostCharacter: Key={2,0,113,1}
+ * -> 0x8000038A == funcId). So derive the handle from Key[4] and key the cache
+ * on it; native entries land on the same value they already had.
+ *
+ * Returns 0 if Key[0] is not a valid function type. */
+static uint32_t osi_func_handle_from_def(void *funcDef) {
+    uint32_t keys[4] = {0};
+    if (!safe_memory_read((mach_vm_address_t)funcDef + 0x28, keys, sizeof(keys))) return 0;
+    if (keys[0] < OSI_FUNC_EVENT || keys[0] > OSI_FUNC_USERQUERY) return 0;
+    return osi_encode_handle(keys[0], keys[1], keys[2], keys[3]);
+}
+
 /* Extract name/arity/type/handle from a resolved OsiFunctionData* and cache it
  * under funcId. Self-contained (mirrors the extraction in osi_func_cache_by_id)
  * so the name-index walk can cache defs it already holds without re-probing by
@@ -718,29 +739,19 @@ void osi_func_enumerate_by_name(void) {
                     if (osi_db_register(dbName, def)) {
                         found++;
                     }
-                    /* A database is also a callable proc: Osi.DB_Foo(a,b) inserts
-                     * a fact. Osi.DB_* routes through osi_dynamic_call, which only
-                     * searches the *function* cache -- so registering as a DB alone
-                     * makes reads work while every insert reports "not yet
-                     * discovered". This branch previously assumed databases carry
-                     * OsiFunctionId==0 and skipped caching entirely; test that
-                     * rather than assume it, and cache whenever an id is present. */
-                    uint32_t dbOsiId = 0;
-                    if (safe_memory_read_u32((mach_vm_address_t)def + 0x38, &dbOsiId) &&
-                        dbOsiId != 0) {
-                        dbWithIds++;
-                        if (osi_func_get_name(dbOsiId) == NULL &&
-                            osi_func_cache_def(def, dbOsiId)) {
-                            found++;
-                        }
-                    }
-                } else {
-                    uint32_t osiId = 0;
-                    /* OsiFunctionId at def+0x38 (same field the id path caches under). */
-                    if (safe_memory_read_u32((mach_vm_address_t)def + 0x38, &osiId) && osiId != 0) {
-                        if (osi_func_get_name(osiId) == NULL && osi_func_cache_def(def, osiId)) {
-                            found++;
-                        }
+                }
+
+                /* Cache every def -- database or not -- under its dispatch
+                 * handle. A database is callable too: Osi.DB_Foo(a,b) inserts a
+                 * fact and routes through osi_dynamic_call, which searches only
+                 * the function cache, so registering it as a DB alone made reads
+                 * work while every insert failed. */
+                uint32_t handle = osi_func_handle_from_def(def);
+                if (handle != 0) {
+                    if (ftype == OSI_FUNC_DATABASE) dbWithIds++;
+                    if (osi_func_get_name(handle) == NULL &&
+                        osi_func_cache_def(def, handle)) {
+                        found++;
                     }
                 }
             }
