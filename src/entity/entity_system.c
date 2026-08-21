@@ -2696,6 +2696,14 @@ static int lua_entity_init_component_registry(lua_State *L) {
  * be located in memory, which identifies the true offset instead of trusting
  * the estimate.
  */
+/* Ext.Entity.DebugReplicationInfo() -> dumps SyncBuffers structure to the log */
+static int lua_entity_debug_replication_info(lua_State *L) {
+    void *w = entity_get_world_for_context(true);
+    replication_flags_debug_dump(w);
+    lua_pushboolean(L, w != NULL);
+    return 1;
+}
+
 static int lua_entity_debug_dump_component_floats(lua_State *L) {
     EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
     const char *name = luaL_checkstring(L, 2);
@@ -3527,6 +3535,9 @@ void entity_register_lua(lua_State *L) {
 
     lua_pushcfunction(L, lua_entity_init_component_registry);
     lua_setfield(L, -2, "InitComponentRegistry");
+
+    lua_pushcfunction(L, lua_entity_debug_replication_info);
+    lua_setfield(L, -2, "DebugReplicationInfo");
 
     lua_pushcfunction(L, lua_entity_debug_dump_component_floats);
     lua_setfield(L, -2, "DebugDumpComponentFloats");

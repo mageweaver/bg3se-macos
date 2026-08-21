@@ -25,6 +25,9 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
  * both cases would require mutating engine-owned container storage, which is
  * not attempted. out_changed reports whether any bit actually flipped.
  */
+/** Read-only structural dump of SyncBuffers and its pools (diagnostic). */
+void replication_flags_debug_dump(void *entity_world);
+
 bool replication_flags_set(void *entity_world, uint64_t entity_handle,
                            const char *component_name, uint32_t qword,
                            uint64_t flags, bool *out_changed);

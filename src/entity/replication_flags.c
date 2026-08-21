@@ -11,6 +11,7 @@
 #include "generated_typeids.h"
 
 #include "../core/safe_memory.h"
+#include "../core/logging.h"
 #include "../core/version_detect.h"
 
 #include <limits.h>
@@ -394,3 +395,56 @@ bool replication_flags_set(void *entity_world, uint64_t entity_handle,
     }
     return true;
 }
+
+/*
+ * Read-only structural dump of the replication tables.
+ *
+ * Added 2026-08-20: with a real remote peer connected and replication visibly
+ * working, replication_flags_get returned 0 for every entity and every type,
+ * which means the walk is landing somewhere wrong rather than the pools being
+ * empty. This reports each step so the break point is visible instead of
+ * inferred.
+ */
+void replication_flags_debug_dump(void *entity_world) {
+    if (!entity_world) {
+        log_message("[Replication] dump: no entity world");
+        return;
+    }
+
+    void *sync_ptr = NULL;
+    if (!read_pointer_at((uintptr_t)entity_world, 0, &sync_ptr) || !sync_ptr) {
+        log_message("[Replication] dump: EntityWorld+0 (SyncBuffers) is NULL");
+        return;
+    }
+    uintptr_t sync = (uintptr_t)sync_ptr;
+
+    void *pools_ptr = NULL;
+    int32_t pool_capacity = 0, pool_count = 0;
+    read_pointer_at(sync, SYNC_POOLS_OFFSET, &pools_ptr);
+    read_i32_at(sync, SYNC_POOL_CAPACITY_OFFSET, &pool_capacity);
+    read_i32_at(sync, SYNC_POOL_COUNT_OFFSET, &pool_count);
+    uint8_t dirty = 0;
+    safe_memory_read_u8((mach_vm_address_t)(sync + 0x10), &dirty);
+
+    log_message("[Replication] SyncBuffers=%p pools=%p capacity=%d count=%d dirty=%u",
+                (void *)sync, pools_ptr, pool_capacity, pool_count, dirty);
+
+    if (!pools_ptr || pool_count <= 0 || pool_count > 4096) return;
+
+    /* Report every pool that actually holds entries, not just the ones we have
+     * ReplicatedTypeContext globals for. */
+    int populated = 0;
+    for (int i = 0; i < pool_count; i++) {
+        uintptr_t pool = (uintptr_t)pools_ptr + (uintptr_t)i * REPLICATION_POOL_STRIDE;
+        int32_t key_count = 0;
+        if (!read_i32_at(pool, MAP_KEY_COUNT_OFFSET, &key_count)) continue;
+        if (key_count > 0 && key_count < 100000) {
+            populated++;
+            if (populated <= 12) {
+                log_message("[Replication]   pool[%d]: %d entities", i, key_count);
+            }
+        }
+    }
+    log_message("[Replication] populated pools: %d of %d", populated, pool_count);
+}
+
