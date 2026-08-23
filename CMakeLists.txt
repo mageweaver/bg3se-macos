@@ -250,6 +250,10 @@ add_library(bg3se SHARED
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
+    # Ext.IMGUI.EnableDemo(true) calls ImGui::ShowDemoWindow. Leaving this out
+    # left the symbol unbound (-undefined dynamic_lookup) so the call jumped to
+    # address 0 - the same failure as lua_imgui_fire_event.
+    ${IMGUI_DIR}/imgui_demo.cpp
     # ImGui backends
     ${IMGUI_DIR}/backends/imgui_impl_metal.mm
     ${IMGUI_DIR}/backends/imgui_impl_osx.mm
