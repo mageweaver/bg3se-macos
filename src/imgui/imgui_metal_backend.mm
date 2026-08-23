@@ -331,15 +331,46 @@ static struct {
 } s_pendingPresents[IMGUI_PENDING_PRESENTS];
 static pthread_mutex_t s_pendingMutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Why a frame did or did not reach the screen. Sampled into the log so a single
+// session answers it, instead of one launch per hypothesis.
+static struct {
+    uint64_t commits;       // hooked_commit entered
+    uint64_t recorded;      // presentDrawable: seen
+    uint64_t table_full;    // present dropped, no free slot
+    uint64_t matched;       // commit found this buffer's drawable
+    uint64_t skip_state;    // backend not ready / nothing visible
+    uint64_t skip_layer;    // drawable belongs to a foreign layer
+    uint64_t skip_texture;  // drawable texture already gone
+    uint64_t rendered;
+} s_diag;
+
+static void imgui_metal_log_diag(void) {
+    LOG_IMGUI_INFO("overlay: commits=%llu presents=%llu matched=%llu rendered=%llu "
+                   "| skipped state=%llu layer=%llu texture=%llu | table_full=%llu",
+                   s_diag.commits, s_diag.recorded, s_diag.matched, s_diag.rendered,
+                   s_diag.skip_state, s_diag.skip_layer, s_diag.skip_texture,
+                   s_diag.table_full);
+}
+
 static void imgui_metal_record_present(id commandBuffer, id<CAMetalDrawable> drawable) {
     pthread_mutex_lock(&s_pendingMutex);
+    s_diag.recorded++;
+    bool stored = false;
     for (int i = 0; i < IMGUI_PENDING_PRESENTS; i++) {
         if (s_pendingPresents[i].commandBuffer == nil ||
             s_pendingPresents[i].commandBuffer == commandBuffer) {
             s_pendingPresents[i].commandBuffer = commandBuffer;
             s_pendingPresents[i].drawable = drawable;
+            stored = true;
             break;
         }
+    }
+    if (!stored) {
+        // Every slot holds a buffer that never came back through commit. Drop
+        // the oldest rather than going permanently deaf.
+        s_diag.table_full++;
+        s_pendingPresents[0].commandBuffer = commandBuffer;
+        s_pendingPresents[0].drawable = drawable;
     }
     pthread_mutex_unlock(&s_pendingMutex);
 }
@@ -464,8 +495,35 @@ static bool imgui_input_capture_active(void) {
 // into. During cutscenes/movies and other transitions the game presents
 // drawables from a different CAMetalLayer; rendering our ImGui pass
 // (sized/formatted for the main layer) into those causes a GPU fault.
+// The layer the game presents through is not fixed for the life of the process.
+// s_state.gameLayer is captured on the first drawable we ever see, and when a
+// mod window brings the backend up during the intro movie that is the MOVIE's
+// layer. Latching it meant every post-movie drawable looked foreign and the
+// overlay silently stopped rendering for the rest of the session.
+//
+// So treat the cached layer as a fast path only, and on a mismatch re-resolve
+// by asking whether any app window is presenting through this layer. If one is,
+// that is the game layer now.
 static bool imgui_metal_drawable_is_game_layer(id<CAMetalDrawable> drawable) {
-    return s_state.gameLayer == nil || drawable.layer == s_state.gameLayer;
+    CAMetalLayer *layer = drawable.layer;
+    if (!layer) return false;
+
+    if (s_state.gameLayer != nil && layer == s_state.gameLayer) return true;
+
+    for (NSWindow *window in [NSApp windows]) {
+        NSView *contentView = [window contentView];
+        if (contentView && (CALayer *)layer == [contentView layer]) {
+            if (s_state.gameLayer != layer) {
+                LOG_IMGUI_INFO("Game layer changed (window '%s'); overlay follows it",
+                               [[window title] UTF8String]);
+            }
+            s_state.gameLayer = layer;
+            s_state.gameWindow = window;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool imgui_metal_should_render(void) {
@@ -541,10 +599,22 @@ static void hooked_presentDrawableOptions(id self, SEL _cmd,
 static void hooked_commit(id self, SEL _cmd) {
     id<CAMetalDrawable> drawable = imgui_metal_take_present(self);
 
-    if (drawable && drawable.texture && imgui_metal_should_render() &&
-        imgui_metal_drawable_is_game_layer(drawable)) {
-        imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
+    s_diag.commits++;
+    if (drawable) {
+        s_diag.matched++;
+        if (!imgui_metal_should_render()) {
+            s_diag.skip_state++;
+        } else if (!drawable.texture) {
+            s_diag.skip_texture++;
+        } else if (!imgui_metal_drawable_is_game_layer(drawable)) {
+            s_diag.skip_layer++;
+        } else {
+            s_diag.rendered++;
+            imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
+        }
     }
+
+    if ((s_diag.commits % 600) == 0) imgui_metal_log_diag();
 
     if (s_original_commit) {
         ((void(*)(id, SEL))s_original_commit)(self, _cmd);
