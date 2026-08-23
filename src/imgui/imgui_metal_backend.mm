@@ -274,6 +274,7 @@ static void imgui_metal_render_frame(id<CAMetalDrawable> drawable,
 static id<CAMetalDrawable> hooked_nextDrawable(id self, SEL _cmd);
 static void hooked_present(id self, SEL _cmd);
 static void install_command_buffer_hook(void);
+static void hooked_commit(id self, SEL _cmd);
 
 // ============================================================================
 // Present Hook State (declared early for use in remove_layer_hook)
@@ -289,7 +290,36 @@ static bool s_presentHooked = false;
 static IMP s_original_presentDrawable = NULL;
 static IMP s_original_presentDrawableOptions = NULL;
 static IMP s_original_commit = NULL;
+static Class s_commitClass = nil;
 static bool s_cmdBufHooked = false;
+static bool s_commitHooked = false;
+
+// Swizzle a selector only where the class implements it ITSELF.
+//
+// class_getInstanceMethod walks up to the first superclass that implements the
+// selector, and patching that Method replaces the SUPERCLASS implementation.
+// For -commit that put our hook underneath AGXG16XFamilyCommandBuffer's own
+// commit (which calls super), so we ran after AGX had already started
+// committing the buffer and crashed binding a render target it had let go.
+static bool swizzle_own_method(Class cls, SEL sel, IMP newImp, IMP *outOriginal) {
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
+    if (!methods) return false;
+
+    Method own = NULL;
+    for (unsigned int i = 0; i < count; i++) {
+        if (method_getName(methods[i]) == sel) {
+            own = methods[i];
+            break;
+        }
+    }
+    free(methods);
+    if (!own) return false;
+
+    if (outOriginal) *outOriginal = method_getImplementation(own);
+    method_setImplementation(own, newImp);
+    return true;
+}
 
 // presentDrawable: records which drawable a command buffer will present; the
 // encode happens later, in commit. Several buffers can be in flight, so keep a
@@ -464,8 +494,32 @@ static bool imgui_metal_should_render(void) {
 // the next frame. Running ImGui and a second command queue there raced the
 // engine's own encoding and segfaulted it inside
 // renderCommandEncoderWithDescriptor:.
+// Arm -commit on the concrete command buffer class the engine actually uses.
+// Only reachable from a live buffer, which is why it is done here rather than
+// in install_command_buffer_hook.
+static void arm_commit_hook_for(id commandBuffer) {
+    if (s_commitHooked) return;
+
+    for (Class cls = object_getClass(commandBuffer); cls; cls = class_getSuperclass(cls)) {
+        if (swizzle_own_method(cls, @selector(commit), (IMP)hooked_commit,
+                               &s_original_commit)) {
+            s_commitClass = cls;
+            s_commitHooked = true;
+            LOG_IMGUI_INFO("Hooked -commit on %s (overlay encodes here)",
+                           class_getName(cls));
+            return;
+        }
+    }
+
+    LOG_IMGUI_WARN("No -commit implementation found on the command buffer class "
+                   "chain; overlay will not render");
+}
+
 static void hooked_presentDrawable(id self, SEL _cmd, id<CAMetalDrawable> drawable) {
-    if (drawable) imgui_metal_record_present(self, drawable);
+    if (drawable) {
+        arm_commit_hook_for(self);
+        imgui_metal_record_present(self, drawable);
+    }
     if (s_original_presentDrawable) {
         ((void(*)(id, SEL, id))s_original_presentDrawable)(self, _cmd, drawable);
     }
@@ -474,7 +528,10 @@ static void hooked_presentDrawable(id self, SEL _cmd, id<CAMetalDrawable> drawab
 static void hooked_presentDrawableOptions(id self, SEL _cmd,
                                           id<CAMetalDrawable> drawable,
                                           NSUInteger options) {
-    if (drawable) imgui_metal_record_present(self, drawable);
+    if (drawable) {
+        arm_commit_hook_for(self);
+        imgui_metal_record_present(self, drawable);
+    }
     if (s_original_presentDrawableOptions) {
         ((void(*)(id, SEL, id, NSUInteger))s_original_presentDrawableOptions)(
             self, _cmd, drawable, options);
@@ -484,7 +541,7 @@ static void hooked_presentDrawableOptions(id self, SEL _cmd,
 static void hooked_commit(id self, SEL _cmd) {
     id<CAMetalDrawable> drawable = imgui_metal_take_present(self);
 
-    if (drawable && imgui_metal_should_render() &&
+    if (drawable && drawable.texture && imgui_metal_should_render() &&
         imgui_metal_drawable_is_game_layer(drawable)) {
         imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
     }
@@ -524,30 +581,9 @@ static void install_command_buffer_hook(void) {
         return;
     }
 
-    Method mc = class_getInstanceMethod(cls, @selector(commit));
-    if (!mc) {
-        // Without commit we have no legal encode point; undo the present hooks
-        // so the drawable fallback stays in charge.
-        if (s_original_presentDrawable) {
-            Method m2 = class_getInstanceMethod(cls, @selector(presentDrawable:));
-            if (m2) method_setImplementation(m2, s_original_presentDrawable);
-            s_original_presentDrawable = NULL;
-        }
-        if (s_original_presentDrawableOptions) {
-            Method m3 = class_getInstanceMethod(cls, @selector(presentDrawable:options:));
-            if (m3) method_setImplementation(m3, s_original_presentDrawableOptions);
-            s_original_presentDrawableOptions = NULL;
-        }
-        LOG_IMGUI_WARN("No commit method on _MTLCommandBuffer; ImGui falls back "
-                       "to the drawable present hook");
-        return;
-    }
-    s_original_commit = method_getImplementation(mc);
-    method_setImplementation(mc, (IMP)hooked_commit);
-
     s_cmdBufHooked = true;
-    LOG_IMGUI_INFO("Hooked presentDrawable:/commit on _MTLCommandBuffer "
-                   "(render-thread ImGui path active)");
+    LOG_IMGUI_INFO("Hooked presentDrawable: on _MTLCommandBuffer; -commit arms "
+                   "on the first frame (render-thread ImGui path active)");
 }
 
 static void hooked_present(id self, SEL _cmd) {
@@ -1723,15 +1759,18 @@ static void remove_command_buffer_hook(void) {
             Method mo = class_getInstanceMethod(cls, @selector(presentDrawable:options:));
             if (mo) method_setImplementation(mo, s_original_presentDrawableOptions);
         }
-        if (s_original_commit) {
-            Method mc = class_getInstanceMethod(cls, @selector(commit));
-            if (mc) method_setImplementation(mc, s_original_commit);
-        }
+    }
+
+    if (s_commitHooked && s_commitClass && s_original_commit) {
+        IMP unused = NULL;
+        swizzle_own_method(s_commitClass, @selector(commit), s_original_commit, &unused);
     }
 
     s_original_presentDrawable = NULL;
     s_original_presentDrawableOptions = NULL;
     s_original_commit = NULL;
+    s_commitClass = nil;
+    s_commitHooked = false;
     s_cmdBufHooked = false;
 }
 
