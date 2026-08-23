@@ -1557,7 +1557,7 @@ static void render_window(ImguiObject *win) {
 
     // Handle window close event (X button set data.window.open = false).
     // Keep .Visible in sync so the window actually disappears and MCM's OnClose
-    // handler sees a consistent state; re-opening happens via the .Visible setter.
+    // handler sees a consistent state. Either setter reopens it.
     if (p_open && !win->data.window.open) {
         win->styled.visible = false;
         LOG_IMGUI_DEBUG("Window '%s' closed", win->styled.label);

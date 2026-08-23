@@ -587,7 +587,15 @@ static int imgui_window_newindex(lua_State *L) {
 
     // Window-specific properties
     if (strcmp(key, "Open") == 0) {
-        obj->data.window.open = lua_toboolean(L, 3);
+        // .Open and .Visible are one state for a window. Closing it (X button
+        // or ESC) clears both; mods reopen it with either one, so setting
+        // either has to restore both. MCM uses .Open, and when this only set
+        // data.window.open the window stayed invisible forever - and because
+        // the backend renders nothing while no window is visible, the whole
+        // overlay went dark with it.
+        bool open = lua_toboolean(L, 3);
+        obj->data.window.open = open;
+        obj->styled.visible = open;
         return 0;
     }
     if (strcmp(key, "Closeable") == 0) {
@@ -605,12 +613,10 @@ static int imgui_window_newindex(lua_State *L) {
 
     // Common styled properties
     if (strcmp(key, "Visible") == 0) {
+        // Mirror of the .Open setter above - see the note there.
         bool vis = lua_toboolean(L, 3);
         obj->styled.visible = vis;
-        // Re-open a window closed via its X button: the close sets
-        // data.window.open = false, which would otherwise keep it hidden even
-        // after .Visible is set true again (e.g. MCM's Open button).
-        if (vis) obj->data.window.open = true;
+        obj->data.window.open = vis;
         return 0;
     }
     if (strcmp(key, "SameLine") == 0) {
