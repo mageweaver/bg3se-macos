@@ -21,11 +21,40 @@ static void warn_once(const char *func) {
 }
 
 /**
- * Ext.UI.GetRoot() -> nil
+ * Any method call on a Noesis stub widget: returns nil.
+ */
+static int lua_ui_stub_method(lua_State *L) {
+    lua_pushnil(L);
+    return 1;
+}
+
+/**
+ * __index for the stub widget: every field resolves to a function returning
+ * nil, so arbitrary Noesis chains stay callable.
+ */
+static int lua_ui_stub_index(lua_State *L) {
+    lua_pushcfunction(L, lua_ui_stub_method);
+    return 1;
+}
+
+/**
+ * Ext.UI.GetRoot() -> inert widget stub (never nil)
+ *
+ * Returning nil here broke MCM: Noesis.lua does
+ *     Ext.UI.GetRoot():Find("ContentRoot")
+ * in one call with no nil check, so a nil root raised "attempt to index a nil
+ * value" out of its KeyInput handler and took the keybinding path down with
+ * it. MCM does check the RESULT of Find, so an object whose every method
+ * returns nil degrades exactly the way MCM expects.
  */
 static int lua_ui_get_root(lua_State *L) {
     warn_once("GetRoot");
-    lua_pushnil(L);
+
+    lua_newtable(L);
+    lua_newtable(L);
+    lua_pushcfunction(L, lua_ui_stub_index);
+    lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, -2);
     return 1;
 }
 

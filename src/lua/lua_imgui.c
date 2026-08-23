@@ -594,6 +594,12 @@ static int imgui_window_newindex(lua_State *L) {
         // the backend renders nothing while no window is visible, the whole
         // overlay went dark with it.
         bool open = lua_toboolean(L, 3);
+        if (obj->data.window.open != open || obj->styled.visible != open) {
+            LOG_IMGUI_INFO("window '%s' .Open = %d (was open=%d visible=%d)",
+                           obj->styled.label, open ? 1 : 0,
+                           obj->data.window.open ? 1 : 0,
+                           obj->styled.visible ? 1 : 0);
+        }
         obj->data.window.open = open;
         obj->styled.visible = open;
         return 0;
@@ -615,6 +621,12 @@ static int imgui_window_newindex(lua_State *L) {
     if (strcmp(key, "Visible") == 0) {
         // Mirror of the .Open setter above - see the note there.
         bool vis = lua_toboolean(L, 3);
+        if (obj->styled.visible != vis || obj->data.window.open != vis) {
+            LOG_IMGUI_INFO("window '%s' .Visible = %d (was open=%d visible=%d)",
+                           obj->styled.label, vis ? 1 : 0,
+                           obj->data.window.open ? 1 : 0,
+                           obj->styled.visible ? 1 : 0);
+        }
         obj->styled.visible = vis;
         obj->data.window.open = vis;
         return 0;

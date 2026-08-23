@@ -740,6 +740,18 @@ void events_fire_key_input(lua_State *L, int keyCode, bool pressed, int modifier
             }
             lua_setfield(L, -2, "Character");
 
+            // Key delivery is the whole keybinding path (MCM's window toggle
+            // among them), and silence here is indistinguishable from "no key
+            // was pressed". Log the first ones so a session shows whether keys
+            // reach Lua at all, then fall quiet.
+            static int s_keyLogged = 0;
+            if (s_keyLogged < 40) {
+                s_keyLogged++;
+                LOG_EVENTS_INFO("KeyInput -> %s (key=%s pressed=%d code=%d) handler=%llu",
+                                h->mod_name, macos_keycode_to_sdl_name(keyCode), pressed ? 1 : 0,
+                                keyCode, (unsigned long long)h->handler_id);
+            }
+
             if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
                 const char *err = lua_tostring(L, -1);
                 LOG_EVENTS_ERROR("KeyInput handler %llu (mod=%s) error: %s",
