@@ -344,12 +344,33 @@ static struct {
     uint64_t rendered;
 } s_diag;
 
+static bool imgui_metal_has_visible_window(void);
+
+// Records why the answer was "no", so a dark overlay names its own cause
+// instead of costing a launch per hypothesis.
+static struct {
+    uint64_t lock_fail;     // pool lock was held; we never even looked
+    uint64_t no_windows;    // pool has no window objects
+    uint64_t all_hidden;    // windows exist but none reports visible
+    int last_window_count;
+    int last_visible;       // flags of window 0 the last time we looked
+    int last_open;
+} s_visDiag;
+
 static void imgui_metal_log_diag(void) {
     LOG_IMGUI_INFO("overlay: commits=%llu presents=%llu matched=%llu rendered=%llu "
                    "| skipped state=%llu layer=%llu texture=%llu | table_full=%llu",
                    s_diag.commits, s_diag.recorded, s_diag.matched, s_diag.rendered,
                    s_diag.skip_state, s_diag.skip_layer, s_diag.skip_texture,
                    s_diag.table_full);
+    LOG_IMGUI_INFO("overlay: visible=%d (backend_visible=%d state=%d) "
+                   "| no: lock=%llu none=%llu hidden=%llu "
+                   "| windows=%d window0 visible=%d open=%d",
+                   imgui_metal_has_visible_window() ? 1 : 0,
+                   s_state.visible ? 1 : 0, (int)s_state.state,
+                   s_visDiag.lock_fail, s_visDiag.no_windows, s_visDiag.all_hidden,
+                   s_visDiag.last_window_count, s_visDiag.last_visible,
+                   s_visDiag.last_open);
 }
 
 static void imgui_metal_record_present(id commandBuffer, id<CAMetalDrawable> drawable) {
@@ -451,18 +472,32 @@ static void remove_layer_hook(void) {
 // contention we report "no window" for one poll, which only delays input
 // capture by a frame.
 static bool imgui_metal_has_visible_window(void) {
-    if (!imgui_objects_trylock()) return false;
+    if (!imgui_objects_trylock()) {
+        s_visDiag.lock_fail++;
+        return false;
+    }
     bool found = false;
     int n = 0;
     ImguiHandle *w = imgui_get_all_windows(&n);
+    s_visDiag.last_window_count = n;
     for (int i = 0; w && i < n; i++) {
         ImguiObject *o = imgui_object_get(w[i]);
-        if (o && o->type == IMGUI_OBJ_WINDOW && o->styled.visible) {
+        if (!o || o->type != IMGUI_OBJ_WINDOW) continue;
+        if (i == 0) {
+            s_visDiag.last_visible = o->styled.visible ? 1 : 0;
+            s_visDiag.last_open = o->data.window.open ? 1 : 0;
+        }
+        if (o->styled.visible) {
             found = true;
             break;
         }
     }
     imgui_objects_unlock();
+
+    if (!found) {
+        if (n == 0) s_visDiag.no_windows++;
+        else s_visDiag.all_hidden++;
+    }
     return found;
 }
 
