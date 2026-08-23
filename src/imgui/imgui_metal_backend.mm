@@ -288,7 +288,46 @@ static bool s_presentHooked = false;
 // nothing, so the overlay is drawn exactly once per frame.
 static IMP s_original_presentDrawable = NULL;
 static IMP s_original_presentDrawableOptions = NULL;
+static IMP s_original_commit = NULL;
 static bool s_cmdBufHooked = false;
+
+// presentDrawable: records which drawable a command buffer will present; the
+// encode happens later, in commit. Several buffers can be in flight, so keep a
+// small table rather than a single slot.
+#define IMGUI_PENDING_PRESENTS 8
+static struct {
+    __unsafe_unretained id commandBuffer;   // identity only, never messaged
+    __unsafe_unretained id<CAMetalDrawable> drawable;
+} s_pendingPresents[IMGUI_PENDING_PRESENTS];
+static pthread_mutex_t s_pendingMutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void imgui_metal_record_present(id commandBuffer, id<CAMetalDrawable> drawable) {
+    pthread_mutex_lock(&s_pendingMutex);
+    for (int i = 0; i < IMGUI_PENDING_PRESENTS; i++) {
+        if (s_pendingPresents[i].commandBuffer == nil ||
+            s_pendingPresents[i].commandBuffer == commandBuffer) {
+            s_pendingPresents[i].commandBuffer = commandBuffer;
+            s_pendingPresents[i].drawable = drawable;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_pendingMutex);
+}
+
+static id<CAMetalDrawable> imgui_metal_take_present(id commandBuffer) {
+    id<CAMetalDrawable> drawable = nil;
+    pthread_mutex_lock(&s_pendingMutex);
+    for (int i = 0; i < IMGUI_PENDING_PRESENTS; i++) {
+        if (s_pendingPresents[i].commandBuffer == commandBuffer) {
+            drawable = s_pendingPresents[i].drawable;
+            s_pendingPresents[i].commandBuffer = nil;
+            s_pendingPresents[i].drawable = nil;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_pendingMutex);
+    return drawable;
+}
 
 // ============================================================================
 // Method Swizzling
@@ -404,10 +443,20 @@ static bool imgui_metal_should_render(void) {
            (s_state.visible || imgui_metal_has_visible_window());
 }
 
-// -[MTLCommandBuffer presentDrawable:] runs on whichever thread submitted the
-// frame - the engine's render thread - with the frame's passes already encoded
-// and the buffer not yet committed. That is the one safe place to append our
-// overlay pass.
+// The overlay is encoded from -[MTLCommandBuffer commit].
+//
+// commit runs on whichever thread submitted the frame - the engine's render
+// thread - and Metal requires every encoder to be ended before it, so this is
+// the only point where we can legally open our own encoder on the game's
+// buffer. presentDrawable: is too early: the engine still has an encoder open
+// there, and AGX aborts the process with
+//   "A command encoder is already encoding to this command buffer".
+// So presentDrawable: only records which drawable this buffer will present.
+//
+// Encoding into the game's buffer (rather than our own queue) is what puts the
+// overlay on top: our pass is the last one in the buffer, and the drawable is
+// presented only once that whole buffer completes. A separate queue cannot get
+// that ordering without an explicit GPU wait.
 //
 // The -[CAMetalDrawable present] hook below cannot do this: Metal defers that
 // call into the command buffer's scheduled handler, so it fires on
@@ -416,10 +465,7 @@ static bool imgui_metal_should_render(void) {
 // engine's own encoding and segfaulted it inside
 // renderCommandEncoderWithDescriptor:.
 static void hooked_presentDrawable(id self, SEL _cmd, id<CAMetalDrawable> drawable) {
-    if (drawable && imgui_metal_should_render() &&
-        imgui_metal_drawable_is_game_layer(drawable)) {
-        imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
-    }
+    if (drawable) imgui_metal_record_present(self, drawable);
     if (s_original_presentDrawable) {
         ((void(*)(id, SEL, id))s_original_presentDrawable)(self, _cmd, drawable);
     }
@@ -428,18 +474,28 @@ static void hooked_presentDrawable(id self, SEL _cmd, id<CAMetalDrawable> drawab
 static void hooked_presentDrawableOptions(id self, SEL _cmd,
                                           id<CAMetalDrawable> drawable,
                                           NSUInteger options) {
-    if (drawable && imgui_metal_should_render() &&
-        imgui_metal_drawable_is_game_layer(drawable)) {
-        imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
-    }
+    if (drawable) imgui_metal_record_present(self, drawable);
     if (s_original_presentDrawableOptions) {
         ((void(*)(id, SEL, id, NSUInteger))s_original_presentDrawableOptions)(
             self, _cmd, drawable, options);
     }
 }
 
-// Swizzle presentDrawable: on _MTLCommandBuffer, the Metal-framework class that
-// implements it for every concrete (AGX*) command buffer subclass.
+static void hooked_commit(id self, SEL _cmd) {
+    id<CAMetalDrawable> drawable = imgui_metal_take_present(self);
+
+    if (drawable && imgui_metal_should_render() &&
+        imgui_metal_drawable_is_game_layer(drawable)) {
+        imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
+    }
+
+    if (s_original_commit) {
+        ((void(*)(id, SEL))s_original_commit)(self, _cmd);
+    }
+}
+
+// Swizzle presentDrawable: and commit on _MTLCommandBuffer, the Metal-framework
+// class that implements them for every concrete (AGX*) command buffer subclass.
 static void install_command_buffer_hook(void) {
     if (s_cmdBufHooked) return;
 
@@ -468,8 +524,29 @@ static void install_command_buffer_hook(void) {
         return;
     }
 
+    Method mc = class_getInstanceMethod(cls, @selector(commit));
+    if (!mc) {
+        // Without commit we have no legal encode point; undo the present hooks
+        // so the drawable fallback stays in charge.
+        if (s_original_presentDrawable) {
+            Method m2 = class_getInstanceMethod(cls, @selector(presentDrawable:));
+            if (m2) method_setImplementation(m2, s_original_presentDrawable);
+            s_original_presentDrawable = NULL;
+        }
+        if (s_original_presentDrawableOptions) {
+            Method m3 = class_getInstanceMethod(cls, @selector(presentDrawable:options:));
+            if (m3) method_setImplementation(m3, s_original_presentDrawableOptions);
+            s_original_presentDrawableOptions = NULL;
+        }
+        LOG_IMGUI_WARN("No commit method on _MTLCommandBuffer; ImGui falls back "
+                       "to the drawable present hook");
+        return;
+    }
+    s_original_commit = method_getImplementation(mc);
+    method_setImplementation(mc, (IMP)hooked_commit);
+
     s_cmdBufHooked = true;
-    LOG_IMGUI_INFO("Hooked presentDrawable: on _MTLCommandBuffer "
+    LOG_IMGUI_INFO("Hooked presentDrawable:/commit on _MTLCommandBuffer "
                    "(render-thread ImGui path active)");
 }
 
@@ -1646,10 +1723,15 @@ static void remove_command_buffer_hook(void) {
             Method mo = class_getInstanceMethod(cls, @selector(presentDrawable:options:));
             if (mo) method_setImplementation(mo, s_original_presentDrawableOptions);
         }
+        if (s_original_commit) {
+            Method mc = class_getInstanceMethod(cls, @selector(commit));
+            if (mc) method_setImplementation(mc, s_original_commit);
+        }
     }
 
     s_original_presentDrawable = NULL;
     s_original_presentDrawableOptions = NULL;
+    s_original_commit = NULL;
     s_cmdBufHooked = false;
 }
 
