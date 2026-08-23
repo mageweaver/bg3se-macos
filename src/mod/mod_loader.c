@@ -167,6 +167,30 @@ static int pak_entry_has_lua(PakFile *pak, int entry_idx) {
     return has_lua;
 }
 
+/**
+ * Confirm that Mods/<dir>/ inside this PAK really is the mod we were asked
+ * about, by reading that directory's meta.lsx.
+ *
+ * Without this check the PAK-filename fallback below matches unconditionally:
+ * it tests the PAK's own stem, which has nothing to do with mod_name, so the
+ * first SE-capable PAK the directory scan happens to reach claims every mod.
+ * Fails closed - a PAK with no meta.lsx for that directory is not evidence.
+ */
+static int pak_dir_declares_mod(PakFile *pak, const char *dir, const char *mod_name) {
+    char meta_path[512];
+    snprintf(meta_path, sizeof(meta_path), "Mods/%s/meta.lsx", dir);
+
+    int entry_idx = pak_find_entry(pak, meta_path);
+    if (entry_idx < 0) return 0;
+
+    char *xml = pak_read_file(pak, entry_idx, NULL);
+    if (!xml) return 0;
+
+    int declares = mod_meta_declares(xml, mod_name);
+    free(xml);
+    return declares;
+}
+
 int mod_pak_find_se_dir(const char *pak_path, const char *mod_name,
                         char *dir_out, size_t dir_size) {
     PakFile *pak = pak_open(pak_path);
@@ -191,17 +215,26 @@ int mod_pak_find_se_dir(const char *pak_path, const char *mod_name,
                  "Mods/%s/ScriptExtender/Config.json", candidates[c]);
 
         int entry_idx = pak_find_entry(pak, config_path);
-        if (entry_idx >= 0 && pak_entry_has_lua(pak, entry_idx)) {
-            if (dir_out && dir_size) {
-                snprintf(dir_out, dir_size, "%s", candidates[c]);
-            }
-            if (c > 0) {
-                LOG_MOD_INFO("SE dir for '%s' resolved via PAK filename: %s",
-                             mod_name, candidates[c]);
-            }
-            pak_close(pak);
-            return 1;
+        if (entry_idx < 0 || !pak_entry_has_lua(pak, entry_idx)) continue;
+
+        // The stem candidate is a guess about this PAK, not about mod_name, so
+        // it only counts once meta.lsx confirms the directory is this mod.
+        if (c > 0 && !pak_dir_declares_mod(pak, candidates[c], mod_name)) {
+            LOG_MOD_DEBUG("PAK %s has SE dir '%s' but its meta.lsx does not "
+                          "declare '%s' - not this mod's PAK",
+                          pak_path, candidates[c], mod_name);
+            continue;
         }
+
+        if (dir_out && dir_size) {
+            snprintf(dir_out, dir_size, "%s", candidates[c]);
+        }
+        if (c > 0) {
+            LOG_MOD_INFO("SE dir for '%s' resolved via PAK filename: %s",
+                         mod_name, candidates[c]);
+        }
+        pak_close(pak);
+        return 1;
     }
 
     pak_close(pak);

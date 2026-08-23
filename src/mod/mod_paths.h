@@ -32,6 +32,20 @@ int mod_se_dir_from_pak_name(const char *pak_path, char *dir_out, size_t dir_siz
  */
 int mod_entry_se_config_dir(const char *entry_name, char *dir_out, size_t dir_size);
 
+/**
+ * Decide whether a mod's meta.lsx describes the mod named mod_name, by
+ * matching the Folder or Name attribute of its ModuleInfo node.
+ *
+ * Only ModuleInfo is consulted. The sibling Dependencies node lists other
+ * mods' Folder and Name using identical markup, so a whole-document search
+ * makes every dependent of X claim to be X.
+ *
+ * @param meta_xml Contents of meta.lsx (NUL-terminated); may be NULL
+ * @param mod_name The modsettings.lsx Folder name being resolved
+ * @return 1 if ModuleInfo declares this mod, 0 otherwise
+ */
+int mod_meta_declares(const char *meta_xml, const char *mod_name);
+
 #ifdef __cplusplus
 }
 #endif

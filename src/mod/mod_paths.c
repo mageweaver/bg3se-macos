@@ -4,6 +4,7 @@
 
 #include "mod_paths.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <strings.h>  // for strcasecmp
 
@@ -43,4 +44,50 @@ int mod_entry_se_config_dir(const char *entry_name, char *dir_out, size_t dir_si
     memcpy(dir_out, dir_start, len);
     dir_out[len] = '\0';
     return 1;
+}
+
+/**
+ * Compare an LSX <attribute id="..." value="..."/> against an expected value,
+ * searching only the [xml, xml_end) window. The search for value= is confined
+ * to the tag its id= was found in, so an unrelated later attribute can never
+ * satisfy the match.
+ */
+static int lsx_attr_equals(const char *xml, const char *xml_end,
+                           const char *attr_id, const char *expected) {
+    char needle[64];
+    snprintf(needle, sizeof(needle), "id=\"%s\"", attr_id);
+
+    size_t needle_len = strlen(needle);
+    size_t expected_len = strlen(expected);
+
+    for (const char *p = strstr(xml, needle); p && p < xml_end;
+         p = strstr(p + needle_len, needle)) {
+        const char *tag_end = strchr(p, '>');
+        const char *val = strstr(p, "value=\"");
+        if (!val || val >= xml_end) continue;
+        if (tag_end && val > tag_end) continue;
+
+        val += sizeof("value=\"") - 1;
+        size_t val_len = strcspn(val, "\"");
+        if (val_len == expected_len && strncmp(val, expected, val_len) == 0) return 1;
+    }
+
+    return 0;
+}
+
+int mod_meta_declares(const char *meta_xml, const char *mod_name) {
+    if (!meta_xml || !mod_name || !*mod_name) return 0;
+
+    const char *info = strstr(meta_xml, "id=\"ModuleInfo\"");
+    if (!info) return 0;
+
+    // ModuleInfo's own attributes end at its first child node or its close tag.
+    const char *end = info + strlen(info);
+    const char *children = strstr(info, "<children>");
+    const char *close = strstr(info, "</node>");
+    if (children && children < end) end = children;
+    if (close && close < end) end = close;
+
+    return lsx_attr_equals(info, end, "Folder", mod_name) ||
+           lsx_attr_equals(info, end, "Name", mod_name);
 }
