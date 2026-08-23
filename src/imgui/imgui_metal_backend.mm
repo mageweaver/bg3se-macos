@@ -269,9 +269,11 @@ static bool s_first_drawable_seen = false;
 // ============================================================================
 
 static void imgui_metal_setup_context(void);
-static void imgui_metal_render_frame(id<CAMetalDrawable> drawable);
+static void imgui_metal_render_frame(id<CAMetalDrawable> drawable,
+                                     id<MTLCommandBuffer> gameCommandBuffer);
 static id<CAMetalDrawable> hooked_nextDrawable(id self, SEL _cmd);
 static void hooked_present(id self, SEL _cmd);
+static void install_command_buffer_hook(void);
 
 // ============================================================================
 // Present Hook State (declared early for use in remove_layer_hook)
@@ -279,6 +281,14 @@ static void hooked_present(id self, SEL _cmd);
 
 static Class s_drawableClass = nil;
 static bool s_presentHooked = false;
+
+// Preferred render path: encode ImGui into the game's own command buffer from
+// -[MTLCommandBuffer presentDrawable:], which the engine calls on its render
+// thread. While this is armed the -[CAMetalDrawable present] hook renders
+// nothing, so the overlay is drawn exactly once per frame.
+static IMP s_original_presentDrawable = NULL;
+static IMP s_original_presentDrawableOptions = NULL;
+static bool s_cmdBufHooked = false;
 
 // ============================================================================
 // Method Swizzling
@@ -381,7 +391,99 @@ static bool imgui_input_capture_active(void) {
 // We hook the present method on CAMetalDrawable's concrete class.
 // This allows us to render ImGui AFTER the game finishes but BEFORE the frame is shown.
 
+// True when this drawable belongs to the layer the game renders its main scene
+// into. During cutscenes/movies and other transitions the game presents
+// drawables from a different CAMetalLayer; rendering our ImGui pass
+// (sized/formatted for the main layer) into those causes a GPU fault.
+static bool imgui_metal_drawable_is_game_layer(id<CAMetalDrawable> drawable) {
+    return s_state.gameLayer == nil || drawable.layer == s_state.gameLayer;
+}
+
+static bool imgui_metal_should_render(void) {
+    return s_state.state == IMGUI_METAL_STATE_READY &&
+           (s_state.visible || imgui_metal_has_visible_window());
+}
+
+// -[MTLCommandBuffer presentDrawable:] runs on whichever thread submitted the
+// frame - the engine's render thread - with the frame's passes already encoded
+// and the buffer not yet committed. That is the one safe place to append our
+// overlay pass.
+//
+// The -[CAMetalDrawable present] hook below cannot do this: Metal defers that
+// call into the command buffer's scheduled handler, so it fires on
+// com.Metal.CompletionQueueDispatch while the render thread is already building
+// the next frame. Running ImGui and a second command queue there raced the
+// engine's own encoding and segfaulted it inside
+// renderCommandEncoderWithDescriptor:.
+static void hooked_presentDrawable(id self, SEL _cmd, id<CAMetalDrawable> drawable) {
+    if (drawable && imgui_metal_should_render() &&
+        imgui_metal_drawable_is_game_layer(drawable)) {
+        imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
+    }
+    if (s_original_presentDrawable) {
+        ((void(*)(id, SEL, id))s_original_presentDrawable)(self, _cmd, drawable);
+    }
+}
+
+static void hooked_presentDrawableOptions(id self, SEL _cmd,
+                                          id<CAMetalDrawable> drawable,
+                                          NSUInteger options) {
+    if (drawable && imgui_metal_should_render() &&
+        imgui_metal_drawable_is_game_layer(drawable)) {
+        imgui_metal_render_frame(drawable, (id<MTLCommandBuffer>)self);
+    }
+    if (s_original_presentDrawableOptions) {
+        ((void(*)(id, SEL, id, NSUInteger))s_original_presentDrawableOptions)(
+            self, _cmd, drawable, options);
+    }
+}
+
+// Swizzle presentDrawable: on _MTLCommandBuffer, the Metal-framework class that
+// implements it for every concrete (AGX*) command buffer subclass.
+static void install_command_buffer_hook(void) {
+    if (s_cmdBufHooked) return;
+
+    Class cls = NSClassFromString(@"_MTLCommandBuffer");
+    if (!cls) {
+        LOG_IMGUI_WARN("_MTLCommandBuffer class not found; ImGui falls back to "
+                       "the drawable present hook");
+        return;
+    }
+
+    Method m = class_getInstanceMethod(cls, @selector(presentDrawable:));
+    if (m) {
+        s_original_presentDrawable = method_getImplementation(m);
+        method_setImplementation(m, (IMP)hooked_presentDrawable);
+    }
+
+    Method mo = class_getInstanceMethod(cls, @selector(presentDrawable:options:));
+    if (mo) {
+        s_original_presentDrawableOptions = method_getImplementation(mo);
+        method_setImplementation(mo, (IMP)hooked_presentDrawableOptions);
+    }
+
+    if (!s_original_presentDrawable && !s_original_presentDrawableOptions) {
+        LOG_IMGUI_WARN("No presentDrawable: method on _MTLCommandBuffer; ImGui "
+                       "falls back to the drawable present hook");
+        return;
+    }
+
+    s_cmdBufHooked = true;
+    LOG_IMGUI_INFO("Hooked presentDrawable: on _MTLCommandBuffer "
+                   "(render-thread ImGui path active)");
+}
+
 static void hooked_present(id self, SEL _cmd) {
+    // With the command-buffer hook armed the overlay is already encoded on the
+    // render thread; rendering again here would draw it twice and would do so
+    // on Metal's completion queue.
+    if (s_cmdBufHooked) {
+        if (s_state.original_present) {
+            ((void(*)(id, SEL))s_state.original_present)(self, _cmd);
+        }
+        return;
+    }
+
     // Render ImGui BEFORE presenting (so it appears on top of game content).
     // Render when the F11 overlay is up OR any mod window is visible (MCM etc.).
     if (s_state.state == IMGUI_METAL_STATE_READY &&
@@ -397,7 +499,7 @@ static void hooked_present(id self, SEL _cmd) {
             }
             return;
         }
-        imgui_metal_render_frame(drawable);
+        imgui_metal_render_frame(drawable, nil);
 
         // Log every 60 frames to confirm rendering is happening
         if (s_state.frame_count % 60 == 0) {
@@ -494,6 +596,11 @@ static id<CAMetalDrawable> hooked_nextDrawable(id self, SEL _cmd) {
     // Hook the present method on this drawable class (once)
     if (s_state.state == IMGUI_METAL_STATE_READY && !s_presentHooked) {
         install_present_hook_for_drawable(drawable);
+    }
+
+    // Preferred path; leaves the drawable hook installed but inert.
+    if (s_state.state == IMGUI_METAL_STATE_READY && !s_cmdBufHooked) {
+        install_command_buffer_hook();
     }
 
     // Store current drawable for reference
@@ -1298,9 +1405,13 @@ void imgui_metal_render_all_windows(void) {
 // Rendering
 // ============================================================================
 
-static void imgui_metal_render_frame(id<CAMetalDrawable> drawable) {
-    // Safety checks
-    if (!drawable || !s_state.device || !s_state.commandQueue || !s_state.renderPassDescriptor) {
+static void imgui_metal_render_frame(id<CAMetalDrawable> drawable,
+                                     id<MTLCommandBuffer> gameCommandBuffer) {
+    // Safety checks. commandQueue is only needed for the legacy own-queue path.
+    if (!drawable || !s_state.device || !s_state.renderPassDescriptor) {
+        return;
+    }
+    if (!gameCommandBuffer && !s_state.commandQueue) {
         return;
     }
 
@@ -1442,8 +1553,13 @@ static void imgui_metal_render_frame(id<CAMetalDrawable> drawable) {
             // End frame and render
             ImGui::Render();
 
-            // Create command buffer
-            id<MTLCommandBuffer> commandBuffer = [s_state.commandQueue commandBuffer];
+            // Prefer the game's command buffer. Encoding into it keeps our
+            // pass on the engine's render thread and orders it against the
+            // game's own passes for free - no second queue, no stalling wait.
+            id<MTLCommandBuffer> commandBuffer = gameCommandBuffer;
+            if (!commandBuffer) {
+                commandBuffer = [s_state.commandQueue commandBuffer];
+            }
             if (!commandBuffer) {
                 LOG_IMGUI_ERROR("Failed to create command buffer");
                 return;
@@ -1462,8 +1578,16 @@ static void imgui_metal_render_frame(id<CAMetalDrawable> drawable) {
 
             [renderEncoder endEncoding];
 
-            // Surface GPU-side errors (drawable/texture faults during scene
-            // transitions don't raise an ObjC exception; they land here).
+            if (gameCommandBuffer) {
+                // The engine owns this buffer: it adds the present and commits.
+                // Touching either here would present the frame twice.
+                s_state.frame_count++;
+                return;
+            }
+
+            // Legacy own-queue path. Surface GPU-side errors (drawable/texture
+            // faults during scene transitions don't raise an ObjC exception;
+            // they land here).
             [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
                 if (cb.status == MTLCommandBufferStatusError && cb.error) {
                     LOG_IMGUI_ERROR("ImGui cmd buffer GPU error: %s",
@@ -1509,11 +1633,32 @@ bool imgui_metal_init(void) {
     return s_state.state != IMGUI_METAL_STATE_ERROR;
 }
 
+static void remove_command_buffer_hook(void) {
+    if (!s_cmdBufHooked) return;
+
+    Class cls = NSClassFromString(@"_MTLCommandBuffer");
+    if (cls) {
+        if (s_original_presentDrawable) {
+            Method m = class_getInstanceMethod(cls, @selector(presentDrawable:));
+            if (m) method_setImplementation(m, s_original_presentDrawable);
+        }
+        if (s_original_presentDrawableOptions) {
+            Method mo = class_getInstanceMethod(cls, @selector(presentDrawable:options:));
+            if (mo) method_setImplementation(mo, s_original_presentDrawableOptions);
+        }
+    }
+
+    s_original_presentDrawable = NULL;
+    s_original_presentDrawableOptions = NULL;
+    s_cmdBufHooked = false;
+}
+
 void imgui_metal_shutdown(void) {
     LOG_IMGUI_INFO("Shutting down ImGui Metal backend...");
 
     // Remove input hooks first
     imgui_input_hooks_shutdown();
+    remove_command_buffer_hook();
 
     // Restore original method
     remove_layer_hook();
