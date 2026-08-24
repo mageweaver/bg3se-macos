@@ -487,6 +487,28 @@ static bool imgui_metal_has_visible_window(void) {
             s_visDiag.last_visible = o->styled.visible ? 1 : 0;
             s_visDiag.last_open = o->data.window.open ? 1 : 0;
         }
+
+        // Report every open/visible transition regardless of who caused it.
+        // The Lua .Open/.Visible setters log their own changes, but the ImGui
+        // X-button path in render_window flips styled.visible directly and was
+        // invisible in the log. This walk runs every frame, so it catches both.
+        if (i < 4) {
+            static struct { ImguiHandle h; int vis; int open; bool init; } s_last[4];
+            int vis = o->styled.visible ? 1 : 0;
+            int open = o->data.window.open ? 1 : 0;
+            if (!s_last[i].init || s_last[i].h != w[i] ||
+                s_last[i].vis != vis || s_last[i].open != open) {
+                if (s_last[i].init && s_last[i].h == w[i]) {
+                    LOG_IMGUI_INFO("window '%s' state: visible %d->%d open %d->%d",
+                                   o->styled.label, s_last[i].vis, vis,
+                                   s_last[i].open, open);
+                }
+                s_last[i].h = w[i];
+                s_last[i].vis = vis;
+                s_last[i].open = open;
+                s_last[i].init = true;
+            }
+        }
         if (o->styled.visible) {
             found = true;
             break;
