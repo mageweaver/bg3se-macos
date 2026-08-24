@@ -426,6 +426,17 @@ void mod_detect_enabled(void) {
         char *end = strchr(ptr, '"');
         if (end) {
             size_t name_len = end - ptr;
+            // Truncation used to be silent, so an oversized load order looked
+            // like a short one and nobody could tell the difference.
+            if (detected_mod_count >= MAX_MODS) {
+                static bool warned = false;
+                if (!warned) {
+                    warned = true;
+                    LOG_MOD_WARN("modsettings.lsx lists more than %d mods; the "
+                                 "rest are ignored and any SE mod among them "
+                                 "will not load.", MAX_MODS);
+                }
+            }
             if (name_len < MAX_MOD_NAME_LEN && detected_mod_count < MAX_MODS) {
                 char mod_name[MAX_MOD_NAME_LEN];
                 strncpy(mod_name, ptr, name_len);
@@ -480,6 +491,14 @@ void mod_detect_enabled(void) {
 
         char mod_dir[MAX_MOD_NAME_LEN];
         if (check_mod_has_script_extender(detected_mods[i], mod_dir, sizeof(mod_dir))) {
+            if (se_mod_count >= MAX_MODS) {
+                static bool se_warned = false;
+                if (!se_warned) {
+                    se_warned = true;
+                    LOG_MOD_WARN("more than %d SE mods detected; the rest will "
+                                 "not load.", MAX_MODS);
+                }
+            }
             if (se_mod_count < MAX_MODS) {
                 strncpy(se_mods[se_mod_count], detected_mods[i], MAX_MOD_NAME_LEN - 1);
                 se_mods[se_mod_count][MAX_MOD_NAME_LEN - 1] = '\0';

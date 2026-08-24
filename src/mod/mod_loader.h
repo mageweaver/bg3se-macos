@@ -19,7 +19,13 @@ extern "C" {
 // Constants
 // ============================================================================
 
-#define MAX_MODS 128
+// Large modded profiles routinely exceed a few hundred entries; one real
+// load order here carries 744. The parse loop bounds-checks against this, so
+// the old value of 128 did not corrupt anything - it silently dropped every
+// mod past the 128th, and any SE mod among them never bootstrapped.
+// The five parallel arrays cost ~0.9 MB at 1024, which is nothing next to
+// what a profile this size loads anyway.
+#define MAX_MODS 1024
 #define MAX_MOD_NAME_LEN 256
 #define MAX_PATH_LEN 1024
 
