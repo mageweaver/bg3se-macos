@@ -672,6 +672,10 @@ static const char *macos_keycode_to_sdl_name(int kc) {
         // Navigation cluster
         case 0x73: return "HOME"; case 0x77: return "END"; case 0x74: return "PAGEUP";
         case 0x79: return "PAGEDOWN"; case 0x75: return "DEL";
+        // kVK_Help occupies the Insert position on PC keyboards. MCM's default
+        // "Toggle MCM window" bind is INSERT, and without this it reported
+        // UNKNOWN and could never match.
+        case 0x72: return "INSERT";
         case 0x7B: return "LEFT"; case 0x7C: return "RIGHT"; case 0x7D: return "DOWN"; case 0x7E: return "UP";
         // Function keys
         case 0x7A: return "F1"; case 0x78: return "F2"; case 0x63: return "F3";
