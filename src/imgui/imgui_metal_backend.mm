@@ -358,12 +358,12 @@ static struct {
 } s_visDiag;
 
 static void imgui_metal_log_diag(void) {
-    LOG_IMGUI_INFO("overlay: commits=%llu presents=%llu matched=%llu rendered=%llu "
+    LOG_IMGUI_DEBUG("overlay: commits=%llu presents=%llu matched=%llu rendered=%llu "
                    "| skipped state=%llu layer=%llu texture=%llu | table_full=%llu",
                    s_diag.commits, s_diag.recorded, s_diag.matched, s_diag.rendered,
                    s_diag.skip_state, s_diag.skip_layer, s_diag.skip_texture,
                    s_diag.table_full);
-    LOG_IMGUI_INFO("overlay: visible=%d (backend_visible=%d state=%d) "
+    LOG_IMGUI_DEBUG("overlay: visible=%d (backend_visible=%d state=%d) "
                    "| no: lock=%llu none=%llu hidden=%llu "
                    "| windows=%d window0 visible=%d open=%d",
                    imgui_metal_has_visible_window() ? 1 : 0,
@@ -1596,7 +1596,7 @@ static void render_window(ImguiObject *win) {
 
     static int render_log_counter = 0;
     if (render_log_counter++ % 300 == 0) {
-        LOG_IMGUI_INFO("render_window: '%s' Begin returned %d, children=%d, flags=0x%x",
+        LOG_IMGUI_DEBUG("render_window: '%s' Begin returned %d, children=%d, flags=0x%x",
             win->styled.label, window_open, win->child_count, flags);
     }
 
@@ -1728,7 +1728,7 @@ static void imgui_metal_render_frame(id<CAMetalDrawable> drawable,
                         ImguiObject *win = imgui_object_get(windows[i]);
                         if (debug_log_counter % 300 == 0) {  // Log every ~5 seconds
                             if (win) {
-                                LOG_IMGUI_INFO("Window[%d]: label='%s' visible=%d open=%d type=%d children=%d",
+                                LOG_IMGUI_DEBUG("Window[%d]: label='%s' visible=%d open=%d type=%d children=%d",
                                     i, win->styled.label, win->styled.visible, win->data.window.open,
                                     win->type, win->child_count);
                             } else {

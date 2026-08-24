@@ -756,7 +756,7 @@ void events_fire_key_input(lua_State *L, int keyCode, bool pressed, int modifier
                 static uint8_t s_keySeen[256];
                 if (s_keySeen[keyCode] < 3) {
                     s_keySeen[keyCode]++;
-                    LOG_EVENTS_INFO("KeyInput -> %s (key=%s code=%d) handler=%llu",
+                    LOG_EVENTS_DEBUG("KeyInput -> %s (key=%s code=%d) handler=%llu",
                                     h->mod_name, macos_keycode_to_sdl_name(keyCode),
                                     keyCode, (unsigned long long)h->handler_id);
                 }

@@ -567,7 +567,7 @@ static int imgui_window_index(lua_State *L) {
 
     // Unknown property/method — log it so we can see what mods expect (a mod that
     // then calls the nil as a method throws; this reveals the missing method).
-    LOG_IMGUI_INFO("IMGUI window: unknown key '%s' (returning nil)", key);
+    LOG_IMGUI_DEBUG("IMGUI window: unknown key '%s' (returning nil)", key);
     lua_pushnil(L);
     return 1;
 }

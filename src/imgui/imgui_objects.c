@@ -457,7 +457,9 @@ ImguiHandle imgui_object_create_child(ImguiHandle parent, ImguiObjectType type, 
         imgui_object_add_child(parent, child);
     }
     // TREE DIAG (temporary): trace MCM's CreateModMenu build to find where it aborts.
-    LOG_IMGUI_INFO("TREE: %s '%s' <- %s '%s'",
+    // Per-widget construction trace: one line per Add, useful only when
+    // debugging a mod's UI tree.
+    LOG_IMGUI_DEBUG("TREE: %s '%s' <- %s '%s'",
                    imgui_object_type_name(parent_obj->type),
                    parent_obj->styled.label[0] ? parent_obj->styled.label : "?",
                    imgui_object_type_name(type), label ? label : "");

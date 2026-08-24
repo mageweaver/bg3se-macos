@@ -48,7 +48,9 @@ void lua_context_set(LuaContext ctx) {
     g_current_context = ctx;
 
     if (old_ctx != ctx) {
-        LOG_LUA_INFO("Lua context changed: %s -> %s",
+        // Fires on every server/client hop - twice per Osiris event, tens of
+        // thousands of lines an hour. DEBUG so it stays available on demand.
+        LOG_LUA_DEBUG("Lua context changed: %s -> %s",
                     lua_context_get_name(old_ctx),
                     lua_context_get_name(ctx));
     }
