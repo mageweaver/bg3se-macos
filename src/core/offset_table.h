@@ -43,6 +43,10 @@ typedef enum GameFunctionId {
     GAME_FN_STD_STRING_CTOR,
     GAME_FN_BINK_LOAD_VIDEO,
     GAME_FN_VALUELIST_INSERT,
+    // ls::MemoryManager::Allocate(size_t, ls::AllocType, int, size_t).
+    // Needed to add nodes to game-owned containers: anything the game will
+    // later free must come from its allocator, not malloc.
+    GAME_FN_MEMORY_ALLOCATE,
     GAME_FN_COUNT
 } GameFunctionId;
 
