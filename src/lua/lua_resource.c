@@ -25,7 +25,19 @@
 // ============================================================================
 
 // Offset of a resource's GUID FixedString within its struct (build 4.1.1.7398727).
-#define RESOURCE_GUID_OFFSET 0x48
+//
+// 0x18, verified by asking for a specific UUID and reading the field back:
+//   Ext.Resource.Get("bfa9dad2-...")  ->  +0x18 = bfa9dad2-...   (asked for)
+//                                         +0x48 = f1bc6e5c-...   (the NEXT one)
+// and again with a vanilla set (da29fce1): +0x18 matches, +0x48 is unrelated.
+//
+// This was briefly 0x48 on the strength of a round-trip that appeared to
+// confirm it - reading a GUID at +0x48 and looking it up returned a resource.
+// It returned the WRONG resource. These records are 48 bytes, so +0x48 lands on
+// the neighbouring record's GUID, which is a perfectly valid UUID and looks up
+// perfectly well. Round-tripping only proves the value names some resource; to
+// prove it names THIS one, ask for a known UUID and read the field back.
+#define RESOURCE_GUID_OFFSET 0x18
 
 /**
  * Push a resource as a Lua table.
