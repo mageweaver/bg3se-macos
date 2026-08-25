@@ -660,6 +660,10 @@ static NSColor* colorForLogLevel(const char* text) {
     // append + one scroll per main-queue drain. One queued block per line,
     // each forcing a whole-document relayout via scrollToEndOfDocument:,
     // crashed TextKit under load (2026-07-28, SIGBUS in appendOutput block).
+    // Backstop: the console must never be able to take the game down. Any throw
+    // from here reaches uncaught_exception_handler and aborts the process.
+    if (!text) return;
+
     @synchronized (self) {
         if (!self.pendingLines) {
             self.pendingLines = [NSMutableArray array];
@@ -946,7 +950,20 @@ bool overlay_is_visible(void) {
 void overlay_append_output(const char *text) {
     if (!s_initialized || !s_console_view || !text) return;
 
+    // stringWithUTF8String: returns nil for any byte sequence that is not valid
+    // UTF-8, and console output routinely carries bytes straight out of game
+    // memory (Ext.Debug.ReadFixedString, hex dumps, mod prints). Passing that
+    // nil to appendOutput: reaches -[NSMutableArray addObject:], which throws
+    // NSInvalidArgumentException, and nothing catches it: the process aborts.
+    // Fall back to a lossy decode so bad bytes cost a garbled line, not the game.
     NSString *nsText = [NSString stringWithUTF8String:text];
+    if (!nsText) {
+        nsText = [[NSString alloc] initWithBytes:text
+                                          length:strlen(text)
+                                        encoding:NSISOLatin1StringEncoding];
+    }
+    if (!nsText) return;
+
     [s_console_view appendOutput:nsText];
 }
 
