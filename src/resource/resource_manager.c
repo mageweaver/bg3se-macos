@@ -146,8 +146,39 @@ const char* resource_type_name(ResourceBankType type) {
     return s_resource_type_names[type];
 }
 
+// Measured corrections to s_resource_type_names' positional index.
+//
+// The table above mirrors the Windows ls::EResourceType ordering, but this
+// macOS build does not match it everywhere. Rather than reshuffle 34 entries
+// on inference, each correction here is one that was demonstrated against the
+// running game: look a known resource up by UUID across every index and see
+// which bank returns it.
+//
+// AnimationSet: two independent UUIDs resolve at index 4, not 3 - the vanilla
+// HUM_M_Base (da29fce1-056a-4f86-b110-d61679c21238) that BG3AF ships as a
+// default, and BG3SX's own bfa9dad2-2a5b-45cc-b770-9537badf9152. This is what
+// BG3AF's AnimationSet.Get was failing on, taking BG3SX, WickedAnims and
+// GrazztRing down with it.
+//
+// The remaining names keep their positional index because nothing has been
+// measured about them either way. Add entries here as they are proven, and
+// only then.
+static const struct {
+    const char *name;
+    int index;
+} s_resource_type_overrides[] = {
+    { "AnimationSet", 4 },
+    { NULL, 0 }
+};
+
 int resource_type_from_name(const char* name) {
     if (!name) return -1;
+
+    for (int i = 0; s_resource_type_overrides[i].name; i++) {
+        if (strcasecmp(s_resource_type_overrides[i].name, name) == 0) {
+            return s_resource_type_overrides[i].index;
+        }
+    }
 
     for (int i = 0; i < RESOURCE_TYPE_COUNT; i++) {
         if (strcasecmp(s_resource_type_names[i], name) == 0) {
