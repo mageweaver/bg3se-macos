@@ -17,8 +17,15 @@
 // Maximum pending messages in queue
 #define MAX_PENDING_MESSAGES 1024
 
-// Maximum message payload size
-#define MAX_MESSAGE_PAYLOAD 65536
+// Maximum message payload size.
+//
+// The payload is heap-allocated (see NetMessage.payload), so this is purely a
+// sanity limit and costs nothing in the queue. 64KB was well under the wire
+// protocol's own MAX_EXTENDER_PAYLOAD (~1MB, which matches Windows), and MCM's
+// config payload for a 744-mod profile is 73,806 bytes - so the request was
+// rejected here and MCM never received its settings. Match the protocol limit
+// rather than sitting arbitrarily below it.
+#define MAX_MESSAGE_PAYLOAD 0xFFFFF
 
 // Message destination types
 typedef enum {
