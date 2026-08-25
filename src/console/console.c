@@ -69,8 +69,13 @@ static size_t s_multiline_len = 0;
 static int s_multiline_mode = 0;
 static int s_multiline_client = -1;  // Which client started multi-line mode (-1 = file)
 
-// Console command registry
-#define MAX_CONSOLE_COMMANDS 32
+// Console command registry.
+//
+// Shared between SE's own built-ins (13 of them) and every mod that calls
+// Ext.RegisterConsoleCommand, so 32 left mods about 19 slots between them. A
+// 45-SE-mod profile exhausts that easily. ~68 bytes an entry, so 512 costs
+// ~35 KB.
+#define MAX_CONSOLE_COMMANDS 512
 typedef struct {
     char name[64];
     int lua_callback_ref;
@@ -352,7 +357,21 @@ int console_register_command(lua_State *L) {
     luaL_checktype(L, 2, LUA_TFUNCTION);
 
     if (s_command_count >= MAX_CONSOLE_COMMANDS) {
-        return luaL_error(L, "Maximum console commands reached (%d)", MAX_CONSOLE_COMMANDS);
+        // Do NOT raise here. Ext.RegisterConsoleCommand is called from a mod's
+        // BootstrapServer at load time, so an error unwinds the whole chunk and
+        // the mod fails to load entirely - six mods (Wish, Untamed - CORE,
+        // Undead Thralls Fix, NameYourSummons among them) were lost this way to
+        // a console command each. Losing one console command is a far smaller
+        // failure than losing the mod, so warn and carry on.
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_CONSOLE_WARN("console command table full at %d; '!%s' and any "
+                             "later command will not be registered. The mods "
+                             "themselves still load.",
+                             MAX_CONSOLE_COMMANDS, name);
+        }
+        return 0;
     }
 
     lua_pushvalue(L, 2);
