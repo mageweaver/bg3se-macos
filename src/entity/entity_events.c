@@ -1292,8 +1292,11 @@ static uint16_t resolve_component_type(lua_State *L, int arg_index) {
         return info->index;
     }
 
-    // Guard against names too long for prefix probing (max prefix "eoc::" = 5, suffix "Component" = 9)
-    if (strlen(name) > COMPONENT_MAX_NAME_LEN - 15) {
+    // Guard against names too long for probing. Longest expansion is
+    // "eoc::" (5) + "character_creation::" (20) + "Component" (9) = 34.
+    // snprintf would truncate rather than overflow, and a truncated name simply
+    // fails to match, but keep the guard honest about the real bound.
+    if (strlen(name) > COMPONENT_MAX_NAME_LEN - 35) {
         return COMPONENT_INDEX_UNDEFINED;
     }
 
@@ -1312,6 +1315,33 @@ static uint16_t resolve_component_type(lua_State *L, int arg_index) {
             info = component_registry_lookup(prefixed);
             if (info && info->index != COMPONENT_INDEX_UNDEFINED) {
                 return info->index;
+            }
+        }
+    }
+
+    // Nested-namespace abbreviations. BG3SE contracts a component's inner
+    // namespace into an initialism, so eoc::character_creation::StateComponent
+    // is written "CCState" by mods. Probing only the outer prefixes above can
+    // never reach those, which is why AppearanceEditEnhanced ("CCState") and
+    // CustomCompanions ("CCLevelUpDefinition") both failed to load with
+    // "Unknown component type" while the components were registered all along.
+    static const struct { const char *abbrev; const char *ns; } nested[] = {
+        { "CC", "character_creation::" },
+        { NULL, NULL }
+    };
+
+    for (int n = 0; nested[n].abbrev; n++) {
+        size_t alen = strlen(nested[n].abbrev);
+        if (strncmp(name, nested[n].abbrev, alen) != 0 || !name[alen]) continue;
+
+        for (int p = 0; prefixes[p]; p++) {
+            for (int s = 0; suffixes[s]; s++) {
+                snprintf(prefixed, sizeof(prefixed), "%s%s%s%s",
+                         prefixes[p], nested[n].ns, name + alen, suffixes[s]);
+                info = component_registry_lookup(prefixed);
+                if (info && info->index != COMPONENT_INDEX_UNDEFINED) {
+                    return info->index;
+                }
             }
         }
     }
