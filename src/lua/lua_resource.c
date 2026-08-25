@@ -14,6 +14,7 @@
 #include "../resource/resource_manager.h"
 #include "../strings/fixed_string.h"
 #include "../core/logging.h"
+#include "lua_animset.h"
 #include "../core/safe_memory.h"
 #include <lua.h>
 #include <lauxlib.h>
@@ -81,6 +82,15 @@ static void push_resource_entry(lua_State *L, void* resource, ResourceBankType t
 
         lua_pushinteger(L, id);
         lua_setfield(L, -2, "_id");
+    }
+
+    // Typed fields for resource classes we model. BG3AF drives
+    // resource.AnimationBank.AnimationSubSets[...].Animation[...] and cannot do
+    // anything useful with an opaque pointer.
+    if (type == RESOURCE_ANIMATION_SET) {
+        if (lua_animset_push_bank(L, resource)) {
+            lua_setfield(L, -2, "AnimationBank");
+        }
     }
 
     // Add raw pointer for debugging

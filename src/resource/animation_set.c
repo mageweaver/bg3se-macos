@@ -66,6 +66,23 @@ static bool read_refmap(uintptr_t addr, AnimSetRefMap *out) {
     return true;
 }
 
+bool animset_read_map(void *addr, AnimSetRefMap *out) {
+    if (!addr || !out) return false;
+    return read_refmap((uintptr_t)addr, out);
+}
+
+bool animset_get_bank(void *resource, void **out_bank) {
+    if (!resource || !out_bank) return false;
+
+    void *bank = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)resource + ANIMSETRES_BANK_OFFSET,
+                                  &bank) || !bank) {
+        return false;
+    }
+    *out_bank = bank;
+    return true;
+}
+
 bool animset_get_subsets(void *resource, AnimSetRefMap *out) {
     if (!resource || !out) return false;
 

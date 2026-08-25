@@ -45,6 +45,12 @@ typedef struct {
     uint8_t flags;
 } AnimSetAnimation;
 
+/** Read a LegacyRefMap header at `addr`. False if it does not look like one. */
+bool animset_read_map(void *addr, AnimSetRefMap *out);
+
+/** Fetch a resource's AnimationBank pointer (the AnimationSubSets map). */
+bool animset_get_bank(void *resource, void **out_bank);
+
 /** Read a resource's AnimationBank -> AnimationSubSets map. False if absent. */
 bool animset_get_subsets(void *resource, AnimSetRefMap *out);
 
