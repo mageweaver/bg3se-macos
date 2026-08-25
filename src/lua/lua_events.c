@@ -375,13 +375,13 @@ void events_fire(lua_State *L, BG3SEEventType event) {
         if (health && health->soft_disabled) continue;
 
         // Set mod context for crash attribution
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         // Get callback from registry
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -401,7 +401,7 @@ void events_fire(lua_State *L, BG3SEEventType event) {
         }
 
         // Clear mod context
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         // Handle Once flag - queue for deferred removal
         if (h->once) {
@@ -443,13 +443,13 @@ void events_fire_tick(lua_State *L, float delta_time) {
         if (health && health->soft_disabled) continue;
 
         // Set mod context for crash attribution
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         // Get callback from registry
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -469,7 +469,7 @@ void events_fire_tick(lua_State *L, float delta_time) {
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         // Handle Once flag
         if (h->once) {
@@ -594,13 +594,13 @@ void events_fire_game_state_changed(lua_State *L, int fromState, int toState) {
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         // Get callback from registry
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -623,7 +623,7 @@ void events_fire_game_state_changed(lua_State *L, int fromState, int toState) {
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         // Handle Once flag
         if (h->once) {
@@ -712,7 +712,7 @@ void events_fire_key_input(lua_State *L, int keyCode, bool pressed, int modifier
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (lua_isfunction(L, -1)) {
@@ -788,7 +788,7 @@ void events_fire_key_input(lua_State *L, int keyCode, bool pressed, int modifier
             lua_pop(L, 1);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
     }
 
     g_dispatch_depth[EVENT_KEY_INPUT]--;
@@ -823,12 +823,12 @@ bool events_fire_do_console_command(lua_State *L, const char *command) {
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -860,7 +860,7 @@ bool events_fire_do_console_command(lua_State *L, const char *command) {
             lua_pop(L, 2);  // Prevent value and event table
         }
         luaL_unref(L, LUA_REGISTRYINDEX, event_ref);
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -903,12 +903,12 @@ bool events_fire_lua_console_input(lua_State *L, const char *input) {
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -941,7 +941,7 @@ bool events_fire_lua_console_input(lua_State *L, const char *input) {
         }
         luaL_unref(L, LUA_REGISTRYINDEX, event_ref);
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1273,12 +1273,12 @@ void events_fire_turn_started(lua_State *L, uint64_t entity, int round) {
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1299,7 +1299,7 @@ void events_fire_turn_started(lua_State *L, uint64_t entity, int round) {
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1340,12 +1340,12 @@ void events_fire_turn_started_from_osiris(lua_State *L, const char *characterGui
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1368,7 +1368,7 @@ void events_fire_turn_started_from_osiris(lua_State *L, const char *characterGui
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1405,12 +1405,12 @@ void events_fire_turn_ended_from_osiris(lua_State *L, const char *characterGuid)
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1433,7 +1433,7 @@ void events_fire_turn_ended_from_osiris(lua_State *L, const char *characterGuid)
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1471,12 +1471,12 @@ void events_fire_status_applied(lua_State *L, uint64_t entity, const char *statu
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1499,7 +1499,7 @@ void events_fire_status_applied(lua_State *L, uint64_t entity, const char *statu
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1540,12 +1540,12 @@ void events_fire_execute_functor(lua_State *L, int ctxType, void *functors, void
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1568,7 +1568,7 @@ void events_fire_execute_functor(lua_State *L, int ctxType, void *functors, void
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1604,12 +1604,12 @@ void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1632,7 +1632,7 @@ void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1701,11 +1701,11 @@ void events_fire_damage(
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1749,7 +1749,7 @@ void events_fire_damage(
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
         if (h->once && g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
             g_deferred_unsubs[g_deferred_unsub_count++] =
                 (DeferredUnsubscribe){event, h->handler_id};
@@ -1796,12 +1796,12 @@ void events_fire_net_mod_message(lua_State *L, const char *channel, const char *
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1839,7 +1839,7 @@ void events_fire_net_mod_message(lua_State *L, const char *channel, const char *
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -1887,12 +1887,12 @@ void events_fire_net_message(lua_State *L, const char *channel, const char *payl
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -1918,7 +1918,7 @@ void events_fire_net_message(lua_State *L, const char *channel, const char *payl
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         if (h->once) {
             if (g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) {
@@ -2050,12 +2050,12 @@ bool events_fire_log(lua_State *L, const char *level, const char *module, const 
         ModHealthEntry *mh = mod_health_get_or_create(h->mod_name);
         if (mh && mh->soft_disabled) continue;
 
-        mod_set_current(h->mod_name, NULL, NULL);
+        mod_context_push(h->mod_name);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref);
         if (!lua_isfunction(L, -1)) {
             lua_pop(L, 1);
-            mod_set_current(NULL, NULL, NULL);
+            mod_context_pop();
             continue;
         }
 
@@ -2090,7 +2090,7 @@ bool events_fire_log(lua_State *L, const char *level, const char *module, const 
             mod_health_record_success(h->mod_name);
         }
 
-        mod_set_current(NULL, NULL, NULL);
+        mod_context_pop();
 
         // Check if Prevent was set
         lua_rawgeti(L, LUA_REGISTRYINDEX, event_ref);
@@ -2360,7 +2360,7 @@ static void handle_turn_started(lua_State *L, uint64_t entity) {
             if (h->callback_ref == LUA_NOREF || h->callback_ref == LUA_REFNIL) continue; \
             ModHealthEntry *mh = mod_health_get_or_create(h->mod_name); \
             if (mh && mh->soft_disabled) continue; \
-            mod_set_current(h->mod_name, NULL, NULL); \
+            mod_context_push(h->mod_name); \
             lua_rawgeti(L, LUA_REGISTRYINDEX, h->callback_ref); \
             if (lua_isfunction(L, -1)) { \
                 lua_newtable(L); \
@@ -2375,7 +2375,7 @@ static void handle_turn_started(lua_State *L, uint64_t entity) {
             } else { \
                 lua_pop(L, 1); \
             } \
-            mod_set_current(NULL, NULL, NULL); \
+            mod_context_pop(); \
             if (h->once && g_deferred_unsub_count < MAX_DEFERRED_OPERATIONS) { \
                 g_deferred_unsubs[g_deferred_unsub_count++] = (DeferredUnsubscribe){EVENT_TYPE, h->handler_id}; \
             } \

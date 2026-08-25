@@ -130,6 +130,22 @@ int mod_load_lua_from_pak(lua_State *L, const char *pak_path, const char *lua_pa
 /**
  * Set the current mod context for Ext.Require.
  */
+/**
+ * Enter a nested mod context (event dispatch, timer callbacks, net handlers).
+ *
+ * Event dispatch used to do mod_set_current(mod, NULL, NULL) followed by
+ * mod_set_current(NULL, NULL, NULL), which DESTROYS whatever the caller had.
+ * When any event fires while a mod's bootstrap chunk is running - and with 45
+ * SE mods something always is - the loader's current mod and PAK are wiped
+ * mid-chunk, and every Ext.Require from that point resolves against nothing.
+ *
+ * Push saves the current context and installs the handler's; pop restores what
+ * was there before. Pops without a matching push clear the context, matching
+ * the old behaviour.
+ */
+void mod_context_push(const char *mod_name);
+void mod_context_pop(void);
+
 void mod_set_current(const char *mod_name, const char *lua_base_path, const char *pak_path);
 
 /**

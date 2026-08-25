@@ -692,6 +692,49 @@ const char *mod_get_se_dir(int index) {
 // Current Mod State
 // ============================================================================
 
+// Saved mod contexts for nested dispatch. Depth is small by nature: an event
+// handler that triggers another event nests, but not far.
+#define MOD_CONTEXT_STACK_DEPTH 16
+
+static struct {
+    char name[256];
+    char lua_base[MAX_PATH_LEN];
+    char pak[MAX_PATH_LEN];
+} g_ctx_stack[MOD_CONTEXT_STACK_DEPTH];
+static int g_ctx_depth = 0;
+
+void mod_context_push(const char *mod_name) {
+    if (g_ctx_depth >= 0 && g_ctx_depth < MOD_CONTEXT_STACK_DEPTH) {
+        snprintf(g_ctx_stack[g_ctx_depth].name,
+                 sizeof(g_ctx_stack[0].name), "%s", current_mod_name);
+        snprintf(g_ctx_stack[g_ctx_depth].lua_base,
+                 sizeof(g_ctx_stack[0].lua_base), "%s", current_mod_lua_base);
+        snprintf(g_ctx_stack[g_ctx_depth].pak,
+                 sizeof(g_ctx_stack[0].pak), "%s", current_mod_pak_path);
+    }
+    // Counted even past the cap so pop stays balanced with push.
+    g_ctx_depth++;
+    mod_set_current(mod_name, NULL, NULL);
+}
+
+void mod_context_pop(void) {
+    if (g_ctx_depth <= 0) {
+        g_ctx_depth = 0;
+        mod_set_current(NULL, NULL, NULL);
+        return;
+    }
+
+    g_ctx_depth--;
+    if (g_ctx_depth < MOD_CONTEXT_STACK_DEPTH) {
+        const char *name = g_ctx_stack[g_ctx_depth].name;
+        const char *base = g_ctx_stack[g_ctx_depth].lua_base;
+        const char *pak  = g_ctx_stack[g_ctx_depth].pak;
+        mod_set_current(name[0] ? name : NULL,
+                        base[0] ? base : NULL,
+                        pak[0]  ? pak  : NULL);
+    }
+}
+
 void mod_set_current(const char *mod_name, const char *lua_base_path, const char *pak_path) {
     // Ext.Require resolves against this, and during the client bootstrap phase
     // it is somehow empty by the time a mod's chunk runs. Trace every
