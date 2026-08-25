@@ -46,6 +46,30 @@ searching live memory: resource `bfa9dad2-...` must expose one subset keyed by "
 Relevant classes: `ls::AnimationSetResource`, `ls::AnimationSubSet`,
 `ls::AnimationResource`.
 
+## Layout confirmed live (build 4.1.1.7398727)
+
+`AnimationSetResource` records are **48 bytes** and sit contiguously — the same
+vtable (0x10D742BE8) repeats at +0, +48, +96, +144 from any record base.
+
+    +0x00  vtable
+    +0x08..0x14  zero
+    +0x18  GUID FixedString        <- resource identity (see f90e2e2)
+    +0x28  heap pointer            <- only pointer in the record; the bank
+
+The 48-byte stride is what made +0x48 look like a valid GUID offset: it lands on
+the NEXT record's GUID, which is a real UUID and looks up fine. Verify identity by
+asking for a known UUID and reading the field back, never by round-tripping.
+
+Following +0x28 gives a region of repeating 16-byte entries:
+
+    +0x00  u32 = 1
+    +0x04  u32 = 2
+    +0x08  pointer               (successive entries 32 bytes apart)
+
+Not yet interpreted — do not build on this until the entry shape is confirmed and
+its keys enumerate to something matching the LSX (BG3SX's set must yield one subset
+keyed by "").
+
 ## The hard part
 
 The containers are `ls::gst::Map` — the game's hash map with a node pool. Only one
