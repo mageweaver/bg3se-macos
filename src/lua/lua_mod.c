@@ -20,7 +20,12 @@
 // Static State: UUID to Name Mapping
 // ============================================================================
 
-#define MAX_MOD_UUIDS 128
+// Must cover a full load order, not a nominal one: at 128 a 744-mod profile
+// lost every UUID past the 128th. A missing UUID is not cosmetic - it makes
+// setup_mod_namespace publish Mods.<x> with no ModuleUUID field, and MCM's
+// __newindex on the global Mods table reads exactly that. Sized to match
+// MAX_MODS in mod_loader.h; the entry is ~608 bytes, so ~0.6 MB.
+#define MAX_MOD_UUIDS 1024
 #define UUID_LEN 64
 
 typedef struct {
@@ -164,8 +169,9 @@ static void load_mod_uuids(void) {
                 strncpy(e->version64, version64, 31);   e->version64[31] = '\0';
                 g_mod_uuid_count++;
             } else {
-                LOG_MOD_INFO("Warning: mod UUID cache full at %d — '%s' and later "
-                             "entries will not appear in Ext.Mod.GetLoadOrder",
+                LOG_MOD_WARN("mod UUID cache full at %d — '%s' and later entries "
+                             "will not appear in Ext.Mod.GetLoadOrder, and will "
+                             "be published to Lua without a ModuleUUID",
                              MAX_MOD_UUIDS, name);
             }
         }

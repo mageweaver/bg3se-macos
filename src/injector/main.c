@@ -608,6 +608,13 @@ static char *get_mod_table_name(const char *mod_name) {
  * to inject its per-mod API (Mods[x].MCM etc.). It must be present *before* the
  * table is assigned into Mods, so set it on the new table first.
  */
+// Performs Mods[key] = value as a protected call. Args: (Mods, key, value).
+static int mods_publish_trampoline(lua_State *L) {
+    lua_settop(L, 3);
+    lua_setfield(L, 1, lua_tostring(L, 2));
+    return 0;
+}
+
 static void setup_mod_namespace(lua_State *L, const char *mod_table, const char *uuid) {
     // Get or create global 'Mods' table
     lua_getglobal(L, "Mods");
@@ -624,9 +631,27 @@ static void setup_mod_namespace(lua_State *L, const char *mod_table, const char 
     if (uuid && uuid[0]) {
         lua_pushstring(L, uuid);           // [Mods, modtbl, uuid]
         lua_setfield(L, -2, "ModuleUUID"); // modtbl.ModuleUUID = uuid ; [Mods, modtbl]
+    } else {
+        LOG_LUA_WARN("Mods.%s published with no ModuleUUID; mods that key off it "
+                     "(MCM) may not see this mod", mod_table);
     }
-    lua_setfield(L, -2, mod_table);        // Mods[mod_table] = modtbl (MCM sees ModuleUUID)
-    lua_pop(L, 1);                         // Pop Mods table
+
+    // This assignment runs mod code: MCM installs a __newindex metamethod on
+    // the global Mods table. Unprotected, a Lua error inside it reaches
+    // luaD_throw with no error handler on the stack, and Lua calls abort() -
+    // one broken mod takes down the whole game. GrazztRing did exactly that.
+    lua_pushcfunction(L, mods_publish_trampoline);  // [Mods, modtbl, fn]
+    lua_pushvalue(L, -3);                           // [Mods, modtbl, fn, Mods]
+    lua_pushstring(L, mod_table);                   // [.., fn, Mods, key]
+    lua_pushvalue(L, -4);                           // [.., fn, Mods, key, modtbl]
+    if (lua_pcall(L, 3, 0, 0) != LUA_OK) {          // [Mods, modtbl, err?]
+        const char *err = lua_tostring(L, -1);
+        LOG_LUA_ERROR("Publishing Mods.%s failed: %s. The mod is loaded but not "
+                      "visible to mods that watch the Mods table.",
+                      mod_table, err ? err : "unknown error");
+        lua_pop(L, 1);                              // [Mods, modtbl]
+    }
+    lua_pop(L, 2);                                  // Pop modtbl and Mods
 
     LOG_LUA_INFO("Created namespace Mods.%s", mod_table);
 }
