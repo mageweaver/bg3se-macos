@@ -119,6 +119,34 @@ Next experiment: resolve +0x1C for BG3SX's set through the pool and check that i
 yields exactly one subset whose MapKey FixedString is the empty string. That is the
 ground truth the whole model has to reproduce before any of it is trusted.
 
+### Traversal, and where it currently fails
+
+The manager chain is confirmed. `0xc600` is not specific to the Visit call site it
+was taken from — it appears at **30,159** of the Release call sites, so it is the
+universal manager offset:
+
+    mgr      = *(global @ 0x108b25ce8) + 0xc600      (static addr; add image slide)
+    poolBase = *(mgr + 0x1080)
+    pool     = poolBase + (handle & 0xF) * 0x1200
+    table    = *(pool + 0x1140)
+    node     = table[(handle >> 4) & 0xFFFF]
+
+Every step resolves to valid heap addresses live. But the result does not hold up:
+
+  - BG3SX (handle 1 -> pool 1, idx 0) reaches a real node, whose contents do not
+    obviously contain the empty-string MapKey the LSX promises.
+  - vanilla HUM_M (handle 393217 -> pool 1, idx 24576) reaches garbage - the index
+    runs past the table.
+
+So either +0x1C is not the subsets NodePoolData, or the handle encoding differs
+from Release's. Note +0x1C and +0x20 may be one 8-byte field rather than two u32s;
+read as u64 they are SX=1, HUM_M=0x2_00060001, HUM_F=0x2_00020000.
+
+Do not build on the traversal until a handle resolves to a node that demonstrably
+contains BG3SX's empty MapKey. The most promising next step is to stop inferring
+from Release and find real consumer code - something that looks a subset up by
+MapKey at runtime - and read the encoding out of that instead.
+
 ### Next probe
 
 Take the pointer at +0x28, walk the 32-byte records, and for each one dump the
