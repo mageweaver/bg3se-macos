@@ -226,3 +226,77 @@ disassembly. The repo already carries Ghidra tooling (`ghidra/`, and the
 `bg3se-macos-ghidra` skill). Decompiling Visit there should give the member offset
 and the population path directly, which is the last piece needed before any code
 can be written.
+
+
+## SOLVED: the container is LegacyRefMap, and the model is verified
+
+The breakthrough was not more disassembly — it was Norbyte's own headers, which are
+already in this repo under `upstream/`. They define these structs because Windows
+BG3SE exposes them to Lua:
+
+    // upstream/BG3Extender/GameDefinitions/Resources.h
+    struct AnimationSetResource : public LoadableResource {
+        AnimationSet* AnimationBank;          // the single pointer at +0x28
+    };
+    struct AnimationSet { LegacyRefMap<FixedString, AnimationSubSet> AnimationSubSets; };
+    struct AnimationSubSet {
+        LegacyRefMap<FixedString, AnimationDesc> Animation;
+        FixedString FallBackSubSet;
+    };
+    struct AnimationDesc { FixedString ID; AnimationSetAnimationFlags flags; };
+
+    // upstream/CoreLib/Base/LegacyMap.h
+    struct RefMapInternals {
+        uint32_t ItemCount;          // +0x00
+        uint32_t HashSize;           // +0x04
+        MapNode<K,V>** HashTable;    // +0x08
+    };
+    struct MapNode { MapNode* Next; TKey Key; TValue Value; };
+
+    bucket = Hash(key) % HashSize,  and  Hash(FixedString) = its Index
+
+So it is a plain chained hash map, NOT `ls::gst::Map`. Everything in the "hard part"
+section above about node pools and the 0xc600 manager is a dead end for this
+structure — that machinery belongs to a different container.
+
+### Verified offsets
+
+    AnimationSetResource
+      +0x18  GUID FixedString
+      +0x28  AnimationBank  ->  AnimationSet*
+
+    AnimationSet == LegacyRefMap<FixedString, AnimationSubSet>
+      +0x00  ItemCount
+      +0x04  HashSize
+      +0x08  HashTable (MapNode**)
+
+    MapNode<FixedString, AnimationSubSet>
+      +0x00  Next
+      +0x08  Key (FixedString; 0xFFFFFFFF == the empty MapKey)
+      +0x10  Value.Animation.ItemCount
+      +0x14  Value.Animation.HashSize
+      +0x18  Value.Animation.HashTable
+      +0x20  Value.FallBackSubSet
+
+### Verified against ground truth, live
+
+BG3SX `bfa9dad2` — its LSX declares ONE subset, MapKey "", with an EMPTY Animation
+node:
+
+    ItemCount=1  HashSize=2
+    bucket0 = null
+    bucket1 -> node, Key=0xFFFFFFFF (empty), Animation.ItemCount=0
+
+Vanilla `HUM_M_Base` — ItemCount=37, HashSize=13, real UUID keys, chains walking via
+Next, Animation.ItemCount in the hundreds (127, 161, 268, 279, ...).
+
+Three independent things line up: subset count, the empty key, and the empty
+animation map. The read model can be trusted.
+
+### What remains for writes
+
+Mirror `LegacyMapBase::insert` from upstream/CoreLib/Base/LegacyMap.h: allocate a
+MapNode, link it at `HashTable[Hash(key) % HashSize]`, bump ItemCount, and grow/
+rehash when needed. Allocation must come from the game's allocator, not malloc, so
+the game can free it. That is the only remaining unknown, and it is a small one
+compared to what this section replaces.
