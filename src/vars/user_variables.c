@@ -902,7 +902,15 @@ ModVariables* mvar_get_or_create_mod(const char *mod_uuid) {
 
     // Create new
     if (g_ModCount >= UVAR_MAX_MODS) {
-        LOG_LUA_ERROR("Max mods reached (%d)", UVAR_MAX_MODS);
+        // Fires once per attempt, which in a large profile means hundreds of
+        // identical lines that say nothing about the consequence.
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_LUA_ERROR("mod variable storage full at %d mods; '%s' and any "
+                          "later mod cannot register Ext.Vars and may fail to "
+                          "initialise.", UVAR_MAX_MODS, mod_uuid);
+        }
         return NULL;
     }
 

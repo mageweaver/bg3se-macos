@@ -25,7 +25,12 @@
 // Constants
 // ============================================================================
 
-#define MAX_EVENT_HANDLERS 64
+// Per EVENT TYPE, not overall: a common event like Tick or GameStateChanged
+// collects one handler per interested mod. 45 SE mods is already most of the
+// way to 64. Not observed overflowing yet, but it is the same shape of cap as
+// MAX_MODS/MAX_MOD_UUIDS/UVAR_MAX_MODS, and the whole table only grows from
+// 0.25 MB to 1.0 MB.
+#define MAX_EVENT_HANDLERS 256
 #define MAX_DEFERRED_OPERATIONS 256
 #define DEFAULT_PRIORITY 100
 
@@ -59,7 +64,8 @@ static bool g_trace_enabled = false;  // Event tracing for debugging
 static int g_current_game_state = 0;  // Cached from GameStateChanged (for Ext.Utils.GetGameState)
 
 // Per-mod health tracking (for crash attribution and !mod_diag)
-#define MAX_MOD_HEALTH 128
+// One entry per mod that ever registers a handler; must cover the SE mod count.
+#define MAX_MOD_HEALTH 1024
 
 typedef struct {
     char mod_name[64];
