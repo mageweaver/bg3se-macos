@@ -736,14 +736,6 @@ void mod_context_pop(void) {
 }
 
 void mod_set_current(const char *mod_name, const char *lua_base_path, const char *pak_path) {
-    // Ext.Require resolves against this, and during the client bootstrap phase
-    // it is somehow empty by the time a mod's chunk runs. Trace every
-    // transition so the clobbering call is identifiable.
-    LOG_MOD_DEBUG("mod_set_current(name='%s', lua_base='%s', pak='%s')",
-                  mod_name ? mod_name : "(null)",
-                  lua_base_path ? lua_base_path : "(null)",
-                  pak_path ? pak_path : "(null)");
-
     if (mod_name) {
         strncpy(current_mod_name, mod_name, sizeof(current_mod_name) - 1);
         current_mod_name[sizeof(current_mod_name) - 1] = '\0';
