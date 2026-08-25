@@ -24,6 +24,9 @@
 // Helper Functions
 // ============================================================================
 
+// Offset of a resource's GUID FixedString within its struct (build 4.1.1.7398727).
+#define RESOURCE_GUID_OFFSET 0x48
+
 /**
  * Push a resource as a Lua table.
  * Resources are opaque structures - we expose the ID and pointer.
@@ -43,9 +46,15 @@ static void push_resource_entry(lua_State *L, void* resource, ResourceBankType t
         lua_setfield(L, -2, "Type");
     }
 
-    // Try to get resource ID from +0x08 (common pattern for FixedString ID)
+    // The resource's GUID FixedString sits at +0x48, not +0x08.
+    //
+    // Confirmed by round-trip against the live game: reading this field off a
+    // Texture entry from Ext.Resource.GetAll and passing it back to
+    // Ext.Resource.Get returns that resource. +0x08 reads 0 on this build, so
+    // every entry came back with no ResourceId at all - which is what made the
+    // whole subsystem impossible to debug from Lua.
     uint32_t id = 0;
-    if (safe_memory_read_u32((mach_vm_address_t)resource + 0x08, &id) && id != 0) {
+    if (safe_memory_read_u32((mach_vm_address_t)resource + RESOURCE_GUID_OFFSET, &id) && id != 0) {
         const char* name = fixed_string_resolve(id);
         if (name) {
             lua_pushstring(L, name);
