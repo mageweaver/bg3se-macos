@@ -188,3 +188,41 @@ flag, and verify each write by reading the map back before trusting it.
   `_ptrHex`). Typed fields are what this plan adds.
 - The GUID offset is +0x48 for some resource classes but not all (169abc1);
   subclasses differ. Do not assume it for AnimationSetResource without checking.
+
+
+## Hypotheses tested and falsified (2026-08-25)
+
+Recording these so they are not re-tried:
+
+1. **+0x1C is the subsets NodePoolData handle.** Falsified. The constructor writes
+   it byte-wise — `strb wzr,[x19,#0x1c]` / `strh wzr,[x19,#0x1e]` /
+   `strb wzr,[x19,#0x20]` — so +0x1C..+0x20 are small flags on the `ls::Resource`
+   base, not a handle. The differential (SX=1/0 vs vanilla=393217/2) that made it
+   look like a handle is unexplained but does not survive this.
+
+2. **The Release-derived pool walk reaches the subset nodes.** Falsified in
+   practice. The chain resolves to valid heap at every step and 0xc600 is the
+   universal manager offset (30,159 call sites), but BG3SX's handle reaches a node
+   without its promised empty MapKey and vanilla HUM_M's index (24576) runs past
+   the table into garbage.
+
+3. **+0x28 points at the subsets.** Not confirmed. It leads to a region containing
+   this resource's own GUID and its siblings from the same LSX bank, and — in a
+   vanilla set — long runs of identical 16-byte `{UUID, FixedString}` pairs
+   (`66fc2bb8-...` / `UPPER_FACE_GROUP`, repeated every 16 bytes). `66fc2bb8` is
+   NOT itself an AnimationSet. The regularity says this is a real table, but its
+   role is unidentified.
+
+Also note: an empty FixedString resolves to nil through `Ext.Debug.ReadFixedString`,
+so BG3SX's empty-string MapKey cannot be detected with it. Ground truth searches
+must use a vanilla set with real UUID subset keys, not BG3SX's.
+
+## Recommended next approach
+
+Stop reading raw ARM64 through objdump. `AnimationSetResource::Visit` is the
+deserializer — it necessarily touches the subsets member and the insert path — but
+it is large and dominated by visitor-call boilerplate that is hard to follow in
+disassembly. The repo already carries Ghidra tooling (`ghidra/`, and the
+`bg3se-macos-ghidra` skill). Decompiling Visit there should give the member offset
+and the population path directly, which is the last piece needed before any code
+can be written.
