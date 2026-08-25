@@ -74,19 +74,50 @@ bfa9dad2, 0c914b3f, 284eea6d and 71d2f8cc — precisely the sibling Resource nod
 in BG3SX's `_merged.lsx`, whose root node is `AnimationSetBank`. So **+0x28 is the
 bank listing sibling sets, not this resource's AnimationBank.**
 
+### gst::Map is a packed handle, not a pointer
+
+`ls::gst::Map::Release(NodePoolData const&)` @ 0x1064d11dc decodes its argument:
+
+    ldr w9, [x1] ; and x9, #0xf     -> low 4 bits  = pool selector
+    madd x21 = x9*0x1200 + poolBase -> pools are 0x1200 bytes apart
+    ubfx x9, w22, #4, #16           -> bits 4..19  = index into a table
+
+So a NodePoolData is a single u32 handle: `pool = h & 0xF`, `index = (h >> 4) & 0xFFFF`.
+That is why no plain pointer to the subsets could be found in the record.
+
+### AnimationSetResource record (48 bytes, vtable identity confirmed)
+
+The vptr resolves to `vtable for ls::AnimationSetResource` + 0x10 (past the RTTI
+header), so the 48-byte object is genuinely the resource.
+
+    +0x00  vptr
+    +0x18  GUID FixedString              (verified by identity check)
+    +0x1C  u32   NodePoolData handle     (differs per resource)
+    +0x20  u32   count                   (0 for BG3SX's empty sets, 2 for vanilla)
+    +0x28  pointer                       (heap; differs per resource)
+
+Differential across three sets — BG3SX's `bfa9dad2` ships ONE subset whose Animation
+map is EMPTY, vanilla `HUM_M_Base` / `HUM_F_Base` have populated ones:
+
+    BG3SX     +0x1C = 1          +0x20 = 0
+    HUM_M     +0x1C = 393217     +0x20 = 2      (0x60001 -> pool 1, index 0x6000)
+    HUM_F     +0x1C = 131072     +0x20 = 2
+
+### Why read-only is not an option here
+
+BG3SX's `_merged.lsx` defines its subsets with an EMPTY `Animation` node — the
+container ships empty and BG3AF's AddLink is what fills it. So there is nothing to
+read; the write path is the only path that does anything.
+
 ### Open question
 
-Where AnimationBank / AnimationSubSets actually live. The record appears to be 48
-bytes (vtable, zeros, GUID at +0x18, one pointer at +0x28) with no room for them
-inline, and +0x28 is now accounted for. Either the 48-byte object is a handle
-rather than the full resource, or the subset storage hangs off the bank keyed by
-resource.
+Confirm what +0x1C indexes and what +0x20 counts. The handle decode is taken from
+Release; the pool base it is relative to (`[x0, #0x1080]`, where x0 is the Map)
+still has to be located, and the node layout read out of it.
 
-Note the 48-byte model does not fully hold up: pointers from the bank land at
-resource-pool addresses whose GUIDs sit at +0x48 within the pointed-to block
-rather than +0x18, which is inconsistent with a flat 48-byte stride. Resolve that
-before trusting any offset here beyond +0x18 (which is independently verified by
-identity check).
+Next experiment: resolve +0x1C for BG3SX's set through the pool and check that it
+yields exactly one subset whose MapKey FixedString is the empty string. That is the
+ground truth the whole model has to reproduce before any of it is trusted.
 
 ### Next probe
 
