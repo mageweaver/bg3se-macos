@@ -60,15 +60,40 @@ The 48-byte stride is what made +0x48 look like a valid GUID offset: it lands on
 the NEXT record's GUID, which is a real UUID and looks up fine. Verify identity by
 asking for a known UUID and reading the field back, never by round-tripping.
 
-Following +0x28 gives a region of repeating 16-byte entries:
+`+0x28` is per-resource, not shared: two different sets give different pointers
+while sharing the AnimationSetResource vtable. It leads to an array of 32-byte
+records:
 
-    +0x00  u32 = 1
-    +0x04  u32 = 2
-    +0x08  pointer               (successive entries 32 bytes apart)
+    +0x00  u32 = 1, u32 = 2
+    +0x08  pointer to this record + 0x10   (self-referential)
+    +0x10  0, 0
+    +0x18  pointer into the resource pool
 
-Not yet interpreted — do not build on this until the entry shape is confirmed and
-its keys enumerate to something matching the LSX (BG3SX's set must yield one subset
-keyed by "").
+Dereferencing that last pointer and resolving FixedStrings finds the GUIDs
+bfa9dad2, 0c914b3f, 284eea6d and 71d2f8cc — precisely the sibling Resource nodes
+in BG3SX's `_merged.lsx`, whose root node is `AnimationSetBank`. So **+0x28 is the
+bank listing sibling sets, not this resource's AnimationBank.**
+
+### Open question
+
+Where AnimationBank / AnimationSubSets actually live. The record appears to be 48
+bytes (vtable, zeros, GUID at +0x18, one pointer at +0x28) with no room for them
+inline, and +0x28 is now accounted for. Either the 48-byte object is a handle
+rather than the full resource, or the subset storage hangs off the bank keyed by
+resource.
+
+Note the 48-byte model does not fully hold up: pointers from the bank land at
+resource-pool addresses whose GUIDs sit at +0x48 within the pointed-to block
+rather than +0x18, which is inconsistent with a flat 48-byte stride. Resolve that
+before trusting any offset here beyond +0x18 (which is independently verified by
+identity check).
+
+### Next probe
+
+Take the pointer at +0x28, walk the 32-byte records, and for each one dump the
+pointed-to block far enough to find a FixedString that is NOT a set GUID — the
+subset MapKey ("" for BG3SX) or an animation MapKey. That distinguishes "this is
+just the sibling list" from "the subsets hang off here too".
 
 ## The hard part
 
