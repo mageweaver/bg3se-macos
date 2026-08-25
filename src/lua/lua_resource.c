@@ -87,7 +87,12 @@ static void push_resource_entry(lua_State *L, void* resource, ResourceBankType t
     // Typed fields for resource classes we model. BG3AF drives
     // resource.AnimationBank.AnimationSubSets[...].Animation[...] and cannot do
     // anything useful with an opaque pointer.
-    if (type == RESOURCE_ANIMATION_SET) {
+    // Compare against the RESOLVED index, not the RESOURCE_ANIMATION_SET enum
+    // constant. The enum mirrors the Windows ordering (3), but this build puts
+    // AnimationSet at 4 and resource_type_from_name applies that override - so
+    // the constant and the live index disagree, and comparing to the constant
+    // silently never matches.
+    if (type == resource_type_from_name("AnimationSet")) {
         if (lua_animset_push_bank(L, resource)) {
             lua_setfield(L, -2, "AnimationBank");
         }
