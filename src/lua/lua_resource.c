@@ -113,13 +113,20 @@ static int lua_resource_get(lua_State *L) {
         return luaL_error(L, "Unknown resource type: %s", type_name);
     }
 
+    // Both misses below return nil, and a mod cannot tell them apart: BG3AF
+    // reports "No AnimationSet found for: <uuid>" either way, which is what
+    // BG3SX, WickedAnims and GrazztRing all fail on. Say which it was.
     if (!resource_manager_ready()) {
+        LOG_LUA_DEBUG("Ext.Resource.Get('%s', '%s'): resource manager not ready",
+                      resource_id, type_name);
         lua_pushnil(L);
         return 1;
     }
 
     void* resource = resource_get_by_name((ResourceBankType)type, resource_id);
     if (!resource) {
+        LOG_LUA_DEBUG("Ext.Resource.Get('%s', '%s'): not present in bank %d",
+                      resource_id, type_name, type);
         lua_pushnil(L);
         return 1;
     }
