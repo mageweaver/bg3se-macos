@@ -1293,10 +1293,11 @@ static uint16_t resolve_component_type(lua_State *L, int arg_index) {
     }
 
     // Guard against names too long for probing. Longest expansion is
-    // "eoc::" (5) + "character_creation::" (20) + "Component" (9) = 34.
+    // "eoc::" (5) + "character_creation::definition::" (32) + "Component" (9)
+    // = 46.
     // snprintf would truncate rather than overflow, and a truncated name simply
     // fails to match, but keep the guard honest about the real bound.
-    if (strlen(name) > COMPONENT_MAX_NAME_LEN - 35) {
+    if (strlen(name) > COMPONENT_MAX_NAME_LEN - 47) {
         return COMPONENT_INDEX_UNDEFINED;
     }
 
@@ -1325,8 +1326,14 @@ static uint16_t resolve_component_type(lua_State *L, int arg_index) {
     // never reach those, which is why AppearanceEditEnhanced ("CCState") and
     // CustomCompanions ("CCLevelUpDefinition") both failed to load with
     // "Unknown component type" while the components were registered all along.
+    // Several rows may share an abbreviation: BG3SE collapses deeper nesting
+    // into the same initialism, so CCRespec is
+    // eoc::character_creation::definition::RespecComponent while CCState is
+    // eoc::character_creation::StateComponent. Rows are tried in order.
     static const struct { const char *abbrev; const char *ns; } nested[] = {
-        { "CC", "character_creation::" },
+        { "CC",     "character_creation::" },
+        { "CC",     "character_creation::definition::" },
+        { "Hotbar", "hotbar::" },
         { NULL, NULL }
     };
 
