@@ -333,6 +333,43 @@ int lua_ext_json_stringify(lua_State *L) {
     return 1;
 }
 
+/**
+ * Ext.DumpExport(value) -> string
+ *
+ * MCM uses this in its diagnostic paths, several of which concatenate the
+ * result directly:
+ *     "... (" .. Ext.DumpExport(config[settingID]) .. ") ..."
+ * so it must ALWAYS return a string. Returning nil (or not existing at all)
+ * raises inside MCM's blueprint preprocessing and aborts the whole load: the
+ * server never reaches "Finished loading MCM blueprints", never ships the
+ * blueprints to the client, and the MCM window is never created. That only
+ * shows up on a profile large enough for some mod to have a setting its
+ * blueprint does not declare, which is what takes MCM down that path.
+ *
+ * Non-serialisable values fall back to Lua's own tostring form rather than
+ * failing, since every caller here is building a log line.
+ */
+static int lua_ext_dump_export(lua_State *L) {
+    int t = lua_type(L, 1);
+
+    if (t == LUA_TNONE || t == LUA_TNIL) {
+        lua_pushliteral(L, "nil");
+        return 1;
+    }
+
+    if (t == LUA_TSTRING || t == LUA_TNUMBER || t == LUA_TBOOLEAN || t == LUA_TTABLE) {
+        luaL_Buffer b;
+        luaL_buffinit(L, &b);
+        json_stringify_value(L, 1, &b);
+        luaL_pushresult(&b);
+        return 1;
+    }
+
+    // Functions, userdata, threads: "function: 0x...", and so on.
+    luaL_tolstring(L, 1, NULL);
+    return 1;
+}
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -350,4 +387,8 @@ void lua_json_register(lua_State *L, int ext_table_index) {
     lua_pushcfunction(L, lua_ext_json_stringify);
     lua_setfield(L, -2, "Stringify");
     lua_setfield(L, ext_table_index, "Json");
+
+    // Top-level Ext.DumpExport - this is where MCM calls it from.
+    lua_pushcfunction(L, lua_ext_dump_export);
+    lua_setfield(L, ext_table_index, "DumpExport");
 }
