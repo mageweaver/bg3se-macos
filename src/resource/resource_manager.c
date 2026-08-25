@@ -29,6 +29,13 @@
 // ResourceContainer structure offsets
 #define RESOURCECONTAINER_BANKS_OFFSET  0x08  // Array of banks indexed by type
 
+// ResourceBank structure offsets
+#define RESOURCEBANK_BUCKETCOUNT_OFFSET 0x08  // Hash bucket count
+
+// Sanity bound on a bank's bucket count. Real banks are in the thousands; a
+// slot reading far above this is not a bank we can hand to the game.
+#define RESOURCE_MAX_BUCKETS            (1u << 22)
+
 // ============================================================================
 // Type Name Table
 // ============================================================================
@@ -221,6 +228,34 @@ void* resource_get(ResourceBankType type, uint32_t fixed_string_id) {
         (GetResourceFunc)offset_table_game_fn(GAME_FN_RESOURCE_GET);
     if (!get_resource) return NULL;
 
+    // Validate this type's bank BEFORE handing the container to the game.
+    //
+    // ls::ResourceContainer::GetResource null-checks bank_array[type], but not
+    // every slot that is non-null is usable here: some read as garbage, and
+    // calling in with one of those faults inside the game's own hash walk.
+    // A single Ext.Resource.Get with the wrong type then kills the process -
+    // which is exactly what happened while probing all 34 types by hand.
+    // Read the slot ourselves first; safe_memory_read_pointer cannot fault.
+    void* type_bank = NULL;
+    if (!safe_memory_read_pointer(
+            (mach_vm_address_t)bank + RESOURCECONTAINER_BANKS_OFFSET
+                + (size_t)type * sizeof(void*),
+            &type_bank) || !type_bank) {
+        return NULL;
+    }
+
+    // The bank must at least expose a readable, sane bucket count. A slot that
+    // fails this is the one that walks away to the 100000-entry guard in
+    // resource_get_count rather than terminating.
+    uint32_t bucket_count = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)type_bank + RESOURCEBANK_BUCKETCOUNT_OFFSET,
+                              &bucket_count)
+        || bucket_count == 0 || bucket_count > RESOURCE_MAX_BUCKETS) {
+        LOG_CORE_DEBUG("resource_get: bank %d unusable (bucket_count=%u)",
+                       (int)type, bucket_count);
+        return NULL;
+    }
+
     // Note: FixedString is passed as pointer to its hash value
     void* result = get_resource(bank, (uint32_t)type, &fixed_string_id);
 
@@ -287,7 +322,8 @@ int resource_get_count(ResourceBankType type) {
 
     // Read bucket count at +0x08
     uint32_t bucket_count = 0;
-    if (!safe_memory_read_u32((mach_vm_address_t)type_bank + 0x08, &bucket_count)) {
+    if (!safe_memory_read_u32((mach_vm_address_t)type_bank + RESOURCEBANK_BUCKETCOUNT_OFFSET,
+                              &bucket_count)) {
         return -1;
     }
 
