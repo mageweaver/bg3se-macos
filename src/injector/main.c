@@ -836,7 +836,16 @@ static int require_resolve(lua_State *L, const char *path) {
         }
     }
 
-    LOG_LUA_WARN(" Module not found: %s", path);
+    // Say WHICH precondition failed. "Module not found" alone cannot
+    // distinguish a genuinely absent file from a lost mod context, and the two
+    // need completely different fixes: every Ext.Require in the client
+    // bootstrap phase failed here while the same files loaded fine during the
+    // server phase.
+    LOG_LUA_WARN(" Module not found: %s (mod='%s' lua_base='%s' pak='%s')",
+                 path,
+                 mod_name ? mod_name : "(null)",
+                 lua_base ? lua_base : "(null)",
+                 pak_path ? pak_path : "(null)");
     lua_pushnil(L);
     return 1;
 }
