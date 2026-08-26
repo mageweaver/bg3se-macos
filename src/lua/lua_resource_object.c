@@ -163,6 +163,24 @@ static void push_guid(lua_State *L, const void *addr) {
     }
 }
 
+
+/*
+ * Intern a string for a FixedString field, mapping "" to the null index.
+ *
+ * The string table has no entry for the empty string, so interning "" fails.
+ * That matters because reads hand back "" for an unset field, and the obvious
+ * round trip --
+ *
+ *     dst.ExactMatch = src.ExactMatch
+ *
+ * -- then fails whenever the source was unset. Empty in, unset out: the same
+ * equivalence the read side already makes, in the other direction.
+ */
+static uint32_t intern_fixedstring(const char *str) {
+    if (!str || !*str) return FS_NULL_INDEX;
+    return fixed_string_intern(str, (int)strlen(str));
+}
+
 /*
  * An unset FixedString holds the null index and resolves to nothing. That is an
  * empty string, not an absent value -- the same distinction stats property
@@ -567,10 +585,16 @@ static int rebuild_fixedstring_hashset(lua_State *L, void *addr, int value_index
                          "{ [name] = true }");
         }
 
-        uint32_t id = fixed_string_intern(name, (int)strlen(name));
-        if (id == 0xffffffffu) {
-            lua_pop(L, 2);
-            HASHSET_FAIL("could not intern '%s' into the string table", name);
+        uint32_t id = intern_fixedstring(name);
+        if (id == FS_NULL_INDEX) {
+            if (*name) {
+                lua_pop(L, 2);
+                HASHSET_FAIL("could not intern '%s' into the string table", name);
+            }
+            // An empty member has nothing to hash and means nothing in a set;
+            // drop it rather than indexing the null string.
+            lua_pop(L, 1);
+            continue;
         }
 
         bool duplicate = false;
@@ -772,8 +796,8 @@ static int write_variant_scalar(lua_State *L, void *addr, int value_index) {
             break;
         case LUA_TSTRING: {
             const char *str = lua_tostring(L, value_index);
-            uint32_t idx = fixed_string_intern(str, (int)strlen(str));
-            if (idx == 0xffffffffu) {
+            uint32_t idx = intern_fixedstring(str);
+            if (idx == FS_NULL_INDEX && *str) {
                 return luaL_error(L, "could not intern '%s'", str);
             }
             which = 3;
@@ -953,8 +977,8 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
 
         case RF_FIXEDSTRING: {
             const char *s = luaL_checkstring(L, value_index);
-            uint32_t idx = fixed_string_intern(s, (int)strlen(s));
-            if (idx == 0xffffffffu) {
+            uint32_t idx = intern_fixedstring(s);
+            if (idx == FS_NULL_INDEX && *s) {
                 return luaL_error(L, "could not intern '%s' into the string table", s);
             }
             *(uint32_t *)addr = idx;
@@ -1011,10 +1035,9 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
                 return luaL_error(L, "field '%s' needs a handle string or a table "
                                      "with a Handle field", field->name);
             }
-            uint32_t idx = handle ? fixed_string_intern(handle, (int)strlen(handle))
-                                  : 0xffffffffu;
+            uint32_t idx = intern_fixedstring(handle);
             lua_pop(L, popped);
-            if (idx == 0xffffffffu) {
+            if (idx == FS_NULL_INDEX && handle && *handle) {
                 return luaL_error(L, "could not intern handle for field '%s'", field->name);
             }
             *(uint32_t *)addr = idx;
@@ -1250,8 +1273,8 @@ static int write_element(lua_State *L, void *elem, ResourceFieldKind kind, int v
         }
         case RF_ARRAY_FIXEDSTRING: {
             const char *s = luaL_checkstring(L, value_index);
-            uint32_t idx = fixed_string_intern(s, (int)strlen(s));
-            if (idx == 0xffffffffu) {
+            uint32_t idx = intern_fixedstring(s);
+            if (idx == FS_NULL_INDEX && *s) {
                 return luaL_error(L, "could not intern '%s'", s);
             }
             *(uint32_t *)elem = idx;
