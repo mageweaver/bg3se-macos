@@ -67,14 +67,21 @@ HASHMAP_RE = re.compile(r"^HashMap<")
 VARIANT_RE = re.compile(r"^std::variant<")
 
 
-def size_of(ctype):
+def size_of(ctype, nested=None):
     """(size, align, lua_kind) or None if we cannot size it."""
     if ctype in TYPES:
         return TYPES[ctype]
     m = re.match(r"^Array<(.+)>$", ctype)
     if m:
-        elem = ARRAY_ELEMS.get(m.group(1).strip())
-        return (ARRAY_SIZE, ARRAY_ALIGN, ("ARRAY_" + elem) if elem else None)
+        inner = m.group(1).strip()
+        elem = ARRAY_ELEMS.get(inner)
+        if elem:
+            return (ARRAY_SIZE, ARRAY_ALIGN, "ARRAY_" + elem)
+        # Array of a nested struct: readable as an array of field proxies.
+        short = inner.split("::")[-1]
+        if nested and short in nested:
+            return (ARRAY_SIZE, ARRAY_ALIGN, "ARRAY_STRUCT:" + short)
+        return (ARRAY_SIZE, ARRAY_ALIGN, None)
     if HASHMAP_RE.match(ctype):
         return (64, 8, None)
     # std::variant sizes depend on alternative alignment; not worth guessing.
@@ -85,6 +92,35 @@ FIELD_RE = re.compile(
     r"^((?:\[\[[^\]]*\]\]\s*)?)"          # attributes, e.g. [[bg3::hidden]]
     r"([A-Za-z_][\w:]*(?:\s*<[^;]*?>)?)"  # type
     r"\s+(\w+)\s*(\{[^;]*\})?\s*;")       # name, initialiser
+
+
+def collect_nested_structs(body):
+    """
+    Return {name: body} for each `struct X { ... };` nested in a struct body.
+
+    These are element types, not members: Progression declares Spell, Skill,
+    Equipment and friends and then holds Array<Spell>, Array<Skill> and so on.
+    Laying them out is what lets those arrays be read.
+    """
+    found = {}
+    i = 0
+    while i < len(body):
+        m = re.compile(r"\bstruct\s+(\w+)[^;{]*\{").search(body, i)
+        if not m:
+            break
+        depth, j = 0, m.end() - 1
+        while j < len(body):
+            if body[j] == "{":
+                depth += 1
+            elif body[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        found[m.group(1)] = body[m.end():j]
+        k = body.find(";", j)
+        i = (k + 1) if k != -1 else len(body)
+    return found
 
 
 def strip_nested_structs(body):
@@ -117,32 +153,52 @@ def strip_nested_structs(body):
     return "".join(out)
 
 
+def layout_fields(body, start_offset, nested_sizes):
+    """Walk a struct body assigning offsets. Returns (fields, size, truncated)."""
+    fields, offset, truncated, max_align = [], start_offset, None, 1
+    for line in body.splitlines():
+        l = line.strip()
+        if not l or l.startswith("//") or l.startswith("static constexpr"):
+            continue
+        m = FIELD_RE.match(l)
+        if not m:
+            continue
+        ctype, fname = m.group(2).strip(), m.group(3)
+        info = size_of(ctype, nested_sizes)
+        if info is None:
+            truncated = "%s %s" % (ctype, fname)
+            break
+        size, align, kind = info
+        offset = (offset + align - 1) & ~(align - 1)
+        max_align = max(max_align, align)
+        if kind:
+            fields.append((fname, offset, kind, ctype))
+        offset += size
+    # Round the struct out to its own alignment; this is the array stride.
+    offset = (offset + max_align - 1) & ~(max_align - 1)
+    return fields, offset, truncated
+
+
 def parse(header):
     src = open(header).read()
     blocks = re.findall(
         r"struct\s+(\w+)\s*:\s*public\s+resource::GuidResource\s*\{(.*?)\n\};", src, re.S)
     out = []
     for name, body in blocks:
-        body = strip_nested_structs(body)
-        fields, offset, truncated = [], 0x18, None  # VMT(8) + ResourceUUID(16)
-        for line in body.splitlines():
-            l = line.strip()
-            if not l or l.startswith("//") or l.startswith("static constexpr"):
-                continue
-            m = FIELD_RE.match(l)
-            if not m:
-                continue
-            ctype, fname = m.group(2).strip(), m.group(3)
-            info = size_of(ctype)
-            if info is None:
-                truncated = "%s %s" % (ctype, fname)
-                break
-            size, align, kind = info
-            offset = (offset + align - 1) & ~(align - 1)
-            if kind:
-                fields.append((fname, offset, kind, ctype))
-            offset += size
-        out.append((name, fields, offset, truncated))
+        nested_bodies = collect_nested_structs(body)
+
+        # Size the nested types first -- the outer struct's Array<X> fields
+        # need to know X before they can be laid out.
+        nested_sizes, nested_layouts = {}, {}
+        for nname, nbody in nested_bodies.items():
+            nfields, nsize, _ = layout_fields(nbody, 0, None)
+            nested_sizes[nname] = nsize
+            nested_layouts[nname] = (nfields, nsize)
+
+        fields, size, truncated = layout_fields(strip_nested_structs(body), 0x18, nested_sizes)
+        used = sorted({k.split(":", 1)[1] for _, _, k, _ in fields if k.startswith("ARRAY_STRUCT:")})
+        out.append((name, fields, size, truncated,
+                    [(u, nested_layouts[u][0], nested_layouts[u][1]) for u in used]))
     return out
 
 
@@ -158,32 +214,57 @@ def main():
     print("#include <stddef.h>")
     print()
 
-    for name, fields, size, _ in structs:
+    # Nested element layouts first: an outer field points at one of these.
+    for name, fields, size, _, nested in structs:
+        for nname, nfields, nsize in nested:
+            if not nfields:
+                continue
+            print("static const ResourceField fields_%s_%s[] = {" % (name, nname))
+            for fname, off, kind, ctype in nfields:
+                print('    { "%s", 0x%02x, RF_%s, NULL, 0 },  // %s' % (fname, off, kind, ctype))
+            print("};")
+            print("static const ResourceLayout layout_%s_%s = "
+                  '{ "%s::%s", fields_%s_%s, %d, 0x%02x, true };'
+                  % (name, nname, name, nname, name, nname, len(nfields), nsize))
+    print()
+
+    for name, fields, size, _, nested in structs:
         if not fields:
             continue
+        have = {n for n, nf, _ in nested if nf}
         print("static const ResourceField fields_%s[] = {" % name)
         for fname, off, kind, ctype in fields:
-            print('    { "%s", 0x%02x, RF_%s },  // %s' % (fname, off, kind, ctype))
+            if kind.startswith("ARRAY_STRUCT:"):
+                elem = kind.split(":", 1)[1]
+                if elem in have:
+                    esize = next(ns for n, nf, ns in nested if n == elem)
+                    print('    { "%s", 0x%02x, RF_ARRAY_STRUCT, &layout_%s_%s, 0x%02x },  // %s'
+                          % (fname, off, name, elem, esize, ctype))
+                    continue
+                print('    { "%s", 0x%02x, RF_ARRAY_STRUCT, NULL, 0 },  // %s (no readable fields)'
+                      % (fname, off, ctype))
+                continue
+            print('    { "%s", 0x%02x, RF_%s, NULL, 0 },  // %s' % (fname, off, kind, ctype))
         print("};")
     print()
 
     print("const ResourceLayout g_resource_layouts[] = {")
-    for name, fields, size, trunc in structs:
+    for name, fields, size, trunc, _ in structs:
         if not fields:
-            print('    { "%s", NULL, 0, 0x%02x },  // no readable fields' % (name, size))
+            print('    { "%s", NULL, 0, 0x%02x, false },  // no readable fields' % (name, size))
             continue
         note = ("  // truncated at %s" % trunc) if trunc else ""
-        print('    { "%s", fields_%s, %d, 0x%02x },%s'
+        print('    { "%s", fields_%s, %d, 0x%02x, false },%s'
               % (name, name, len(fields), size, note))
     print("};")
     print()
     print("const int g_resource_layout_count = %d;" % len(structs))
 
-    ntrunc = sum(1 for _, _, _, t in structs if t)
+    ntrunc = sum(1 for _, _, _, t, _ in structs if t)
     sys.stderr.write("%d structs, %d truncated, %d fields\n"
                      % (len(structs), ntrunc,
-                        sum(len(f) for _, f, _, _ in structs)))
-    for n, f, _, t in structs:
+                        sum(len(f) for _, f, _, _, _ in structs)))
+    for n, f, _, t, _ in structs:
         if t:
             sys.stderr.write("  truncated %-40s after %d fields, at %s\n" % (n, len(f), t))
 

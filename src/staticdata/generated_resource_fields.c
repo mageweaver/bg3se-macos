@@ -4,947 +4,1031 @@
 #include "staticdata_fields.h"
 #include <stddef.h>
 
+static const ResourceField fields_Progression_Ability[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Arg2", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x14, RF_I32, NULL, 0 },  // int32_t
+    { "Arg4", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Progression_Ability = { "Progression::Ability", fields_Progression_Ability, 4, 0x28, true };
+static const ResourceField fields_Progression_AbilityBonus[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Amounts", 0x18, RF_ARRAY_I32, NULL, 0 },  // Array<int32_t>
+    { "BonusType", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Progression_AbilityBonus = { "Progression::AbilityBonus", fields_Progression_AbilityBonus, 4, 0x38, true };
+static const ResourceField fields_Progression_AddedSpell[] = {
+    { "SpellUUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "SelectorId", 0x10, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Ability", 0x20, RF_U8, NULL, 0 },  // AbilityId
+    { "ActionResource", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "PrepareType", 0x38, RF_U8, NULL, 0 },  // SpellPrepareType
+    { "CooldownType", 0x39, RF_U8, NULL, 0 },  // SpellCooldownType
+    { "ClassUUID", 0x40, RF_GUID, NULL, 0 },  // Guid
+};
+static const ResourceLayout layout_Progression_AddedSpell = { "Progression::AddedSpell", fields_Progression_AddedSpell, 7, 0x50, true };
+static const ResourceField fields_Progression_Equipment[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Progression_Equipment = { "Progression::Equipment", fields_Progression_Equipment, 3, 0x28, true };
+static const ResourceField fields_Progression_Passive[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Amount2", 0x14, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Progression_Passive = { "Progression::Passive", fields_Progression_Passive, 4, 0x28, true };
+static const ResourceField fields_Progression_Skill[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Progression_Skill = { "Progression::Skill", fields_Progression_Skill, 3, 0x28, true };
+static const ResourceField fields_Progression_SkillExpertise[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x14, RF_BOOL, NULL, 0 },  // bool
+    { "Arg4", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Progression_SkillExpertise = { "Progression::SkillExpertise", fields_Progression_SkillExpertise, 4, 0x28, true };
+static const ResourceField fields_Progression_Spell[] = {
+    { "SpellUUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x14, RF_I32, NULL, 0 },  // int32_t
+    { "SelectorId", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CastingAbility", 0x28, RF_U8, NULL, 0 },  // AbilityId
+    { "ActionResource", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "PrepareType", 0x40, RF_U8, NULL, 0 },  // SpellPrepareType
+    { "CooldownType", 0x41, RF_U8, NULL, 0 },  // SpellCooldownType
+    { "ClassUUID", 0x48, RF_GUID, NULL, 0 },  // Guid
+};
+static const ResourceLayout layout_Progression_Spell = { "Progression::Spell", fields_Progression_Spell, 9, 0x58, true };
+static const ResourceField fields_ApprovalRating_Reaction[] = {
+    { "id", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "value", 0x10, RF_I32, NULL, 0 },  // int32_t
+};
+static const ResourceLayout layout_ApprovalRating_Reaction = { "ApprovalRating::Reaction", fields_ApprovalRating_Reaction, 2, 0x18, true };
+static const ResourceField fields_ShapeshiftRule_TypedInt[] = {
+    { "Type", 0x00, RF_U8, NULL, 0 },  // uint8_t
+    { "Value", 0x04, RF_I32, NULL, 0 },  // int32_t
+};
+static const ResourceLayout layout_ShapeshiftRule_TypedInt = { "ShapeshiftRule::TypedInt", fields_ShapeshiftRule_TypedInt, 2, 0x08, true };
+
 static const ResourceField fields_ActionResource[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Error", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "MaxLevel", 0x4c, RF_U32 },  // uint32_t
-    { "MaxValue", 0x50, RF_F64 },  // double
-    { "DiceType", 0x58, RF_U8 },  // DiceSizeId
-    { "ReplenishType", 0x59, RF_U8 },  // ResourceReplenishType
-    { "ShowOnActionResourcePanel", 0x5a, RF_BOOL },  // bool
-    { "UpdatesSpellPowerLevel", 0x5b, RF_BOOL },  // bool
-    { "PartyActionResource", 0x5c, RF_BOOL },  // bool
-    { "IsSpellResource", 0x5d, RF_BOOL },  // bool
-    { "IsHidden", 0x5e, RF_BOOL },  // bool
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x2c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Error", 0x3c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "MaxLevel", 0x4c, RF_U32, NULL, 0 },  // uint32_t
+    { "MaxValue", 0x50, RF_F64, NULL, 0 },  // double
+    { "DiceType", 0x58, RF_U8, NULL, 0 },  // DiceSizeId
+    { "ReplenishType", 0x59, RF_U8, NULL, 0 },  // ResourceReplenishType
+    { "ShowOnActionResourcePanel", 0x5a, RF_BOOL, NULL, 0 },  // bool
+    { "UpdatesSpellPowerLevel", 0x5b, RF_BOOL, NULL, 0 },  // bool
+    { "PartyActionResource", 0x5c, RF_BOOL, NULL, 0 },  // bool
+    { "IsSpellResource", 0x5d, RF_BOOL, NULL, 0 },  // bool
+    { "IsHidden", 0x5e, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_ClassDescription[] = {
-    { "ParentGuid", 0x18, RF_GUID },  // Guid
-    { "Name", 0x28, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Unused", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "SubclassTitle", 0x4c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x5c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ProgressionTableUUID", 0x70, RF_GUID },  // Guid
-    { "SoundClassType", 0x80, RF_FIXEDSTRING },  // FixedString
-    { "PrimaryAbility", 0x84, RF_U8 },  // AbilityId
-    { "SpellCastingAbility", 0x85, RF_U8 },  // AbilityId
-    { "MustPrepareSpells", 0x86, RF_BOOL },  // bool
-    { "CanLearnSpells", 0x87, RF_BOOL },  // bool
-    { "HasGod", 0x88, RF_BOOL },  // bool
-    { "IsDefaultForUseSpellAction", 0x89, RF_BOOL },  // bool
-    { "SomaticEquipmentSet", 0x90, RF_HASHSET_FIXEDSTRING },  // HashSet<FixedString>
-    { "Tags", 0xc0, RF_ARRAY_GUID },  // Array<Guid>
-    { "ClassEquipment", 0xd0, RF_FIXEDSTRING },  // FixedString
-    { "CharacterCreationPose", 0xd4, RF_FIXEDSTRING },  // FixedString
-    { "LearningStrategy", 0xd8, RF_U8 },  // SpellLearningStrategy
-    { "field_71", 0xd9, RF_U8 },  // uint8_t
-    { "BaseHp", 0xdc, RF_I32 },  // int
-    { "HpPerLevel", 0xe0, RF_I32 },  // int
-    { "CommonHotbarColumns", 0xe4, RF_I32 },  // int
-    { "ClassHotbarColumns", 0xe8, RF_I32 },  // int
-    { "ItemsHotbarColumns", 0xec, RF_I32 },  // int
-    { "AnimationSetPriority", 0xf0, RF_I32 },  // int
-    { "MulticlassSpellcasterModifier", 0xf8, RF_F64 },  // double
-    { "SpellList", 0x100, RF_GUID },  // Guid
+    { "ParentGuid", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "Name", 0x28, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Unused", 0x3c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "SubclassTitle", 0x4c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x5c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ProgressionTableUUID", 0x70, RF_GUID, NULL, 0 },  // Guid
+    { "SoundClassType", 0x80, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PrimaryAbility", 0x84, RF_U8, NULL, 0 },  // AbilityId
+    { "SpellCastingAbility", 0x85, RF_U8, NULL, 0 },  // AbilityId
+    { "MustPrepareSpells", 0x86, RF_BOOL, NULL, 0 },  // bool
+    { "CanLearnSpells", 0x87, RF_BOOL, NULL, 0 },  // bool
+    { "HasGod", 0x88, RF_BOOL, NULL, 0 },  // bool
+    { "IsDefaultForUseSpellAction", 0x89, RF_BOOL, NULL, 0 },  // bool
+    { "SomaticEquipmentSet", 0x90, RF_HASHSET_FIXEDSTRING, NULL, 0 },  // HashSet<FixedString>
+    { "Tags", 0xc0, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ClassEquipment", 0xd0, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "CharacterCreationPose", 0xd4, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "LearningStrategy", 0xd8, RF_U8, NULL, 0 },  // SpellLearningStrategy
+    { "field_71", 0xd9, RF_U8, NULL, 0 },  // uint8_t
+    { "BaseHp", 0xdc, RF_I32, NULL, 0 },  // int
+    { "HpPerLevel", 0xe0, RF_I32, NULL, 0 },  // int
+    { "CommonHotbarColumns", 0xe4, RF_I32, NULL, 0 },  // int
+    { "ClassHotbarColumns", 0xe8, RF_I32, NULL, 0 },  // int
+    { "ItemsHotbarColumns", 0xec, RF_I32, NULL, 0 },  // int
+    { "AnimationSetPriority", 0xf0, RF_I32, NULL, 0 },  // int
+    { "MulticlassSpellcasterModifier", 0xf8, RF_F64, NULL, 0 },  // double
+    { "SpellList", 0x100, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_Tag[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Description", 0x20, RF_STDSTRING },  // STDString
-    { "Icon", 0x30, RF_FIXEDSTRING },  // FixedString
-    { "Categories", 0x34, RF_U32 },  // uint32_t
-    { "Properties", 0x38, RF_U32 },  // uint32_t
-    { "DisplayName", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "DisplayDescription", 0x4c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Description", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Icon", 0x30, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Categories", 0x34, RF_U32, NULL, 0 },  // uint32_t
+    { "Properties", 0x38, RF_U32, NULL, 0 },  // uint32_t
+    { "DisplayName", 0x3c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "DisplayDescription", 0x4c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
 };
 static const ResourceField fields_Faction[] = {
-    { "Faction", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "ParentGuid", 0x20, RF_GUID },  // Guid
+    { "Faction", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ParentGuid", 0x20, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_Race[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "MergedInto", 0x40, RF_GUID },  // Guid
-    { "ParentGuid", 0x50, RF_GUID },  // Guid
-    { "DisplayTypeUUID", 0x60, RF_GUID },  // Guid
-    { "Tags", 0x70, RF_ARRAY_GUID },  // Array<Guid>
-    { "ProgressionTableUUID", 0x80, RF_GUID },  // Guid
-    { "RaceSoundSwitch", 0x90, RF_FIXEDSTRING },  // FixedString
-    { "RaceEquipment", 0x94, RF_FIXEDSTRING },  // FixedString
-    { "HairColors", 0x98, RF_ARRAY_GUID },  // Array<Guid>
-    { "SkinColors", 0xa8, RF_ARRAY_GUID },  // Array<Guid>
-    { "EyeColors", 0xb8, RF_ARRAY_GUID },  // Array<Guid>
-    { "TattooColors", 0xc8, RF_ARRAY_GUID },  // Array<Guid>
-    { "MakeupColors", 0xd8, RF_ARRAY_GUID },  // Array<Guid>
-    { "LipsMakeupColors", 0xe8, RF_ARRAY_GUID },  // Array<Guid>
-    { "HairHighlightColors", 0xf8, RF_ARRAY_GUID },  // Array<Guid>
-    { "HairGrayingColors", 0x108, RF_ARRAY_GUID },  // Array<Guid>
-    { "HornColors", 0x118, RF_ARRAY_GUID },  // Array<Guid>
-    { "HornTipColors", 0x128, RF_ARRAY_GUID },  // Array<Guid>
-    { "Visuals", 0x138, RF_ARRAY_GUID },  // Array<Guid>
-    { "Gods", 0x148, RF_ARRAY_GUID },  // Array<Guid>
-    { "ExcludedGods", 0x158, RF_ARRAY_GUID },  // Array<Guid>
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x2c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "MergedInto", 0x40, RF_GUID, NULL, 0 },  // Guid
+    { "ParentGuid", 0x50, RF_GUID, NULL, 0 },  // Guid
+    { "DisplayTypeUUID", 0x60, RF_GUID, NULL, 0 },  // Guid
+    { "Tags", 0x70, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ProgressionTableUUID", 0x80, RF_GUID, NULL, 0 },  // Guid
+    { "RaceSoundSwitch", 0x90, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "RaceEquipment", 0x94, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "HairColors", 0x98, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "SkinColors", 0xa8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "EyeColors", 0xb8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "TattooColors", 0xc8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "MakeupColors", 0xd8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "LipsMakeupColors", 0xe8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "HairHighlightColors", 0xf8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "HairGrayingColors", 0x108, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "HornColors", 0x118, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "HornTipColors", 0x128, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Visuals", 0x138, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Gods", 0x148, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ExcludedGods", 0x158, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_Origin[] = {
-    { "AvailableInCharacterCreation", 0x18, RF_U8 },  // uint8_t
-    { "Name", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x20, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "BodyType", 0x40, RF_U8 },  // uint8_t
-    { "BodyShape", 0x41, RF_U8 },  // uint8_t
-    { "LockBody", 0x42, RF_BOOL },  // bool
-    { "RaceUUID", 0x48, RF_GUID },  // Guid
-    { "SubRaceUUID", 0x58, RF_GUID },  // Guid
-    { "LockRace", 0x68, RF_BOOL },  // bool
-    { "BackgroundUUID", 0x70, RF_GUID },  // Guid
-    { "GodUUID", 0x80, RF_GUID },  // Guid
-    { "ClassUUID", 0x90, RF_GUID },  // Guid
-    { "SubClassUUID", 0xa0, RF_GUID },  // Guid
-    { "LockClass", 0xb0, RF_BOOL },  // bool
-    { "GlobalTemplate", 0xb8, RF_GUID },  // Guid
-    { "DefaultsTemplate", 0xc8, RF_GUID },  // Guid
-    { "Passives", 0xd8, RF_STDSTRING },  // STDString
-    { "AppearanceTags", 0xf8, RF_ARRAY_GUID },  // Array<Guid>
-    { "ReallyTags", 0x108, RF_ARRAY_GUID },  // Array<Guid>
-    { "Flags", 0x118, RF_U32 },  // uint32_t
-    { "Overview", 0x120, RF_STDSTRING },  // STDString
-    { "CloseUpA", 0x130, RF_STDSTRING },  // STDString
-    { "CloseUpB", 0x140, RF_STDSTRING },  // STDString
-    { "ClassEquipmentOverride", 0x150, RF_FIXEDSTRING },  // FixedString
-    { "VoiceTableUUID", 0x158, RF_GUID },  // Guid
-    { "IntroDialogUUID", 0x168, RF_GUID },  // Guid
-    { "IsHenchman", 0x178, RF_BOOL },  // bool
-    { "Identity", 0x179, RF_U8 },  // uint8_t
-    { "ExcludesOriginUUID", 0x180, RF_GUID },  // Guid
+    { "AvailableInCharacterCreation", 0x18, RF_U8, NULL, 0 },  // uint8_t
+    { "Name", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x20, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x30, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "BodyType", 0x40, RF_U8, NULL, 0 },  // uint8_t
+    { "BodyShape", 0x41, RF_U8, NULL, 0 },  // uint8_t
+    { "LockBody", 0x42, RF_BOOL, NULL, 0 },  // bool
+    { "RaceUUID", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "SubRaceUUID", 0x58, RF_GUID, NULL, 0 },  // Guid
+    { "LockRace", 0x68, RF_BOOL, NULL, 0 },  // bool
+    { "BackgroundUUID", 0x70, RF_GUID, NULL, 0 },  // Guid
+    { "GodUUID", 0x80, RF_GUID, NULL, 0 },  // Guid
+    { "ClassUUID", 0x90, RF_GUID, NULL, 0 },  // Guid
+    { "SubClassUUID", 0xa0, RF_GUID, NULL, 0 },  // Guid
+    { "LockClass", 0xb0, RF_BOOL, NULL, 0 },  // bool
+    { "GlobalTemplate", 0xb8, RF_GUID, NULL, 0 },  // Guid
+    { "DefaultsTemplate", 0xc8, RF_GUID, NULL, 0 },  // Guid
+    { "Passives", 0xd8, RF_STDSTRING, NULL, 0 },  // STDString
+    { "AppearanceTags", 0xf8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ReallyTags", 0x108, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Flags", 0x118, RF_U32, NULL, 0 },  // uint32_t
+    { "Overview", 0x120, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CloseUpA", 0x130, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CloseUpB", 0x140, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ClassEquipmentOverride", 0x150, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "VoiceTableUUID", 0x158, RF_GUID, NULL, 0 },  // Guid
+    { "IntroDialogUUID", 0x168, RF_GUID, NULL, 0 },  // Guid
+    { "IsHenchman", 0x178, RF_BOOL, NULL, 0 },  // bool
+    { "Identity", 0x179, RF_U8, NULL, 0 },  // uint8_t
+    { "ExcludesOriginUUID", 0x180, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_Background[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Passives", 0x38, RF_STDSTRING },  // STDString
-    { "Tags", 0x58, RF_ARRAY_GUID },  // Array<Guid>
-    { "Hidden", 0x68, RF_BOOL },  // bool
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Passives", 0x38, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Tags", 0x58, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Hidden", 0x68, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_God[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Tags", 0x40, RF_ARRAY_GUID },  // Array<Guid>
-    { "MergedInto", 0x50, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x2c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Tags", 0x40, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "MergedInto", 0x50, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_Progression[] = {
-    { "TableUUID", 0x18, RF_GUID },  // Guid
-    { "Name", 0x28, RF_STDSTRING },  // STDString
-    { "SubClasses", 0x38, RF_ARRAY_GUID },  // Array<Guid>
-    { "PassivesAdded", 0x58, RF_STDSTRING },  // STDString
-    { "PassivesRemoved", 0x78, RF_STDSTRING },  // STDString
-    { "BoostPrototypes", 0x88, RF_ARRAY_GUID },  // Array<Guid>
-    { "Boosts", 0x98, RF_STDSTRING },  // STDString
-    { "ProgressionType", 0xa8, RF_U8 },  // ProgressionType
-    { "Level", 0xa9, RF_U8 },  // uint8_t
-    { "AllowImprovement", 0xaa, RF_BOOL },  // bool
-    { "field_D0", 0xb0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "IsMulticlass", 0xc0, RF_BOOL },  // bool
+    { "TableUUID", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "Name", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
+    { "SubClasses", 0x38, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "PassivesAdded", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
+    { "PassivesRemoved", 0x78, RF_STDSTRING, NULL, 0 },  // STDString
+    { "BoostPrototypes", 0x88, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Boosts", 0x98, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ProgressionType", 0xa8, RF_U8, NULL, 0 },  // ProgressionType
+    { "Level", 0xa9, RF_U8, NULL, 0 },  // uint8_t
+    { "AllowImprovement", 0xaa, RF_BOOL, NULL, 0 },  // bool
+    { "field_D0", 0xb0, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "IsMulticlass", 0xc0, RF_BOOL, NULL, 0 },  // bool
+    { "SelectAbilities", 0xc8, RF_ARRAY_STRUCT, &layout_Progression_Ability, 0x28 },  // Array<Ability>
+    { "SelectAbilityBonus", 0xd8, RF_ARRAY_STRUCT, &layout_Progression_AbilityBonus, 0x38 },  // Array<AbilityBonus>
+    { "SelectSkills", 0xe8, RF_ARRAY_STRUCT, &layout_Progression_Skill, 0x28 },  // Array<Skill>
+    { "SelectSkillsExpertise", 0xf8, RF_ARRAY_STRUCT, &layout_Progression_SkillExpertise, 0x28 },  // Array<SkillExpertise>
+    { "SelectSpells", 0x108, RF_ARRAY_STRUCT, &layout_Progression_Spell, 0x58 },  // Array<Spell>
+    { "SelectPassives", 0x118, RF_ARRAY_STRUCT, &layout_Progression_Passive, 0x28 },  // Array<Passive>
+    { "SelectEquipment", 0x128, RF_ARRAY_STRUCT, &layout_Progression_Equipment, 0x28 },  // Array<Equipment>
+    { "AddSpells", 0x138, RF_ARRAY_STRUCT, &layout_Progression_AddedSpell, 0x50 },  // Array<AddedSpell>
 };
 static const ResourceField fields_ProgressionDescription[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Hidden", 0x38, RF_BOOL },  // bool
-    { "ExactMatch", 0x3c, RF_FIXEDSTRING },  // FixedString
-    { "Type", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "ParamMatch", 0x44, RF_FIXEDSTRING },  // FixedString
-    { "ProgressionId", 0x48, RF_GUID },  // Guid
-    { "ProgressionTableId", 0x58, RF_GUID },  // Guid
-    { "SelectorId", 0x68, RF_FIXEDSTRING },  // FixedString
-    { "PassivePrototype", 0x6c, RF_FIXEDSTRING },  // FixedString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Hidden", 0x38, RF_BOOL, NULL, 0 },  // bool
+    { "ExactMatch", 0x3c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Type", 0x40, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ParamMatch", 0x44, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ProgressionId", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "ProgressionTableId", 0x58, RF_GUID, NULL, 0 },  // Guid
+    { "SelectorId", 0x68, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PassivePrototype", 0x6c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_Gossip[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Type", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "Priority", 0x20, RF_I32 },  // int
-    { "ConditionFlags", 0x28, RF_ARRAY_GUID },  // Array<Guid>
-    { "ResultFlags", 0x38, RF_ARRAY_GUID },  // Array<Guid>
-    { "DialogUUID", 0x48, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Type", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Priority", 0x20, RF_I32, NULL, 0 },  // int
+    { "ConditionFlags", 0x28, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ResultFlags", 0x38, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "DialogUUID", 0x48, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_ActionResourceGroup[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "field_38", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "field_48", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ActionResourceDefinitions", 0x48, RF_ARRAY_GUID },  // Array<Guid>
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "field_38", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "field_48", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ActionResourceDefinitions", 0x48, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_Color[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
 };
 static const ResourceField fields_EquipmentType[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "WeaponType_OneHanded", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "WeaponType_TwoHanded", 0x20, RF_FIXEDSTRING },  // FixedString
-    { "BoneMainSheathed", 0x24, RF_FIXEDSTRING },  // FixedString
-    { "BoneMainUnsheathed", 0x28, RF_FIXEDSTRING },  // FixedString
-    { "BoneOffHandSheathed", 0x2c, RF_FIXEDSTRING },  // FixedString
-    { "BoneOffHandUnsheathed", 0x30, RF_FIXEDSTRING },  // FixedString
-    { "BoneVersatileSheathed", 0x34, RF_FIXEDSTRING },  // FixedString
-    { "BoneVersatileUnsheathed", 0x38, RF_FIXEDSTRING },  // FixedString
-    { "SourceBoneSheathed", 0x3c, RF_FIXEDSTRING },  // FixedString
-    { "SourceBoneVersatileSheathed", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "SourceBoneVersatileUnsheathed", 0x44, RF_FIXEDSTRING },  // FixedString
-    { "SourceBoneAlternativeUnsheathed", 0x48, RF_FIXEDSTRING },  // FixedString
-    { "SoundAttackType", 0x4c, RF_FIXEDSTRING },  // FixedString
-    { "SoundEquipmentType", 0x50, RF_FIXEDSTRING },  // FixedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "WeaponType_OneHanded", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "WeaponType_TwoHanded", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BoneMainSheathed", 0x24, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BoneMainUnsheathed", 0x28, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BoneOffHandSheathed", 0x2c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BoneOffHandUnsheathed", 0x30, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BoneVersatileSheathed", 0x34, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BoneVersatileUnsheathed", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SourceBoneSheathed", 0x3c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SourceBoneVersatileSheathed", 0x40, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SourceBoneVersatileUnsheathed", 0x44, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SourceBoneAlternativeUnsheathed", 0x48, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SoundAttackType", 0x4c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SoundEquipmentType", 0x50, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_Flag[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Description", 0x20, RF_STDSTRING },  // STDString
-    { "Usage", 0x30, RF_U8 },  // uint8_t
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Description", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Usage", 0x30, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_Feat[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Requirements", 0x20, RF_STDSTRING },  // STDString
-    { "PassivesAdded", 0x40, RF_STDSTRING },  // STDString
-    { "PassivesRemoved", 0x60, RF_STDSTRING },  // STDString
-    { "Boosts", 0x80, RF_STDSTRING },  // STDString
-    { "BoostPrototypes", 0x90, RF_ARRAY_GUID },  // Array<Guid>
-    { "CanBeTakenMultipleTimes", 0xa0, RF_BOOL },  // bool
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Requirements", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "PassivesAdded", 0x40, RF_STDSTRING, NULL, 0 },  // STDString
+    { "PassivesRemoved", 0x60, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Boosts", 0x80, RF_STDSTRING, NULL, 0 },  // STDString
+    { "BoostPrototypes", 0x90, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "CanBeTakenMultipleTimes", 0xa0, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_FeatDescription[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Hidden", 0x38, RF_BOOL },  // bool
-    { "ExactMatch", 0x3c, RF_FIXEDSTRING },  // FixedString
-    { "Type", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "ParamMatch", 0x44, RF_FIXEDSTRING },  // FixedString
-    { "FeatId", 0x48, RF_GUID },  // Guid
-    { "SelectorId", 0x58, RF_FIXEDSTRING },  // FixedString
-    { "PassivePrototype", 0x5c, RF_FIXEDSTRING },  // FixedString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Hidden", 0x38, RF_BOOL, NULL, 0 },  // bool
+    { "ExactMatch", 0x3c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Type", 0x40, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ParamMatch", 0x44, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "FeatId", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "SelectorId", 0x58, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PassivePrototype", 0x5c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_PassiveList[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Passives", 0x20, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "MergedInto", 0x30, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Passives", 0x20, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "MergedInto", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_SkillList[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "MergedInto", 0x30, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "MergedInto", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_SpellList[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Spells", 0x20, RF_HASHSET_FIXEDSTRING },  // HashSet<FixedString>
-    { "MergedInto", 0x50, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Spells", 0x20, RF_HASHSET_FIXEDSTRING, NULL, 0 },  // HashSet<FixedString>
+    { "MergedInto", 0x50, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_AbilityList[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "MergedInto", 0x30, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "MergedInto", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CompanionPreset[] = {
-    { "RaceUuid", 0x18, RF_GUID },  // Guid
-    { "SubRaceUuid", 0x28, RF_GUID },  // Guid
-    { "BodyType", 0x38, RF_U8 },  // uint8_t
-    { "BodyShape", 0x39, RF_U8 },  // uint8_t
-    { "RootTemplate", 0x40, RF_GUID },  // Guid
-    { "Overview", 0x50, RF_STDSTRING },  // STDString
-    { "CloseUpA", 0x60, RF_STDSTRING },  // STDString
-    { "CloseUpB", 0x70, RF_STDSTRING },  // STDString
-    { "VoiceTableUuid", 0x80, RF_GUID },  // Guid
-    { "VOLinesTableUuid", 0x90, RF_GUID },  // Guid
+    { "RaceUuid", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "SubRaceUuid", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "BodyType", 0x38, RF_U8, NULL, 0 },  // uint8_t
+    { "BodyShape", 0x39, RF_U8, NULL, 0 },  // uint8_t
+    { "RootTemplate", 0x40, RF_GUID, NULL, 0 },  // Guid
+    { "Overview", 0x50, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CloseUpA", 0x60, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CloseUpB", 0x70, RF_STDSTRING, NULL, 0 },  // STDString
+    { "VoiceTableUuid", 0x80, RF_GUID, NULL, 0 },  // Guid
+    { "VOLinesTableUuid", 0x90, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_AbilityDistributionPreset[] = {
-    { "ClassUuid", 0x18, RF_GUID },  // Guid
-    { "field_28", 0x28, RF_I32 },  // int
-    { "Strength", 0x2c, RF_I32 },  // int
-    { "Dexterity", 0x30, RF_I32 },  // int
-    { "Constitution", 0x34, RF_I32 },  // int
-    { "Intelligence", 0x38, RF_I32 },  // int
-    { "Wisdom", 0x3c, RF_I32 },  // int
-    { "Charisma", 0x40, RF_I32 },  // int
+    { "ClassUuid", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "field_28", 0x28, RF_I32, NULL, 0 },  // int
+    { "Strength", 0x2c, RF_I32, NULL, 0 },  // int
+    { "Dexterity", 0x30, RF_I32, NULL, 0 },  // int
+    { "Constitution", 0x34, RF_I32, NULL, 0 },  // int
+    { "Intelligence", 0x38, RF_I32, NULL, 0 },  // int
+    { "Wisdom", 0x3c, RF_I32, NULL, 0 },  // int
+    { "Charisma", 0x40, RF_I32, NULL, 0 },  // int
 };
 static const ResourceField fields_CharacterCreationAccessorySet[] = {
-    { "CharacterCreationSet", 0x18, RF_BOOL },  // bool
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "VisualUUID", 0x30, RF_ARRAY_GUID },  // Array<Guid>
-    { "SlotName", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "RaceUUID", 0x48, RF_GUID },  // Guid
-    { "DefaultForRootTemplates", 0x58, RF_ARRAY_GUID },  // Array<Guid>
+    { "CharacterCreationSet", 0x18, RF_BOOL, NULL, 0 },  // bool
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "VisualUUID", 0x30, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "SlotName", 0x40, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "RaceUUID", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "DefaultForRootTemplates", 0x58, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_CharacterCreationAppearanceMaterial[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "MaterialPresetUUID", 0x30, RF_GUID },  // Guid
-    { "MaterialType", 0x40, RF_U32 },  // AppearanceMaterialType
-    { "MaterialTypeName", 0x44, RF_FIXEDSTRING },  // FixedString
-    { "MaleRootTemplate", 0x58, RF_GUID },  // Guid
-    { "MaleCameraName", 0x68, RF_FIXEDSTRING },  // FixedString
-    { "FemaleRootTemplate", 0x70, RF_GUID },  // Guid
-    { "FemaleCameraName", 0x80, RF_FIXEDSTRING },  // FixedString
-    { "DragonbornMaleRootTemplate", 0x88, RF_GUID },  // Guid
-    { "DragonbornFemaleRootTemplate", 0x98, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "MaterialPresetUUID", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "MaterialType", 0x40, RF_U32, NULL, 0 },  // AppearanceMaterialType
+    { "MaterialTypeName", 0x44, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "MaleRootTemplate", 0x58, RF_GUID, NULL, 0 },  // Guid
+    { "MaleCameraName", 0x68, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "FemaleRootTemplate", 0x70, RF_GUID, NULL, 0 },  // Guid
+    { "FemaleCameraName", 0x80, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DragonbornMaleRootTemplate", 0x88, RF_GUID, NULL, 0 },  // Guid
+    { "DragonbornFemaleRootTemplate", 0x98, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CharacterCreationAppearanceVisual[] = {
-    { "RootTemplate", 0x18, RF_GUID },  // Guid
-    { "RaceUUID", 0x28, RF_GUID },  // Guid
-    { "BodyType", 0x38, RF_U8 },  // uint8_t
-    { "BodyShape", 0x39, RF_U8 },  // uint8_t
-    { "field_3C", 0x3c, RF_U32 },  // uint32_t
-    { "SlotName", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "VisualResource", 0x48, RF_GUID },  // Guid
-    { "HeadAppearanceUUID", 0x58, RF_GUID },  // Guid
-    { "DefaultSkinColor", 0x68, RF_GUID },  // Guid
-    { "DisplayName", 0x78, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "IconIdOverride", 0x88, RF_FIXEDSTRING },  // FixedString
-    { "DefaultForBodyType", 0x8c, RF_U8 },  // uint8_t
-    { "TextureEntryPart", 0x90, RF_FIXEDSTRING },  // FixedString
-    { "Tags", 0x98, RF_ARRAY_GUID },  // Array<Guid>
+    { "RootTemplate", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "RaceUUID", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "BodyType", 0x38, RF_U8, NULL, 0 },  // uint8_t
+    { "BodyShape", 0x39, RF_U8, NULL, 0 },  // uint8_t
+    { "field_3C", 0x3c, RF_U32, NULL, 0 },  // uint32_t
+    { "SlotName", 0x40, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "VisualResource", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "HeadAppearanceUUID", 0x58, RF_GUID, NULL, 0 },  // Guid
+    { "DefaultSkinColor", 0x68, RF_GUID, NULL, 0 },  // Guid
+    { "DisplayName", 0x78, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "IconIdOverride", 0x88, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DefaultForBodyType", 0x8c, RF_U8, NULL, 0 },  // uint8_t
+    { "TextureEntryPart", 0x90, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Tags", 0x98, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_CharacterCreationEquipmentIcons[] = {
-    { "RootTemplate", 0x18, RF_GUID },  // Guid
-    { "EquipmentTemplate", 0x28, RF_GUID },  // Guid
-    { "AnimationUUID", 0x38, RF_GUID },  // Guid
-    { "IconGenerationTrigger", 0x48, RF_FIXEDSTRING },  // FixedString
-    { "SlotName", 0x4c, RF_FIXEDSTRING },  // FixedString
-    { "MeshIsTwoSided", 0x50, RF_BOOL },  // bool
+    { "RootTemplate", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "EquipmentTemplate", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "AnimationUUID", 0x38, RF_GUID, NULL, 0 },  // Guid
+    { "IconGenerationTrigger", 0x48, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SlotName", 0x4c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "MeshIsTwoSided", 0x50, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_CharacterCreationIconSettings[] = {
-    { "RootTemplate", 0x18, RF_GUID },  // Guid
-    { "BodyShape", 0x28, RF_U8 },  // uint8_t
-    { "HeadAppearanceUUID", 0x30, RF_GUID },  // Guid
+    { "RootTemplate", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "BodyShape", 0x28, RF_U8, NULL, 0 },  // uint8_t
+    { "HeadAppearanceUUID", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CharacterCreationColor[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "MaterialPresetUUID", 0x30, RF_GUID },  // Guid
-    { "SkinType", 0x50, RF_FIXEDSTRING },  // FixedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "MaterialPresetUUID", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "SkinType", 0x50, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_CharacterCreationMaterialOverride[] = {
-    { "MaterialType", 0x18, RF_U32 },  // AppearanceMaterialType
-    { "ActiveMaterialPresetUUID", 0x20, RF_GUID },  // Guid
-    { "InactiveMaterialPresetUUID", 0x30, RF_GUID },  // Guid
-    { "SourceMaterialUUID", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "TargetMaterialUUID", 0x44, RF_FIXEDSTRING },  // FixedString
+    { "MaterialType", 0x18, RF_U32, NULL, 0 },  // AppearanceMaterialType
+    { "ActiveMaterialPresetUUID", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "InactiveMaterialPresetUUID", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "SourceMaterialUUID", 0x40, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TargetMaterialUUID", 0x44, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_CharacterCreationPassiveAppearance[] = {
-    { "Passive", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "RaceUUID", 0x20, RF_GUID },  // Guid
-    { "AppearanceMaterialUUIDs", 0x30, RF_ARRAY_GUID },  // Array<Guid>
-    { "ColorMaterialUUIDs", 0x40, RF_ARRAY_GUID },  // Array<Guid>
-    { "AccessorySetUUIDs", 0x50, RF_ARRAY_GUID },  // Array<Guid>
+    { "Passive", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "RaceUUID", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "AppearanceMaterialUUIDs", 0x30, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ColorMaterialUUIDs", 0x40, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "AccessorySetUUIDs", 0x50, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_CharacterCreationPreset[] = {
-    { "RaceUUID", 0x18, RF_GUID },  // Guid
-    { "SubRaceUUID", 0x28, RF_GUID },  // Guid
-    { "BodyType", 0x38, RF_U8 },  // uint8_t
-    { "BodyShape", 0x39, RF_U8 },  // uint8_t
-    { "RootTemplate", 0x40, RF_GUID },  // Guid
-    { "Overview", 0x50, RF_STDSTRING },  // STDString
-    { "CloseUpA", 0x60, RF_STDSTRING },  // STDString
-    { "CloseUpB", 0x70, RF_STDSTRING },  // STDString
-    { "VOLinesTableUUID", 0x80, RF_GUID },  // Guid
+    { "RaceUUID", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "SubRaceUUID", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "BodyType", 0x38, RF_U8, NULL, 0 },  // uint8_t
+    { "BodyShape", 0x39, RF_U8, NULL, 0 },  // uint8_t
+    { "RootTemplate", 0x40, RF_GUID, NULL, 0 },  // Guid
+    { "Overview", 0x50, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CloseUpA", 0x60, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CloseUpB", 0x70, RF_STDSTRING, NULL, 0 },  // STDString
+    { "VOLinesTableUUID", 0x80, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CharacterCreationSharedVisual[] = {
-    { "SlotName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "VisualResource", 0x20, RF_GUID },  // Guid
-    { "BoneName", 0x30, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x34, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Tags", 0x48, RF_ARRAY_GUID },  // Array<Guid>
+    { "SlotName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "VisualResource", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "BoneName", 0x30, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x34, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Tags", 0x48, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_LevelMap[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "PreferredClassUUID", 0x20, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PreferredClassUUID", 0x20, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_ApprovalRating[] = {
-    { "Scope", 0x18, RF_U8 },  // uint8_t
+    { "Scope", 0x18, RF_U8, NULL, 0 },  // uint8_t
+    { "Reactions", 0x20, RF_ARRAY_STRUCT, &layout_ApprovalRating_Reaction, 0x18 },  // Array<Reaction>
+    { "ReactionsSpeakers", 0x30, RF_ARRAY_STRUCT, &layout_ApprovalRating_Reaction, 0x18 },  // Array<Reaction>
 };
 static const ResourceField fields_AreaLevelOverride[] = {
-    { "ParentUuid", 0x18, RF_GUID },  // Guid
-    { "EntityLevel", 0x28, RF_I32 },  // int32_t
-    { "TreasureLevel", 0x2c, RF_I32 },  // int32_t
+    { "ParentUuid", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "EntityLevel", 0x28, RF_I32, NULL, 0 },  // int32_t
+    { "TreasureLevel", 0x2c, RF_I32, NULL, 0 },  // int32_t
 };
 static const ResourceField fields_AvatarContainerTemplates[] = {
-    { "TemplateId", 0x18, RF_GUID },  // Guid
+    { "TemplateId", 0x18, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_BackgroundGoal[] = {
-    { "Title", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "BackgroundUuid", 0x38, RF_GUID },  // Guid
-    { "InspirationPoints", 0x48, RF_I32 },  // int32_t
-    { "RewardLevel", 0x4c, RF_I32 },  // int32_t
-    { "ExperienceReward", 0x50, RF_GUID },  // Guid
+    { "Title", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "BackgroundUuid", 0x38, RF_GUID, NULL, 0 },  // Guid
+    { "InspirationPoints", 0x48, RF_I32, NULL, 0 },  // int32_t
+    { "RewardLevel", 0x4c, RF_I32, NULL, 0 },  // int32_t
+    { "ExperienceReward", 0x50, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CalendarDayRange[] = {
-    { "Start", 0x18, RF_I32 },  // int32_t
-    { "End", 0x1c, RF_I32 },  // int32_t
-    { "LeapYearStart", 0x20, RF_I32 },  // int32_t
-    { "LeapYearEnd", 0x24, RF_I32 },  // int32_t
-    { "Name", 0x28, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "DisplayCommonName", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Start", 0x18, RF_I32, NULL, 0 },  // int32_t
+    { "End", 0x1c, RF_I32, NULL, 0 },  // int32_t
+    { "LeapYearStart", 0x20, RF_I32, NULL, 0 },  // int32_t
+    { "LeapYearEnd", 0x24, RF_I32, NULL, 0 },  // int32_t
+    { "Name", 0x28, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "DisplayCommonName", 0x3c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
 };
 static const ResourceField fields_CampChestTemplate[] = {
-    { "TemplateId", 0x18, RF_GUID },  // Guid
+    { "TemplateId", 0x18, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_DefaultValueGuidResource[] = {
-    { "TableUUID", 0x18, RF_GUID },  // Guid
-    { "OriginUuid", 0x28, RF_GUID },  // Guid
-    { "RaceUuid", 0x38, RF_GUID },  // Guid
-    { "ClassUuid", 0x48, RF_GUID },  // Guid
-    { "SubclassUuid", 0x58, RF_GUID },  // Guid
-    { "Level", 0x68, RF_I32 },  // int32_t
-    { "SelectorId", 0x70, RF_STDSTRING },  // STDString
+    { "TableUUID", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "OriginUuid", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "RaceUuid", 0x38, RF_GUID, NULL, 0 },  // Guid
+    { "ClassUuid", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "SubclassUuid", 0x58, RF_GUID, NULL, 0 },  // Guid
+    { "Level", 0x68, RF_I32, NULL, 0 },  // int32_t
+    { "SelectorId", 0x70, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_CharacterCreationVOLine[] = {
-    { "VoiceLine", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "TableUuid", 0x20, RF_GUID },  // Guid
+    { "VoiceLine", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TableUuid", 0x20, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CinematicArenaFrequencyGroup[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "MaxFrequency", 0x1c, RF_F32 },  // float
-    { "PercentageChance", 0x20, RF_F64 },  // double
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "MaxFrequency", 0x1c, RF_F32, NULL, 0 },  // float
+    { "PercentageChance", 0x20, RF_F64, NULL, 0 },  // double
 };
 static const ResourceField fields_CustomDiceTemplate[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "FontColour", 0x28, RF_STDSTRING },  // STDString
-    { "DisplayNamme", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x48, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "IsDefault", 0x58, RF_BOOL },  // bool
-    { "Flip1", 0x59, RF_BOOL },  // bool
-    { "Flip20", 0x5a, RF_BOOL },  // bool
-    { "Icon", 0x5b, RF_BOOL },  // bool
-    { "Icon20", 0x5c, RF_BOOL },  // bool
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "FontColour", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DisplayNamme", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x48, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "IsDefault", 0x58, RF_BOOL, NULL, 0 },  // bool
+    { "Flip1", 0x59, RF_BOOL, NULL, 0 },  // bool
+    { "Flip20", 0x5a, RF_BOOL, NULL, 0 },  // bool
+    { "Icon", 0x5b, RF_BOOL, NULL, 0 },  // bool
+    { "Icon20", 0x5c, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_ConditionErrorDescription[] = {
-    { "Identifier", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ErrorDescriptionType", 0x2c, RF_U8 },  // uint8_t
-    { "Hidden", 0x2d, RF_BOOL },  // bool
+    { "Identifier", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ErrorDescriptionType", 0x2c, RF_U8, NULL, 0 },  // uint8_t
+    { "Hidden", 0x2d, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_DeathTypeEffect[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "ParentUuid", 0x28, RF_GUID },  // Guid
-    { "Fallback", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ParentUuid", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "Fallback", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_DifficultyClass[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Difficulties", 0x28, RF_ARRAY_I32 },  // Array<int32_t>
-    { "field_40", 0x38, RF_U8 },  // uint8_t
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Difficulties", 0x28, RF_ARRAY_I32, NULL, 0 },  // Array<int32_t>
+    { "field_40", 0x38, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_DisturbanceProperty[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_DLC[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "SteamAPICode", 0x28, RF_U32 },  // uint32_t
-    { "GalaxyAPICode", 0x2c, RF_U32 },  // uint32_t
-    { "PS5APICode", 0x30, RF_U32 },  // uint32_t
-    { "XLiveAPICode", 0x34, RF_U32 },  // uint32_t
-    { "TwitchAPICode", 0x38, RF_U32 },  // uint32_t
-    { "CustomDice", 0x40, RF_GUID },  // Guid
-    { "UnlockType", 0x50, RF_U8 },  // uint8_t
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "SteamAPICode", 0x28, RF_U32, NULL, 0 },  // uint32_t
+    { "GalaxyAPICode", 0x2c, RF_U32, NULL, 0 },  // uint32_t
+    { "PS5APICode", 0x30, RF_U32, NULL, 0 },  // uint32_t
+    { "XLiveAPICode", 0x34, RF_U32, NULL, 0 },  // uint32_t
+    { "TwitchAPICode", 0x38, RF_U32, NULL, 0 },  // uint32_t
+    { "CustomDice", 0x40, RF_GUID, NULL, 0 },  // Guid
+    { "UnlockType", 0x50, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_EncumbranceType[] = {
-    { "Status", 0x18, RF_FIXEDSTRING },  // FixedString
+    { "Status", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_EquipmentList[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Items", 0x20, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "MergedInto", 0x30, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Items", 0x20, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "MergedInto", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_ExperienceRewards[] = {
-    { "RewardType", 0x18, RF_U8 },  // uint8_t
-    { "LevelSource", 0x19, RF_U8 },  // uint8_t
-    { "Name", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "PerLevelRewards", 0x20, RF_ARRAY_I32 },  // Array<int32_t>
+    { "RewardType", 0x18, RF_U8, NULL, 0 },  // uint8_t
+    { "LevelSource", 0x19, RF_U8, NULL, 0 },  // uint8_t
+    { "Name", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PerLevelRewards", 0x20, RF_ARRAY_I32, NULL, 0 },  // Array<int32_t>
 };
 static const ResourceField fields_FeatSoundState[] = {
-    { "FeatName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "FeatUuid", 0x20, RF_GUID },  // Guid
-    { "OverrideSwitchGroup", 0x30, RF_FIXEDSTRING },  // FixedString
-    { "OverrideSwitch", 0x34, RF_FIXEDSTRING },  // FixedString
-    { "DefaultSwitch", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "FeatName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "FeatUuid", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "OverrideSwitchGroup", 0x30, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "OverrideSwitch", 0x34, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DefaultSwitch", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_FlagSoundState[] = {
-    { "FlagName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "FlagUuid", 0x20, RF_GUID },  // Guid
-    { "OverrideSwitchGroup", 0x30, RF_FIXEDSTRING },  // FixedString
-    { "OverrideSwitch", 0x34, RF_FIXEDSTRING },  // FixedString
-    { "DefaultSwitch", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "FlagName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "FlagUuid", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "OverrideSwitchGroup", 0x30, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "OverrideSwitch", 0x34, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DefaultSwitch", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_GoldRewards[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "ParentUuid", 0x20, RF_GUID },  // Guid
-    { "ParentScale", 0x30, RF_F64 },  // double
-    { "PerLevelRewards", 0x38, RF_ARRAY_I32 },  // Array<int32_t>
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ParentUuid", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "ParentScale", 0x30, RF_F64, NULL, 0 },  // double
+    { "PerLevelRewards", 0x38, RF_ARRAY_I32, NULL, 0 },  // Array<int32_t>
 };
 static const ResourceField fields_FixedHotBarSlot[] = {
-    { "SlotIndex", 0x18, RF_I32 },  // int32_t
-    { "SpellId", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "HotBarController", 0x20, RF_U8 },  // uint8_t
-    { "HotBarType", 0x21, RF_U8 },  // uint8_t
+    { "SlotIndex", 0x18, RF_I32, NULL, 0 },  // int32_t
+    { "SpellId", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "HotBarController", 0x20, RF_U8, NULL, 0 },  // uint8_t
+    { "HotBarType", 0x21, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_ItemThrowParams[] = {
-    { "Priority", 0x18, RF_I32 },  // int32_t
-    { "Conditions", 0x20, RF_STDSTRING },  // STDString
-    { "MaxDistForOneRotation", 0x30, RF_I32 },  // int32_t
-    { "MaxDistForTwoRotations", 0x34, RF_I32 },  // int32_t
-    { "MaxDistForZeroRotations", 0x38, RF_I32 },  // int32_t
-    { "RotationAxis", 0x48, RF_U32 },  // uint32_t
+    { "Priority", 0x18, RF_I32, NULL, 0 },  // int32_t
+    { "Conditions", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "MaxDistForOneRotation", 0x30, RF_I32, NULL, 0 },  // int32_t
+    { "MaxDistForTwoRotations", 0x34, RF_I32, NULL, 0 },  // int32_t
+    { "MaxDistForZeroRotations", 0x38, RF_I32, NULL, 0 },  // int32_t
+    { "RotationAxis", 0x48, RF_U32, NULL, 0 },  // uint32_t
 };
 static const ResourceField fields_ItemWallTemplate[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "HighLeft", 0x28, RF_STDSTRING },  // STDString
-    { "HighMiddle", 0x38, RF_STDSTRING },  // STDString
-    { "HighRight", 0x48, RF_STDSTRING },  // STDString
-    { "LowLeft", 0x58, RF_STDSTRING },  // STDString
-    { "LowMiddle", 0x68, RF_STDSTRING },  // STDString
-    { "LowRight", 0x78, RF_STDSTRING },  // STDString
-    { "Padding", 0x88, RF_F32 },  // float
-    { "RandomRotation", 0x8c, RF_BOOL },  // bool
-    { "Animation", 0x90, RF_FIXEDSTRING },  // FixedString
-    { "TimeBetweenItems", 0x94, RF_F32 },  // float
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "HighLeft", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
+    { "HighMiddle", 0x38, RF_STDSTRING, NULL, 0 },  // STDString
+    { "HighRight", 0x48, RF_STDSTRING, NULL, 0 },  // STDString
+    { "LowLeft", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
+    { "LowMiddle", 0x68, RF_STDSTRING, NULL, 0 },  // STDString
+    { "LowRight", 0x78, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Padding", 0x88, RF_F32, NULL, 0 },  // float
+    { "RandomRotation", 0x8c, RF_BOOL, NULL, 0 },  // bool
+    { "Animation", 0x90, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TimeBetweenItems", 0x94, RF_F32, NULL, 0 },  // float
 };
 static const ResourceField fields_TrajectoryRule[] = {
-    { "Template", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Priority", 0x1c, RF_I32 },  // int32_t
-    { "HeightMin", 0x20, RF_F32 },  // float
-    { "HeightMax", 0x24, RF_F32 },  // float
-    { "LengthMin", 0x28, RF_F32 },  // float
-    { "LengthMax", 0x2c, RF_F32 },  // float
+    { "Template", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Priority", 0x1c, RF_I32, NULL, 0 },  // int32_t
+    { "HeightMin", 0x20, RF_F32, NULL, 0 },  // float
+    { "HeightMax", 0x24, RF_F32, NULL, 0 },  // float
+    { "LengthMin", 0x28, RF_F32, NULL, 0 },  // float
+    { "LengthMax", 0x2c, RF_F32, NULL, 0 },  // float
 };
 static const ResourceField fields_LimbsMapping[] = {
-    { "RootTemplate", 0x18, RF_GUID },  // Guid
-    { "BackRight", 0x28, RF_ARRAY_U8 },  // Array<uint8_t>
-    { "BackLeft", 0x38, RF_ARRAY_U8 },  // Array<uint8_t>
-    { "FrontRight", 0x48, RF_ARRAY_U8 },  // Array<uint8_t>
-    { "FrontLeft", 0x58, RF_ARRAY_U8 },  // Array<uint8_t>
+    { "RootTemplate", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "BackRight", 0x28, RF_ARRAY_U8, NULL, 0 },  // Array<uint8_t>
+    { "BackLeft", 0x38, RF_ARRAY_U8, NULL, 0 },  // Array<uint8_t>
+    { "FrontRight", 0x48, RF_ARRAY_U8, NULL, 0 },  // Array<uint8_t>
+    { "FrontLeft", 0x58, RF_ARRAY_U8, NULL, 0 },  // Array<uint8_t>
 };
 static const ResourceField fields_LongRestCost[] = {
-    { "CampQuality", 0x18, RF_U32 },  // uint32_t
-    { "RequiredSupplies", 0x1c, RF_I32 },  // int32_t
-    { "CampGrowthDifficulty", 0x20, RF_FIXEDSTRING },  // FixedString
+    { "CampQuality", 0x18, RF_U32, NULL, 0 },  // uint32_t
+    { "RequiredSupplies", 0x1c, RF_I32, NULL, 0 },  // int32_t
+    { "CampGrowthDifficulty", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_ManagedStatusVFX[] = {
-    { "Group", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "PositiveEffect", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "NegativeEffect", 0x20, RF_FIXEDSTRING },  // FixedString
-    { "MixedEffect", 0x24, RF_FIXEDSTRING },  // FixedString
+    { "Group", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PositiveEffect", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "NegativeEffect", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "MixedEffect", 0x24, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_MultiEffectInfo[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_OriginIntroEntity[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "PlayerIndex", 0x1c, RF_I32 },  // int32_t
-    { "DummyUuid", 0x20, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PlayerIndex", 0x1c, RF_I32, NULL, 0 },  // int32_t
+    { "DummyUuid", 0x20, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_PassivesVFX[] = {
-    { "PassiveName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "PrepareEffect", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "CastEffect", 0x20, RF_FIXEDSTRING },  // FixedString
+    { "PassiveName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "PrepareEffect", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "CastEffect", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_ProjectileDefault[] = {
-    { "ProjectileDefaultType", 0x18, RF_U8 },  // uint8_t
-    { "ProjectileTemplateId", 0x20, RF_GUID },  // Guid
+    { "ProjectileDefaultType", 0x18, RF_U8, NULL, 0 },  // uint8_t
+    { "ProjectileTemplateId", 0x20, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_RandomCastOutcome[] = {
-    { "GroupName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Spell", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "Level", 0x20, RF_I32 },  // int32_t
-    { "ClassUuid", 0x28, RF_GUID },  // Guid
-    { "ClassLevel", 0x38, RF_I32 },  // int32_t
+    { "GroupName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Spell", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Level", 0x20, RF_I32, NULL, 0 },  // int32_t
+    { "ClassUuid", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "ClassLevel", 0x38, RF_I32, NULL, 0 },  // int32_t
 };
 static const ResourceField fields_SoundSpellTrajectoryRule[] = {
-    { "RuleName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "CurveUuid", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "SoundEvent", 0x20, RF_FIXEDSTRING },  // FixedString
-    { "DistancePastListener", 0x24, RF_F32 },  // float
+    { "RuleName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "CurveUuid", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SoundEvent", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DistancePastListener", 0x24, RF_F32, NULL, 0 },  // float
 };
 static const ResourceField fields_StatusSoundState[] = {
-    { "SoundStateName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "CombatVocalOverrideSwitch", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "SpellOverrideSwitchGroup", 0x20, RF_FIXEDSTRING },  // FixedString
-    { "SpellOverrideSwitchState", 0x24, RF_FIXEDSTRING },  // FixedString
-    { "SpellOverrideSwitchClearState", 0x28, RF_FIXEDSTRING },  // FixedString
-    { "BlockVocals", 0x2c, RF_BOOL },  // bool
+    { "SoundStateName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "CombatVocalOverrideSwitch", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SpellOverrideSwitchGroup", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SpellOverrideSwitchState", 0x24, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SpellOverrideSwitchClearState", 0x28, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "BlockVocals", 0x2c, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_SurfaceCursorMessage[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "CursorMessage", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Priority", 0x2c, RF_I32 },  // int
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "CursorMessage", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Priority", 0x2c, RF_I32, NULL, 0 },  // int
 };
 static const ResourceField fields_TadpolePower[] = {
-    { "Prerequisites", 0x18, RF_ARRAY_GUID },  // Array<Guid>
-    { "Name", 0x28, RF_FIXEDSTRING },  // FixedString
-    { "NeedsHalfIllithidToUnlock", 0x2c, RF_BOOL },  // bool
+    { "Prerequisites", 0x18, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Name", 0x28, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "NeedsHalfIllithidToUnlock", 0x2c, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_TagSoundState[] = {
-    { "TagName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "TagUuid", 0x20, RF_GUID },  // Guid
-    { "OverrideSwitchGroup", 0x30, RF_FIXEDSTRING },  // FixedString
-    { "OverrideSwitch", 0x34, RF_FIXEDSTRING },  // FixedString
-    { "DefaultSwitch", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "TagName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TagUuid", 0x20, RF_GUID, NULL, 0 },  // Guid
+    { "OverrideSwitchGroup", 0x30, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "OverrideSwitch", 0x34, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DefaultSwitch", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_TooltipExtraText[] = {
-    { "Text", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Text", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
 };
 static const ResourceField fields_TooltipUpcastDescription[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Text", 0x1c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Text", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
 };
 static const ResourceField fields_TutorialEntry[] = {
-    { "DisplayTitle", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "KeyboardDescription", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ControllerDescription", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "KeyboardVideo", 0x48, RF_STDSTRING },  // STDString
-    { "ControllerVideo", 0x58, RF_STDSTRING },  // STDString
-    { "Section", 0x68, RF_U8 },  // uint8_t
-    { "InputType", 0x69, RF_U8 },  // uint8_t
-    { "Hidden", 0x6a, RF_BOOL },  // bool
+    { "DisplayTitle", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "KeyboardDescription", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ControllerDescription", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "KeyboardVideo", 0x48, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ControllerVideo", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Section", 0x68, RF_U8, NULL, 0 },  // uint8_t
+    { "InputType", 0x69, RF_U8, NULL, 0 },  // uint8_t
+    { "Hidden", 0x6a, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_TutorialModalEntry[] = {
-    { "TutorialName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "TutorialID", 0x1c, RF_I32 },  // int32_t
-    { "DisplayTitle", 0x20, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "KeyboardDescription", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ControllerDescription", 0x40, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Section", 0x50, RF_U8 },  // uint8_t
-    { "ModalType", 0x51, RF_U8 },  // uint8_t
-    { "WaitForEndDialog", 0x52, RF_BOOL },  // bool
-    { "WaitForEndCC", 0x53, RF_BOOL },  // bool
-    { "ExtraData", 0x54, RF_FIXEDSTRING },  // FixedString
+    { "TutorialName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TutorialID", 0x1c, RF_I32, NULL, 0 },  // int32_t
+    { "DisplayTitle", 0x20, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "KeyboardDescription", 0x30, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ControllerDescription", 0x40, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Section", 0x50, RF_U8, NULL, 0 },  // uint8_t
+    { "ModalType", 0x51, RF_U8, NULL, 0 },  // uint8_t
+    { "WaitForEndDialog", 0x52, RF_BOOL, NULL, 0 },  // bool
+    { "WaitForEndCC", 0x53, RF_BOOL, NULL, 0 },  // bool
+    { "ExtraData", 0x54, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_TutorialUnifiedEntry[] = {
-    { "TutorialName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "ModalType", 0x1c, RF_U8 },  // uint8_t
-    { "DisplayTitle", 0x20, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "KeyboardDescription", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ControllerDescription", 0x40, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "KeyboardJournalDescription", 0x50, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ControllerJournalDescription", 0x60, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "KeyboardInputList", 0x70, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ControllerInputList", 0x80, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Section", 0x90, RF_U8 },  // uint8_t
-    { "WaitForEndDialog", 0x91, RF_BOOL },  // bool
-    { "WaitForEndCC", 0x92, RF_BOOL },  // bool
-    { "WaitForLayers", 0x93, RF_BOOL },  // bool
-    { "ShowInSplitScreen", 0x94, RF_BOOL },  // bool
-    { "InputType", 0x95, RF_U8 },  // uint8_t
-    { "field_98", 0x98, RF_U32 },  // uint32_t
-    { "Icon", 0xa0, RF_STDSTRING },  // STDString
-    { "LifeTime", 0xb0, RF_I32 },  // int32_t
-    { "PositionOffsetX", 0xb4, RF_I32 },  // int32_t
-    { "PositionOffsetY", 0xb8, RF_I32 },  // int32_t
+    { "TutorialName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ModalType", 0x1c, RF_U8, NULL, 0 },  // uint8_t
+    { "DisplayTitle", 0x20, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "KeyboardDescription", 0x30, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ControllerDescription", 0x40, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "KeyboardJournalDescription", 0x50, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ControllerJournalDescription", 0x60, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "KeyboardInputList", 0x70, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ControllerInputList", 0x80, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Section", 0x90, RF_U8, NULL, 0 },  // uint8_t
+    { "WaitForEndDialog", 0x91, RF_BOOL, NULL, 0 },  // bool
+    { "WaitForEndCC", 0x92, RF_BOOL, NULL, 0 },  // bool
+    { "WaitForLayers", 0x93, RF_BOOL, NULL, 0 },  // bool
+    { "ShowInSplitScreen", 0x94, RF_BOOL, NULL, 0 },  // bool
+    { "InputType", 0x95, RF_U8, NULL, 0 },  // uint8_t
+    { "field_98", 0x98, RF_U32, NULL, 0 },  // uint32_t
+    { "Icon", 0xa0, RF_STDSTRING, NULL, 0 },  // STDString
+    { "LifeTime", 0xb0, RF_I32, NULL, 0 },  // int32_t
+    { "PositionOffsetX", 0xb4, RF_I32, NULL, 0 },  // int32_t
+    { "PositionOffsetY", 0xb8, RF_I32, NULL, 0 },  // int32_t
 };
 static const ResourceField fields_TutorialEvent[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "EventType", 0x28, RF_U8 },  // uint8_t
-    { "ActionResource", 0x30, RF_GUID },  // Guid
-    { "HotbarSlotFlags", 0x40, RF_U32 },  // uint32_t
-    { "UserAction", 0x44, RF_U8 },  // uint8_t
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "EventType", 0x28, RF_U8, NULL, 0 },  // uint8_t
+    { "ActionResource", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "HotbarSlotFlags", 0x40, RF_U32, NULL, 0 },  // uint32_t
+    { "UserAction", 0x44, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_VFX[] = {
-    { "VFXGameplayName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "VFXEffectName", 0x1c, RF_FIXEDSTRING },  // FixedString
+    { "VFXGameplayName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "VFXEffectName", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_Voice[] = {
-    { "TableUuid", 0x18, RF_GUID },  // Guid
-    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "SpeakerUuid", 0x38, RF_GUID },  // Guid
-    { "BodyType", 0x48, RF_U8 },  // uint8_t
-    { "Tags", 0x50, RF_ARRAY_GUID },  // Array<Guid>
+    { "TableUuid", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "SpeakerUuid", 0x38, RF_GUID, NULL, 0 },  // Guid
+    { "BodyType", 0x48, RF_U8, NULL, 0 },  // uint8_t
+    { "Tags", 0x50, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_WeaponAnimationSet[] = {
-    { "MainHand", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "OffHand", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "AnimationSetUuid", 0x20, RF_FIXEDSTRING },  // FixedString
+    { "MainHand", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "OffHand", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "AnimationSetUuid", 0x20, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_WeightCategories[] = {
-    { "MaxWeight", 0x18, RF_I32 },  // int32_t
-    { "Tags", 0x20, RF_ARRAY_GUID },  // Array<Guid>
-    { "ObjectSize", 0x30, RF_U8 },  // uint8_t
+    { "MaxWeight", 0x18, RF_I32, NULL, 0 },  // int32_t
+    { "Tags", 0x20, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ObjectSize", 0x30, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_ShapeshiftRule[] = {
-    { "RuleName", 0x18, RF_STDSTRING },  // STDString
-    { "WildShapeHotBar", 0x38, RF_BOOL },  // bool
-    { "FootstepsType", 0x44, RF_U8 },  // uint8_t
-    { "RemoveOldTags", 0x58, RF_BOOL },  // bool
-    { "ApplyTagsFromTemplate", 0x59, RF_BOOL },  // bool
-    { "TagsAdd", 0x60, RF_ARRAY_GUID },  // Array<Guid>
-    { "TagsRemove", 0x70, RF_ARRAY_GUID },  // Array<Guid>
-    { "ActionCapabilities", 0x80, RF_U16 },  // uint16_t
-    { "InteractionsCapabilities", 0x82, RF_U16 },  // uint16_t
-    { "AwarenessCapabilities", 0x84, RF_U16 },  // uint16_t
-    { "SpeakingCapabilities", 0x86, RF_U16 },  // uint16_t
-    { "ChangeRace", 0x88, RF_BOOL },  // bool
-    { "ChangeBodyType", 0x89, RF_BOOL },  // bool
-    { "UseShapeshiftIdentity", 0x8a, RF_BOOL },  // bool
-    { "ChangeAi", 0x8b, RF_BOOL },  // bool
-    { "ApplyVisual", 0xa8, RF_BOOL },  // bool
-    { "ApplyVisualInCC", 0xa9, RF_BOOL },  // bool
-    { "IgnoreCustomLooks", 0xaa, RF_BOOL },  // bool
-    { "RetainDisplayName", 0xab, RF_BOOL },  // bool
-    { "ChangeIcon", 0xac, RF_BOOL },  // bool
-    { "MuteEquipmentSound", 0xb8, RF_BOOL },  // bool
-    { "OverrideSpeaker", 0xb9, RF_BOOL },  // bool
-    { "RemovePrevSpells", 0xba, RF_BOOL },  // bool
-    { "ApplySpellsFromTemplate", 0xbb, RF_BOOL },  // bool
-    { "SpellsAdd", 0xc0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "SpellsRemove", 0xd0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "RetainCanSeeThrough", 0xe0, RF_BOOL },  // bool
-    { "RetainCanShootThrough", 0xe1, RF_BOOL },  // bool
-    { "RetainCanWalkThrough", 0xe2, RF_BOOL },  // bool
-    { "BaseACOverride", 0xe3, RF_BOOL },  // bool
-    { "UnarmedAbilityFromTemplate", 0xe4, RF_BOOL },  // bool
-    { "DisableEquipmentSlots", 0xe5, RF_BOOL },  // bool
-    { "UseTemplateEquipmentSet", 0xe6, RF_BOOL },  // bool
-    { "KillEntityAtZeroHP", 0xe7, RF_BOOL },  // bool
-    { "PathInfluence", 0xe8, RF_STDSTRING },  // STDString
-    { "BlockLevelUp", 0x110, RF_BOOL },  // bool
-    { "FlagsInheritanceType", 0x111, RF_U8 },  // uint8_t
-    { "DefaultBoostsInheritanceType", 0x112, RF_U8 },  // uint8_t
-    { "PersonalStatusImmunitiesInheritanceType", 0x113, RF_U8 },  // uint8_t
-    { "SpellCastingAbilityInheritanceType", 0x114, RF_U8 },  // uint8_t
-    { "PassivesInheritanceType", 0x115, RF_U8 },  // uint8_t
-    { "ResistancesInheritanceType", 0x116, RF_U8 },  // uint8_t
-    { "DifficultyStatusesInheritanceType", 0x117, RF_U8 },  // uint8_t
-    { "ProficiencyGroupsInheritanceType", 0x118, RF_U8 },  // uint8_t
-    { "BloodSurfaceTypeInheritanceType", 0x119, RF_U8 },  // uint8_t
-    { "HitBloodTypeInheritanceType", 0x11a, RF_U8 },  // uint8_t
-    { "DeathActionsInheritanceType", 0x11b, RF_U8 },  // uint8_t
+    { "RuleName", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "WildShapeHotBar", 0x38, RF_BOOL, NULL, 0 },  // bool
+    { "FootstepsType", 0x44, RF_U8, NULL, 0 },  // uint8_t
+    { "AbilityChanges", 0x48, RF_ARRAY_STRUCT, &layout_ShapeshiftRule_TypedInt, 0x08 },  // Array<TypedInt>
+    { "RemoveOldTags", 0x58, RF_BOOL, NULL, 0 },  // bool
+    { "ApplyTagsFromTemplate", 0x59, RF_BOOL, NULL, 0 },  // bool
+    { "TagsAdd", 0x60, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "TagsRemove", 0x70, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ActionCapabilities", 0x80, RF_U16, NULL, 0 },  // uint16_t
+    { "InteractionsCapabilities", 0x82, RF_U16, NULL, 0 },  // uint16_t
+    { "AwarenessCapabilities", 0x84, RF_U16, NULL, 0 },  // uint16_t
+    { "SpeakingCapabilities", 0x86, RF_U16, NULL, 0 },  // uint16_t
+    { "ChangeRace", 0x88, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeBodyType", 0x89, RF_BOOL, NULL, 0 },  // bool
+    { "UseShapeshiftIdentity", 0x8a, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeAi", 0x8b, RF_BOOL, NULL, 0 },  // bool
+    { "ApplyVisual", 0xa8, RF_BOOL, NULL, 0 },  // bool
+    { "ApplyVisualInCC", 0xa9, RF_BOOL, NULL, 0 },  // bool
+    { "IgnoreCustomLooks", 0xaa, RF_BOOL, NULL, 0 },  // bool
+    { "RetainDisplayName", 0xab, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeIcon", 0xac, RF_BOOL, NULL, 0 },  // bool
+    { "MuteEquipmentSound", 0xb8, RF_BOOL, NULL, 0 },  // bool
+    { "OverrideSpeaker", 0xb9, RF_BOOL, NULL, 0 },  // bool
+    { "RemovePrevSpells", 0xba, RF_BOOL, NULL, 0 },  // bool
+    { "ApplySpellsFromTemplate", 0xbb, RF_BOOL, NULL, 0 },  // bool
+    { "SpellsAdd", 0xc0, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "SpellsRemove", 0xd0, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "RetainCanSeeThrough", 0xe0, RF_BOOL, NULL, 0 },  // bool
+    { "RetainCanShootThrough", 0xe1, RF_BOOL, NULL, 0 },  // bool
+    { "RetainCanWalkThrough", 0xe2, RF_BOOL, NULL, 0 },  // bool
+    { "BaseACOverride", 0xe3, RF_BOOL, NULL, 0 },  // bool
+    { "UnarmedAbilityFromTemplate", 0xe4, RF_BOOL, NULL, 0 },  // bool
+    { "DisableEquipmentSlots", 0xe5, RF_BOOL, NULL, 0 },  // bool
+    { "UseTemplateEquipmentSet", 0xe6, RF_BOOL, NULL, 0 },  // bool
+    { "KillEntityAtZeroHP", 0xe7, RF_BOOL, NULL, 0 },  // bool
+    { "PathInfluence", 0xe8, RF_STDSTRING, NULL, 0 },  // STDString
+    { "BlockLevelUp", 0x110, RF_BOOL, NULL, 0 },  // bool
+    { "FlagsInheritanceType", 0x111, RF_U8, NULL, 0 },  // uint8_t
+    { "DefaultBoostsInheritanceType", 0x112, RF_U8, NULL, 0 },  // uint8_t
+    { "PersonalStatusImmunitiesInheritanceType", 0x113, RF_U8, NULL, 0 },  // uint8_t
+    { "SpellCastingAbilityInheritanceType", 0x114, RF_U8, NULL, 0 },  // uint8_t
+    { "PassivesInheritanceType", 0x115, RF_U8, NULL, 0 },  // uint8_t
+    { "ResistancesInheritanceType", 0x116, RF_U8, NULL, 0 },  // uint8_t
+    { "DifficultyStatusesInheritanceType", 0x117, RF_U8, NULL, 0 },  // uint8_t
+    { "ProficiencyGroupsInheritanceType", 0x118, RF_U8, NULL, 0 },  // uint8_t
+    { "BloodSurfaceTypeInheritanceType", 0x119, RF_U8, NULL, 0 },  // uint8_t
+    { "HitBloodTypeInheritanceType", 0x11a, RF_U8, NULL, 0 },  // uint8_t
+    { "DeathActionsInheritanceType", 0x11b, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_AnimationSetPriority[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Priority", 0x28, RF_I32 },  // int32_t
-    { "AddidionalObjects", 0x30, RF_ARRAY_GUID },  // Array<Guid>
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Priority", 0x28, RF_I32, NULL, 0 },  // int32_t
+    { "AddidionalObjects", 0x30, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_SpellMetaCondition[] = {
-    { "ConditionType", 0x18, RF_U8 },  // SpellMetaConditionType
-    { "Filter", 0x20, RF_STDSTRING },  // STDString
-    { "AdditionalConditions", 0x30, RF_STDSTRING },  // STDString
-    { "OverrideOriginalCondition", 0x40, RF_BOOL },  // bool
+    { "ConditionType", 0x18, RF_U8, NULL, 0 },  // SpellMetaConditionType
+    { "Filter", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "AdditionalConditions", 0x30, RF_STDSTRING, NULL, 0 },  // STDString
+    { "OverrideOriginalCondition", 0x40, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_ScriptMaterialParameterOverride[] = {
-    { "ParameterName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "ParameterType", 0x1c, RF_FIXEDSTRING },  // FixedString
-    { "SetMode", 0x20, RF_U8 },  // uint8_t
-    { "IsFixedString", 0x21, RF_U8 },  // uint8_t
+    { "ParameterName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "ParameterType", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "SetMode", 0x20, RF_U8, NULL, 0 },  // uint8_t
+    { "IsFixedString", 0x21, RF_U8, NULL, 0 },  // uint8_t
 };
 static const ResourceField fields_ScriptMaterialPresetOverride[] = {
-    { "ParameterUuids", 0x18, RF_ARRAY_GUID },  // Array<Guid>
+    { "ParameterUuids", 0x18, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_VisualLocatorAttachment[] = {
-    { "DisplayName", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "LocatorName", 0x1c, RF_FIXEDSTRING },  // FixedString
+    { "DisplayName", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "LocatorName", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_RulesetModifier[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "RulesetModifierType", 0x48, RF_U8 },  // uint8_t
-    { "field_54", 0x4c, RF_I32 },  // int
-    { "Max", 0x50, RF_F32 },  // float
-    { "Step", 0x54, RF_F32 },  // float
-    { "Default", 0x58, RF_STDSTRING },  // STDString
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "RulesetModifierType", 0x48, RF_U8, NULL, 0 },  // uint8_t
+    { "field_54", 0x4c, RF_I32, NULL, 0 },  // int
+    { "Max", 0x50, RF_F32, NULL, 0 },  // float
+    { "Step", 0x54, RF_F32, NULL, 0 },  // float
+    { "Default", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_RulesetModifierOption[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Modifier", 0x48, RF_GUID },  // Guid
-    { "Value", 0x58, RF_STDSTRING },  // STDString
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Modifier", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "Value", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_Ruleset[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Type", 0x28, RF_U8 },  // uint8_t
-    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Parent", 0x50, RF_ARRAY_GUID },  // Array<Guid>
-    { "ShowInCustom", 0x60, RF_BOOL },  // bool
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Type", 0x28, RF_U8, NULL, 0 },  // uint8_t
+    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x3c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Parent", 0x50, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ShowInCustom", 0x60, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_RulesetValue[] = {
-    { "Ruleset", 0x18, RF_GUID },  // Guid
-    { "Modifier", 0x28, RF_GUID },  // Guid
-    { "RawValue", 0x38, RF_STDSTRING },  // STDString
+    { "Ruleset", 0x18, RF_GUID, NULL, 0 },  // Guid
+    { "Modifier", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "RawValue", 0x38, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_RulesetSelectionPreset[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Rulesets", 0x28, RF_ARRAY_GUID },  // Array<Guid>
-    { "DisplayName", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x48, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Asset", 0x58, RF_STDSTRING },  // STDString
-    { "IsCustom", 0x68, RF_BOOL },  // bool
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Rulesets", 0x28, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "DisplayName", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Description", 0x48, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Asset", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
+    { "IsCustom", 0x68, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_OneTimeReward[] = {
-    { "ItemTemplateId", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "Amount", 0x1c, RF_I32 },  // int
+    { "ItemTemplateId", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Amount", 0x1c, RF_I32, NULL, 0 },  // int
 };
 static const ResourceField fields_AnimationShortNameCategory[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_AnimationShortName[] = {
-    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "CategoryGuid", 0x20, RF_GUID },  // Guid
+    { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "CategoryGuid", 0x20, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_PhotoModeBlueprintOverride[] = {
-    { "SourceBlueprintUUID", 0x18, RF_FIXEDSTRING },  // FixedString
-    { "DummyBlueprintUUID", 0x1c, RF_FIXEDSTRING },  // FixedString
+    { "SourceBlueprintUUID", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "DummyBlueprintUUID", 0x1c, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_PhotoModeColourGrading[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Resource", 0x28, RF_FIXEDSTRING },  // FixedString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Resource", 0x28, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_PhotoModeDecorFrame[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Asset", 0x28, RF_STDSTRING },  // STDString
-    { "LeftSliceSize", 0x38, RF_F32 },  // float
-    { "TopSliceSize", 0x3c, RF_F32 },  // float
-    { "RightSliceSize", 0x40, RF_F32 },  // float
-    { "BottomSliceSize", 0x44, RF_F32 },  // float
-    { "IconWidth", 0x48, RF_F32 },  // float
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Asset", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
+    { "LeftSliceSize", 0x38, RF_F32, NULL, 0 },  // float
+    { "TopSliceSize", 0x3c, RF_F32, NULL, 0 },  // float
+    { "RightSliceSize", 0x40, RF_F32, NULL, 0 },  // float
+    { "BottomSliceSize", 0x44, RF_F32, NULL, 0 },  // float
+    { "IconWidth", 0x48, RF_F32, NULL, 0 },  // float
 };
 static const ResourceField fields_PhotoModeEmoteAnimation[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ShortName", 0x38, RF_FIXEDSTRING },  // FixedString
-    { "TagsFilter", 0x40, RF_ARRAY_GUID },  // Array<Guid>
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ShortName", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TagsFilter", 0x40, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_PhotoModeEmoteCollection[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "PosesList", 0x28, RF_ARRAY_GUID },  // Array<Guid>
-    { "AnimationsList", 0x38, RF_ARRAY_GUID },  // Array<Guid>
-    { "Name", 0x48, RF_STDSTRING },  // STDString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "PosesList", 0x28, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "AnimationsList", 0x38, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Name", 0x48, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_PhotoModeEmotePose[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ShortName", 0x38, RF_FIXEDSTRING },  // FixedString
-    { "Timing", 0x3c, RF_U32 },  // uint32_t
-    { "TagsFilter", 0x40, RF_ARRAY_GUID },  // Array<Guid>
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ShortName", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Timing", 0x3c, RF_U32, NULL, 0 },  // uint32_t
+    { "TagsFilter", 0x40, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_PhotoModeFaceExpressionCollection[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "FaceExpressionsList", 0x28, RF_ARRAY_GUID },  // Array<Guid>
-    { "Name", 0x38, RF_STDSTRING },  // STDString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "FaceExpressionsList", 0x28, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Name", 0x38, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_PhotoModeFaceExpression[] = {
-    { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ShortName", 0x38, RF_FIXEDSTRING },  // FixedString
-    { "TagsFilter", 0x40, RF_ARRAY_GUID },  // Array<Guid>
+    { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "ShortName", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "TagsFilter", 0x40, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
 };
 static const ResourceField fields_PhotoModeSticker[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Asset", 0x28, RF_STDSTRING },  // STDString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Asset", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
 };
 static const ResourceField fields_PhotoModeVignette[] = {
-    { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
 };
 
 const ResourceLayout g_resource_layouts[] = {
-    { "ActionResource", fields_ActionResource, 13, 0x5f },
-    { "ClassDescription", fields_ClassDescription, 28, 0x110 },
-    { "Tag", fields_Tag, 7, 0x5c },
-    { "Faction", fields_Faction, 2, 0x30 },
-    { "Race", fields_Race, 23, 0x168 },
-    { "Origin", fields_Origin, 30, 0x190 },
-    { "Background", fields_Background, 5, 0x69 },
-    { "God", fields_God, 5, 0x60 },
-    { "Progression", fields_Progression, 12, 0x148 },
-    { "ProgressionDescription", fields_ProgressionDescription, 10, 0x70 },
-    { "Gossip", fields_Gossip, 6, 0x58 },
-    { "ActionResourceGroup", fields_ActionResourceGroup, 4, 0x58 },
-    { "Color", fields_Color, 2, 0x3c },
-    { "EquipmentType", fields_EquipmentType, 15, 0x54 },
-    { "Flag", fields_Flag, 3, 0x31 },
-    { "Feat", fields_Feat, 7, 0x128 },
-    { "FeatDescription", fields_FeatDescription, 9, 0x60 },
-    { "PassiveList", fields_PassiveList, 3, 0x40 },
-    { "SkillList", fields_SkillList, 2, 0x40 },
-    { "SpellList", fields_SpellList, 3, 0x60 },
-    { "AbilityList", fields_AbilityList, 2, 0x40 },
-    { "CompanionPreset", fields_CompanionPreset, 10, 0xa0 },
-    { "AbilityDistributionPreset", fields_AbilityDistributionPreset, 8, 0x44 },
-    { "CharacterCreationAccessorySet", fields_CharacterCreationAccessorySet, 6, 0x68 },
-    { "CharacterCreationAppearanceMaterial", fields_CharacterCreationAppearanceMaterial, 11, 0xa8 },
-    { "CharacterCreationAppearanceVisual", fields_CharacterCreationAppearanceVisual, 14, 0xa8 },
-    { "CharacterCreationEquipmentIcons", fields_CharacterCreationEquipmentIcons, 6, 0x51 },
-    { "CharacterCreationIconSettings", fields_CharacterCreationIconSettings, 3, 0x40 },
-    { "CharacterCreationColor", fields_CharacterCreationColor, 4, 0x54 },
-    { "CharacterCreationMaterialOverride", fields_CharacterCreationMaterialOverride, 5, 0x48 },
-    { "CharacterCreationPassiveAppearance", fields_CharacterCreationPassiveAppearance, 5, 0x60 },
-    { "CharacterCreationPreset", fields_CharacterCreationPreset, 9, 0x90 },
-    { "CharacterCreationSharedVisual", fields_CharacterCreationSharedVisual, 5, 0x58 },
-    { "LevelMap", fields_LevelMap, 2, 0x30 },  // truncated at std::variant<int32_t, DiceRoll> FallbackValue
-    { "ApprovalRating", fields_ApprovalRating, 1, 0x40 },
-    { "AreaLevelOverride", fields_AreaLevelOverride, 3, 0x30 },
-    { "AvatarContainerTemplates", fields_AvatarContainerTemplates, 1, 0x28 },
-    { "BackgroundGoal", fields_BackgroundGoal, 6, 0x60 },
-    { "CalendarDayRange", fields_CalendarDayRange, 7, 0x4c },
-    { "CampChestTemplate", fields_CampChestTemplate, 1, 0x28 },
-    { "DefaultValueGuidResource", fields_DefaultValueGuidResource, 7, 0x80 },
-    { "CharacterCreationVOLine", fields_CharacterCreationVOLine, 2, 0x30 },
-    { "CinematicArenaFrequencyGroup", fields_CinematicArenaFrequencyGroup, 3, 0x28 },
-    { "CustomDiceTemplate", fields_CustomDiceTemplate, 9, 0x5d },
-    { "ConditionErrorDescription", fields_ConditionErrorDescription, 4, 0x2e },
-    { "DeathTypeEffect", fields_DeathTypeEffect, 3, 0x80 },
-    { "DifficultyClass", fields_DifficultyClass, 3, 0x39 },
-    { "DisturbanceProperty", fields_DisturbanceProperty, 1, 0x1c },
-    { "DLC", fields_DLC, 8, 0x51 },
-    { "EncumbranceType", fields_EncumbranceType, 1, 0x1c },
-    { "EquipmentList", fields_EquipmentList, 3, 0x40 },
-    { "ExperienceRewards", fields_ExperienceRewards, 4, 0x30 },
-    { "FeatSoundState", fields_FeatSoundState, 5, 0x3c },
-    { "FlagSoundState", fields_FlagSoundState, 5, 0x3c },
-    { "GoldRewards", fields_GoldRewards, 4, 0x48 },
-    { "FixedHotBarSlot", fields_FixedHotBarSlot, 4, 0x22 },
-    { "ItemThrowParams", fields_ItemThrowParams, 6, 0x4c },
-    { "ItemWallTemplate", fields_ItemWallTemplate, 11, 0x98 },
-    { "TrajectoryRule", fields_TrajectoryRule, 6, 0x30 },
-    { "LimbsMapping", fields_LimbsMapping, 5, 0x68 },
-    { "LongRestCost", fields_LongRestCost, 3, 0x24 },
-    { "ManagedStatusVFX", fields_ManagedStatusVFX, 4, 0x28 },
-    { "MultiEffectInfo", fields_MultiEffectInfo, 1, 0x38 },
-    { "OriginIntroEntity", fields_OriginIntroEntity, 3, 0x30 },
-    { "PassivesVFX", fields_PassivesVFX, 3, 0x24 },
-    { "ProjectileDefault", fields_ProjectileDefault, 2, 0x30 },
-    { "RandomCastOutcome", fields_RandomCastOutcome, 5, 0x3c },
-    { "SoundSpellTrajectoryRule", fields_SoundSpellTrajectoryRule, 4, 0x28 },
-    { "StatusSoundState", fields_StatusSoundState, 6, 0x2d },
-    { "SurfaceCursorMessage", fields_SurfaceCursorMessage, 3, 0x30 },
-    { "TadpolePower", fields_TadpolePower, 3, 0x2d },
-    { "TagSoundState", fields_TagSoundState, 5, 0x3c },
-    { "TooltipExtraText", fields_TooltipExtraText, 1, 0x28 },
-    { "TooltipUpcastDescription", fields_TooltipUpcastDescription, 2, 0x2c },
-    { "TutorialEntry", fields_TutorialEntry, 8, 0x6b },
-    { "TutorialModalEntry", fields_TutorialModalEntry, 10, 0x58 },
-    { "TutorialUnifiedEntry", fields_TutorialUnifiedEntry, 20, 0xbc },
-    { "TutorialEvent", fields_TutorialEvent, 5, 0x45 },
-    { "VFX", fields_VFX, 2, 0x20 },
-    { "Voice", fields_Voice, 5, 0x60 },
-    { "WeaponAnimationSet", fields_WeaponAnimationSet, 3, 0x24 },
-    { "WeightCategories", fields_WeightCategories, 3, 0x31 },
-    { "ShapeshiftRule", fields_ShapeshiftRule, 47, 0x11c },
-    { "AnimationSetPriority", fields_AnimationSetPriority, 3, 0x40 },
-    { "SpellMetaCondition", fields_SpellMetaCondition, 4, 0x41 },
-    { "ScriptMaterialParameterOverride", fields_ScriptMaterialParameterOverride, 4, 0x30 },  // truncated at std::variant<float, glm::vec3, glm::vec4, FixedString> Limit
-    { "ScriptMaterialPresetOverride", fields_ScriptMaterialPresetOverride, 1, 0x28 },
-    { "VisualLocatorAttachment", fields_VisualLocatorAttachment, 2, 0x20 },
-    { "RulesetModifier", fields_RulesetModifier, 8, 0x68 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedDefault
-    { "RulesetModifierOption", fields_RulesetModifierOption, 5, 0x68 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedValue
-    { "Ruleset", fields_Ruleset, 6, 0x61 },
-    { "RulesetValue", fields_RulesetValue, 3, 0x48 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> Value
-    { "RulesetSelectionPreset", fields_RulesetSelectionPreset, 6, 0x69 },
-    { "OneTimeReward", fields_OneTimeReward, 2, 0x20 },
-    { "AnimationShortNameCategory", fields_AnimationShortNameCategory, 1, 0x1c },
-    { "AnimationShortName", fields_AnimationShortName, 2, 0x30 },
-    { "PhotoModeBlueprintOverride", fields_PhotoModeBlueprintOverride, 2, 0x20 },
-    { "PhotoModeColourGrading", fields_PhotoModeColourGrading, 2, 0x2c },
-    { "PhotoModeDecorFrame", fields_PhotoModeDecorFrame, 7, 0x4c },
-    { "PhotoModeEmoteAnimation", fields_PhotoModeEmoteAnimation, 4, 0x50 },
-    { "PhotoModeEmoteCollection", fields_PhotoModeEmoteCollection, 4, 0x58 },
-    { "PhotoModeEmotePose", fields_PhotoModeEmotePose, 5, 0x50 },
-    { "PhotoModeFaceExpressionCollection", fields_PhotoModeFaceExpressionCollection, 3, 0x48 },
-    { "PhotoModeFaceExpression", fields_PhotoModeFaceExpression, 4, 0x50 },
-    { "PhotoModeSticker", fields_PhotoModeSticker, 2, 0x38 },
-    { "PhotoModeVignette", fields_PhotoModeVignette, 1, 0x38 },
+    { "ActionResource", fields_ActionResource, 13, 0x60, false },
+    { "ClassDescription", fields_ClassDescription, 28, 0x110, false },
+    { "Tag", fields_Tag, 7, 0x60, false },
+    { "Faction", fields_Faction, 2, 0x30, false },
+    { "Race", fields_Race, 23, 0x168, false },
+    { "Origin", fields_Origin, 30, 0x190, false },
+    { "Background", fields_Background, 5, 0x70, false },
+    { "God", fields_God, 5, 0x60, false },
+    { "Progression", fields_Progression, 20, 0x148, false },
+    { "ProgressionDescription", fields_ProgressionDescription, 10, 0x70, false },
+    { "Gossip", fields_Gossip, 6, 0x58, false },
+    { "ActionResourceGroup", fields_ActionResourceGroup, 4, 0x58, false },
+    { "Color", fields_Color, 2, 0x3c, false },
+    { "EquipmentType", fields_EquipmentType, 15, 0x54, false },
+    { "Flag", fields_Flag, 3, 0x38, false },
+    { "Feat", fields_Feat, 7, 0x128, false },
+    { "FeatDescription", fields_FeatDescription, 9, 0x60, false },
+    { "PassiveList", fields_PassiveList, 3, 0x40, false },
+    { "SkillList", fields_SkillList, 2, 0x40, false },
+    { "SpellList", fields_SpellList, 3, 0x60, false },
+    { "AbilityList", fields_AbilityList, 2, 0x40, false },
+    { "CompanionPreset", fields_CompanionPreset, 10, 0xa0, false },
+    { "AbilityDistributionPreset", fields_AbilityDistributionPreset, 8, 0x48, false },
+    { "CharacterCreationAccessorySet", fields_CharacterCreationAccessorySet, 6, 0x68, false },
+    { "CharacterCreationAppearanceMaterial", fields_CharacterCreationAppearanceMaterial, 11, 0xa8, false },
+    { "CharacterCreationAppearanceVisual", fields_CharacterCreationAppearanceVisual, 14, 0xa8, false },
+    { "CharacterCreationEquipmentIcons", fields_CharacterCreationEquipmentIcons, 6, 0x58, false },
+    { "CharacterCreationIconSettings", fields_CharacterCreationIconSettings, 3, 0x40, false },
+    { "CharacterCreationColor", fields_CharacterCreationColor, 4, 0x58, false },
+    { "CharacterCreationMaterialOverride", fields_CharacterCreationMaterialOverride, 5, 0x48, false },
+    { "CharacterCreationPassiveAppearance", fields_CharacterCreationPassiveAppearance, 5, 0x60, false },
+    { "CharacterCreationPreset", fields_CharacterCreationPreset, 9, 0x90, false },
+    { "CharacterCreationSharedVisual", fields_CharacterCreationSharedVisual, 5, 0x58, false },
+    { "LevelMap", fields_LevelMap, 2, 0x30, false },  // truncated at std::variant<int32_t, DiceRoll> FallbackValue
+    { "ApprovalRating", fields_ApprovalRating, 3, 0x40, false },
+    { "AreaLevelOverride", fields_AreaLevelOverride, 3, 0x30, false },
+    { "AvatarContainerTemplates", fields_AvatarContainerTemplates, 1, 0x28, false },
+    { "BackgroundGoal", fields_BackgroundGoal, 6, 0x60, false },
+    { "CalendarDayRange", fields_CalendarDayRange, 7, 0x4c, false },
+    { "CampChestTemplate", fields_CampChestTemplate, 1, 0x28, false },
+    { "DefaultValueGuidResource", fields_DefaultValueGuidResource, 7, 0x80, false },
+    { "CharacterCreationVOLine", fields_CharacterCreationVOLine, 2, 0x30, false },
+    { "CinematicArenaFrequencyGroup", fields_CinematicArenaFrequencyGroup, 3, 0x28, false },
+    { "CustomDiceTemplate", fields_CustomDiceTemplate, 9, 0x60, false },
+    { "ConditionErrorDescription", fields_ConditionErrorDescription, 4, 0x30, false },
+    { "DeathTypeEffect", fields_DeathTypeEffect, 3, 0x80, false },
+    { "DifficultyClass", fields_DifficultyClass, 3, 0x40, false },
+    { "DisturbanceProperty", fields_DisturbanceProperty, 1, 0x1c, false },
+    { "DLC", fields_DLC, 8, 0x58, false },
+    { "EncumbranceType", fields_EncumbranceType, 1, 0x1c, false },
+    { "EquipmentList", fields_EquipmentList, 3, 0x40, false },
+    { "ExperienceRewards", fields_ExperienceRewards, 4, 0x30, false },
+    { "FeatSoundState", fields_FeatSoundState, 5, 0x40, false },
+    { "FlagSoundState", fields_FlagSoundState, 5, 0x40, false },
+    { "GoldRewards", fields_GoldRewards, 4, 0x48, false },
+    { "FixedHotBarSlot", fields_FixedHotBarSlot, 4, 0x24, false },
+    { "ItemThrowParams", fields_ItemThrowParams, 6, 0x50, false },
+    { "ItemWallTemplate", fields_ItemWallTemplate, 11, 0x98, false },
+    { "TrajectoryRule", fields_TrajectoryRule, 6, 0x30, false },
+    { "LimbsMapping", fields_LimbsMapping, 5, 0x68, false },
+    { "LongRestCost", fields_LongRestCost, 3, 0x24, false },
+    { "ManagedStatusVFX", fields_ManagedStatusVFX, 4, 0x28, false },
+    { "MultiEffectInfo", fields_MultiEffectInfo, 1, 0x38, false },
+    { "OriginIntroEntity", fields_OriginIntroEntity, 3, 0x30, false },
+    { "PassivesVFX", fields_PassivesVFX, 3, 0x24, false },
+    { "ProjectileDefault", fields_ProjectileDefault, 2, 0x30, false },
+    { "RandomCastOutcome", fields_RandomCastOutcome, 5, 0x40, false },
+    { "SoundSpellTrajectoryRule", fields_SoundSpellTrajectoryRule, 4, 0x28, false },
+    { "StatusSoundState", fields_StatusSoundState, 6, 0x30, false },
+    { "SurfaceCursorMessage", fields_SurfaceCursorMessage, 3, 0x30, false },
+    { "TadpolePower", fields_TadpolePower, 3, 0x30, false },
+    { "TagSoundState", fields_TagSoundState, 5, 0x40, false },
+    { "TooltipExtraText", fields_TooltipExtraText, 1, 0x28, false },
+    { "TooltipUpcastDescription", fields_TooltipUpcastDescription, 2, 0x2c, false },
+    { "TutorialEntry", fields_TutorialEntry, 8, 0x70, false },
+    { "TutorialModalEntry", fields_TutorialModalEntry, 10, 0x58, false },
+    { "TutorialUnifiedEntry", fields_TutorialUnifiedEntry, 20, 0xc0, false },
+    { "TutorialEvent", fields_TutorialEvent, 5, 0x48, false },
+    { "VFX", fields_VFX, 2, 0x20, false },
+    { "Voice", fields_Voice, 5, 0x60, false },
+    { "WeaponAnimationSet", fields_WeaponAnimationSet, 3, 0x24, false },
+    { "WeightCategories", fields_WeightCategories, 3, 0x38, false },
+    { "ShapeshiftRule", fields_ShapeshiftRule, 48, 0x120, false },
+    { "AnimationSetPriority", fields_AnimationSetPriority, 3, 0x40, false },
+    { "SpellMetaCondition", fields_SpellMetaCondition, 4, 0x48, false },
+    { "ScriptMaterialParameterOverride", fields_ScriptMaterialParameterOverride, 4, 0x30, false },  // truncated at std::variant<float, glm::vec3, glm::vec4, FixedString> Limit
+    { "ScriptMaterialPresetOverride", fields_ScriptMaterialPresetOverride, 1, 0x28, false },
+    { "VisualLocatorAttachment", fields_VisualLocatorAttachment, 2, 0x20, false },
+    { "RulesetModifier", fields_RulesetModifier, 8, 0x68, false },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedDefault
+    { "RulesetModifierOption", fields_RulesetModifierOption, 5, 0x68, false },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedValue
+    { "Ruleset", fields_Ruleset, 6, 0x68, false },
+    { "RulesetValue", fields_RulesetValue, 3, 0x48, false },  // truncated at std::variant<NoValue, float, int, FixedString, bool> Value
+    { "RulesetSelectionPreset", fields_RulesetSelectionPreset, 6, 0x70, false },
+    { "OneTimeReward", fields_OneTimeReward, 2, 0x20, false },
+    { "AnimationShortNameCategory", fields_AnimationShortNameCategory, 1, 0x1c, false },
+    { "AnimationShortName", fields_AnimationShortName, 2, 0x30, false },
+    { "PhotoModeBlueprintOverride", fields_PhotoModeBlueprintOverride, 2, 0x20, false },
+    { "PhotoModeColourGrading", fields_PhotoModeColourGrading, 2, 0x2c, false },
+    { "PhotoModeDecorFrame", fields_PhotoModeDecorFrame, 7, 0x50, false },
+    { "PhotoModeEmoteAnimation", fields_PhotoModeEmoteAnimation, 4, 0x50, false },
+    { "PhotoModeEmoteCollection", fields_PhotoModeEmoteCollection, 4, 0x58, false },
+    { "PhotoModeEmotePose", fields_PhotoModeEmotePose, 5, 0x50, false },
+    { "PhotoModeFaceExpressionCollection", fields_PhotoModeFaceExpressionCollection, 3, 0x48, false },
+    { "PhotoModeFaceExpression", fields_PhotoModeFaceExpression, 4, 0x50, false },
+    { "PhotoModeSticker", fields_PhotoModeSticker, 2, 0x38, false },
+    { "PhotoModeVignette", fields_PhotoModeVignette, 1, 0x38, false },
 };
 
 const int g_resource_layout_count = 106;

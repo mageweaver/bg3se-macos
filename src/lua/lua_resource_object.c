@@ -40,6 +40,8 @@ typedef struct {
     void *array;                 // address of the Array<T> itself
     ResourceFieldKind kind;      // RF_ARRAY_*
     bool readonly;               // set for a HashSet's element array
+    const ResourceLayout *elem;  // RF_ARRAY_STRUCT: element layout
+    uint16_t elem_size;          // RF_ARRAY_STRUCT: stride
 } ResourceArrayUD;
 
 // ============================================================================
@@ -133,6 +135,8 @@ static bool write_stdstring(void *addr, const char *str, size_t len) {
 // Field marshalling
 // ============================================================================
 
+static size_t array_element_size_of(const ResourceArrayUD *ud);
+
 static size_t array_element_size(ResourceFieldKind kind) {
     switch (kind) {
         case RF_ARRAY_GUID:        return 16;
@@ -141,6 +145,11 @@ static size_t array_element_size(ResourceFieldKind kind) {
         case RF_ARRAY_U8:          return 1;
         default:                   return 0;
     }
+}
+
+static size_t array_element_size_of(const ResourceArrayUD *ud) {
+    if (ud->kind == RF_ARRAY_STRUCT) return ud->elem_size;
+    return array_element_size(ud->kind);
 }
 
 static void push_guid(lua_State *L, const void *addr) {
@@ -225,6 +234,8 @@ static void push_array_proxy_ex(lua_State *L, void *array_addr, ResourceFieldKin
     ud->array = array_addr;
     ud->kind = kind;
     ud->readonly = readonly;
+    ud->elem = NULL;
+    ud->elem_size = 0;
     ensure_array_metatable(L);
     lua_setmetatable(L, -2);
 }
@@ -317,6 +328,14 @@ static int push_field(lua_State *L, void *obj, const ResourceField *field) {
             push_array_proxy_ex(L, (uint8_t *)addr + HASHSET_KEYS_OFFSET,
                                 RF_ARRAY_FIXEDSTRING, true);
             return 1;
+
+        case RF_ARRAY_STRUCT: {
+            push_array_proxy(L, addr, field->kind);
+            ResourceArrayUD *ud = (ResourceArrayUD *)lua_touserdata(L, -1);
+            ud->elem = field->elem;
+            ud->elem_size = field->elem_size;
+            return 1;
+        }
 
         default:
             if (resource_field_is_array(field->kind)) {
@@ -584,7 +603,8 @@ static int resource_object_index(lua_State *L) {
     ResourceObjectUD *ud = check_object(L, 1);
     const char *key = luaL_checkstring(L, 2);
 
-    if (strcmp(key, "ResourceUUID") == 0 || strcmp(key, "UUID") == 0) {
+    if (!ud->layout->embedded
+        && (strcmp(key, "ResourceUUID") == 0 || strcmp(key, "UUID") == 0)) {
         push_guid(L, (uint8_t *)ud->obj + RESOURCE_UUID_OFFSET);
         return 1;
     }
@@ -645,6 +665,10 @@ static int resource_object_pairs(lua_State *L) {
 
 static int resource_object_tostring(lua_State *L) {
     ResourceObjectUD *ud = check_object(L, 1);
+    if (ud->layout->embedded) {
+        lua_pushfstring(L, "%s", ud->layout->type_name);
+        return 1;
+    }
     char guid[40] = "?";
     staticdata_registry_format_key((uint8_t *)ud->obj + RESOURCE_UUID_OFFSET, 0,
                                    guid, sizeof(guid));
@@ -682,6 +706,26 @@ static int resource_array_len(lua_State *L) {
     }
     lua_pushinteger(L, size);
     return 1;
+}
+
+static void push_object_proxy(lua_State *L, void *obj, const ResourceLayout *layout);
+static void push_element(lua_State *L, const void *elem, ResourceFieldKind kind);
+
+/*
+ * One array element. Struct elements get the same field proxy a resource does,
+ * pointing straight at the element inside the array -- so writing a field on
+ * one writes through to the array, with nothing copied.
+ */
+static void push_element_at(lua_State *L, const ResourceArrayUD *ud, void *elem) {
+    if (ud->kind == RF_ARRAY_STRUCT) {
+        if (ud->elem) {
+            push_object_proxy(L, elem, ud->elem);
+        } else {
+            lua_pushnil(L);
+        }
+        return;
+    }
+    push_element(L, elem, ud->kind);
 }
 
 static void push_element(lua_State *L, const void *elem, ResourceFieldKind kind) {
@@ -748,6 +792,9 @@ static int write_element(lua_State *L, void *elem, ResourceFieldKind kind, int v
         case RF_ARRAY_U8:
             *(uint8_t *)elem = (uint8_t)luaL_checkinteger(L, value_index);
             return 0;
+        case RF_ARRAY_STRUCT:
+            return luaL_error(L, "assign to the fields of this element rather "
+                                 "than replacing it");
         default:
             return luaL_error(L, "this array's elements are not writable");
     }
@@ -763,8 +810,8 @@ static int resource_array_index(lua_State *L) {
         lua_pushnil(L);
         return 1;
     }
-    size_t esize = array_element_size(ud->kind);
-    push_element(L, (const uint8_t *)buf + (size_t)(i - 1) * esize, ud->kind);
+    size_t esize = array_element_size_of(ud);
+    push_element_at(L, ud, (uint8_t *)buf + (size_t)(i - 1) * esize);
     return 1;
 }
 
@@ -784,7 +831,7 @@ static bool array_reserve(ResourceArrayUD *ud, uint32_t needed) {
     uint32_t new_cap = cap ? cap * 2 : 4;
     while (new_cap < needed) new_cap *= 2;
 
-    size_t esize = array_element_size(ud->kind);
+    size_t esize = array_element_size_of(ud);
     void *fresh = resource_game_alloc((size_t)new_cap * esize);
     if (!fresh) return false;
 
@@ -819,7 +866,7 @@ static int resource_array_newindex(lua_State *L) {
     }
 
     uint8_t *p = (uint8_t *)ud->array;
-    size_t esize = array_element_size(ud->kind);
+    size_t esize = array_element_size_of(ud);
 
     // arr[#arr] = nil is how Lua code pops the last element.
     if (lua_isnil(L, 3)) {
@@ -864,8 +911,7 @@ static int resource_array_next(lua_State *L) {
         return 1;
     }
     lua_pushinteger(L, i);
-    push_element(L, (const uint8_t *)buf + (size_t)(i - 1) * array_element_size(ud->kind),
-                 ud->kind);
+    push_element_at(L, ud, (uint8_t *)buf + (size_t)(i - 1) * array_element_size_of(ud));
     return 2;
 }
 
@@ -988,6 +1034,9 @@ static int check_layout(void *obj, const ResourceLayout *layout,
                     why = "string reads as empty but starts with text";
                 }
             }
+        } else if (f->kind == RF_ARRAY_STRUCT && !f->elem) {
+            // Sized so later fields are right, but nothing to validate.
+            continue;
         } else if (resource_field_is_array(f->kind)) {
             uint64_t buf = 0;
             uint32_t cap = 0, size = 0;
@@ -1105,6 +1154,14 @@ static void selftest_layout_once(const ResourceLayout *layout) {
     }
 }
 
+static void push_object_proxy(lua_State *L, void *obj, const ResourceLayout *layout) {
+    ResourceObjectUD *ud = (ResourceObjectUD *)lua_newuserdatauv(L, sizeof(ResourceObjectUD), 0);
+    ud->obj = obj;
+    ud->layout = layout;
+    ensure_object_metatable(L);
+    lua_setmetatable(L, -2);
+}
+
 void lua_resource_object_push(lua_State *L, void *obj, const char *type_name) {
     if (!obj) {
         lua_pushnil(L);
@@ -1120,10 +1177,5 @@ void lua_resource_object_push(lua_State *L, void *obj, const char *type_name) {
     }
 
     selftest_layout_once(layout);
-
-    ResourceObjectUD *ud = (ResourceObjectUD *)lua_newuserdatauv(L, sizeof(ResourceObjectUD), 0);
-    ud->obj = obj;
-    ud->layout = layout;
-    ensure_object_metatable(L);
-    lua_setmetatable(L, -2);
+    push_object_proxy(L, obj, layout);
 }

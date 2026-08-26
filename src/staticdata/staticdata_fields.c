@@ -32,6 +32,7 @@ bool resource_field_is_array(ResourceFieldKind kind) {
         case RF_ARRAY_FIXEDSTRING:
         case RF_ARRAY_I32:
         case RF_ARRAY_U8:
+        case RF_ARRAY_STRUCT:
             return true;
         default:
             return false;

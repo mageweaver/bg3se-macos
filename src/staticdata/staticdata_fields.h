@@ -41,19 +41,25 @@ typedef enum {
     RF_ARRAY_I32,
     RF_ARRAY_U8,
     RF_HASHSET_FIXEDSTRING,
+    RF_ARRAY_STRUCT,            // Array of a nested struct; see elem/elem_size
 } ResourceFieldKind;
+
+struct ResourceLayout;
 
 typedef struct {
     const char *name;
     uint16_t offset;
     ResourceFieldKind kind;
+    const struct ResourceLayout *elem;  // RF_ARRAY_STRUCT: element layout
+    uint16_t elem_size;                 // RF_ARRAY_STRUCT: array stride
 } ResourceField;
 
-typedef struct {
+typedef struct ResourceLayout {
     const char *type_name;      // matches StaticDataTypeEntry::name
     const ResourceField *fields;
     int field_count;
     uint16_t size;              // sizeof the struct, for bounds checks
+    bool embedded;              // a nested element type, not a GuidResource
 } ResourceLayout;
 
 extern const ResourceLayout g_resource_layouts[];
