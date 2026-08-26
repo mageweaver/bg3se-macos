@@ -9,8 +9,11 @@ everything after it. So the size table below is the load-bearing part, and any
 type missing from it truncates that struct rather than guessing (see TRUNCATION
 below).
 
-Sizes are for the macOS build (libc++, LLVM), which differs from upstream's
-MSVC in one place that matters: std::string is 24 bytes, not 32.
+Sizes are for the macOS build. The one that matters most is STDString: upstream
+declares it as a std::basic_string, but the shipped struct stores it in 16
+bytes -- a pointer, a 32-bit size and a 32-bit capacity whose top bit marks the
+long form, with short strings inline and their length in the last byte. That
+was read off a live Progression (see plans/), not assumed.
 
 Usage: tools/generate_resource_fields.py [upstream_root] > generated_resource_fields.c
 """
@@ -32,13 +35,13 @@ TYPES = {
     "double":           (8, 8, "F64"),
     "FixedString":      (4, 4, "FIXEDSTRING"),
     "Guid":             (16, 8, "GUID"),
-    "STDString":        (24, 8, "STDSTRING"),      # libc++ std::string, not MSVC's 32
+    "STDString":        (16, 8, "STDSTRING"),      # Larian's compact string, not std::string
     "TranslatedString": (16, 4, "TRANSLATEDSTRING"),
     "glm::vec3":        (12, 4, None),
     "glm::vec4":        (16, 4, None),
     "HashSet<FixedString>": (48, 8, "HASHSET_FIXEDSTRING"),  # StaticArray + 2x Array
     "std::optional<Guid>":  (24, 8, None),
-    "std::optional<STDString>": (32, 8, None),
+    "std::optional<STDString>": (24, 8, None),
     # Enums -- underlying type from Enumerations/*.inl
     "AbilityId":             (1, 1, "U8"),
     "DiceSizeId":            (1, 1, "U8"),

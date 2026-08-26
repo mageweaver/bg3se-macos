@@ -8,8 +8,13 @@
  * guess: a struct is truncated at the first type it cannot size (the fields
  * before it stay exact). Today that is only the bare std::variant fields.
  *
- * Sizes are for the macOS build, which differs from upstream's MSVC in one
- * place that matters here: std::string is 24 bytes rather than 32.
+ * Sizes are for the macOS build. The one that matters most is STDString:
+ * upstream declares it as a std::basic_string, but the shipped struct stores it
+ * in 16 bytes -- a pointer, a uint32 length and a uint32 capacity whose top bit
+ * marks the long form, with short strings inline and their length in the last
+ * byte. Reading it as a std::string (24 bytes on libc++, 32 on MSVC) put every
+ * field after the first string in a struct at the wrong offset, in 35 of the
+ * 106 types. See plans/staticdata-string-layout.md.
  */
 
 #ifndef BG3SE_STATICDATA_FIELDS_H

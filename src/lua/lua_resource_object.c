@@ -46,20 +46,23 @@ typedef struct {
 // std::string (libc++)
 // ============================================================================
 //
-// libc++ stores short strings inline and long ones out of line, with the
-// discriminator in the top bit of the last byte:
+// STDString is 16 bytes, not a std::string. Read off a live Progression:
 //
-//   short: data at +0, length in (byte[23] & 0x7f)
-//   long:  data pointer at +0, length at +8, capacity at +16 (top bit = flag)
+//   short:  characters inline at +0, length in (byte[15] & 0x7f)
+//   long:   pointer at +0, uint32 length at +8, uint32 capacity at +12
+//           whose top bit marks the long form
 //
-// Older libc++ put the capacity word first. That ordering is not handled: it
-// puts the discriminator in the low bit of byte 0, so it cannot be told apart
-// from this one without knowing the toolchain up front. The layout below is
-// what LLVM has shipped since well before this game was built, and the layout
-// self-check further down reports loudly if a string field turns out not to
-// hold text -- which is exactly how a wrong guess here would show up.
+// The discriminator is the top bit of the last byte either way, so the two
+// forms are told apart the same way. Upstream declares this field as a
+// std::basic_string, which would be 24 bytes on libc++ and 32 on MSVC; both
+// readings put every field after the first string in a struct at the wrong
+// offset. The sample that settled it held "Barbarian" inline with 0x09 at
+// byte 15, and a 231-character Boosts string out of line with its capacity
+// at +12 carrying the 0x80000000 flag.
 
-#define STDSTRING_SHORT_CAPACITY 22
+#define STDSTRING_SIZE            16
+#define STDSTRING_INLINE_MAX      15   // characters that fit inline
+#define STDSTRING_WRITE_INLINE_MAX 14  // leave room for a terminator when we write
 
 /** Returns a pointer to the characters and the length, or NULL. */
 static const char *read_stdstring(const void *addr, size_t *out_len) {
@@ -67,22 +70,21 @@ static const char *read_stdstring(const void *addr, size_t *out_len) {
     const uint8_t *p = (const uint8_t *)addr;
 
     uint8_t flag_byte = 0;
-    if (!safe_memory_read_u8((mach_vm_address_t)(p + 23), &flag_byte)) return NULL;
+    if (!safe_memory_read_u8((mach_vm_address_t)(p + 15), &flag_byte)) return NULL;
 
     if (!(flag_byte & 0x80)) {
-        // Short form: the characters live inline.
         size_t len = flag_byte & 0x7f;
-        if (len > STDSTRING_SHORT_CAPACITY) return NULL;
+        if (len > STDSTRING_INLINE_MAX) return NULL;
         *out_len = len;
         return (const char *)p;
     }
 
     void *data = NULL;
-    uint64_t size = 0, cap = 0;
+    uint32_t size = 0, cap = 0;
     if (!safe_memory_read_u64((mach_vm_address_t)(p + 0), (uint64_t *)&data)) return NULL;
-    if (!safe_memory_read_u64((mach_vm_address_t)(p + 8), &size)) return NULL;
-    if (!safe_memory_read_u64((mach_vm_address_t)(p + 16), &cap)) return NULL;
-    cap &= ~(1ull << 63);
+    if (!safe_memory_read_u32((mach_vm_address_t)(p + 8), &size)) return NULL;
+    if (!safe_memory_read_u32((mach_vm_address_t)(p + 12), &cap)) return NULL;
+    cap &= 0x7fffffffu;
 
     if (!data || size > cap || cap > (1u << 24)) return NULL;
     uint8_t probe = 0;
@@ -105,16 +107,15 @@ static void *resource_game_alloc(size_t size) {
     return alloc(size, 0, 0, 0);
 }
 
-/** Overwrite a std::string in place. Short strings need no allocation. */
+/** Overwrite an STDString in place. Short strings need no allocation. */
 static bool write_stdstring(void *addr, const char *str, size_t len) {
     if (!addr) return false;
     uint8_t *p = (uint8_t *)addr;
 
-    if (len <= STDSTRING_SHORT_CAPACITY) {
+    if (len <= STDSTRING_WRITE_INLINE_MAX) {
+        memset(p, 0, STDSTRING_SIZE);
         memcpy(p, str, len);
-        p[len] = '\0';
-        memset(p + len + 1, 0, 24 - len - 1);
-        p[23] = (uint8_t)(len & 0x7f);
+        p[15] = (uint8_t)(len & 0x7f);
         return true;
     }
 
@@ -123,8 +124,8 @@ static bool write_stdstring(void *addr, const char *str, size_t len) {
     memcpy(buf, str, len);
     buf[len] = '\0';
     *(void **)(p + 0) = buf;
-    *(uint64_t *)(p + 8) = (uint64_t)len;
-    *(uint64_t *)(p + 16) = ((uint64_t)(len + 1)) | (1ull << 63);
+    *(uint32_t *)(p + 8) = (uint32_t)len;
+    *(uint32_t *)(p + 12) = (uint32_t)(len + 1) | 0x80000000u;
     return true;
 }
 

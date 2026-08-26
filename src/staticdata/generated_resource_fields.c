@@ -52,11 +52,11 @@ static const ResourceField fields_ClassDescription[] = {
 static const ResourceField fields_Tag[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
     { "Description", 0x20, RF_STDSTRING },  // STDString
-    { "Icon", 0x38, RF_FIXEDSTRING },  // FixedString
-    { "Categories", 0x3c, RF_U32 },  // uint32_t
-    { "Properties", 0x40, RF_U32 },  // uint32_t
-    { "DisplayName", 0x44, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "DisplayDescription", 0x54, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Icon", 0x30, RF_FIXEDSTRING },  // FixedString
+    { "Categories", 0x34, RF_U32 },  // uint32_t
+    { "Properties", 0x38, RF_U32 },  // uint32_t
+    { "DisplayName", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "DisplayDescription", 0x4c, RF_TRANSLATEDSTRING },  // TranslatedString
 };
 static const ResourceField fields_Faction[] = {
     { "Faction", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -106,25 +106,25 @@ static const ResourceField fields_Origin[] = {
     { "GlobalTemplate", 0xb8, RF_GUID },  // Guid
     { "DefaultsTemplate", 0xc8, RF_GUID },  // Guid
     { "Passives", 0xd8, RF_STDSTRING },  // STDString
-    { "AppearanceTags", 0x100, RF_ARRAY_GUID },  // Array<Guid>
-    { "ReallyTags", 0x110, RF_ARRAY_GUID },  // Array<Guid>
-    { "Flags", 0x120, RF_U32 },  // uint32_t
-    { "Overview", 0x128, RF_STDSTRING },  // STDString
-    { "CloseUpA", 0x140, RF_STDSTRING },  // STDString
-    { "CloseUpB", 0x158, RF_STDSTRING },  // STDString
-    { "ClassEquipmentOverride", 0x170, RF_FIXEDSTRING },  // FixedString
-    { "VoiceTableUUID", 0x178, RF_GUID },  // Guid
-    { "IntroDialogUUID", 0x188, RF_GUID },  // Guid
-    { "IsHenchman", 0x198, RF_BOOL },  // bool
-    { "Identity", 0x199, RF_U8 },  // uint8_t
-    { "ExcludesOriginUUID", 0x1a0, RF_GUID },  // Guid
+    { "AppearanceTags", 0xf8, RF_ARRAY_GUID },  // Array<Guid>
+    { "ReallyTags", 0x108, RF_ARRAY_GUID },  // Array<Guid>
+    { "Flags", 0x118, RF_U32 },  // uint32_t
+    { "Overview", 0x120, RF_STDSTRING },  // STDString
+    { "CloseUpA", 0x130, RF_STDSTRING },  // STDString
+    { "CloseUpB", 0x140, RF_STDSTRING },  // STDString
+    { "ClassEquipmentOverride", 0x150, RF_FIXEDSTRING },  // FixedString
+    { "VoiceTableUUID", 0x158, RF_GUID },  // Guid
+    { "IntroDialogUUID", 0x168, RF_GUID },  // Guid
+    { "IsHenchman", 0x178, RF_BOOL },  // bool
+    { "Identity", 0x179, RF_U8 },  // uint8_t
+    { "ExcludesOriginUUID", 0x180, RF_GUID },  // Guid
 };
 static const ResourceField fields_Background[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
     { "Description", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
     { "Passives", 0x38, RF_STDSTRING },  // STDString
-    { "Tags", 0x60, RF_ARRAY_GUID },  // Array<Guid>
-    { "Hidden", 0x70, RF_BOOL },  // bool
+    { "Tags", 0x58, RF_ARRAY_GUID },  // Array<Guid>
+    { "Hidden", 0x68, RF_BOOL },  // bool
 };
 static const ResourceField fields_God[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -136,16 +136,16 @@ static const ResourceField fields_God[] = {
 static const ResourceField fields_Progression[] = {
     { "TableUUID", 0x18, RF_GUID },  // Guid
     { "Name", 0x28, RF_STDSTRING },  // STDString
-    { "SubClasses", 0x40, RF_ARRAY_GUID },  // Array<Guid>
-    { "PassivesAdded", 0x60, RF_STDSTRING },  // STDString
-    { "PassivesRemoved", 0x88, RF_STDSTRING },  // STDString
-    { "BoostPrototypes", 0xa0, RF_ARRAY_GUID },  // Array<Guid>
-    { "Boosts", 0xb0, RF_STDSTRING },  // STDString
-    { "ProgressionType", 0xc8, RF_U8 },  // ProgressionType
-    { "Level", 0xc9, RF_U8 },  // uint8_t
-    { "AllowImprovement", 0xca, RF_BOOL },  // bool
-    { "field_D0", 0xd0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "IsMulticlass", 0xe0, RF_BOOL },  // bool
+    { "SubClasses", 0x38, RF_ARRAY_GUID },  // Array<Guid>
+    { "PassivesAdded", 0x58, RF_STDSTRING },  // STDString
+    { "PassivesRemoved", 0x78, RF_STDSTRING },  // STDString
+    { "BoostPrototypes", 0x88, RF_ARRAY_GUID },  // Array<Guid>
+    { "Boosts", 0x98, RF_STDSTRING },  // STDString
+    { "ProgressionType", 0xa8, RF_U8 },  // ProgressionType
+    { "Level", 0xa9, RF_U8 },  // uint8_t
+    { "AllowImprovement", 0xaa, RF_BOOL },  // bool
+    { "field_D0", 0xb0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
+    { "IsMulticlass", 0xc0, RF_BOOL },  // bool
 };
 static const ResourceField fields_ProgressionDescription[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
@@ -169,9 +169,9 @@ static const ResourceField fields_Gossip[] = {
 };
 static const ResourceField fields_ActionResourceGroup[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "field_38", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "field_48", 0x40, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ActionResourceDefinitions", 0x50, RF_ARRAY_GUID },  // Array<Guid>
+    { "field_38", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "field_48", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "ActionResourceDefinitions", 0x48, RF_ARRAY_GUID },  // Array<Guid>
 };
 static const ResourceField fields_Color[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -197,16 +197,16 @@ static const ResourceField fields_EquipmentType[] = {
 static const ResourceField fields_Flag[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
     { "Description", 0x20, RF_STDSTRING },  // STDString
-    { "Usage", 0x38, RF_U8 },  // uint8_t
+    { "Usage", 0x30, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_Feat[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
     { "Requirements", 0x20, RF_STDSTRING },  // STDString
-    { "PassivesAdded", 0x48, RF_STDSTRING },  // STDString
-    { "PassivesRemoved", 0x70, RF_STDSTRING },  // STDString
-    { "Boosts", 0x98, RF_STDSTRING },  // STDString
-    { "BoostPrototypes", 0xb0, RF_ARRAY_GUID },  // Array<Guid>
-    { "CanBeTakenMultipleTimes", 0xc0, RF_BOOL },  // bool
+    { "PassivesAdded", 0x40, RF_STDSTRING },  // STDString
+    { "PassivesRemoved", 0x60, RF_STDSTRING },  // STDString
+    { "Boosts", 0x80, RF_STDSTRING },  // STDString
+    { "BoostPrototypes", 0x90, RF_ARRAY_GUID },  // Array<Guid>
+    { "CanBeTakenMultipleTimes", 0xa0, RF_BOOL },  // bool
 };
 static const ResourceField fields_FeatDescription[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
@@ -244,10 +244,10 @@ static const ResourceField fields_CompanionPreset[] = {
     { "BodyShape", 0x39, RF_U8 },  // uint8_t
     { "RootTemplate", 0x40, RF_GUID },  // Guid
     { "Overview", 0x50, RF_STDSTRING },  // STDString
-    { "CloseUpA", 0x68, RF_STDSTRING },  // STDString
-    { "CloseUpB", 0x80, RF_STDSTRING },  // STDString
-    { "VoiceTableUuid", 0x98, RF_GUID },  // Guid
-    { "VOLinesTableUuid", 0xa8, RF_GUID },  // Guid
+    { "CloseUpA", 0x60, RF_STDSTRING },  // STDString
+    { "CloseUpB", 0x70, RF_STDSTRING },  // STDString
+    { "VoiceTableUuid", 0x80, RF_GUID },  // Guid
+    { "VOLinesTableUuid", 0x90, RF_GUID },  // Guid
 };
 static const ResourceField fields_AbilityDistributionPreset[] = {
     { "ClassUuid", 0x18, RF_GUID },  // Guid
@@ -336,9 +336,9 @@ static const ResourceField fields_CharacterCreationPreset[] = {
     { "BodyShape", 0x39, RF_U8 },  // uint8_t
     { "RootTemplate", 0x40, RF_GUID },  // Guid
     { "Overview", 0x50, RF_STDSTRING },  // STDString
-    { "CloseUpA", 0x68, RF_STDSTRING },  // STDString
-    { "CloseUpB", 0x80, RF_STDSTRING },  // STDString
-    { "VOLinesTableUUID", 0x98, RF_GUID },  // Guid
+    { "CloseUpA", 0x60, RF_STDSTRING },  // STDString
+    { "CloseUpB", 0x70, RF_STDSTRING },  // STDString
+    { "VOLinesTableUUID", 0x80, RF_GUID },  // Guid
 };
 static const ResourceField fields_CharacterCreationSharedVisual[] = {
     { "SlotName", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -402,14 +402,14 @@ static const ResourceField fields_CinematicArenaFrequencyGroup[] = {
 };
 static const ResourceField fields_CustomDiceTemplate[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "FontColour", 0x30, RF_STDSTRING },  // STDString
-    { "DisplayNamme", 0x48, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x58, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "IsDefault", 0x68, RF_BOOL },  // bool
-    { "Flip1", 0x69, RF_BOOL },  // bool
-    { "Flip20", 0x6a, RF_BOOL },  // bool
-    { "Icon", 0x6b, RF_BOOL },  // bool
-    { "Icon20", 0x6c, RF_BOOL },  // bool
+    { "FontColour", 0x28, RF_STDSTRING },  // STDString
+    { "DisplayNamme", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Description", 0x48, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "IsDefault", 0x58, RF_BOOL },  // bool
+    { "Flip1", 0x59, RF_BOOL },  // bool
+    { "Flip20", 0x5a, RF_BOOL },  // bool
+    { "Icon", 0x5b, RF_BOOL },  // bool
+    { "Icon20", 0x5c, RF_BOOL },  // bool
 };
 static const ResourceField fields_ConditionErrorDescription[] = {
     { "Identifier", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -419,26 +419,26 @@ static const ResourceField fields_ConditionErrorDescription[] = {
 };
 static const ResourceField fields_DeathTypeEffect[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "ParentUuid", 0x30, RF_GUID },  // Guid
-    { "Fallback", 0x40, RF_FIXEDSTRING },  // FixedString
+    { "ParentUuid", 0x28, RF_GUID },  // Guid
+    { "Fallback", 0x38, RF_FIXEDSTRING },  // FixedString
 };
 static const ResourceField fields_DifficultyClass[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Difficulties", 0x30, RF_ARRAY_I32 },  // Array<int32_t>
-    { "field_40", 0x40, RF_U8 },  // uint8_t
+    { "Difficulties", 0x28, RF_ARRAY_I32 },  // Array<int32_t>
+    { "field_40", 0x38, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_DisturbanceProperty[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
 };
 static const ResourceField fields_DLC[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "SteamAPICode", 0x30, RF_U32 },  // uint32_t
-    { "GalaxyAPICode", 0x34, RF_U32 },  // uint32_t
-    { "PS5APICode", 0x38, RF_U32 },  // uint32_t
-    { "XLiveAPICode", 0x3c, RF_U32 },  // uint32_t
-    { "TwitchAPICode", 0x40, RF_U32 },  // uint32_t
-    { "CustomDice", 0x48, RF_GUID },  // Guid
-    { "UnlockType", 0x58, RF_U8 },  // uint8_t
+    { "SteamAPICode", 0x28, RF_U32 },  // uint32_t
+    { "GalaxyAPICode", 0x2c, RF_U32 },  // uint32_t
+    { "PS5APICode", 0x30, RF_U32 },  // uint32_t
+    { "XLiveAPICode", 0x34, RF_U32 },  // uint32_t
+    { "TwitchAPICode", 0x38, RF_U32 },  // uint32_t
+    { "CustomDice", 0x40, RF_GUID },  // Guid
+    { "UnlockType", 0x50, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_EncumbranceType[] = {
     { "Status", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -483,23 +483,23 @@ static const ResourceField fields_FixedHotBarSlot[] = {
 static const ResourceField fields_ItemThrowParams[] = {
     { "Priority", 0x18, RF_I32 },  // int32_t
     { "Conditions", 0x20, RF_STDSTRING },  // STDString
-    { "MaxDistForOneRotation", 0x38, RF_I32 },  // int32_t
-    { "MaxDistForTwoRotations", 0x3c, RF_I32 },  // int32_t
-    { "MaxDistForZeroRotations", 0x40, RF_I32 },  // int32_t
-    { "RotationAxis", 0x50, RF_U32 },  // uint32_t
+    { "MaxDistForOneRotation", 0x30, RF_I32 },  // int32_t
+    { "MaxDistForTwoRotations", 0x34, RF_I32 },  // int32_t
+    { "MaxDistForZeroRotations", 0x38, RF_I32 },  // int32_t
+    { "RotationAxis", 0x48, RF_U32 },  // uint32_t
 };
 static const ResourceField fields_ItemWallTemplate[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "HighLeft", 0x30, RF_STDSTRING },  // STDString
-    { "HighMiddle", 0x48, RF_STDSTRING },  // STDString
-    { "HighRight", 0x60, RF_STDSTRING },  // STDString
-    { "LowLeft", 0x78, RF_STDSTRING },  // STDString
-    { "LowMiddle", 0x90, RF_STDSTRING },  // STDString
-    { "LowRight", 0xa8, RF_STDSTRING },  // STDString
-    { "Padding", 0xc0, RF_F32 },  // float
-    { "RandomRotation", 0xc4, RF_BOOL },  // bool
-    { "Animation", 0xc8, RF_FIXEDSTRING },  // FixedString
-    { "TimeBetweenItems", 0xcc, RF_F32 },  // float
+    { "HighLeft", 0x28, RF_STDSTRING },  // STDString
+    { "HighMiddle", 0x38, RF_STDSTRING },  // STDString
+    { "HighRight", 0x48, RF_STDSTRING },  // STDString
+    { "LowLeft", 0x58, RF_STDSTRING },  // STDString
+    { "LowMiddle", 0x68, RF_STDSTRING },  // STDString
+    { "LowRight", 0x78, RF_STDSTRING },  // STDString
+    { "Padding", 0x88, RF_F32 },  // float
+    { "RandomRotation", 0x8c, RF_BOOL },  // bool
+    { "Animation", 0x90, RF_FIXEDSTRING },  // FixedString
+    { "TimeBetweenItems", 0x94, RF_F32 },  // float
 };
 static const ResourceField fields_TrajectoryRule[] = {
     { "Template", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -594,10 +594,10 @@ static const ResourceField fields_TutorialEntry[] = {
     { "KeyboardDescription", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
     { "ControllerDescription", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
     { "KeyboardVideo", 0x48, RF_STDSTRING },  // STDString
-    { "ControllerVideo", 0x60, RF_STDSTRING },  // STDString
-    { "Section", 0x78, RF_U8 },  // uint8_t
-    { "InputType", 0x79, RF_U8 },  // uint8_t
-    { "Hidden", 0x7a, RF_BOOL },  // bool
+    { "ControllerVideo", 0x58, RF_STDSTRING },  // STDString
+    { "Section", 0x68, RF_U8 },  // uint8_t
+    { "InputType", 0x69, RF_U8 },  // uint8_t
+    { "Hidden", 0x6a, RF_BOOL },  // bool
 };
 static const ResourceField fields_TutorialModalEntry[] = {
     { "TutorialName", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -629,16 +629,16 @@ static const ResourceField fields_TutorialUnifiedEntry[] = {
     { "InputType", 0x95, RF_U8 },  // uint8_t
     { "field_98", 0x98, RF_U32 },  // uint32_t
     { "Icon", 0xa0, RF_STDSTRING },  // STDString
-    { "LifeTime", 0xb8, RF_I32 },  // int32_t
-    { "PositionOffsetX", 0xbc, RF_I32 },  // int32_t
-    { "PositionOffsetY", 0xc0, RF_I32 },  // int32_t
+    { "LifeTime", 0xb0, RF_I32 },  // int32_t
+    { "PositionOffsetX", 0xb4, RF_I32 },  // int32_t
+    { "PositionOffsetY", 0xb8, RF_I32 },  // int32_t
 };
 static const ResourceField fields_TutorialEvent[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "EventType", 0x30, RF_U8 },  // uint8_t
-    { "ActionResource", 0x38, RF_GUID },  // Guid
-    { "HotbarSlotFlags", 0x48, RF_U32 },  // uint32_t
-    { "UserAction", 0x4c, RF_U8 },  // uint8_t
+    { "EventType", 0x28, RF_U8 },  // uint8_t
+    { "ActionResource", 0x30, RF_GUID },  // Guid
+    { "HotbarSlotFlags", 0x40, RF_U32 },  // uint32_t
+    { "UserAction", 0x44, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_VFX[] = {
     { "VFXGameplayName", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -663,63 +663,63 @@ static const ResourceField fields_WeightCategories[] = {
 };
 static const ResourceField fields_ShapeshiftRule[] = {
     { "RuleName", 0x18, RF_STDSTRING },  // STDString
-    { "WildShapeHotBar", 0x40, RF_BOOL },  // bool
-    { "FootstepsType", 0x4c, RF_U8 },  // uint8_t
-    { "RemoveOldTags", 0x60, RF_BOOL },  // bool
-    { "ApplyTagsFromTemplate", 0x61, RF_BOOL },  // bool
-    { "TagsAdd", 0x68, RF_ARRAY_GUID },  // Array<Guid>
-    { "TagsRemove", 0x78, RF_ARRAY_GUID },  // Array<Guid>
-    { "ActionCapabilities", 0x88, RF_U16 },  // uint16_t
-    { "InteractionsCapabilities", 0x8a, RF_U16 },  // uint16_t
-    { "AwarenessCapabilities", 0x8c, RF_U16 },  // uint16_t
-    { "SpeakingCapabilities", 0x8e, RF_U16 },  // uint16_t
-    { "ChangeRace", 0x90, RF_BOOL },  // bool
-    { "ChangeBodyType", 0x91, RF_BOOL },  // bool
-    { "UseShapeshiftIdentity", 0x92, RF_BOOL },  // bool
-    { "ChangeAi", 0x93, RF_BOOL },  // bool
-    { "ApplyVisual", 0xb8, RF_BOOL },  // bool
-    { "ApplyVisualInCC", 0xb9, RF_BOOL },  // bool
-    { "IgnoreCustomLooks", 0xba, RF_BOOL },  // bool
-    { "RetainDisplayName", 0xbb, RF_BOOL },  // bool
-    { "ChangeIcon", 0xbc, RF_BOOL },  // bool
-    { "MuteEquipmentSound", 0xc8, RF_BOOL },  // bool
-    { "OverrideSpeaker", 0xc9, RF_BOOL },  // bool
-    { "RemovePrevSpells", 0xca, RF_BOOL },  // bool
-    { "ApplySpellsFromTemplate", 0xcb, RF_BOOL },  // bool
-    { "SpellsAdd", 0xd0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "SpellsRemove", 0xe0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "RetainCanSeeThrough", 0xf0, RF_BOOL },  // bool
-    { "RetainCanShootThrough", 0xf1, RF_BOOL },  // bool
-    { "RetainCanWalkThrough", 0xf2, RF_BOOL },  // bool
-    { "BaseACOverride", 0xf3, RF_BOOL },  // bool
-    { "UnarmedAbilityFromTemplate", 0xf4, RF_BOOL },  // bool
-    { "DisableEquipmentSlots", 0xf5, RF_BOOL },  // bool
-    { "UseTemplateEquipmentSet", 0xf6, RF_BOOL },  // bool
-    { "KillEntityAtZeroHP", 0xf7, RF_BOOL },  // bool
-    { "PathInfluence", 0xf8, RF_STDSTRING },  // STDString
-    { "BlockLevelUp", 0x128, RF_BOOL },  // bool
-    { "FlagsInheritanceType", 0x129, RF_U8 },  // uint8_t
-    { "DefaultBoostsInheritanceType", 0x12a, RF_U8 },  // uint8_t
-    { "PersonalStatusImmunitiesInheritanceType", 0x12b, RF_U8 },  // uint8_t
-    { "SpellCastingAbilityInheritanceType", 0x12c, RF_U8 },  // uint8_t
-    { "PassivesInheritanceType", 0x12d, RF_U8 },  // uint8_t
-    { "ResistancesInheritanceType", 0x12e, RF_U8 },  // uint8_t
-    { "DifficultyStatusesInheritanceType", 0x12f, RF_U8 },  // uint8_t
-    { "ProficiencyGroupsInheritanceType", 0x130, RF_U8 },  // uint8_t
-    { "BloodSurfaceTypeInheritanceType", 0x131, RF_U8 },  // uint8_t
-    { "HitBloodTypeInheritanceType", 0x132, RF_U8 },  // uint8_t
-    { "DeathActionsInheritanceType", 0x133, RF_U8 },  // uint8_t
+    { "WildShapeHotBar", 0x38, RF_BOOL },  // bool
+    { "FootstepsType", 0x44, RF_U8 },  // uint8_t
+    { "RemoveOldTags", 0x58, RF_BOOL },  // bool
+    { "ApplyTagsFromTemplate", 0x59, RF_BOOL },  // bool
+    { "TagsAdd", 0x60, RF_ARRAY_GUID },  // Array<Guid>
+    { "TagsRemove", 0x70, RF_ARRAY_GUID },  // Array<Guid>
+    { "ActionCapabilities", 0x80, RF_U16 },  // uint16_t
+    { "InteractionsCapabilities", 0x82, RF_U16 },  // uint16_t
+    { "AwarenessCapabilities", 0x84, RF_U16 },  // uint16_t
+    { "SpeakingCapabilities", 0x86, RF_U16 },  // uint16_t
+    { "ChangeRace", 0x88, RF_BOOL },  // bool
+    { "ChangeBodyType", 0x89, RF_BOOL },  // bool
+    { "UseShapeshiftIdentity", 0x8a, RF_BOOL },  // bool
+    { "ChangeAi", 0x8b, RF_BOOL },  // bool
+    { "ApplyVisual", 0xa8, RF_BOOL },  // bool
+    { "ApplyVisualInCC", 0xa9, RF_BOOL },  // bool
+    { "IgnoreCustomLooks", 0xaa, RF_BOOL },  // bool
+    { "RetainDisplayName", 0xab, RF_BOOL },  // bool
+    { "ChangeIcon", 0xac, RF_BOOL },  // bool
+    { "MuteEquipmentSound", 0xb8, RF_BOOL },  // bool
+    { "OverrideSpeaker", 0xb9, RF_BOOL },  // bool
+    { "RemovePrevSpells", 0xba, RF_BOOL },  // bool
+    { "ApplySpellsFromTemplate", 0xbb, RF_BOOL },  // bool
+    { "SpellsAdd", 0xc0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
+    { "SpellsRemove", 0xd0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
+    { "RetainCanSeeThrough", 0xe0, RF_BOOL },  // bool
+    { "RetainCanShootThrough", 0xe1, RF_BOOL },  // bool
+    { "RetainCanWalkThrough", 0xe2, RF_BOOL },  // bool
+    { "BaseACOverride", 0xe3, RF_BOOL },  // bool
+    { "UnarmedAbilityFromTemplate", 0xe4, RF_BOOL },  // bool
+    { "DisableEquipmentSlots", 0xe5, RF_BOOL },  // bool
+    { "UseTemplateEquipmentSet", 0xe6, RF_BOOL },  // bool
+    { "KillEntityAtZeroHP", 0xe7, RF_BOOL },  // bool
+    { "PathInfluence", 0xe8, RF_STDSTRING },  // STDString
+    { "BlockLevelUp", 0x110, RF_BOOL },  // bool
+    { "FlagsInheritanceType", 0x111, RF_U8 },  // uint8_t
+    { "DefaultBoostsInheritanceType", 0x112, RF_U8 },  // uint8_t
+    { "PersonalStatusImmunitiesInheritanceType", 0x113, RF_U8 },  // uint8_t
+    { "SpellCastingAbilityInheritanceType", 0x114, RF_U8 },  // uint8_t
+    { "PassivesInheritanceType", 0x115, RF_U8 },  // uint8_t
+    { "ResistancesInheritanceType", 0x116, RF_U8 },  // uint8_t
+    { "DifficultyStatusesInheritanceType", 0x117, RF_U8 },  // uint8_t
+    { "ProficiencyGroupsInheritanceType", 0x118, RF_U8 },  // uint8_t
+    { "BloodSurfaceTypeInheritanceType", 0x119, RF_U8 },  // uint8_t
+    { "HitBloodTypeInheritanceType", 0x11a, RF_U8 },  // uint8_t
+    { "DeathActionsInheritanceType", 0x11b, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_AnimationSetPriority[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Priority", 0x30, RF_I32 },  // int32_t
-    { "AddidionalObjects", 0x38, RF_ARRAY_GUID },  // Array<Guid>
+    { "Priority", 0x28, RF_I32 },  // int32_t
+    { "AddidionalObjects", 0x30, RF_ARRAY_GUID },  // Array<Guid>
 };
 static const ResourceField fields_SpellMetaCondition[] = {
     { "ConditionType", 0x18, RF_U8 },  // SpellMetaConditionType
     { "Filter", 0x20, RF_STDSTRING },  // STDString
-    { "AdditionalConditions", 0x38, RF_STDSTRING },  // STDString
-    { "OverrideOriginalCondition", 0x50, RF_BOOL },  // bool
+    { "AdditionalConditions", 0x30, RF_STDSTRING },  // STDString
+    { "OverrideOriginalCondition", 0x40, RF_BOOL },  // bool
 };
 static const ResourceField fields_ScriptMaterialParameterOverride[] = {
     { "ParameterName", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -736,28 +736,28 @@ static const ResourceField fields_VisualLocatorAttachment[] = {
 };
 static const ResourceField fields_RulesetModifier[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x40, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "RulesetModifierType", 0x50, RF_U8 },  // uint8_t
-    { "field_54", 0x54, RF_I32 },  // int
-    { "Max", 0x58, RF_F32 },  // float
-    { "Step", 0x5c, RF_F32 },  // float
-    { "Default", 0x60, RF_STDSTRING },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Description", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "RulesetModifierType", 0x48, RF_U8 },  // uint8_t
+    { "field_54", 0x4c, RF_I32 },  // int
+    { "Max", 0x50, RF_F32 },  // float
+    { "Step", 0x54, RF_F32 },  // float
+    { "Default", 0x58, RF_STDSTRING },  // STDString
 };
 static const ResourceField fields_RulesetModifierOption[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x40, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Modifier", 0x50, RF_GUID },  // Guid
-    { "Value", 0x60, RF_STDSTRING },  // STDString
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Description", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Modifier", 0x48, RF_GUID },  // Guid
+    { "Value", 0x58, RF_STDSTRING },  // STDString
 };
 static const ResourceField fields_Ruleset[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Type", 0x30, RF_U8 },  // uint8_t
-    { "DisplayName", 0x34, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x44, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Parent", 0x58, RF_ARRAY_GUID },  // Array<Guid>
-    { "ShowInCustom", 0x68, RF_BOOL },  // bool
+    { "Type", 0x28, RF_U8 },  // uint8_t
+    { "DisplayName", 0x2c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Description", 0x3c, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Parent", 0x50, RF_ARRAY_GUID },  // Array<Guid>
+    { "ShowInCustom", 0x60, RF_BOOL },  // bool
 };
 static const ResourceField fields_RulesetValue[] = {
     { "Ruleset", 0x18, RF_GUID },  // Guid
@@ -766,11 +766,11 @@ static const ResourceField fields_RulesetValue[] = {
 };
 static const ResourceField fields_RulesetSelectionPreset[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "Rulesets", 0x30, RF_ARRAY_GUID },  // Array<Guid>
-    { "DisplayName", 0x40, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Description", 0x50, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "Asset", 0x60, RF_STDSTRING },  // STDString
-    { "IsCustom", 0x78, RF_BOOL },  // bool
+    { "Rulesets", 0x28, RF_ARRAY_GUID },  // Array<Guid>
+    { "DisplayName", 0x38, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Description", 0x48, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "Asset", 0x58, RF_STDSTRING },  // STDString
+    { "IsCustom", 0x68, RF_BOOL },  // bool
 };
 static const ResourceField fields_OneTimeReward[] = {
     { "ItemTemplateId", 0x18, RF_FIXEDSTRING },  // FixedString
@@ -794,17 +794,17 @@ static const ResourceField fields_PhotoModeColourGrading[] = {
 static const ResourceField fields_PhotoModeDecorFrame[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
     { "Asset", 0x28, RF_STDSTRING },  // STDString
-    { "LeftSliceSize", 0x40, RF_F32 },  // float
-    { "TopSliceSize", 0x44, RF_F32 },  // float
-    { "RightSliceSize", 0x48, RF_F32 },  // float
-    { "BottomSliceSize", 0x4c, RF_F32 },  // float
-    { "IconWidth", 0x50, RF_F32 },  // float
+    { "LeftSliceSize", 0x38, RF_F32 },  // float
+    { "TopSliceSize", 0x3c, RF_F32 },  // float
+    { "RightSliceSize", 0x40, RF_F32 },  // float
+    { "BottomSliceSize", 0x44, RF_F32 },  // float
+    { "IconWidth", 0x48, RF_F32 },  // float
 };
 static const ResourceField fields_PhotoModeEmoteAnimation[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ShortName", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "TagsFilter", 0x48, RF_ARRAY_GUID },  // Array<Guid>
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "ShortName", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "TagsFilter", 0x40, RF_ARRAY_GUID },  // Array<Guid>
 };
 static const ResourceField fields_PhotoModeEmoteCollection[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
@@ -814,10 +814,10 @@ static const ResourceField fields_PhotoModeEmoteCollection[] = {
 };
 static const ResourceField fields_PhotoModeEmotePose[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ShortName", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "Timing", 0x44, RF_U32 },  // uint32_t
-    { "TagsFilter", 0x48, RF_ARRAY_GUID },  // Array<Guid>
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "ShortName", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "Timing", 0x3c, RF_U32 },  // uint32_t
+    { "TagsFilter", 0x40, RF_ARRAY_GUID },  // Array<Guid>
 };
 static const ResourceField fields_PhotoModeFaceExpressionCollection[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
@@ -826,9 +826,9 @@ static const ResourceField fields_PhotoModeFaceExpressionCollection[] = {
 };
 static const ResourceField fields_PhotoModeFaceExpression[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
-    { "DisplayName", 0x30, RF_TRANSLATEDSTRING },  // TranslatedString
-    { "ShortName", 0x40, RF_FIXEDSTRING },  // FixedString
-    { "TagsFilter", 0x48, RF_ARRAY_GUID },  // Array<Guid>
+    { "DisplayName", 0x28, RF_TRANSLATEDSTRING },  // TranslatedString
+    { "ShortName", 0x38, RF_FIXEDSTRING },  // FixedString
+    { "TagsFilter", 0x40, RF_ARRAY_GUID },  // Array<Guid>
 };
 static const ResourceField fields_PhotoModeSticker[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
@@ -841,26 +841,26 @@ static const ResourceField fields_PhotoModeVignette[] = {
 const ResourceLayout g_resource_layouts[] = {
     { "ActionResource", fields_ActionResource, 13, 0x5f },
     { "ClassDescription", fields_ClassDescription, 28, 0x110 },
-    { "Tag", fields_Tag, 7, 0x64 },
+    { "Tag", fields_Tag, 7, 0x5c },
     { "Faction", fields_Faction, 2, 0x30 },
     { "Race", fields_Race, 23, 0x168 },
-    { "Origin", fields_Origin, 30, 0x1b0 },
-    { "Background", fields_Background, 5, 0x71 },
+    { "Origin", fields_Origin, 30, 0x190 },
+    { "Background", fields_Background, 5, 0x69 },
     { "God", fields_God, 5, 0x60 },
-    { "Progression", fields_Progression, 12, 0x168 },
+    { "Progression", fields_Progression, 12, 0x148 },
     { "ProgressionDescription", fields_ProgressionDescription, 10, 0x70 },
     { "Gossip", fields_Gossip, 6, 0x58 },
-    { "ActionResourceGroup", fields_ActionResourceGroup, 4, 0x60 },
+    { "ActionResourceGroup", fields_ActionResourceGroup, 4, 0x58 },
     { "Color", fields_Color, 2, 0x3c },
     { "EquipmentType", fields_EquipmentType, 15, 0x54 },
-    { "Flag", fields_Flag, 3, 0x39 },
-    { "Feat", fields_Feat, 7, 0x148 },
+    { "Flag", fields_Flag, 3, 0x31 },
+    { "Feat", fields_Feat, 7, 0x128 },
     { "FeatDescription", fields_FeatDescription, 9, 0x60 },
     { "PassiveList", fields_PassiveList, 3, 0x40 },
     { "SkillList", fields_SkillList, 2, 0x40 },
     { "SpellList", fields_SpellList, 3, 0x60 },
     { "AbilityList", fields_AbilityList, 2, 0x40 },
-    { "CompanionPreset", fields_CompanionPreset, 10, 0xb8 },
+    { "CompanionPreset", fields_CompanionPreset, 10, 0xa0 },
     { "AbilityDistributionPreset", fields_AbilityDistributionPreset, 8, 0x44 },
     { "CharacterCreationAccessorySet", fields_CharacterCreationAccessorySet, 6, 0x68 },
     { "CharacterCreationAppearanceMaterial", fields_CharacterCreationAppearanceMaterial, 11, 0xa8 },
@@ -870,7 +870,7 @@ const ResourceLayout g_resource_layouts[] = {
     { "CharacterCreationColor", fields_CharacterCreationColor, 4, 0x54 },
     { "CharacterCreationMaterialOverride", fields_CharacterCreationMaterialOverride, 5, 0x48 },
     { "CharacterCreationPassiveAppearance", fields_CharacterCreationPassiveAppearance, 5, 0x60 },
-    { "CharacterCreationPreset", fields_CharacterCreationPreset, 9, 0xa8 },
+    { "CharacterCreationPreset", fields_CharacterCreationPreset, 9, 0x90 },
     { "CharacterCreationSharedVisual", fields_CharacterCreationSharedVisual, 5, 0x58 },
     { "LevelMap", fields_LevelMap, 2, 0x30 },  // truncated at std::variant<int32_t, DiceRoll> FallbackValue
     { "ApprovalRating", fields_ApprovalRating, 1, 0x40 },
@@ -879,15 +879,15 @@ const ResourceLayout g_resource_layouts[] = {
     { "BackgroundGoal", fields_BackgroundGoal, 6, 0x60 },
     { "CalendarDayRange", fields_CalendarDayRange, 7, 0x4c },
     { "CampChestTemplate", fields_CampChestTemplate, 1, 0x28 },
-    { "DefaultValueGuidResource", fields_DefaultValueGuidResource, 7, 0x88 },
+    { "DefaultValueGuidResource", fields_DefaultValueGuidResource, 7, 0x80 },
     { "CharacterCreationVOLine", fields_CharacterCreationVOLine, 2, 0x30 },
     { "CinematicArenaFrequencyGroup", fields_CinematicArenaFrequencyGroup, 3, 0x28 },
-    { "CustomDiceTemplate", fields_CustomDiceTemplate, 9, 0x6d },
+    { "CustomDiceTemplate", fields_CustomDiceTemplate, 9, 0x5d },
     { "ConditionErrorDescription", fields_ConditionErrorDescription, 4, 0x2e },
-    { "DeathTypeEffect", fields_DeathTypeEffect, 3, 0x88 },
-    { "DifficultyClass", fields_DifficultyClass, 3, 0x41 },
+    { "DeathTypeEffect", fields_DeathTypeEffect, 3, 0x80 },
+    { "DifficultyClass", fields_DifficultyClass, 3, 0x39 },
     { "DisturbanceProperty", fields_DisturbanceProperty, 1, 0x1c },
-    { "DLC", fields_DLC, 8, 0x59 },
+    { "DLC", fields_DLC, 8, 0x51 },
     { "EncumbranceType", fields_EncumbranceType, 1, 0x1c },
     { "EquipmentList", fields_EquipmentList, 3, 0x40 },
     { "ExperienceRewards", fields_ExperienceRewards, 4, 0x30 },
@@ -895,13 +895,13 @@ const ResourceLayout g_resource_layouts[] = {
     { "FlagSoundState", fields_FlagSoundState, 5, 0x3c },
     { "GoldRewards", fields_GoldRewards, 4, 0x48 },
     { "FixedHotBarSlot", fields_FixedHotBarSlot, 4, 0x22 },
-    { "ItemThrowParams", fields_ItemThrowParams, 6, 0x54 },
-    { "ItemWallTemplate", fields_ItemWallTemplate, 11, 0xd0 },
+    { "ItemThrowParams", fields_ItemThrowParams, 6, 0x4c },
+    { "ItemWallTemplate", fields_ItemWallTemplate, 11, 0x98 },
     { "TrajectoryRule", fields_TrajectoryRule, 6, 0x30 },
     { "LimbsMapping", fields_LimbsMapping, 5, 0x68 },
     { "LongRestCost", fields_LongRestCost, 3, 0x24 },
     { "ManagedStatusVFX", fields_ManagedStatusVFX, 4, 0x28 },
-    { "MultiEffectInfo", fields_MultiEffectInfo, 1, 0x40 },
+    { "MultiEffectInfo", fields_MultiEffectInfo, 1, 0x38 },
     { "OriginIntroEntity", fields_OriginIntroEntity, 3, 0x30 },
     { "PassivesVFX", fields_PassivesVFX, 3, 0x24 },
     { "ProjectileDefault", fields_ProjectileDefault, 2, 0x30 },
@@ -913,37 +913,37 @@ const ResourceLayout g_resource_layouts[] = {
     { "TagSoundState", fields_TagSoundState, 5, 0x3c },
     { "TooltipExtraText", fields_TooltipExtraText, 1, 0x28 },
     { "TooltipUpcastDescription", fields_TooltipUpcastDescription, 2, 0x2c },
-    { "TutorialEntry", fields_TutorialEntry, 8, 0x7b },
+    { "TutorialEntry", fields_TutorialEntry, 8, 0x6b },
     { "TutorialModalEntry", fields_TutorialModalEntry, 10, 0x58 },
-    { "TutorialUnifiedEntry", fields_TutorialUnifiedEntry, 20, 0xc4 },
-    { "TutorialEvent", fields_TutorialEvent, 5, 0x4d },
+    { "TutorialUnifiedEntry", fields_TutorialUnifiedEntry, 20, 0xbc },
+    { "TutorialEvent", fields_TutorialEvent, 5, 0x45 },
     { "VFX", fields_VFX, 2, 0x20 },
     { "Voice", fields_Voice, 5, 0x60 },
     { "WeaponAnimationSet", fields_WeaponAnimationSet, 3, 0x24 },
     { "WeightCategories", fields_WeightCategories, 3, 0x31 },
-    { "ShapeshiftRule", fields_ShapeshiftRule, 47, 0x134 },
-    { "AnimationSetPriority", fields_AnimationSetPriority, 3, 0x48 },
-    { "SpellMetaCondition", fields_SpellMetaCondition, 4, 0x51 },
+    { "ShapeshiftRule", fields_ShapeshiftRule, 47, 0x11c },
+    { "AnimationSetPriority", fields_AnimationSetPriority, 3, 0x40 },
+    { "SpellMetaCondition", fields_SpellMetaCondition, 4, 0x41 },
     { "ScriptMaterialParameterOverride", fields_ScriptMaterialParameterOverride, 4, 0x30 },  // truncated at std::variant<float, glm::vec3, glm::vec4, FixedString> Limit
     { "ScriptMaterialPresetOverride", fields_ScriptMaterialPresetOverride, 1, 0x28 },
     { "VisualLocatorAttachment", fields_VisualLocatorAttachment, 2, 0x20 },
-    { "RulesetModifier", fields_RulesetModifier, 8, 0x78 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedDefault
-    { "RulesetModifierOption", fields_RulesetModifierOption, 5, 0x78 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedValue
-    { "Ruleset", fields_Ruleset, 6, 0x69 },
-    { "RulesetValue", fields_RulesetValue, 3, 0x50 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> Value
-    { "RulesetSelectionPreset", fields_RulesetSelectionPreset, 6, 0x79 },
+    { "RulesetModifier", fields_RulesetModifier, 8, 0x68 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedDefault
+    { "RulesetModifierOption", fields_RulesetModifierOption, 5, 0x68 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedValue
+    { "Ruleset", fields_Ruleset, 6, 0x61 },
+    { "RulesetValue", fields_RulesetValue, 3, 0x48 },  // truncated at std::variant<NoValue, float, int, FixedString, bool> Value
+    { "RulesetSelectionPreset", fields_RulesetSelectionPreset, 6, 0x69 },
     { "OneTimeReward", fields_OneTimeReward, 2, 0x20 },
     { "AnimationShortNameCategory", fields_AnimationShortNameCategory, 1, 0x1c },
     { "AnimationShortName", fields_AnimationShortName, 2, 0x30 },
     { "PhotoModeBlueprintOverride", fields_PhotoModeBlueprintOverride, 2, 0x20 },
     { "PhotoModeColourGrading", fields_PhotoModeColourGrading, 2, 0x2c },
-    { "PhotoModeDecorFrame", fields_PhotoModeDecorFrame, 7, 0x54 },
-    { "PhotoModeEmoteAnimation", fields_PhotoModeEmoteAnimation, 4, 0x58 },
-    { "PhotoModeEmoteCollection", fields_PhotoModeEmoteCollection, 4, 0x60 },
-    { "PhotoModeEmotePose", fields_PhotoModeEmotePose, 5, 0x58 },
-    { "PhotoModeFaceExpressionCollection", fields_PhotoModeFaceExpressionCollection, 3, 0x50 },
-    { "PhotoModeFaceExpression", fields_PhotoModeFaceExpression, 4, 0x58 },
-    { "PhotoModeSticker", fields_PhotoModeSticker, 2, 0x40 },
+    { "PhotoModeDecorFrame", fields_PhotoModeDecorFrame, 7, 0x4c },
+    { "PhotoModeEmoteAnimation", fields_PhotoModeEmoteAnimation, 4, 0x50 },
+    { "PhotoModeEmoteCollection", fields_PhotoModeEmoteCollection, 4, 0x58 },
+    { "PhotoModeEmotePose", fields_PhotoModeEmotePose, 5, 0x50 },
+    { "PhotoModeFaceExpressionCollection", fields_PhotoModeFaceExpressionCollection, 3, 0x48 },
+    { "PhotoModeFaceExpression", fields_PhotoModeFaceExpression, 4, 0x50 },
+    { "PhotoModeSticker", fields_PhotoModeSticker, 2, 0x38 },
     { "PhotoModeVignette", fields_PhotoModeVignette, 1, 0x38 },
 };
 
