@@ -1353,6 +1353,14 @@ static void render_widget(ImguiObject *obj) {
                 ImVec2 size = d->has_size ? ImVec2(d->size.x, d->size.y) : ImVec2(0, 0);
 
                 if (ImGui::BeginTable(obj->styled.label, d->columns, (ImGuiTableFlags)d->flags, size)) {
+                    // Declared columns first: TableSetupColumn must precede any
+                    // row content, and this is what carries a column's width.
+                    for (int c = 0; c < d->col_def_count; c++) {
+                        const ImguiColumnDef *cd = &d->col_defs[c];
+                        ImGui::TableSetupColumn(cd->name,
+                                                (ImGuiTableColumnFlags)cd->flags,
+                                                cd->width);
+                    }
                     if (d->freeze_cols > 0 || d->freeze_rows > 0) {
                         ImGui::TableSetupScrollFreeze(d->freeze_cols, d->freeze_rows);
                     }

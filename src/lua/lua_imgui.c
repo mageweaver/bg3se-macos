@@ -426,6 +426,7 @@ static int imgui_window_add_tooltip(lua_State *L);
 static int imgui_window_add_childwindow(lua_State *L);
 static int imgui_window_add_image(lua_State *L);
 static int imgui_widget_destroy(lua_State *L);
+static int imgui_widget_get_style(lua_State *L);
 void imgui_userdata_clear(lua_State *L, uint64_t handle);
 static int imgui_widget_set_visible(lua_State *L);
 static int imgui_widget_set_style(lua_State *L);
@@ -495,6 +496,7 @@ static const luaL_Reg window_methods[] = {
     {"Destroy", imgui_widget_destroy},
     {"SetVisible", imgui_widget_set_visible},
     {"SetStyle", imgui_widget_set_style},
+    {"GetStyle", imgui_widget_get_style},
     {"SetColor", imgui_widget_set_color},
     {"ClearStyle", imgui_widget_clear_style},
     {NULL, NULL}
@@ -1244,11 +1246,135 @@ static int imgui_widget_noop(lua_State *L) {
     return 1;
 }
 
-// table:AddColumn(name, widthFlag, width) — the table already reserves its column
-// count from AddTable; full TableSetupColumn (fixed/stretch widths) isn't modeled,
-// so accept the call and return nil rather than erroring, letting the DualPane build.
+
+// ============================================================================
+// Table column definitions
+// ============================================================================
+//
+// A column def is addressed by (table handle, index) rather than copied, so
+// writing Width on one reaches the table the next frame renders. MCM animates
+// its sidebar exactly that way.
+
+#define IMGUI_COLUMNDEF_MT "BG3SE.ImguiColumnDef"
+
+typedef struct {
+    ImguiHandle table;
+    int index;
+} ImguiColumnDefRef;
+
+static ImguiColumnDef *columndef_resolve(ImguiColumnDefRef *ref) {
+    ImguiObject *obj = imgui_object_get(ref->table);
+    if (!obj || obj->type != IMGUI_OBJ_TABLE) return NULL;
+    if (ref->index < 0 || ref->index >= obj->data.table.col_def_count) return NULL;
+    return &obj->data.table.col_defs[ref->index];
+}
+
+static int columndef_index(lua_State *L) {
+    ImguiColumnDefRef *ref = (ImguiColumnDefRef *)luaL_checkudata(L, 1, IMGUI_COLUMNDEF_MT);
+    const char *key = luaL_checkstring(L, 2);
+
+    imgui_objects_lock();
+    ImguiColumnDef *cd = columndef_resolve(ref);
+    if (!cd) {
+        imgui_objects_unlock();
+        lua_pushnil(L);
+        return 1;
+    }
+
+    if (strcmp(key, "Width") == 0 || strcmp(key, "InitWidthOrWeight") == 0) {
+        lua_pushnumber(L, cd->width);
+    } else if (strcmp(key, "Name") == 0 || strcmp(key, "Label") == 0) {
+        lua_pushstring(L, cd->name);
+    } else if (strcmp(key, "Flags") == 0) {
+        lua_pushinteger(L, cd->flags);
+    } else {
+        lua_pushnil(L);
+    }
+    imgui_objects_unlock();
+    return 1;
+}
+
+static int columndef_newindex(lua_State *L) {
+    ImguiColumnDefRef *ref = (ImguiColumnDefRef *)luaL_checkudata(L, 1, IMGUI_COLUMNDEF_MT);
+    const char *key = luaL_checkstring(L, 2);
+
+    // Validate before taking the lock: luaL_check* raises a Lua error by
+    // longjmp, which would leave the object mutex held and hang the render
+    // thread on its next traversal.
+    float width = 0.0f;
+    uint32_t flags = 0;
+    const char *name = NULL;
+    int what;
+
+    if (strcmp(key, "Width") == 0 || strcmp(key, "InitWidthOrWeight") == 0) {
+        width = (float)luaL_checknumber(L, 3);
+        what = 1;
+    } else if (strcmp(key, "Flags") == 0) {
+        flags = (uint32_t)luaL_checkinteger(L, 3);
+        what = 2;
+    } else if (strcmp(key, "Name") == 0 || strcmp(key, "Label") == 0) {
+        name = luaL_checkstring(L, 3);
+        what = 3;
+    } else {
+        return 0;
+    }
+
+    imgui_objects_lock();
+    ImguiColumnDef *cd = columndef_resolve(ref);
+    if (cd) {
+        if (what == 1) cd->width = width;
+        else if (what == 2) cd->flags = flags;
+        else snprintf(cd->name, sizeof(cd->name), "%s", name);
+    }
+    imgui_objects_unlock();
+    return 0;
+}
+
+static void columndef_push(lua_State *L, ImguiHandle table, int index) {
+    ImguiColumnDefRef *ref = (ImguiColumnDefRef *)lua_newuserdata(L, sizeof(ImguiColumnDefRef));
+    ref->table = table;
+    ref->index = index;
+
+    if (luaL_newmetatable(L, IMGUI_COLUMNDEF_MT)) {
+        lua_pushcfunction(L, columndef_index);
+        lua_setfield(L, -2, "__index");
+        lua_pushcfunction(L, columndef_newindex);
+        lua_setfield(L, -2, "__newindex");
+        lua_pushboolean(L, 0);
+        lua_setfield(L, -2, "__metatable");
+    }
+    lua_setmetatable(L, -2);
+}
+
+// table:AddColumn(name, widthFlag, width) -> column definition
+//
+// This used to discard the call and return nil so the DualPane would at least
+// build. The definition is now kept and applied through TableSetupColumn, and
+// handed back so a mod can read and change its width later.
 static int imgui_window_add_column(lua_State *L) {
-    lua_pushnil(L);
+    ImguiUserdata *ud = imgui_to_userdata(L, 1);
+    const char *name = luaL_optstring(L, 2, "");
+    uint32_t flags = (uint32_t)luaL_optinteger(L, 3, 0);
+    float width = (float)luaL_optnumber(L, 4, 0.0);
+
+    imgui_objects_lock();
+    ImguiObject *obj = imgui_object_get(ud->handle);
+    if (!obj || obj->type != IMGUI_OBJ_TABLE
+        || obj->data.table.col_def_count >= IMGUI_MAX_COLUMN_DEFS) {
+        imgui_objects_unlock();
+        lua_pushnil(L);
+        return 1;
+    }
+
+    int index = obj->data.table.col_def_count++;
+    ImguiColumnDef *cd = &obj->data.table.col_defs[index];
+    snprintf(cd->name, sizeof(cd->name), "%s", name);
+    cd->flags = flags;
+    cd->width = width;
+    ImguiHandle table = ud->handle;
+    imgui_objects_unlock();
+
+    columndef_push(L, table, index);
     return 1;
 }
 
@@ -1492,6 +1618,49 @@ static int imgui_style_var_from_name(const char *name) {
     return -1;
 }
 
+
+/**
+ * widget:GetStyle(styleVar) -> number|nil
+ *
+ * Reads back a style var this widget has had set on it. Only the first
+ * component is returned, matching the documented
+ * fun(self, GuiStyleVar):number? -- the vec2 style vars are set as a pair but
+ * queried as one number.
+ *
+ * MCM animates its sidebar by reading Alpha, stepping it, and setting it back;
+ * without this the whole animation callback died on the first frame.
+ */
+static int imgui_widget_get_style(lua_State *L) {
+    ImguiUserdata *ud = imgui_to_userdata(L, 1);
+
+    int style_var;
+    if (lua_type(L, 2) == LUA_TSTRING) {
+        style_var = imgui_style_var_from_name(lua_tostring(L, 2));
+        if (style_var < 0) {
+            lua_pushnil(L);
+            return 1;
+        }
+    } else {
+        style_var = (int)luaL_checkinteger(L, 2);
+    }
+
+    imgui_objects_lock();
+    ImguiObject *obj = imgui_object_get(ud->handle);
+    if (obj) {
+        for (int i = 0; i < obj->style_overrides.style_count; i++) {
+            if (obj->style_overrides.style_vars[i] != style_var) continue;
+            lua_pushnumber(L, obj->style_overrides.style_values[i * 2]);
+            imgui_objects_unlock();
+            return 1;
+        }
+    }
+    imgui_objects_unlock();
+
+    // Never set on this widget: nil, as the contract's optional return allows.
+    lua_pushnil(L);
+    return 1;
+}
+
 static int imgui_widget_set_style(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     // Accept either an integer ImGuiStyleVar or a string name (MCM passes names).
@@ -1710,6 +1879,22 @@ static int imgui_widget_index(lua_State *L) {
      * Always a table, empty when there are no children: the caller above runs
      * table.isEmpty on it before iterating, and nil would fail there instead.
      */
+    // ColumnDefs: the table's declared columns, indexable and mutable.
+    if (strcmp(key, "ColumnDefs") == 0) {
+        imgui_objects_lock();
+        ImguiObject *tbl = imgui_object_get(ud->handle);
+        int n = (tbl && tbl->type == IMGUI_OBJ_TABLE) ? tbl->data.table.col_def_count : 0;
+        ImguiHandle handle = ud->handle;
+        imgui_objects_unlock();
+
+        lua_createtable(L, n, 0);
+        for (int i = 0; i < n; i++) {
+            columndef_push(L, handle, i);
+            lua_rawseti(L, -2, i + 1);
+        }
+        return 1;
+    }
+
     if (strcmp(key, "Children") == 0) {
         // The render thread walks this same tree, so hold the object lock while
         // reading the child array rather than racing a concurrent Add/Destroy.

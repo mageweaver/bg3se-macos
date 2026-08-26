@@ -284,6 +284,19 @@ typedef struct {
     bool is_open;
 } ImguiTreeData;
 
+/*
+ * One TableSetupColumn call. Stored per table so a mod can read a column's
+ * width back and change it -- MCM animates its sidebar by stepping the first
+ * column's Width -- and so the width actually reaches ImGui at render time.
+ */
+#define IMGUI_MAX_COLUMN_DEFS 16
+
+typedef struct {
+    char name[64];
+    uint32_t flags;   // ImGuiTableColumnFlags
+    float width;      // init width or weight; 0 means "let ImGui decide"
+} ImguiColumnDef;
+
 // Table-specific data
 typedef struct {
     int columns;
@@ -295,6 +308,8 @@ typedef struct {
     bool optimized_draw;
     ImguiVec2 size;
     bool has_size;
+    ImguiColumnDef col_defs[IMGUI_MAX_COLUMN_DEFS];
+    int col_def_count;
 } ImguiTableData;
 
 // TableRow-specific data
