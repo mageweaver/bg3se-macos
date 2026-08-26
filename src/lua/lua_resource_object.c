@@ -974,6 +974,14 @@ static int resource_object_index(lua_State *L) {
     ResourceObjectUD *ud = check_object(L, 1);
     const char *key = luaL_checkstring(L, 2);
 
+    // Declared fields win over the synthetic keys below. A resource is free to
+    // have a field actually called Type -- FeatRequirement does -- and answering
+    // that with the layout's name made the real field unreadable.
+    const ResourceField *field = resource_layout_field(ud->layout, key);
+    if (field) {
+        return push_field(L, ud->obj, field);
+    }
+
     if (!ud->layout->embedded
         && (strcmp(key, "ResourceUUID") == 0 || strcmp(key, "UUID") == 0)) {
         push_guid(L, (uint8_t *)ud->obj + RESOURCE_UUID_OFFSET);
@@ -988,12 +996,8 @@ static int resource_object_index(lua_State *L) {
         return 1;
     }
 
-    const ResourceField *field = resource_layout_field(ud->layout, key);
-    if (!field) {
-        lua_pushnil(L);
-        return 1;
-    }
-    return push_field(L, ud->obj, field);
+    lua_pushnil(L);
+    return 1;
 }
 
 static int resource_object_newindex(lua_State *L) {
