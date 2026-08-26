@@ -166,6 +166,35 @@ static int lua_staticdata_resolve_manager(lua_State *L) {
     return 2;
 }
 
+/**
+ * Ext.StaticData.Create(type, guid?) -> resource|nil, guid
+ *
+ * Windows signature is Create(a1:ExtResourceManagerType, a2:Guid?), i.e. type
+ * first - the opposite of Get. Matching it exactly matters; a mod written for
+ * the real API would otherwise silently create nothing.
+ */
+static int lua_staticdata_create(lua_State *L) {
+    const char *type_name = luaL_checkstring(L, 1);
+    const char *guid_str = lua_isnoneornil(L, 2) ? NULL : luaL_checkstring(L, 2);
+
+    const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
+    if (!entry) {
+        return luaL_error(L, "Unknown static data type: %s", type_name);
+    }
+
+    char created_guid[40] = {0};
+    void *obj = staticdata_registry_create(entry, guid_str,
+                                           created_guid, sizeof(created_guid));
+    if (!obj) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_pushlightuserdata(L, obj);
+    lua_pushstring(L, created_guid);
+    return 2;
+}
+
 // ============================================================================
 // Ext.StaticData.Get(guid, type)
 // ============================================================================
@@ -726,6 +755,7 @@ static const luaL_Reg staticdata_funcs[] = {
     {"GetSources", lua_staticdata_getsources},
     {"GetByModId", lua_staticdata_getbymodid},
     {"ProbeSourcesOffset", lua_staticdata_probesources},
+    {"Create", lua_staticdata_create},
     {"_ResolveManager", lua_staticdata_resolve_manager},
     {NULL, NULL}
 };

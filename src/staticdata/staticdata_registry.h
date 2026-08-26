@@ -61,4 +61,18 @@ bool staticdata_registry_get_keys(const StaticDataTypeEntry *entry,
 /** Format the GUID at `index` in a key buffer into `out` (>= 40 bytes). */
 bool staticdata_registry_format_key(void *keys_buf, uint32_t index, char *out, size_t out_size);
 
+/**
+ * Create a new resource of this type and add it to the bank.
+ *
+ * `guid_str` may be NULL to generate one. `out_guid` (>= 40 bytes, optional)
+ * receives the GUID actually used. Returns the stored resource, or NULL.
+ *
+ * Requires at least two existing resources of the type: the element size is
+ * measured from their spacing and the VMT is copied from one of them, neither
+ * of which can be known otherwise.
+ */
+void *staticdata_registry_create(const StaticDataTypeEntry *entry,
+                                 const char *guid_str,
+                                 char *out_guid, size_t out_guid_size);
+
 #endif // BG3SE_STATICDATA_REGISTRY_H

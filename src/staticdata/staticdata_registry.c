@@ -6,10 +6,13 @@
 
 #include "staticdata_registry.h"
 #include "../core/logging.h"
+#include "../core/offset_table.h"
 #include "../core/safe_memory.h"
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
 
 // ls::ImmutableDataHeadmaster::m_ptr — the singleton (build 4.1.1.7398727).
 #define HEADMASTER_PTR_OFFSET   0x08ac13c8
@@ -233,4 +236,137 @@ bool staticdata_registry_format_key(void *keys_buf, uint32_t index, char *out, s
     snprintf(out, out_size, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
              d1, d2, d3, g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
     return true;
+}
+
+// ls::ModdableFilesLoader<ls::Guid, T>::AddLoadedObject(GuidResource&&), vtable
+// slot 7 — the slot after GetObjectByKey, per GuidResourceBankBase's declaration
+// order.
+#define BANK_VT_ADD_LOADED_OBJECT   0x38
+
+// resource::GuidResource: { void* VMT; Guid ResourceUUID; }
+#define GUIDRES_VMT_OFFSET          0x00
+#define GUIDRES_UUID_OFFSET         0x08
+
+// Sanity bound on a measured element size. Real ones are tens of bytes
+// (PhotoModeEmoteCollection 0x58, Tag 0x60); anything far outside that means the
+// measurement is wrong and must not be handed to an allocator.
+#define GUIDRES_MIN_SIZE            0x18
+#define GUIDRES_MAX_SIZE            0x1000
+
+typedef void *(*AddLoadedObjectFunc)(void *self, void *object);
+typedef void *(*GameAllocateFunc2)(size_t size, uint32_t alloc_type, int a3, size_t a4);
+
+/**
+ * Measure sizeof(T) from two stored resources.
+ *
+ * Values live contiguously in the bank's array in key order, so the gap between
+ * consecutive entries IS the element size. Confirmed live: the first three
+ * PhotoModeEmoteCollections are 0x58 apart and the first three Tags 0x60.
+ */
+static bool measure_element_size(const StaticDataTypeEntry *entry,
+                                 void *keys, uint32_t count,
+                                 size_t *out_size, void **out_vmt) {
+    if (count < 2) return false;
+
+    void *first = NULL, *second = NULL;
+    char guid[40];
+
+    if (!staticdata_registry_format_key(keys, 0, guid, sizeof(guid))) return false;
+    first = staticdata_registry_get_object_by_guid_string(entry, guid);
+    if (!first) return false;
+
+    if (!staticdata_registry_format_key(keys, 1, guid, sizeof(guid))) return false;
+    second = staticdata_registry_get_object_by_guid_string(entry, guid);
+    if (!second) return false;
+
+    ptrdiff_t delta = (uint8_t *)second - (uint8_t *)first;
+    if (delta < 0) delta = -delta;
+    if (delta < GUIDRES_MIN_SIZE || delta > GUIDRES_MAX_SIZE) return false;
+
+    // The VMT is per-type and cannot be synthesised; copy it from a live one.
+    void *vmt = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)first + GUIDRES_VMT_OFFSET, &vmt)
+        || !vmt) {
+        return false;
+    }
+
+    *out_size = (size_t)delta;
+    *out_vmt = vmt;
+    return true;
+}
+
+void *staticdata_registry_create(const StaticDataTypeEntry *entry,
+                                 const char *guid_str,
+                                 char *out_guid, size_t out_guid_size) {
+    if (!entry) return NULL;
+
+    void *mgr = staticdata_registry_get_manager(entry);
+    if (!mgr) return NULL;
+
+    void *keys = NULL;
+    uint32_t count = 0;
+    if (!staticdata_registry_get_keys(entry, &keys, &count)) return NULL;
+
+    size_t elem_size = 0;
+    void *vmt = NULL;
+    if (!measure_element_size(entry, keys, count, &elem_size, &vmt)) {
+        LOG_CORE_WARN("StaticData.Create(%s): need at least two existing resources "
+                      "to measure the type; the bank holds %u", entry->name, count);
+        return NULL;
+    }
+
+    uint8_t guid[16];
+    if (guid_str && guid_str[0]) {
+        unsigned int d[11];
+        if (sscanf(guid_str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
+                   &d[0], &d[1], &d[2], &d[3], &d[4], &d[5],
+                   &d[6], &d[7], &d[8], &d[9], &d[10]) != 11) {
+            return NULL;
+        }
+        uint32_t p1 = (uint32_t)d[0];
+        uint16_t p2 = (uint16_t)d[1], p3 = (uint16_t)d[2];
+        memcpy(guid + 0, &p1, 4);
+        memcpy(guid + 4, &p2, 2);
+        memcpy(guid + 6, &p3, 2);
+        for (int i = 0; i < 8; i++) guid[8 + i] = (uint8_t)d[3 + i];
+    } else {
+        arc4random_buf(guid, sizeof(guid));
+        guid[6] = (uint8_t)((guid[6] & 0x0F) | 0x40);   // version 4
+        guid[8] = (uint8_t)((guid[8] & 0x3F) | 0x80);   // variant
+    }
+
+    GameAllocateFunc2 alloc = (GameAllocateFunc2)offset_table_game_fn(GAME_FN_MEMORY_ALLOCATE);
+    if (!alloc) return NULL;
+
+    // Zero everything but the VMT and GUID: Array and STDString members are
+    // valid when zeroed (empty), which is what a fresh resource should be.
+    uint8_t *obj = (uint8_t *)alloc(elem_size, 0, 0, 0);
+    if (!obj) return NULL;
+    memset(obj, 0, elem_size);
+    memcpy(obj + GUIDRES_VMT_OFFSET, &vmt, sizeof(vmt));
+    memcpy(obj + GUIDRES_UUID_OFFSET, guid, sizeof(guid));
+
+    void *vtable = NULL, *fn = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)mgr, &vtable) || !vtable) return NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)vtable + BANK_VT_ADD_LOADED_OBJECT, &fn)
+        || !fn) {
+        return NULL;
+    }
+
+    // AddLoadedObject takes an rvalue reference and stores the object in the
+    // bank's own array, returning where it landed. Our buffer is only the source.
+    void *stored = ((AddLoadedObjectFunc)fn)(mgr, obj);
+
+    if (out_guid && out_guid_size >= 40) {
+        uint32_t d1; uint16_t d2, d3;
+        memcpy(&d1, guid + 0, 4);
+        memcpy(&d2, guid + 4, 2);
+        memcpy(&d3, guid + 6, 2);
+        snprintf(out_guid, out_guid_size,
+                 "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                 d1, d2, d3, guid[8], guid[9], guid[10], guid[11],
+                 guid[12], guid[13], guid[14], guid[15]);
+    }
+
+    return stored;
 }
