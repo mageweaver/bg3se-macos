@@ -37,11 +37,24 @@ TYPES = {
     "Guid":             (16, 8, "GUID"),
     "STDString":        (16, 8, "STDSTRING"),      # Larian's compact string, not std::string
     "TranslatedString": (16, 4, "TRANSLATEDSTRING"),
-    "glm::vec3":        (12, 4, None),
-    "glm::vec4":        (16, 4, None),
+    "glm::vec3":        (12, 4, "VEC3"),
+    "glm::vec4":        (16, 4, "VEC4"),
     "HashSet<FixedString>": (48, 8, "HASHSET_FIXEDSTRING"),  # StaticArray + 2x Array
-    "std::optional<Guid>":  (24, 8, None),
-    "std::optional<STDString>": (24, 8, None),
+    "HashMap<uint8_t, FixedString>": (64, 8, "HASHMAP_U8_FIXEDSTRING"),
+    # std::optional<T> is T followed by an engaged flag, rounded to T's alignment.
+    "std::optional<Guid>":      (24, 8, "OPT_GUID"),
+    "std::optional<STDString>": (24, 8, "OPT_STDSTRING"),
+    "std::optional<uint64_t>":  (16, 8, None),
+    "std::optional<int>":       (8, 4, "OPT_I32"),
+    "std::optional<AbilityId>": (2, 1, "OPT_U8"),
+    # libc++ lays a variant out as the union of its alternatives followed by a
+    # one-byte index, rounded to the widest alternative's alignment.
+    "std::variant<NoValue, float, int, FixedString, bool>": (8, 4, "VARIANT_SCALAR"),
+    "std::variant<int32_t, DiceRoll>":                      (8, 4, None),
+    "std::variant<float, glm::vec3, glm::vec4, FixedString>": (20, 4, None),
+    "NoValue":          (1, 1, None),
+    "DiceRoll":         (2, 1, None),
+    "MultiEffectFlags": (4, 4, "U32"),
     # Enums -- underlying type from Enumerations/*.inl
     "AbilityId":             (1, 1, "U8"),
     "DiceSizeId":            (1, 1, "U8"),
@@ -60,7 +73,8 @@ TYPES = {
 # Every Array<T> is the same 16-byte {buf, capacity, size} regardless of T, so
 # element type only decides whether Lua can read it.
 ARRAY_SIZE, ARRAY_ALIGN = 16, 8
-ARRAY_ELEMS = {"Guid": "GUID", "FixedString": "FIXEDSTRING", "int32_t": "I32", "uint8_t": "U8"}
+ARRAY_ELEMS = {"Guid": "GUID", "FixedString": "FIXEDSTRING", "int32_t": "I32", "uint8_t": "U8",
+               "AbilityId": "U8", "SkillId": "U8"}
 
 # HashMap<K,V> is HashSet<K> plus an Array<V>.
 HASHMAP_RE = re.compile(r"^HashMap<")
@@ -77,10 +91,11 @@ def size_of(ctype, nested=None):
         elem = ARRAY_ELEMS.get(inner)
         if elem:
             return (ARRAY_SIZE, ARRAY_ALIGN, "ARRAY_" + elem)
-        # Array of a nested struct: readable as an array of field proxies.
-        short = inner.split("::")[-1]
-        if nested and short in nested:
-            return (ARRAY_SIZE, ARRAY_ALIGN, "ARRAY_STRUCT:" + short)
+        # Array of a struct: readable as an array of field proxies.
+        if nested:
+            for candidate in (inner, inner.split("::")[-1]):
+                if candidate in nested:
+                    return (ARRAY_SIZE, ARRAY_ALIGN, "ARRAY_STRUCT:" + candidate)
         return (ARRAY_SIZE, ARRAY_ALIGN, None)
     if HASHMAP_RE.match(ctype):
         return (64, 8, None)
@@ -179,27 +194,64 @@ def layout_fields(body, start_offset, nested_sizes):
     return fields, offset, truncated
 
 
+def collect_element_types(src, blocks):
+    """
+    Every struct that can appear as an Array element, by the names a field might
+    use for it.
+
+    Element types come from two places: helper structs declared at file scope
+    (EffectInfo, FeatRequirement) and structs nested inside a resource. A nested
+    one is reachable from other resources by its qualified name -- several
+    fields say Array<Progression::Spell> from outside Progression -- so it is
+    registered both ways.
+    """
+    bodies = {}
+
+    resource_names = {n for n, _ in blocks}
+    for m in re.finditer(r"struct\s+(\w+)\s*\{(.*?)\n\};", src, re.S):
+        name = m.group(1)
+        if name in resource_names:
+            continue
+        bodies.setdefault(name, m.group(2))
+
+    for name, body in blocks:
+        for nname, nbody in collect_nested_structs(body).items():
+            bodies["%s::%s" % (name, nname)] = nbody
+            bodies.setdefault(nname, nbody)
+
+    return bodies
+
+
 def parse(header):
     src = open(header).read()
     blocks = re.findall(
         r"struct\s+(\w+)\s*:\s*public\s+resource::GuidResource\s*\{(.*?)\n\};", src, re.S)
+    element_bodies = collect_element_types(src, blocks)
+
+    # Size every element type first; a resource's Array<X> needs X's stride.
+    element_sizes = {}
+    for ename, ebody in element_bodies.items():
+        _, esize, _ = layout_fields(strip_nested_structs(ebody), 0, None)
+        element_sizes[ename] = esize
+
+    element_layouts = {}
+    for ename, ebody in element_bodies.items():
+        efields, esize, _ = layout_fields(strip_nested_structs(ebody), 0, element_sizes)
+        element_layouts[ename] = (efields, esize)
+
     out = []
     for name, body in blocks:
-        nested_bodies = collect_nested_structs(body)
-
-        # Size the nested types first -- the outer struct's Array<X> fields
-        # need to know X before they can be laid out.
-        nested_sizes, nested_layouts = {}, {}
-        for nname, nbody in nested_bodies.items():
-            nfields, nsize, _ = layout_fields(nbody, 0, None)
-            nested_sizes[nname] = nsize
-            nested_layouts[nname] = (nfields, nsize)
-
-        fields, size, truncated = layout_fields(strip_nested_structs(body), 0x18, nested_sizes)
+        fields, size, truncated = layout_fields(strip_nested_structs(body), 0x18, element_sizes)
         used = sorted({k.split(":", 1)[1] for _, _, k, _ in fields if k.startswith("ARRAY_STRUCT:")})
         out.append((name, fields, size, truncated,
-                    [(u, nested_layouts[u][0], nested_layouts[u][1]) for u in used]))
+                    [(u, element_layouts[u][0], element_layouts[u][1]) for u in used
+                     if element_layouts.get(u, ([], 0))[0]]))
     return out
+
+
+def c_ident(name):
+    """A qualified element name like Progression::Spell is not a C identifier."""
+    return name.replace("::", "_")
 
 
 def main():
@@ -219,13 +271,19 @@ def main():
         for nname, nfields, nsize in nested:
             if not nfields:
                 continue
-            print("static const ResourceField fields_%s_%s[] = {" % (name, nname))
+            print("static const ResourceField fields_%s_%s[] = {" % (name, c_ident(nname)))
             for fname, off, kind, ctype in nfields:
+                if kind.startswith("ARRAY_STRUCT:"):
+                    # An element type holding its own struct arrays: sized so the
+                    # fields after it are right, but not followed further.
+                    print('    { "%s", 0x%02x, RF_ARRAY_STRUCT, NULL, 0 },  // %s (not followed)'
+                          % (fname, off, ctype))
+                    continue
                 print('    { "%s", 0x%02x, RF_%s, NULL, 0 },  // %s' % (fname, off, kind, ctype))
             print("};")
             print("static const ResourceLayout layout_%s_%s = "
-                  '{ "%s::%s", fields_%s_%s, %d, 0x%02x, true };'
-                  % (name, nname, name, nname, name, nname, len(nfields), nsize))
+                  '{ "%s", fields_%s_%s, %d, 0x%02x, true };'
+                  % (name, c_ident(nname), nname, name, c_ident(nname), len(nfields), nsize))
     print()
 
     for name, fields, size, _, nested in structs:
@@ -239,7 +297,7 @@ def main():
                 if elem in have:
                     esize = next(ns for n, nf, ns in nested if n == elem)
                     print('    { "%s", 0x%02x, RF_ARRAY_STRUCT, &layout_%s_%s, 0x%02x },  // %s'
-                          % (fname, off, name, elem, esize, ctype))
+                          % (fname, off, name, c_ident(elem), esize, ctype))
                     continue
                 print('    { "%s", 0x%02x, RF_ARRAY_STRUCT, NULL, 0 },  // %s (no readable fields)'
                       % (fname, off, ctype))

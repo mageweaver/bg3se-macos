@@ -42,6 +42,14 @@ typedef enum {
     RF_ARRAY_U8,
     RF_HASHSET_FIXEDSTRING,
     RF_ARRAY_STRUCT,            // Array of a nested struct; see elem/elem_size
+    RF_VEC3,
+    RF_VEC4,
+    RF_OPT_GUID,
+    RF_OPT_STDSTRING,
+    RF_OPT_I32,
+    RF_OPT_U8,
+    RF_VARIANT_SCALAR,          // variant<NoValue, float, int, FixedString, bool>
+    RF_HASHMAP_U8_FIXEDSTRING,
 } ResourceFieldKind;
 
 struct ResourceLayout;
@@ -83,5 +91,22 @@ bool resource_field_is_array(ResourceFieldKind kind);
 #define HASHSET_HASHSIZE_OFFSET 0x08
 #define HASHSET_NEXTIDS_OFFSET  0x10
 #define HASHSET_KEYS_OFFSET     0x20
+
+/* HashMap<K,V> is a HashSet<K> with an Array<V> appended. */
+#define HASHMAP_VALUES_OFFSET   0x30
+
+/*
+ * std::optional<T> stores T at +0 and its engaged flag just past it, so the
+ * flag sits at sizeof(T) -- 16 for a Guid or an STDString, 4 for an int, 1 for
+ * a byte-sized enum.
+ */
+#define OPTIONAL_FLAG_OFFSET(t_size) (t_size)
+
+/*
+ * libc++ lays a variant out as the union of its alternatives followed by a
+ * one-byte index. For variant<NoValue, float, int, FixedString, bool> the
+ * union is four bytes wide, so the index sits at +4.
+ */
+#define VARIANT_SCALAR_INDEX_OFFSET 4
 
 #endif // BG3SE_STATICDATA_FIELDS_H

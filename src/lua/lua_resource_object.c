@@ -228,6 +228,108 @@ static void push_translated_string(lua_State *L, const void *addr) {
 
 static void ensure_array_metatable(lua_State *L);
 
+
+/** glm vectors read as plain arrays of floats. */
+static void push_vec(lua_State *L, const void *addr, int n) {
+    lua_createtable(L, n, 0);
+    for (int i = 0; i < n; i++) {
+        uint32_t bits = 0;
+        if (!safe_memory_read_u32((mach_vm_address_t)((const uint8_t *)addr + i * 4), &bits)) {
+            lua_pop(L, 1);
+            lua_pushnil(L);
+            return;
+        }
+        float f;
+        memcpy(&f, &bits, sizeof(f));
+        lua_pushnumber(L, f);
+        lua_rawseti(L, -2, i + 1);
+    }
+}
+
+/** True if a std::optional at `addr` holds a value. */
+static bool optional_engaged(const void *addr, size_t value_size) {
+    uint8_t flag = 0;
+    if (!safe_memory_read_u8((mach_vm_address_t)((const uint8_t *)addr
+                                                 + OPTIONAL_FLAG_OFFSET(value_size)), &flag)) {
+        return false;
+    }
+    return flag != 0;
+}
+
+/*
+ * variant<NoValue, float, int, FixedString, bool> as the alternative it holds.
+ *
+ * The index is validated against the alternative count rather than trusted: an
+ * out-of-range index means the layout is wrong, and returning nil is a great
+ * deal better than reading four bytes as whichever type we guessed.
+ */
+static void push_variant_scalar(lua_State *L, const void *addr) {
+    uint8_t which = 0;
+    if (!safe_memory_read_u8((mach_vm_address_t)((const uint8_t *)addr
+                                                 + VARIANT_SCALAR_INDEX_OFFSET), &which)) {
+        lua_pushnil(L);
+        return;
+    }
+
+    uint32_t bits = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)addr, &bits)) {
+        lua_pushnil(L);
+        return;
+    }
+
+    switch (which) {
+        case 0:                       // NoValue
+            lua_pushnil(L);
+            return;
+        case 1: {                     // float
+            float f;
+            memcpy(&f, &bits, sizeof(f));
+            lua_pushnumber(L, f);
+            return;
+        }
+        case 2:                       // int
+            lua_pushinteger(L, (int32_t)bits);
+            return;
+        case 3:                       // FixedString
+            push_fixedstring(L, bits);
+            return;
+        case 4:                       // bool
+            lua_pushboolean(L, (bits & 0xff) != 0);
+            return;
+        default:
+            lua_pushnil(L);
+            return;
+    }
+}
+
+/** HashMap<uint8_t, FixedString> as { [key] = name }. */
+static void push_hashmap_u8_fixedstring(lua_State *L, const void *addr) {
+    const uint8_t *p = (const uint8_t *)addr;
+    uint64_t keys = 0, values = 0;
+    uint32_t kcount = 0, vcount = 0;
+
+    if (!safe_memory_read_u64((mach_vm_address_t)(p + HASHSET_KEYS_OFFSET), &keys)
+        || !safe_memory_read_u32((mach_vm_address_t)(p + HASHSET_KEYS_OFFSET + 12), &kcount)
+        || !safe_memory_read_u64((mach_vm_address_t)(p + HASHMAP_VALUES_OFFSET), &values)
+        || !safe_memory_read_u32((mach_vm_address_t)(p + HASHMAP_VALUES_OFFSET + 12), &vcount)
+        || kcount != vcount) {
+        lua_newtable(L);
+        return;
+    }
+
+    lua_createtable(L, 0, (int)kcount);
+    for (uint32_t i = 0; i < kcount; i++) {
+        uint8_t k = 0;
+        uint32_t v = 0;
+        if (!safe_memory_read_u8((mach_vm_address_t)(uintptr_t)(keys + i), &k)) break;
+        if (!safe_memory_read_u32((mach_vm_address_t)(uintptr_t)(values + (uint64_t)i * 4), &v)) break;
+        const char *name = fixed_string_resolve(v);
+        if (!name) continue;
+        lua_pushstring(L, name);
+        lua_rawseti(L, -2, k);
+    }
+}
+
 static void push_array_proxy_ex(lua_State *L, void *array_addr, ResourceFieldKind kind,
                                 bool readonly) {
     ResourceArrayUD *ud = (ResourceArrayUD *)lua_newuserdatauv(L, sizeof(ResourceArrayUD), 0);
@@ -320,6 +422,53 @@ static int push_field(lua_State *L, void *obj, const ResourceField *field) {
         }
         case RF_TRANSLATEDSTRING:
             push_translated_string(L, addr);
+            return 1;
+
+        case RF_VEC3:
+            push_vec(L, addr, 3);
+            return 1;
+        case RF_VEC4:
+            push_vec(L, addr, 4);
+            return 1;
+
+        case RF_OPT_GUID:
+            if (!optional_engaged(addr, 16)) { lua_pushnil(L); return 1; }
+            push_guid(L, addr);
+            return 1;
+        case RF_OPT_STDSTRING: {
+            if (!optional_engaged(addr, 16)) { lua_pushnil(L); return 1; }
+            size_t len = 0;
+            const char *str = read_stdstring(addr, &len);
+            if (str) lua_pushlstring(L, str, len); else lua_pushnil(L);
+            return 1;
+        }
+        case RF_OPT_I32: {
+            if (!optional_engaged(addr, 4)) { lua_pushnil(L); return 1; }
+            uint32_t v = 0;
+            if (safe_memory_read_u32((mach_vm_address_t)addr, &v)) {
+                lua_pushinteger(L, (int32_t)v);
+            } else {
+                lua_pushnil(L);
+            }
+            return 1;
+        }
+        case RF_OPT_U8: {
+            if (!optional_engaged(addr, 1)) { lua_pushnil(L); return 1; }
+            uint8_t v = 0;
+            if (safe_memory_read_u8((mach_vm_address_t)addr, &v)) {
+                lua_pushinteger(L, v);
+            } else {
+                lua_pushnil(L);
+            }
+            return 1;
+        }
+
+        case RF_VARIANT_SCALAR:
+            push_variant_scalar(L, addr);
+            return 1;
+
+        case RF_HASHMAP_U8_FIXEDSTRING:
+            push_hashmap_u8_fixedstring(L, addr);
             return 1;
 
         case RF_HASHSET_FIXEDSTRING:
@@ -602,7 +751,10 @@ static int write_array_from_table(lua_State *L, void *addr, const ResourceField 
             ResourceObjectUD *elem_src = (ResourceObjectUD *)luaL_testudata(L, elem_index,
                                                                             RESOURCE_OBJECT_MT);
             if (elem_src) {
-                if (elem_src->layout != field->elem) {
+                if (elem_src->layout != field->elem
+                    && (elem_src->layout->size != field->elem->size
+                        || strcmp(elem_src->layout->type_name,
+                                  field->elem->type_name) != 0)) {
                     lua_pop(L, 1);
                     return luaL_error(L, "element %d of '%s' is a %s, not a %s",
                                       (int)(i + 1), field->name,
@@ -738,6 +890,53 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
             *(uint16_t *)((uint8_t *)addr + 4) = (uint16_t)version;
             return 0;
         }
+
+        case RF_VEC3:
+            push_vec(L, addr, 3);
+            return 1;
+        case RF_VEC4:
+            push_vec(L, addr, 4);
+            return 1;
+
+        case RF_OPT_GUID:
+            if (!optional_engaged(addr, 16)) { lua_pushnil(L); return 1; }
+            push_guid(L, addr);
+            return 1;
+        case RF_OPT_STDSTRING: {
+            if (!optional_engaged(addr, 16)) { lua_pushnil(L); return 1; }
+            size_t len = 0;
+            const char *str = read_stdstring(addr, &len);
+            if (str) lua_pushlstring(L, str, len); else lua_pushnil(L);
+            return 1;
+        }
+        case RF_OPT_I32: {
+            if (!optional_engaged(addr, 4)) { lua_pushnil(L); return 1; }
+            uint32_t v = 0;
+            if (safe_memory_read_u32((mach_vm_address_t)addr, &v)) {
+                lua_pushinteger(L, (int32_t)v);
+            } else {
+                lua_pushnil(L);
+            }
+            return 1;
+        }
+        case RF_OPT_U8: {
+            if (!optional_engaged(addr, 1)) { lua_pushnil(L); return 1; }
+            uint8_t v = 0;
+            if (safe_memory_read_u8((mach_vm_address_t)addr, &v)) {
+                lua_pushinteger(L, v);
+            } else {
+                lua_pushnil(L);
+            }
+            return 1;
+        }
+
+        case RF_VARIANT_SCALAR:
+            push_variant_scalar(L, addr);
+            return 1;
+
+        case RF_HASHMAP_U8_FIXEDSTRING:
+            push_hashmap_u8_fixedstring(L, addr);
+            return 1;
 
         case RF_HASHSET_FIXEDSTRING: {
             luaL_checktype(L, value_index, LUA_TTABLE);

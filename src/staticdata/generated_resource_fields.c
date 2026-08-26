@@ -10,14 +10,14 @@ static const ResourceField fields_Progression_Ability[] = {
     { "Arg3", 0x14, RF_I32, NULL, 0 },  // int32_t
     { "Arg4", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
 };
-static const ResourceLayout layout_Progression_Ability = { "Progression::Ability", fields_Progression_Ability, 4, 0x28, true };
+static const ResourceLayout layout_Progression_Ability = { "Ability", fields_Progression_Ability, 4, 0x28, true };
 static const ResourceField fields_Progression_AbilityBonus[] = {
     { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
     { "Amounts", 0x18, RF_ARRAY_I32, NULL, 0 },  // Array<int32_t>
     { "BonusType", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
 };
-static const ResourceLayout layout_Progression_AbilityBonus = { "Progression::AbilityBonus", fields_Progression_AbilityBonus, 4, 0x38, true };
+static const ResourceLayout layout_Progression_AbilityBonus = { "AbilityBonus", fields_Progression_AbilityBonus, 4, 0x38, true };
 static const ResourceField fields_Progression_AddedSpell[] = {
     { "SpellUUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "SelectorId", 0x10, RF_STDSTRING, NULL, 0 },  // STDString
@@ -27,33 +27,33 @@ static const ResourceField fields_Progression_AddedSpell[] = {
     { "CooldownType", 0x39, RF_U8, NULL, 0 },  // SpellCooldownType
     { "ClassUUID", 0x40, RF_GUID, NULL, 0 },  // Guid
 };
-static const ResourceLayout layout_Progression_AddedSpell = { "Progression::AddedSpell", fields_Progression_AddedSpell, 7, 0x50, true };
+static const ResourceLayout layout_Progression_AddedSpell = { "AddedSpell", fields_Progression_AddedSpell, 7, 0x50, true };
 static const ResourceField fields_Progression_Equipment[] = {
     { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
     { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
 };
-static const ResourceLayout layout_Progression_Equipment = { "Progression::Equipment", fields_Progression_Equipment, 3, 0x28, true };
+static const ResourceLayout layout_Progression_Equipment = { "Equipment", fields_Progression_Equipment, 3, 0x28, true };
 static const ResourceField fields_Progression_Passive[] = {
     { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
     { "Amount2", 0x14, RF_I32, NULL, 0 },  // int32_t
     { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
 };
-static const ResourceLayout layout_Progression_Passive = { "Progression::Passive", fields_Progression_Passive, 4, 0x28, true };
+static const ResourceLayout layout_Progression_Passive = { "Passive", fields_Progression_Passive, 4, 0x28, true };
 static const ResourceField fields_Progression_Skill[] = {
     { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
     { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
 };
-static const ResourceLayout layout_Progression_Skill = { "Progression::Skill", fields_Progression_Skill, 3, 0x28, true };
+static const ResourceLayout layout_Progression_Skill = { "Skill", fields_Progression_Skill, 3, 0x28, true };
 static const ResourceField fields_Progression_SkillExpertise[] = {
     { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
     { "Arg3", 0x14, RF_BOOL, NULL, 0 },  // bool
     { "Arg4", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
 };
-static const ResourceLayout layout_Progression_SkillExpertise = { "Progression::SkillExpertise", fields_Progression_SkillExpertise, 4, 0x28, true };
+static const ResourceLayout layout_Progression_SkillExpertise = { "SkillExpertise", fields_Progression_SkillExpertise, 4, 0x28, true };
 static const ResourceField fields_Progression_Spell[] = {
     { "SpellUUID", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
@@ -64,18 +64,173 @@ static const ResourceField fields_Progression_Spell[] = {
     { "PrepareType", 0x40, RF_U8, NULL, 0 },  // SpellPrepareType
     { "CooldownType", 0x41, RF_U8, NULL, 0 },  // SpellCooldownType
     { "ClassUUID", 0x48, RF_GUID, NULL, 0 },  // Guid
+    { "TableUUID", 0x58, RF_GUID, NULL, 0 },  // Guid
+    { "Name", 0x68, RF_STDSTRING, NULL, 0 },  // STDString
+    { "SubClasses", 0x78, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "PassivesAdded", 0x98, RF_STDSTRING, NULL, 0 },  // STDString
+    { "PassivesRemoved", 0xb8, RF_STDSTRING, NULL, 0 },  // STDString
+    { "BoostPrototypes", 0xc8, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "Boosts", 0xd8, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ProgressionType", 0xe8, RF_U8, NULL, 0 },  // ProgressionType
+    { "Level", 0xe9, RF_U8, NULL, 0 },  // uint8_t
+    { "AllowImprovement", 0xea, RF_BOOL, NULL, 0 },  // bool
+    { "field_D0", 0xf0, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "IsMulticlass", 0x100, RF_BOOL, NULL, 0 },  // bool
+    { "SelectAbilities", 0x108, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Ability> (not followed)
+    { "SelectAbilityBonus", 0x118, RF_ARRAY_STRUCT, NULL, 0 },  // Array<AbilityBonus> (not followed)
+    { "SelectSkills", 0x128, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Skill> (not followed)
+    { "SelectSkillsExpertise", 0x138, RF_ARRAY_STRUCT, NULL, 0 },  // Array<SkillExpertise> (not followed)
+    { "SelectSpells", 0x148, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Spell> (not followed)
+    { "SelectPassives", 0x158, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Passive> (not followed)
+    { "SelectEquipment", 0x168, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Equipment> (not followed)
+    { "AddSpells", 0x178, RF_ARRAY_STRUCT, NULL, 0 },  // Array<AddedSpell> (not followed)
 };
-static const ResourceLayout layout_Progression_Spell = { "Progression::Spell", fields_Progression_Spell, 9, 0x58, true };
+static const ResourceLayout layout_Progression_Spell = { "Spell", fields_Progression_Spell, 29, 0x188, true };
+static const ResourceField fields_Feat_FeatRequirement[] = {
+    { "Requirement", 0x00, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Type", 0x10, RF_U8, NULL, 0 },  // uint8_t
+    { "Ability", 0x28, RF_OPT_U8, NULL, 0 },  // std::optional<AbilityId>
+    { "AbilityValue", 0x2c, RF_OPT_I32, NULL, 0 },  // std::optional<int>
+};
+static const ResourceLayout layout_Feat_FeatRequirement = { "FeatRequirement", fields_Feat_FeatRequirement, 4, 0x38, true };
+static const ResourceField fields_Feat_Progression_Ability[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Arg2", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x14, RF_I32, NULL, 0 },  // int32_t
+    { "Arg4", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Feat_Progression_Ability = { "Progression::Ability", fields_Feat_Progression_Ability, 4, 0x28, true };
+static const ResourceField fields_Feat_Progression_AbilityBonus[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Amounts", 0x18, RF_ARRAY_I32, NULL, 0 },  // Array<int32_t>
+    { "BonusType", 0x28, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Feat_Progression_AbilityBonus = { "Progression::AbilityBonus", fields_Feat_Progression_AbilityBonus, 4, 0x38, true };
+static const ResourceField fields_Feat_Progression_AddedSpell[] = {
+    { "SpellUUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "SelectorId", 0x10, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Ability", 0x20, RF_U8, NULL, 0 },  // AbilityId
+    { "ActionResource", 0x28, RF_GUID, NULL, 0 },  // Guid
+    { "PrepareType", 0x38, RF_U8, NULL, 0 },  // SpellPrepareType
+    { "CooldownType", 0x39, RF_U8, NULL, 0 },  // SpellCooldownType
+    { "ClassUUID", 0x40, RF_GUID, NULL, 0 },  // Guid
+};
+static const ResourceLayout layout_Feat_Progression_AddedSpell = { "Progression::AddedSpell", fields_Feat_Progression_AddedSpell, 7, 0x50, true };
+static const ResourceField fields_Feat_Progression_Equipment[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Feat_Progression_Equipment = { "Progression::Equipment", fields_Feat_Progression_Equipment, 3, 0x28, true };
+static const ResourceField fields_Feat_Progression_Passive[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Amount2", 0x14, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Feat_Progression_Passive = { "Progression::Passive", fields_Feat_Progression_Passive, 4, 0x28, true };
+static const ResourceField fields_Feat_Progression_Skill[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Feat_Progression_Skill = { "Progression::Skill", fields_Feat_Progression_Skill, 3, 0x28, true };
+static const ResourceField fields_Feat_Progression_SkillExpertise[] = {
+    { "UUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x14, RF_BOOL, NULL, 0 },  // bool
+    { "Arg4", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+};
+static const ResourceLayout layout_Feat_Progression_SkillExpertise = { "Progression::SkillExpertise", fields_Feat_Progression_SkillExpertise, 4, 0x28, true };
+static const ResourceField fields_Feat_Progression_Spell[] = {
+    { "SpellUUID", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "Amount", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Arg3", 0x14, RF_I32, NULL, 0 },  // int32_t
+    { "SelectorId", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "CastingAbility", 0x28, RF_U8, NULL, 0 },  // AbilityId
+    { "ActionResource", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "PrepareType", 0x40, RF_U8, NULL, 0 },  // SpellPrepareType
+    { "CooldownType", 0x41, RF_U8, NULL, 0 },  // SpellCooldownType
+    { "ClassUUID", 0x48, RF_GUID, NULL, 0 },  // Guid
+};
+static const ResourceLayout layout_Feat_Progression_Spell = { "Progression::Spell", fields_Feat_Progression_Spell, 9, 0x58, true };
 static const ResourceField fields_ApprovalRating_Reaction[] = {
     { "id", 0x00, RF_GUID, NULL, 0 },  // Guid
     { "value", 0x10, RF_I32, NULL, 0 },  // int32_t
+    { "Scope", 0x14, RF_U8, NULL, 0 },  // uint8_t
+    { "Reactions", 0x18, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Reaction> (not followed)
+    { "ReactionsSpeakers", 0x28, RF_ARRAY_STRUCT, NULL, 0 },  // Array<Reaction> (not followed)
 };
-static const ResourceLayout layout_ApprovalRating_Reaction = { "ApprovalRating::Reaction", fields_ApprovalRating_Reaction, 2, 0x18, true };
+static const ResourceLayout layout_ApprovalRating_Reaction = { "Reaction", fields_ApprovalRating_Reaction, 5, 0x38, true };
+static const ResourceField fields_MultiEffectInfo_EffectInfo[] = {
+    { "EffectResourceGuid", 0x00, RF_GUID, NULL, 0 },  // Guid
+    { "ResourceId", 0x10, RF_STDSTRING, NULL, 0 },  // STDString
+    { "StartTextKey", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "EndTextKey", 0x30, RF_STDSTRING, NULL, 0 },  // STDString
+    { "MinDistance", 0x40, RF_F32, NULL, 0 },  // float
+    { "MaxDistance", 0x44, RF_F32, NULL, 0 },  // float
+    { "Flags", 0x48, RF_U32, NULL, 0 },  // MultiEffectFlags
+    { "Pivot", 0x4c, RF_BOOL, NULL, 0 },  // bool
+    { "BindSourceTo", 0x50, RF_U32, NULL, 0 },  // uint32_t
+    { "BindTargetTo", 0x54, RF_U32, NULL, 0 },  // uint32_t
+};
+static const ResourceLayout layout_MultiEffectInfo_EffectInfo = { "EffectInfo", fields_MultiEffectInfo_EffectInfo, 10, 0x58, true };
 static const ResourceField fields_ShapeshiftRule_TypedInt[] = {
     { "Type", 0x00, RF_U8, NULL, 0 },  // uint8_t
     { "Value", 0x04, RF_I32, NULL, 0 },  // int32_t
+    { "RuleName", 0x08, RF_STDSTRING, NULL, 0 },  // STDString
+    { "WildShapeHotBar", 0x28, RF_BOOL, NULL, 0 },  // bool
+    { "FootstepsType", 0x34, RF_U8, NULL, 0 },  // uint8_t
+    { "AbilityChanges", 0x38, RF_ARRAY_STRUCT, NULL, 0 },  // Array<TypedInt> (not followed)
+    { "RemoveOldTags", 0x48, RF_BOOL, NULL, 0 },  // bool
+    { "ApplyTagsFromTemplate", 0x49, RF_BOOL, NULL, 0 },  // bool
+    { "TagsAdd", 0x50, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "TagsRemove", 0x60, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
+    { "ActionCapabilities", 0x70, RF_U16, NULL, 0 },  // uint16_t
+    { "InteractionsCapabilities", 0x72, RF_U16, NULL, 0 },  // uint16_t
+    { "AwarenessCapabilities", 0x74, RF_U16, NULL, 0 },  // uint16_t
+    { "SpeakingCapabilities", 0x76, RF_U16, NULL, 0 },  // uint16_t
+    { "ChangeRace", 0x78, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeBodyType", 0x79, RF_BOOL, NULL, 0 },  // bool
+    { "UseShapeshiftIdentity", 0x7a, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeAi", 0x7b, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeScript", 0x80, RF_OPT_STDSTRING, NULL, 0 },  // std::optional<STDString>
+    { "ApplyVisual", 0x98, RF_BOOL, NULL, 0 },  // bool
+    { "ApplyVisualInCC", 0x99, RF_BOOL, NULL, 0 },  // bool
+    { "IgnoreCustomLooks", 0x9a, RF_BOOL, NULL, 0 },  // bool
+    { "RetainDisplayName", 0x9b, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeIcon", 0x9c, RF_BOOL, NULL, 0 },  // bool
+    { "MuteEquipmentSound", 0xa8, RF_BOOL, NULL, 0 },  // bool
+    { "OverrideSpeaker", 0xa9, RF_BOOL, NULL, 0 },  // bool
+    { "RemovePrevSpells", 0xaa, RF_BOOL, NULL, 0 },  // bool
+    { "ApplySpellsFromTemplate", 0xab, RF_BOOL, NULL, 0 },  // bool
+    { "SpellsAdd", 0xb0, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "SpellsRemove", 0xc0, RF_ARRAY_FIXEDSTRING, NULL, 0 },  // Array<FixedString>
+    { "RetainCanSeeThrough", 0xd0, RF_BOOL, NULL, 0 },  // bool
+    { "RetainCanShootThrough", 0xd1, RF_BOOL, NULL, 0 },  // bool
+    { "RetainCanWalkThrough", 0xd2, RF_BOOL, NULL, 0 },  // bool
+    { "BaseACOverride", 0xd3, RF_BOOL, NULL, 0 },  // bool
+    { "UnarmedAbilityFromTemplate", 0xd4, RF_BOOL, NULL, 0 },  // bool
+    { "DisableEquipmentSlots", 0xd5, RF_BOOL, NULL, 0 },  // bool
+    { "UseTemplateEquipmentSet", 0xd6, RF_BOOL, NULL, 0 },  // bool
+    { "KillEntityAtZeroHP", 0xd7, RF_BOOL, NULL, 0 },  // bool
+    { "PathInfluence", 0xd8, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DummyClass", 0xe8, RF_OPT_GUID, NULL, 0 },  // std::optional<Guid>
+    { "BlockLevelUp", 0x100, RF_BOOL, NULL, 0 },  // bool
+    { "FlagsInheritanceType", 0x101, RF_U8, NULL, 0 },  // uint8_t
+    { "DefaultBoostsInheritanceType", 0x102, RF_U8, NULL, 0 },  // uint8_t
+    { "PersonalStatusImmunitiesInheritanceType", 0x103, RF_U8, NULL, 0 },  // uint8_t
+    { "SpellCastingAbilityInheritanceType", 0x104, RF_U8, NULL, 0 },  // uint8_t
+    { "PassivesInheritanceType", 0x105, RF_U8, NULL, 0 },  // uint8_t
+    { "ResistancesInheritanceType", 0x106, RF_U8, NULL, 0 },  // uint8_t
+    { "DifficultyStatusesInheritanceType", 0x107, RF_U8, NULL, 0 },  // uint8_t
+    { "ProficiencyGroupsInheritanceType", 0x108, RF_U8, NULL, 0 },  // uint8_t
+    { "BloodSurfaceTypeInheritanceType", 0x109, RF_U8, NULL, 0 },  // uint8_t
+    { "HitBloodTypeInheritanceType", 0x10a, RF_U8, NULL, 0 },  // uint8_t
+    { "DeathActionsInheritanceType", 0x10b, RF_U8, NULL, 0 },  // uint8_t
 };
-static const ResourceLayout layout_ShapeshiftRule_TypedInt = { "ShapeshiftRule::TypedInt", fields_ShapeshiftRule_TypedInt, 2, 0x08, true };
+static const ResourceLayout layout_ShapeshiftRule_TypedInt = { "TypedInt", fields_ShapeshiftRule_TypedInt, 52, 0x110, true };
 
 static const ResourceField fields_ActionResource[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
@@ -223,7 +378,7 @@ static const ResourceField fields_Progression[] = {
     { "SelectAbilityBonus", 0xd8, RF_ARRAY_STRUCT, &layout_Progression_AbilityBonus, 0x38 },  // Array<AbilityBonus>
     { "SelectSkills", 0xe8, RF_ARRAY_STRUCT, &layout_Progression_Skill, 0x28 },  // Array<Skill>
     { "SelectSkillsExpertise", 0xf8, RF_ARRAY_STRUCT, &layout_Progression_SkillExpertise, 0x28 },  // Array<SkillExpertise>
-    { "SelectSpells", 0x108, RF_ARRAY_STRUCT, &layout_Progression_Spell, 0x58 },  // Array<Spell>
+    { "SelectSpells", 0x108, RF_ARRAY_STRUCT, &layout_Progression_Spell, 0x188 },  // Array<Spell>
     { "SelectPassives", 0x118, RF_ARRAY_STRUCT, &layout_Progression_Passive, 0x28 },  // Array<Passive>
     { "SelectEquipment", 0x128, RF_ARRAY_STRUCT, &layout_Progression_Equipment, 0x28 },  // Array<Equipment>
     { "AddSpells", 0x138, RF_ARRAY_STRUCT, &layout_Progression_AddedSpell, 0x50 },  // Array<AddedSpell>
@@ -257,6 +412,7 @@ static const ResourceField fields_ActionResourceGroup[] = {
 static const ResourceField fields_Color[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
     { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Color", 0x2c, RF_VEC4, NULL, 0 },  // glm::vec4
 };
 static const ResourceField fields_EquipmentType[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
@@ -283,11 +439,20 @@ static const ResourceField fields_Flag[] = {
 static const ResourceField fields_Feat[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
     { "Requirements", 0x20, RF_STDSTRING, NULL, 0 },  // STDString
+    { "FeatRequirements", 0x30, RF_ARRAY_STRUCT, &layout_Feat_FeatRequirement, 0x38 },  // Array<FeatRequirement>
     { "PassivesAdded", 0x40, RF_STDSTRING, NULL, 0 },  // STDString
     { "PassivesRemoved", 0x60, RF_STDSTRING, NULL, 0 },  // STDString
     { "Boosts", 0x80, RF_STDSTRING, NULL, 0 },  // STDString
     { "BoostPrototypes", 0x90, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
     { "CanBeTakenMultipleTimes", 0xa0, RF_BOOL, NULL, 0 },  // bool
+    { "SelectAbilities", 0xa8, RF_ARRAY_STRUCT, &layout_Feat_Progression_Ability, 0x28 },  // Array<Progression::Ability>
+    { "SelectAbilityBonus", 0xb8, RF_ARRAY_STRUCT, &layout_Feat_Progression_AbilityBonus, 0x38 },  // Array<Progression::AbilityBonus>
+    { "SelectSkills", 0xc8, RF_ARRAY_STRUCT, &layout_Feat_Progression_Skill, 0x28 },  // Array<Progression::Skill>
+    { "SelectSkillsExpertise", 0xd8, RF_ARRAY_STRUCT, &layout_Feat_Progression_SkillExpertise, 0x28 },  // Array<Progression::SkillExpertise>
+    { "SelectSpells", 0xe8, RF_ARRAY_STRUCT, &layout_Feat_Progression_Spell, 0x58 },  // Array<Progression::Spell>
+    { "SelectPassives", 0xf8, RF_ARRAY_STRUCT, &layout_Feat_Progression_Passive, 0x28 },  // Array<Progression::Passive>
+    { "SelectEquipment", 0x108, RF_ARRAY_STRUCT, &layout_Feat_Progression_Equipment, 0x28 },  // Array<Progression::Equipment>
+    { "AddSpells", 0x118, RF_ARRAY_STRUCT, &layout_Feat_Progression_AddedSpell, 0x50 },  // Array<Progression::AddedSpell>
 };
 static const ResourceField fields_FeatDescription[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
@@ -307,6 +472,7 @@ static const ResourceField fields_PassiveList[] = {
 };
 static const ResourceField fields_SkillList[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Skills", 0x20, RF_ARRAY_U8, NULL, 0 },  // Array<SkillId>
     { "MergedInto", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_SpellList[] = {
@@ -316,6 +482,7 @@ static const ResourceField fields_SpellList[] = {
 };
 static const ResourceField fields_AbilityList[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Abilities", 0x20, RF_ARRAY_U8, NULL, 0 },  // Array<AbilityId>
     { "MergedInto", 0x30, RF_GUID, NULL, 0 },  // Guid
 };
 static const ResourceField fields_CompanionPreset[] = {
@@ -354,6 +521,7 @@ static const ResourceField fields_CharacterCreationAppearanceMaterial[] = {
     { "MaterialPresetUUID", 0x30, RF_GUID, NULL, 0 },  // Guid
     { "MaterialType", 0x40, RF_U32, NULL, 0 },  // AppearanceMaterialType
     { "MaterialTypeName", 0x44, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "UIColor", 0x48, RF_VEC4, NULL, 0 },  // glm::vec4
     { "MaleRootTemplate", 0x58, RF_GUID, NULL, 0 },  // Guid
     { "MaleCameraName", 0x68, RF_FIXEDSTRING, NULL, 0 },  // FixedString
     { "FemaleRootTemplate", 0x70, RF_GUID, NULL, 0 },  // Guid
@@ -394,6 +562,7 @@ static const ResourceField fields_CharacterCreationColor[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
     { "DisplayName", 0x1c, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
     { "MaterialPresetUUID", 0x30, RF_GUID, NULL, 0 },  // Guid
+    { "UIColor", 0x40, RF_VEC4, NULL, 0 },  // glm::vec4
     { "SkinType", 0x50, RF_FIXEDSTRING, NULL, 0 },  // FixedString
 };
 static const ResourceField fields_CharacterCreationMaterialOverride[] = {
@@ -434,8 +603,8 @@ static const ResourceField fields_LevelMap[] = {
 };
 static const ResourceField fields_ApprovalRating[] = {
     { "Scope", 0x18, RF_U8, NULL, 0 },  // uint8_t
-    { "Reactions", 0x20, RF_ARRAY_STRUCT, &layout_ApprovalRating_Reaction, 0x18 },  // Array<Reaction>
-    { "ReactionsSpeakers", 0x30, RF_ARRAY_STRUCT, &layout_ApprovalRating_Reaction, 0x18 },  // Array<Reaction>
+    { "Reactions", 0x20, RF_ARRAY_STRUCT, &layout_ApprovalRating_Reaction, 0x38 },  // Array<Reaction>
+    { "ReactionsSpeakers", 0x30, RF_ARRAY_STRUCT, &layout_ApprovalRating_Reaction, 0x38 },  // Array<Reaction>
 };
 static const ResourceField fields_AreaLevelOverride[] = {
     { "ParentUuid", 0x18, RF_GUID, NULL, 0 },  // Guid
@@ -504,6 +673,7 @@ static const ResourceField fields_DeathTypeEffect[] = {
     { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
     { "ParentUuid", 0x28, RF_GUID, NULL, 0 },  // Guid
     { "Fallback", 0x38, RF_FIXEDSTRING, NULL, 0 },  // FixedString
+    { "Effects", 0x40, RF_HASHMAP_U8_FIXEDSTRING, NULL, 0 },  // HashMap<uint8_t, FixedString>
 };
 static const ResourceField fields_DifficultyClass[] = {
     { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
@@ -569,6 +739,7 @@ static const ResourceField fields_ItemThrowParams[] = {
     { "MaxDistForOneRotation", 0x30, RF_I32, NULL, 0 },  // int32_t
     { "MaxDistForTwoRotations", 0x34, RF_I32, NULL, 0 },  // int32_t
     { "MaxDistForZeroRotations", 0x38, RF_I32, NULL, 0 },  // int32_t
+    { "StartAngle", 0x3c, RF_VEC3, NULL, 0 },  // glm::vec3
     { "RotationAxis", 0x48, RF_U32, NULL, 0 },  // uint32_t
 };
 static const ResourceField fields_ItemWallTemplate[] = {
@@ -612,6 +783,7 @@ static const ResourceField fields_ManagedStatusVFX[] = {
 };
 static const ResourceField fields_MultiEffectInfo[] = {
     { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
+    { "EffectInfo", 0x28, RF_ARRAY_STRUCT, &layout_MultiEffectInfo_EffectInfo, 0x58 },  // Array<EffectInfo>
 };
 static const ResourceField fields_OriginIntroEntity[] = {
     { "Name", 0x18, RF_FIXEDSTRING, NULL, 0 },  // FixedString
@@ -748,7 +920,7 @@ static const ResourceField fields_ShapeshiftRule[] = {
     { "RuleName", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
     { "WildShapeHotBar", 0x38, RF_BOOL, NULL, 0 },  // bool
     { "FootstepsType", 0x44, RF_U8, NULL, 0 },  // uint8_t
-    { "AbilityChanges", 0x48, RF_ARRAY_STRUCT, &layout_ShapeshiftRule_TypedInt, 0x08 },  // Array<TypedInt>
+    { "AbilityChanges", 0x48, RF_ARRAY_STRUCT, &layout_ShapeshiftRule_TypedInt, 0x110 },  // Array<TypedInt>
     { "RemoveOldTags", 0x58, RF_BOOL, NULL, 0 },  // bool
     { "ApplyTagsFromTemplate", 0x59, RF_BOOL, NULL, 0 },  // bool
     { "TagsAdd", 0x60, RF_ARRAY_GUID, NULL, 0 },  // Array<Guid>
@@ -761,6 +933,7 @@ static const ResourceField fields_ShapeshiftRule[] = {
     { "ChangeBodyType", 0x89, RF_BOOL, NULL, 0 },  // bool
     { "UseShapeshiftIdentity", 0x8a, RF_BOOL, NULL, 0 },  // bool
     { "ChangeAi", 0x8b, RF_BOOL, NULL, 0 },  // bool
+    { "ChangeScript", 0x90, RF_OPT_STDSTRING, NULL, 0 },  // std::optional<STDString>
     { "ApplyVisual", 0xa8, RF_BOOL, NULL, 0 },  // bool
     { "ApplyVisualInCC", 0xa9, RF_BOOL, NULL, 0 },  // bool
     { "IgnoreCustomLooks", 0xaa, RF_BOOL, NULL, 0 },  // bool
@@ -781,6 +954,7 @@ static const ResourceField fields_ShapeshiftRule[] = {
     { "UseTemplateEquipmentSet", 0xe6, RF_BOOL, NULL, 0 },  // bool
     { "KillEntityAtZeroHP", 0xe7, RF_BOOL, NULL, 0 },  // bool
     { "PathInfluence", 0xe8, RF_STDSTRING, NULL, 0 },  // STDString
+    { "DummyClass", 0xf8, RF_OPT_GUID, NULL, 0 },  // std::optional<Guid>
     { "BlockLevelUp", 0x110, RF_BOOL, NULL, 0 },  // bool
     { "FlagsInheritanceType", 0x111, RF_U8, NULL, 0 },  // uint8_t
     { "DefaultBoostsInheritanceType", 0x112, RF_U8, NULL, 0 },  // uint8_t
@@ -827,6 +1001,10 @@ static const ResourceField fields_RulesetModifier[] = {
     { "Max", 0x50, RF_F32, NULL, 0 },  // float
     { "Step", 0x54, RF_F32, NULL, 0 },  // float
     { "Default", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ParsedDefault", 0x68, RF_VARIANT_SCALAR, NULL, 0 },  // std::variant<NoValue, float, int, FixedString, bool>
+    { "LoadModule", 0x70, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ShowInCustom", 0x80, RF_BOOL, NULL, 0 },  // bool
+    { "EditableDuringGame", 0x81, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_RulesetModifierOption[] = {
     { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
@@ -834,6 +1012,9 @@ static const ResourceField fields_RulesetModifierOption[] = {
     { "Description", 0x38, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
     { "Modifier", 0x48, RF_GUID, NULL, 0 },  // Guid
     { "Value", 0x58, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ParsedValue", 0x68, RF_VARIANT_SCALAR, NULL, 0 },  // std::variant<NoValue, float, int, FixedString, bool>
+    { "LoadModule", 0x70, RF_STDSTRING, NULL, 0 },  // STDString
+    { "ShowInCustom", 0x80, RF_BOOL, NULL, 0 },  // bool
 };
 static const ResourceField fields_Ruleset[] = {
     { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
@@ -847,6 +1028,7 @@ static const ResourceField fields_RulesetValue[] = {
     { "Ruleset", 0x18, RF_GUID, NULL, 0 },  // Guid
     { "Modifier", 0x28, RF_GUID, NULL, 0 },  // Guid
     { "RawValue", 0x38, RF_STDSTRING, NULL, 0 },  // STDString
+    { "Value", 0x48, RF_VARIANT_SCALAR, NULL, 0 },  // std::variant<NoValue, float, int, FixedString, bool>
 };
 static const ResourceField fields_RulesetSelectionPreset[] = {
     { "Name", 0x18, RF_STDSTRING, NULL, 0 },  // STDString
@@ -920,6 +1102,7 @@ static const ResourceField fields_PhotoModeSticker[] = {
 };
 static const ResourceField fields_PhotoModeVignette[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING, NULL, 0 },  // TranslatedString
+    { "Color", 0x28, RF_VEC4, NULL, 0 },  // glm::vec4
 };
 
 const ResourceLayout g_resource_layouts[] = {
@@ -935,28 +1118,28 @@ const ResourceLayout g_resource_layouts[] = {
     { "ProgressionDescription", fields_ProgressionDescription, 10, 0x70, false },
     { "Gossip", fields_Gossip, 6, 0x58, false },
     { "ActionResourceGroup", fields_ActionResourceGroup, 4, 0x58, false },
-    { "Color", fields_Color, 2, 0x3c, false },
+    { "Color", fields_Color, 3, 0x3c, false },
     { "EquipmentType", fields_EquipmentType, 15, 0x54, false },
     { "Flag", fields_Flag, 3, 0x38, false },
-    { "Feat", fields_Feat, 7, 0x128, false },
+    { "Feat", fields_Feat, 16, 0x128, false },
     { "FeatDescription", fields_FeatDescription, 9, 0x60, false },
     { "PassiveList", fields_PassiveList, 3, 0x40, false },
-    { "SkillList", fields_SkillList, 2, 0x40, false },
+    { "SkillList", fields_SkillList, 3, 0x40, false },
     { "SpellList", fields_SpellList, 3, 0x60, false },
-    { "AbilityList", fields_AbilityList, 2, 0x40, false },
+    { "AbilityList", fields_AbilityList, 3, 0x40, false },
     { "CompanionPreset", fields_CompanionPreset, 10, 0xa0, false },
     { "AbilityDistributionPreset", fields_AbilityDistributionPreset, 8, 0x48, false },
     { "CharacterCreationAccessorySet", fields_CharacterCreationAccessorySet, 6, 0x68, false },
-    { "CharacterCreationAppearanceMaterial", fields_CharacterCreationAppearanceMaterial, 11, 0xa8, false },
+    { "CharacterCreationAppearanceMaterial", fields_CharacterCreationAppearanceMaterial, 12, 0xa8, false },
     { "CharacterCreationAppearanceVisual", fields_CharacterCreationAppearanceVisual, 14, 0xa8, false },
     { "CharacterCreationEquipmentIcons", fields_CharacterCreationEquipmentIcons, 6, 0x58, false },
     { "CharacterCreationIconSettings", fields_CharacterCreationIconSettings, 3, 0x40, false },
-    { "CharacterCreationColor", fields_CharacterCreationColor, 4, 0x58, false },
+    { "CharacterCreationColor", fields_CharacterCreationColor, 5, 0x58, false },
     { "CharacterCreationMaterialOverride", fields_CharacterCreationMaterialOverride, 5, 0x48, false },
     { "CharacterCreationPassiveAppearance", fields_CharacterCreationPassiveAppearance, 5, 0x60, false },
     { "CharacterCreationPreset", fields_CharacterCreationPreset, 9, 0x90, false },
     { "CharacterCreationSharedVisual", fields_CharacterCreationSharedVisual, 5, 0x58, false },
-    { "LevelMap", fields_LevelMap, 2, 0x30, false },  // truncated at std::variant<int32_t, DiceRoll> FallbackValue
+    { "LevelMap", fields_LevelMap, 2, 0x48, false },
     { "ApprovalRating", fields_ApprovalRating, 3, 0x40, false },
     { "AreaLevelOverride", fields_AreaLevelOverride, 3, 0x30, false },
     { "AvatarContainerTemplates", fields_AvatarContainerTemplates, 1, 0x28, false },
@@ -968,7 +1151,7 @@ const ResourceLayout g_resource_layouts[] = {
     { "CinematicArenaFrequencyGroup", fields_CinematicArenaFrequencyGroup, 3, 0x28, false },
     { "CustomDiceTemplate", fields_CustomDiceTemplate, 9, 0x60, false },
     { "ConditionErrorDescription", fields_ConditionErrorDescription, 4, 0x30, false },
-    { "DeathTypeEffect", fields_DeathTypeEffect, 3, 0x80, false },
+    { "DeathTypeEffect", fields_DeathTypeEffect, 4, 0x80, false },
     { "DifficultyClass", fields_DifficultyClass, 3, 0x40, false },
     { "DisturbanceProperty", fields_DisturbanceProperty, 1, 0x1c, false },
     { "DLC", fields_DLC, 8, 0x58, false },
@@ -979,13 +1162,13 @@ const ResourceLayout g_resource_layouts[] = {
     { "FlagSoundState", fields_FlagSoundState, 5, 0x40, false },
     { "GoldRewards", fields_GoldRewards, 4, 0x48, false },
     { "FixedHotBarSlot", fields_FixedHotBarSlot, 4, 0x24, false },
-    { "ItemThrowParams", fields_ItemThrowParams, 6, 0x50, false },
+    { "ItemThrowParams", fields_ItemThrowParams, 7, 0x50, false },
     { "ItemWallTemplate", fields_ItemWallTemplate, 11, 0x98, false },
     { "TrajectoryRule", fields_TrajectoryRule, 6, 0x30, false },
     { "LimbsMapping", fields_LimbsMapping, 5, 0x68, false },
     { "LongRestCost", fields_LongRestCost, 3, 0x24, false },
     { "ManagedStatusVFX", fields_ManagedStatusVFX, 4, 0x28, false },
-    { "MultiEffectInfo", fields_MultiEffectInfo, 1, 0x38, false },
+    { "MultiEffectInfo", fields_MultiEffectInfo, 2, 0x38, false },
     { "OriginIntroEntity", fields_OriginIntroEntity, 3, 0x30, false },
     { "PassivesVFX", fields_PassivesVFX, 3, 0x24, false },
     { "ProjectileDefault", fields_ProjectileDefault, 2, 0x30, false },
@@ -1005,16 +1188,16 @@ const ResourceLayout g_resource_layouts[] = {
     { "Voice", fields_Voice, 5, 0x60, false },
     { "WeaponAnimationSet", fields_WeaponAnimationSet, 3, 0x24, false },
     { "WeightCategories", fields_WeightCategories, 3, 0x38, false },
-    { "ShapeshiftRule", fields_ShapeshiftRule, 48, 0x120, false },
+    { "ShapeshiftRule", fields_ShapeshiftRule, 50, 0x120, false },
     { "AnimationSetPriority", fields_AnimationSetPriority, 3, 0x40, false },
     { "SpellMetaCondition", fields_SpellMetaCondition, 4, 0x48, false },
-    { "ScriptMaterialParameterOverride", fields_ScriptMaterialParameterOverride, 4, 0x30, false },  // truncated at std::variant<float, glm::vec3, glm::vec4, FixedString> Limit
+    { "ScriptMaterialParameterOverride", fields_ScriptMaterialParameterOverride, 4, 0x70, false },
     { "ScriptMaterialPresetOverride", fields_ScriptMaterialPresetOverride, 1, 0x28, false },
     { "VisualLocatorAttachment", fields_VisualLocatorAttachment, 2, 0x20, false },
-    { "RulesetModifier", fields_RulesetModifier, 8, 0x68, false },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedDefault
-    { "RulesetModifierOption", fields_RulesetModifierOption, 5, 0x68, false },  // truncated at std::variant<NoValue, float, int, FixedString, bool> ParsedValue
+    { "RulesetModifier", fields_RulesetModifier, 12, 0x88, false },
+    { "RulesetModifierOption", fields_RulesetModifierOption, 8, 0x88, false },
     { "Ruleset", fields_Ruleset, 6, 0x68, false },
-    { "RulesetValue", fields_RulesetValue, 3, 0x48, false },  // truncated at std::variant<NoValue, float, int, FixedString, bool> Value
+    { "RulesetValue", fields_RulesetValue, 4, 0x50, false },
     { "RulesetSelectionPreset", fields_RulesetSelectionPreset, 6, 0x70, false },
     { "OneTimeReward", fields_OneTimeReward, 2, 0x20, false },
     { "AnimationShortNameCategory", fields_AnimationShortNameCategory, 1, 0x1c, false },
@@ -1028,7 +1211,7 @@ const ResourceLayout g_resource_layouts[] = {
     { "PhotoModeFaceExpressionCollection", fields_PhotoModeFaceExpressionCollection, 3, 0x48, false },
     { "PhotoModeFaceExpression", fields_PhotoModeFaceExpression, 4, 0x50, false },
     { "PhotoModeSticker", fields_PhotoModeSticker, 2, 0x38, false },
-    { "PhotoModeVignette", fields_PhotoModeVignette, 1, 0x38, false },
+    { "PhotoModeVignette", fields_PhotoModeVignette, 2, 0x38, false },
 };
 
 const int g_resource_layout_count = 106;
