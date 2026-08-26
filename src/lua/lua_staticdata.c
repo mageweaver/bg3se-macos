@@ -109,21 +109,42 @@ static int lua_staticdata_getall(lua_State *L) {
 }
 
 // ============================================================================
-// Ext.StaticData.Get(type, guid)
+// Ext.StaticData.Get(guid, type)
 // ============================================================================
 
 /**
  * Get a single static data entry by GUID.
  *
- * @param type Type name string
  * @param guid GUID string (e.g., "e7ab823e-32b2-49f8-b7b3-7f9c2d4c1f5e")
+ * @param type Type name string
  * @return Entry table, or nil if not found
  */
 static int lua_staticdata_get(lua_State *L) {
-    const char* type_name = luaL_checkstring(L, 1);
-    const char* guid_str = luaL_checkstring(L, 2);
+    const char* arg1 = luaL_checkstring(L, 1);
+    const char* arg2 = luaL_checkstring(L, 2);
 
+    // Windows BG3SE is Get(guid, type) - see Ext_StaticData in
+    // upstream/BG3Extender/IdeHelpers/ExtIdeHelpers.lua:
+    //     Get fun(a1:Guid, a2:ExtResourceManagerType)
+    // This was implemented as Get(type, guid), so every mod written against the
+    // real API had its GUID read as the type name. That is why the log carried
+    // "Unknown static data type: 8c2f6e91-..." - a UUID where a type belongs -
+    // for BG3SX, 5eSpells and CommunityLibrary.
+    //
+    // Take the documented order, but fall back to the reversed one so anything
+    // that adapted to the old behaviour keeps working.
+    const char* guid_str = arg1;
+    const char* type_name = arg2;
     int type = staticdata_type_from_name(type_name);
+    if (type < 0) {
+        int swapped = staticdata_type_from_name(arg1);
+        if (swapped >= 0) {
+            type = swapped;
+            type_name = arg1;
+            guid_str = arg2;
+        }
+    }
+
     if (type < 0) {
         return luaL_error(L, "Unknown static data type: %s", type_name);
     }
