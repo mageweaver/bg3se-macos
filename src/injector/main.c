@@ -3457,8 +3457,14 @@ static void init_lua(void) {
                 // Run console commands in SERVER context so Osiris queries/DB
                 // reads match server-side game state (matches how mods run).
                 LuaContext prev = lua_context_get();
+                // Console commands can be aimed at the client state, where mods
+                // put their UI; see console_set_context.
+                LuaContext target = console_get_context() ? LUA_CONTEXT_CLIENT
+                                                          : LUA_CONTEXT_SERVER;
+                lua_State *target_L = lua_runtime_state_for(target);
+                lua_context_set(target);
+                console_poll(target_L ? target_L : poll_L);
                 lua_context_set(LUA_CONTEXT_SERVER);
-                console_poll(poll_L);
                 /*
                  * Timers run here too. They are also processed from fake_Event,
                  * but that fires on Osiris activity, so in a menu it can be

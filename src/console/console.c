@@ -654,6 +654,22 @@ static void process_line(lua_State *L, char *line, int client_slot) {
     if (line[0] == '!') {
         LOG_CONSOLE_DEBUG("! %s", line + 1);
 
+        if (strncmp(line + 1, "context", 7) == 0) {
+            const char *arg = line + 8;
+            while (*arg == ' ') arg++;
+            if (strncmp(arg, "client", 6) == 0) {
+                console_set_context(1);
+                console_printf("context: client");
+            } else if (strncmp(arg, "server", 6) == 0) {
+                console_set_context(0);
+                console_printf("context: server");
+            } else {
+                console_printf("context: %s (use !context client|server)",
+                               console_get_context() ? "client" : "server");
+            }
+            return;
+        }
+
         // Fire DoConsoleCommand event - handlers can prevent execution
         if (events_fire_do_console_command(L, line)) {
             LOG_CONSOLE_DEBUG("DoConsoleCommand prevented by handler");
@@ -746,6 +762,25 @@ static void socket_process_client(lua_State *L, int slot) {
             client_buf[(*client_len)++] = c;
         }
     }
+}
+
+
+/*
+ * Which Lua state console commands run in.
+ *
+ * Mods load their client scripts into the client VM, so a mod's UI -- MCM's
+ * window and everything under it -- cannot be seen from the server state the
+ * console defaults to. Without this, debugging any interface problem from the
+ * console means reading nil for every global the mod defined.
+ */
+static int s_console_is_client = 0;
+
+int console_get_context(void) { return s_console_is_client; }
+
+void console_set_context(int is_client) {
+    s_console_is_client = is_client ? 1 : 0;
+    LOG_CONSOLE_INFO("Console context is now %s",
+                     s_console_is_client ? "client" : "server");
 }
 
 static void socket_poll_clients(lua_State *L) {

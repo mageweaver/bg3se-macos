@@ -140,4 +140,14 @@ void console_queue_lua_command(const char *command);
  */
 bool console_execute_lua(const char *command);
 
+/**
+ * Which Lua state console commands run in.
+ *
+ * Mods load their client scripts into the client VM, so anything to do with a
+ * mod's UI -- MCM's window, its widget tree -- is invisible from the server
+ * state the console defaults to. Returns 1 for client, 0 for server.
+ */
+int console_get_context(void);
+void console_set_context(int is_client);
+
 #endif // CONSOLE_H
