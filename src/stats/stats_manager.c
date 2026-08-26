@@ -1826,6 +1826,55 @@ static int get_property_index(StatsObjectPtr obj, const char *prop) {
     return find_property_index_by_name(modifier_list, prop);
 }
 
+
+/*
+ * The declared type of one property on a stats object.
+ *
+ * Each Modifier carries an EnumerationIndex into ModifierValueLists, and that
+ * entry's name is the type: FixedString, ConstantInt, ConstantFloat and so on.
+ * Without it every property read has to guess, which is why reads used to try
+ * a string and yield nil for anything else -- numeric properties like
+ * AuraRadius came back nil, and an unset FixedString came back nil rather than
+ * the empty string mods expect.
+ */
+const char *stats_get_property_type(StatsObjectPtr obj, const char *prop) {
+    if (!obj || !prop) return NULL;
+
+    const char *type_name = stats_get_type(obj);
+    if (!type_name) return NULL;
+
+    int ml_index = find_modifier_list_by_name(type_name);
+    if (ml_index < 0) return NULL;
+
+    int prop_index = get_property_index(obj, prop);
+    if (prop_index < 0) return NULL;
+
+    void *modifier_lists = get_modifier_lists_manager();
+    if (!modifier_lists) return NULL;
+    void *ml = get_manager_element(modifier_lists, ml_index);
+    if (!ml) return NULL;
+    void *modifier_ptr = get_manager_element(ml, prop_index);
+    if (!modifier_ptr) return NULL;
+
+    int32_t enum_index = 0;
+    if (!safe_read_u32((char *)modifier_ptr + MODIFIER_OFFSET_ENUM_INDEX,
+                       (uint32_t *)&enum_index) || enum_index < 0) {
+        return NULL;
+    }
+
+    void *mvl = get_modifier_value_lists_manager();
+    if (!mvl) return NULL;
+    void *enum_entry = get_manager_element(mvl, enum_index);
+    if (!enum_entry) return NULL;
+
+    return read_fixed_string((char *)enum_entry + RPGENUM_OFFSET_NAME);
+}
+
+bool stats_has_property(StatsObjectPtr obj, const char *prop) {
+    if (!obj || !prop) return false;
+    return get_property_index(obj, prop) >= 0;
+}
+
 const char* stats_get_string(StatsObjectPtr obj, const char *prop) {
     if (!obj || !prop) return NULL;
 

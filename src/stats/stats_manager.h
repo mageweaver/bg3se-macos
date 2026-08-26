@@ -65,6 +65,16 @@ void* stats_manager_get_raw(void);
  */
 void stats_index_invalidate(void);
 
+/**
+ * Declared type of a property on a stats object ("FixedString", "ConstantInt",
+ * "ConstantFloat", an enumeration name, ...). NULL if the property is absent or
+ * the type cannot be resolved.
+ */
+const char *stats_get_property_type(StatsObjectPtr obj, const char *prop);
+
+/** True if the object's modifier list declares this property at all. */
+bool stats_has_property(StatsObjectPtr obj, const char *prop);
+
 // ============================================================================
 // Stat Object Access
 // ============================================================================

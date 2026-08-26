@@ -189,14 +189,41 @@ static int lua_stats_object_index(lua_State *L) {
         return 1;
     }
 
-    // Try to get as a stat property
+    // Fall back to a declared property, using its type rather than assuming a
+    // string. Reading everything as a string meant numeric properties came back
+    // nil, and an unset FixedString came back nil rather than "" -- EasyCheat
+    // does string.gsub(stat.Icon, ...) and Ext.Loca.GetTranslatedString(
+    // stat.DisplayName), both of which need a string in hand.
+    const char *type = stats_get_property_type(ud->obj, key);
+    if (type) {
+        if (strcmp(type, "ConstantInt") == 0 || strcmp(type, "Int") == 0) {
+            int64_t v = 0;
+            if (stats_get_int(ud->obj, key, &v)) {
+                lua_pushinteger(L, (lua_Integer)v);
+                return 1;
+            }
+        } else if (strcmp(type, "ConstantFloat") == 0 || strcmp(type, "Float") == 0) {
+            float f = 0.0f;
+            if (stats_get_float(ud->obj, key, &f)) {
+                lua_pushnumber(L, f);
+                return 1;
+            }
+        }
+    }
+
     const char *str_val = stats_get_string(ud->obj, key);
     if (str_val) {
         lua_pushstring(L, str_val);
         return 1;
     }
 
-    // Property not found
+    // Declared but empty: an unset FixedString is "", not absent. Only a
+    // genuinely unknown key is nil.
+    if (stats_has_property(ud->obj, key)) {
+        lua_pushstring(L, "");
+        return 1;
+    }
+
     lua_pushnil(L);
     return 1;
 }
