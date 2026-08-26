@@ -17,15 +17,21 @@
 // Maximum pending messages in queue
 #define MAX_PENDING_MESSAGES 1024
 
-// Maximum message payload size.
+// Maximum message payload size for the in-process bus.
 //
 // The payload is heap-allocated (see NetMessage.payload), so this is purely a
-// sanity limit and costs nothing in the queue. 64KB was well under the wire
-// protocol's own MAX_EXTENDER_PAYLOAD (~1MB, which matches Windows), and MCM's
-// config payload for a 744-mod profile is 73,806 bytes - so the request was
-// rejected here and MCM never received its settings. Match the protocol limit
-// rather than sitting arbitrarily below it.
-#define MAX_MESSAGE_PAYLOAD 0xFFFFF
+// sanity limit and costs nothing in the queue. It has now been outgrown twice
+// by the same mod: 64KB rejected MCM's 73,806-byte config for a 744-mod
+// profile, and matching the wire limit rejected a 1,344,150-byte one.
+//
+// This is deliberately no longer tied to MAX_EXTENDER_PAYLOAD. That limit is
+// the wire protocol's and matches Windows, so it has to stay where it is;
+// extender_message.c enforces it on every send and receive. But a message
+// delivered in-process never touches the wire, and refusing it here only
+// prevented single-player mods from talking to themselves. Oversized messages
+// still cannot leave the machine -- they are rejected at the wire, where the
+// constraint actually is.
+#define MAX_MESSAGE_PAYLOAD (16 * 1024 * 1024)
 
 // Message destination types
 typedef enum {

@@ -674,6 +674,48 @@ static bool array_read_header(const ResourceArrayUD *ud, void **out_buf,
  * buffer is not freed, for the same reason growth does not free it: we do not
  * resolve the game's matching deallocator.
  */
+
+/*
+ * Write one struct element in place, from either a table or a proxy.
+ *
+ * Shared by whole-array assignment and by arr[i] = element, which merging uses
+ * to replace a single entry.
+ */
+static int write_struct_element(lua_State *L, void *slot, const ResourceLayout *layout,
+                                size_t esize, int value_index) {
+    if (!layout) {
+        return luaL_error(L, "this array's elements have no known layout");
+    }
+
+    ResourceObjectUD *src = (ResourceObjectUD *)luaL_testudata(L, value_index,
+                                                               RESOURCE_OBJECT_MT);
+    if (src) {
+        if (src->layout != layout
+            && (src->layout->size != layout->size
+                || strcmp(src->layout->type_name, layout->type_name) != 0)) {
+            return luaL_error(L, "expected a %s, got a %s",
+                              layout->type_name, src->layout->type_name);
+        }
+        copy_struct_element(slot, src->obj, layout, esize);
+        return 0;
+    }
+
+    if (!lua_istable(L, value_index)) {
+        return luaL_error(L, "expected a table or a %s", layout->type_name);
+    }
+
+    memset(slot, 0, esize);
+    for (int f = 0; f < layout->field_count; f++) {
+        const ResourceField *sub = &layout->fields[f];
+        lua_getfield(L, value_index, sub->name);
+        if (!lua_isnil(L, -1)) {
+            write_field(L, slot, sub, lua_gettop(L));
+        }
+        lua_pop(L, 1);
+    }
+    return 0;
+}
+
 static int write_array_from_table(lua_State *L, void *addr, const ResourceField *field,
                                   int value_index) {
     size_t esize = (field->kind == RF_ARRAY_STRUCT)
@@ -744,41 +786,10 @@ static int write_array_from_table(lua_State *L, void *addr, const ResourceField 
         int elem_index = lua_gettop(L);
 
         if (field->kind == RF_ARRAY_STRUCT) {
-            // Merging two lists means the elements are usually proxies read out
-            // of another resource, not freshly built tables. Copy those
-            // wholesale: it preserves fields the layout does not model, which
-            // rebuilding field by field would silently drop.
-            ResourceObjectUD *elem_src = (ResourceObjectUD *)luaL_testudata(L, elem_index,
-                                                                            RESOURCE_OBJECT_MT);
-            if (elem_src) {
-                if (elem_src->layout != field->elem
-                    && (elem_src->layout->size != field->elem->size
-                        || strcmp(elem_src->layout->type_name,
-                                  field->elem->type_name) != 0)) {
-                    lua_pop(L, 1);
-                    return luaL_error(L, "element %d of '%s' is a %s, not a %s",
-                                      (int)(i + 1), field->name,
-                                      elem_src->layout->type_name, field->elem->type_name);
-                }
-                copy_struct_element(slot, elem_src->obj, field->elem, esize);
+            int rc = write_struct_element(L, slot, field->elem, esize, elem_index);
+            if (rc != 0) {
                 lua_pop(L, 1);
-                continue;
-            }
-
-            // Otherwise it is written field by field from a table; keys it does
-            // not mention keep the zeroed value.
-            if (!lua_istable(L, elem_index)) {
-                lua_pop(L, 1);
-                return luaL_error(L, "element %d of '%s' must be a table or a %s",
-                                  (int)(i + 1), field->name, field->elem->type_name);
-            }
-            for (int f = 0; f < field->elem->field_count; f++) {
-                const ResourceField *sub = &field->elem->fields[f];
-                lua_getfield(L, elem_index, sub->name);
-                if (!lua_isnil(L, -1)) {
-                    write_field(L, slot, sub, lua_gettop(L));
-                }
-                lua_pop(L, 1);
+                return rc;
             }
         } else {
             write_element(L, slot, field->kind, elem_index);
@@ -1250,14 +1261,21 @@ static int resource_array_newindex(lua_State *L) {
         if (!array_read_header(ud, &buf, &cap, &size)) {
             return luaL_error(L, "array became unreadable while growing");
         }
-        int rc = write_element(L, (uint8_t *)buf + (size_t)size * esize, ud->kind, 3);
+        void *slot = (uint8_t *)buf + (size_t)size * esize;
+        int rc = (ud->kind == RF_ARRAY_STRUCT)
+               ? write_struct_element(L, slot, ud->elem, esize, 3)
+               : write_element(L, slot, ud->kind, 3);
         if (rc == 0) {
             *(uint32_t *)(p + ARRAY_SIZE_OFFSET) = size + 1;
         }
         return 0;
     }
 
-    return write_element(L, (uint8_t *)buf + (size_t)(i - 1) * esize, ud->kind, 3);
+    void *slot = (uint8_t *)buf + (size_t)(i - 1) * esize;
+    if (ud->kind == RF_ARRAY_STRUCT) {
+        return write_struct_element(L, slot, ud->elem, esize, 3);
+    }
+    return write_element(L, slot, ud->kind, 3);
 }
 
 static int resource_array_next(lua_State *L) {
