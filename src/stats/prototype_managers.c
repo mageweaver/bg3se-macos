@@ -17,6 +17,7 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <mach/mach.h>
+#include <mach/mach_vm.h>
 
 // ============================================================================
 // Ghidra-Discovered Offsets (Dec 2025)
@@ -75,32 +76,25 @@
 // Memory Safety Helpers
 // ============================================================================
 
+/* Non-allocating reads; see the note in stats_manager.c on why not vm_read. */
+static bool safe_read_into(void *addr, void *out, size_t len) {
+    if (!addr || !out) return false;
+
+    mach_vm_size_t got = 0;
+    kern_return_t kr = mach_vm_read_overwrite(mach_task_self(),
+                                              (mach_vm_address_t)addr,
+                                              (mach_vm_size_t)len,
+                                              (mach_vm_address_t)out,
+                                              &got);
+    return kr == KERN_SUCCESS && got == (mach_vm_size_t)len;
+}
+
 static bool safe_read_ptr(void *addr, void **out_value) {
-    if (!addr || !out_value) return false;
-
-    vm_size_t size = sizeof(void*);
-    vm_offset_t data;
-    kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)addr,
-                               size, &data, (mach_msg_type_number_t*)&size);
-    if (kr != KERN_SUCCESS) return false;
-
-    *out_value = *(void**)data;
-    vm_deallocate(mach_task_self(), data, size);
-    return true;
+    return safe_read_into(addr, out_value, sizeof(void *));
 }
 
 static bool safe_read_u32(void *addr, uint32_t *out_value) {
-    if (!addr || !out_value) return false;
-
-    vm_size_t size = sizeof(uint32_t);
-    vm_offset_t data;
-    kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)addr,
-                               size, &data, (mach_msg_type_number_t*)&size);
-    if (kr != KERN_SUCCESS) return false;
-
-    *out_value = *(uint32_t*)data;
-    vm_deallocate(mach_task_self(), data, size);
-    return true;
+    return safe_read_into(addr, out_value, sizeof(uint32_t));
 }
 
 static bool safe_read_i32(void *addr, int32_t *out_value) {

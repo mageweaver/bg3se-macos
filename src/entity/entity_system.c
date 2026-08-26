@@ -35,6 +35,7 @@ static int lua_entity_debug_replication_system(struct lua_State *L);
 #include <mach-o/loader.h>
 #include <mach-o/getsect.h>
 #include <mach/mach.h>
+#include <mach/mach_vm.h>
 #include <sys/mman.h>
 
 // Include Dobby for inline hooking (suppress third-party warnings)
@@ -263,19 +264,18 @@ static bool is_valid_pointer(void *ptr) {
     if (addr < 0x100000000ULL) return false;  // Too low
     if (addr > 0x800000000000ULL) return false;  // Too high (beyond typical user space)
 
-    // Try to read from the address to verify it's accessible
-    // Use vm_read to safely check without crashing
-    vm_size_t data_size = sizeof(void*);
-    vm_offset_t data;
-    mach_port_t task = mach_task_self();
-    kern_return_t kr = vm_read(task, (vm_address_t)addr, data_size, &data, (mach_msg_type_number_t*)&data_size);
-
-    if (kr == KERN_SUCCESS) {
-        vm_deallocate(task, data, data_size);
-        return true;
-    }
-
-    return false;
+    // Probe the address to confirm it is mapped. mach_vm_read_overwrite copies
+    // into our own slot; vm_read would allocate a VM region per probe and need
+    // a matching deallocate, which is far too expensive for a validity check
+    // on a hot path (see the note in stats_manager.c).
+    void *probe = NULL;
+    mach_vm_size_t got = 0;
+    kern_return_t kr = mach_vm_read_overwrite(mach_task_self(),
+                                              (mach_vm_address_t)addr,
+                                              (mach_vm_size_t)sizeof(probe),
+                                              (mach_vm_address_t)&probe,
+                                              &got);
+    return kr == KERN_SUCCESS && got == sizeof(probe);
 }
 
 // Helper: Get the main binary's __DATA segment bounds

@@ -25,67 +25,49 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <mach/mach.h>
+#include <mach/mach_vm.h>
 #include <mach-o/dyld.h>
 
 // ============================================================================
 // Memory Safety
 // ============================================================================
 
-// Safely read memory using mach_vm_read (won't crash on bad addresses)
+/*
+ * Safe reads that do not allocate.
+ *
+ * These used vm_read, which returns the result in a freshly allocated VM
+ * region that then has to be vm_deallocate'd: two syscalls and a VM map edit
+ * for every four bytes. That is invisible until something reads in bulk --
+ * a profile of EasyCheat walking every stat entry sat almost entirely in
+ * mach_vm_deallocate underneath get_manager_element, and loading never
+ * finished. mach_vm_read_overwrite copies into the caller's own slot instead.
+ */
+static bool safe_read_into(void *addr, void *out, size_t len) {
+    if (!addr || !out) return false;
+
+    mach_vm_size_t got = 0;
+    kern_return_t kr = mach_vm_read_overwrite(mach_task_self(),
+                                              (mach_vm_address_t)addr,
+                                              (mach_vm_size_t)len,
+                                              (mach_vm_address_t)out,
+                                              &got);
+    return kr == KERN_SUCCESS && got == (mach_vm_size_t)len;
+}
+
 static bool safe_read_ptr(void *addr, void **out_value) {
-    if (!addr || !out_value) return false;
-
-    vm_size_t size = sizeof(void*);
-    vm_offset_t data;
-    kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)addr,
-                               size, &data, (mach_msg_type_number_t*)&size);
-    if (kr != KERN_SUCCESS) return false;
-
-    *out_value = *(void**)data;
-    vm_deallocate(mach_task_self(), data, size);
-    return true;
+    return safe_read_into(addr, out_value, sizeof(void *));
 }
 
 static bool safe_read_u8(void *addr, uint8_t *out_value) {
-    if (!addr || !out_value) return false;
-
-    vm_size_t size = sizeof(uint8_t);
-    vm_offset_t data;
-    kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)addr,
-                               size, &data, (mach_msg_type_number_t*)&size);
-    if (kr != KERN_SUCCESS) return false;
-
-    *out_value = *(uint8_t*)data;
-    vm_deallocate(mach_task_self(), data, size);
-    return true;
+    return safe_read_into(addr, out_value, sizeof(uint8_t));
 }
 
 static bool safe_read_u32(void *addr, uint32_t *out_value) {
-    if (!addr || !out_value) return false;
-
-    vm_size_t size = sizeof(uint32_t);
-    vm_offset_t data;
-    kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)addr,
-                               size, &data, (mach_msg_type_number_t*)&size);
-    if (kr != KERN_SUCCESS) return false;
-
-    *out_value = *(uint32_t*)data;
-    vm_deallocate(mach_task_self(), data, size);
-    return true;
+    return safe_read_into(addr, out_value, sizeof(uint32_t));
 }
 
 static bool safe_read_i32(void *addr, int32_t *out_value) {
-    if (!addr || !out_value) return false;
-
-    vm_size_t size = sizeof(int32_t);
-    vm_offset_t data;
-    kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)addr,
-                               size, &data, (mach_msg_type_number_t*)&size);
-    if (kr != KERN_SUCCESS) return false;
-
-    *out_value = *(int32_t*)data;
-    vm_deallocate(mach_task_self(), data, size);
-    return true;
+    return safe_read_into(addr, out_value, sizeof(int32_t));
 }
 
 static bool safe_write_i32(void *addr, int32_t value) {
@@ -1383,6 +1365,96 @@ bool stats_get_treasure_category_item_info(
 // Stat Object Access
 // ============================================================================
 
+
+// ============================================================================
+// Name index
+// ============================================================================
+//
+// stats_get used to scan every object in the Objects manager comparing names.
+// One lookup is tolerable; a mod that walks the stat list and looks up each
+// entry turns it into O(N^2), and with a large mod profile that is not slow but
+// unbounded -- EasyCheat's stat managers hung loading indefinitely, with the
+// whole profile inside this scan.
+//
+// The names are FixedStrings resolved to pointers that stay valid, so an index
+// can hold them directly. It is rebuilt whenever the manager's element count
+// changes, which covers stats being reloaded or added.
+
+typedef struct {
+    const char *name;   // interned; stable for the life of the process
+    void *object;
+} StatsIndexSlot;
+
+static StatsIndexSlot *g_StatsIndex = NULL;
+static uint32_t g_StatsIndexMask = 0;      // capacity - 1, capacity a power of two
+static int g_StatsIndexBuiltFor = -1;      // manager count the index was built from
+
+static uint32_t stats_name_hash(const char *s) {
+    uint32_t h = 2166136261u;               // FNV-1a
+    for (; *s; s++) {
+        h ^= (unsigned char)*s;
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static void stats_index_insert(const char *name, void *object) {
+    uint32_t i = stats_name_hash(name) & g_StatsIndexMask;
+    for (;;) {
+        if (!g_StatsIndex[i].name) {
+            g_StatsIndex[i].name = name;
+            g_StatsIndex[i].object = object;
+            return;
+        }
+        // First definition wins, matching the old scan, which returned the
+        // first match it walked past.
+        if (strcmp(g_StatsIndex[i].name, name) == 0) return;
+        i = (i + 1) & g_StatsIndexMask;
+    }
+}
+
+/** Build (or rebuild) the index. Returns false if it could not be built. */
+static bool stats_index_build(void *objects, int count) {
+    uint32_t capacity = 64;
+    while (capacity < (uint32_t)count * 2u) capacity <<= 1;
+
+    StatsIndexSlot *fresh = (StatsIndexSlot *)calloc(capacity, sizeof(StatsIndexSlot));
+    if (!fresh) return false;
+
+    free(g_StatsIndex);
+    g_StatsIndex = fresh;
+    g_StatsIndexMask = capacity - 1;
+
+    int indexed = 0;
+    for (int i = 0; i < count; i++) {
+        void *obj = get_manager_element(objects, i);
+        if (!obj) continue;
+        const char *name = read_fixed_string((char *)obj + OBJECT_OFFSET_NAME);
+        if (!name || !*name) continue;
+        stats_index_insert(name, obj);
+        indexed++;
+    }
+
+    g_StatsIndexBuiltFor = count;
+    LOG_STATS_INFO("Stats name index built: %d of %d objects, %u slots",
+                   indexed, count, capacity);
+    return true;
+}
+
+static void *stats_index_lookup(const char *name) {
+    if (!g_StatsIndex) return NULL;
+    uint32_t i = stats_name_hash(name) & g_StatsIndexMask;
+    for (;;) {
+        if (!g_StatsIndex[i].name) return NULL;
+        if (strcmp(g_StatsIndex[i].name, name) == 0) return g_StatsIndex[i].object;
+        i = (i + 1) & g_StatsIndexMask;
+    }
+}
+
+void stats_index_invalidate(void) {
+    g_StatsIndexBuiltFor = -1;
+}
+
 StatsObjectPtr stats_get(const char *name) {
     if (!name) {
         return NULL;
@@ -1405,23 +1477,30 @@ StatsObjectPtr stats_get(const char *name) {
         return NULL;
     }
 
-    // Linear search through all objects (inefficient but safe for now)
-    // TODO: Implement hash table lookup for performance
     int count = get_manager_count(objects);
     if (count <= 0) {
         LOG_STATS_DEBUG("No stats objects found (count: %d)", count);
         return NULL;
     }
 
-    for (int i = 0; i < count; i++) {
-        void *obj = get_manager_element(objects, i);
-        if (!obj) continue;
+    // Rebuild when the manager has changed size -- stats reloaded, or new ones
+    // added since the index was built.
+    if (count != g_StatsIndexBuiltFor && !stats_index_build(objects, count)) {
+        return NULL;
+    }
 
-        // Read object name (FixedString at offset)
-        const char *obj_name = read_fixed_string((char*)obj + OBJECT_OFFSET_NAME);
-        if (obj_name && strcmp(obj_name, name) == 0) {
-            return obj;
-        }
+    void *found = stats_index_lookup(name);
+    if (found) {
+        // Confirm the hit still names what we indexed. A reload that happens to
+        // land on the same element count would otherwise leave stale pointers
+        // behind, and this is two reads against thousands for the old scan.
+        const char *actual = read_fixed_string((char *)found + OBJECT_OFFSET_NAME);
+        if (actual && strcmp(actual, name) == 0) return found;
+
+        LOG_STATS_DEBUG("Stats index stale for '%s'; rebuilding", name);
+        if (!stats_index_build(objects, count)) return NULL;
+        found = stats_index_lookup(name);
+        if (found) return found;
     }
 
     return NULL;

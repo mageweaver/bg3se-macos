@@ -56,6 +56,15 @@ bool stats_manager_ready(void);
  */
 void* stats_manager_get_raw(void);
 
+/**
+ * Drop the stat name index so the next lookup rebuilds it.
+ *
+ * Lookups already rebuild when the Objects manager changes size and re-check
+ * that a hit still carries the name it was indexed under, so this is only
+ * needed to force the issue.
+ */
+void stats_index_invalidate(void);
+
 // ============================================================================
 // Stat Object Access
 // ============================================================================
