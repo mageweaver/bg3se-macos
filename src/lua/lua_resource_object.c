@@ -480,6 +480,100 @@ static int rebuild_fixedstring_hashset(lua_State *L, void *addr, int value_index
     return 0;
 }
 
+
+static int write_field(lua_State *L, void *obj, const ResourceField *field, int value_index);
+static int write_element(lua_State *L, void *elem, ResourceFieldKind kind, int value_index);
+
+/*
+ * Replace a whole Array<T> from a Lua table.
+ *
+ * Refusing this and telling callers to assign elements one at a time was wrong:
+ * building a new list and assigning it is how mods actually work with these
+ * fields. DoubleSubclass merges subclass progressions by composing a fresh
+ * table per field and writing it back, and failed on every one.
+ *
+ * The elements are built into a fresh buffer before anything is published, so a
+ * bad entry leaves the field untouched rather than half-rewritten. The old
+ * buffer is not freed, for the same reason growth does not free it: we do not
+ * resolve the game's matching deallocator.
+ */
+static int write_array_from_table(lua_State *L, void *addr, const ResourceField *field,
+                                  int value_index) {
+    luaL_checktype(L, value_index, LUA_TTABLE);
+
+    lua_Integer count = (lua_Integer)lua_rawlen(L, value_index);
+    if (count < 0) count = 0;
+
+    size_t esize = (field->kind == RF_ARRAY_STRUCT)
+                 ? field->elem_size
+                 : array_element_size(field->kind);
+    if (esize == 0) {
+        return luaL_error(L, "field '%s' holds elements we cannot write", field->name);
+    }
+    if (field->kind == RF_ARRAY_STRUCT && !field->elem) {
+        return luaL_error(L, "field '%s' holds elements with no known layout", field->name);
+    }
+
+    void *buf = NULL;
+    if (count > 0) {
+        buf = resource_game_alloc((size_t)count * esize);
+        if (!buf) return luaL_error(L, "could not allocate for field '%s'", field->name);
+        memset(buf, 0, (size_t)count * esize);
+    }
+
+    for (lua_Integer i = 0; i < count; i++) {
+        void *slot = (uint8_t *)buf + (size_t)i * esize;
+        lua_rawgeti(L, value_index, i + 1);
+        int elem_index = lua_gettop(L);
+
+        if (field->kind == RF_ARRAY_STRUCT) {
+            // Merging two lists means the elements are usually proxies read out
+            // of another resource, not freshly built tables. Copy those
+            // wholesale: it preserves fields the layout does not model, which
+            // rebuilding field by field would silently drop.
+            ResourceObjectUD *src = (ResourceObjectUD *)luaL_testudata(L, elem_index,
+                                                                       RESOURCE_OBJECT_MT);
+            if (src) {
+                if (src->layout != field->elem) {
+                    lua_pop(L, 1);
+                    return luaL_error(L, "element %d of '%s' is a %s, not a %s",
+                                      (int)(i + 1), field->name,
+                                      src->layout->type_name, field->elem->type_name);
+                }
+                memcpy(slot, src->obj, esize);
+                lua_pop(L, 1);
+                continue;
+            }
+
+            // Otherwise it is written field by field from a table; keys it does
+            // not mention keep the zeroed value.
+            if (!lua_istable(L, elem_index)) {
+                lua_pop(L, 1);
+                return luaL_error(L, "element %d of '%s' must be a table or a %s",
+                                  (int)(i + 1), field->name, field->elem->type_name);
+            }
+            for (int f = 0; f < field->elem->field_count; f++) {
+                const ResourceField *sub = &field->elem->fields[f];
+                lua_getfield(L, elem_index, sub->name);
+                if (!lua_isnil(L, -1)) {
+                    write_field(L, slot, sub, lua_gettop(L));
+                }
+                lua_pop(L, 1);
+            }
+        } else {
+            write_element(L, slot, field->kind, elem_index);
+        }
+        lua_pop(L, 1);
+    }
+
+    // Publish only once every element is in place.
+    uint8_t *p = (uint8_t *)addr;
+    *(void **)(p + ARRAY_BUF_OFFSET) = buf;
+    *(uint32_t *)(p + ARRAY_CAPACITY_OFFSET) = (uint32_t)count;
+    *(uint32_t *)(p + ARRAY_SIZE_OFFSET) = (uint32_t)count;
+    return 0;
+}
+
 static int write_field(lua_State *L, void *obj, const ResourceField *field, int value_index) {
     void *addr = (uint8_t *)obj + field->offset;
 
@@ -584,8 +678,7 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
 
         default:
             if (resource_field_is_array(field->kind)) {
-                return luaL_error(L, "assign to the elements of '%s' rather than "
-                                     "replacing the array", field->name);
+                return write_array_from_table(L, addr, field, value_index);
             }
             return luaL_error(L, "field '%s' is not writable", field->name);
     }
