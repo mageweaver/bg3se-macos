@@ -65,6 +65,28 @@ void* stats_manager_get_raw(void);
  */
 void stats_index_invalidate(void);
 
+/** How a stats property should be read. */
+typedef enum {
+    STAT_PROP_UNKNOWN = 0,
+    STAT_PROP_STRING,
+    STAT_PROP_INT,
+    STAT_PROP_FLOAT,
+} StatPropKind;
+
+/**
+ * Resolve a property's index within its object's modifier list and the kind it
+ * should be read as. Cached, since modifier lists do not change once stats are
+ * loaded. False if the object does not declare the property.
+ */
+bool stats_get_property_info(StatsObjectPtr obj, const char *prop,
+                             int *out_index, StatPropKind *out_kind);
+
+/** Read a property by the index stats_get_property_info returned. */
+int32_t stats_get_property_by_index(StatsObjectPtr obj, int prop_index);
+
+/** Resolve a RPGStats.FixedStrings pool index to its string, or NULL. */
+const char *stats_resolve_pool_string(int32_t pool_index);
+
 /**
  * Declared type of a property on a stats object ("FixedString", "ConstantInt",
  * "ConstantFloat", an enumeration name, ...). NULL if the property is absent or

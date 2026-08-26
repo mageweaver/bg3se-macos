@@ -1827,6 +1827,109 @@ static int get_property_index(StatsObjectPtr obj, const char *prop) {
 }
 
 
+
+/*
+ * Property lookup cache.
+ *
+ * Resolving a property means finding the object's modifier list, scanning it
+ * for the name, and then reading the modifier's enumeration to learn the type.
+ * Doing that per access was survivable while reads only ever tried a string;
+ * once reads became type-aware they did the whole thing twice, and a mod
+ * walking every stat turned it into the dominant cost in the process -- the
+ * console could not even get the Lua gate.
+ *
+ * Modifier lists do not change once stats are loaded, and every object of a
+ * type shares one, so (list, name) -> (index, type) is stable and small.
+ * Direct-mapped: a collision just re-resolves and overwrites.
+ */
+#define PROP_CACHE_BITS 13
+#define PROP_CACHE_SIZE (1u << PROP_CACHE_BITS)
+
+typedef struct {
+    void *modifier_list;
+    char *prop;              /* owned copy; the caller's string is Lua's */
+    int index;
+    StatPropKind kind;
+} PropCacheSlot;
+
+static PropCacheSlot g_PropCache[PROP_CACHE_SIZE];
+
+static uint32_t prop_cache_hash(const void *ml, const char *prop) {
+    uint32_t h = (uint32_t)((uintptr_t)ml >> 4) * 2654435761u;
+    for (; *prop; prop++) {
+        h ^= (unsigned char)*prop;
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static StatPropKind kind_from_type_name(const char *type_name) {
+    if (!type_name) return STAT_PROP_UNKNOWN;
+    if (strcmp(type_name, "ConstantInt") == 0 || strcmp(type_name, "Int") == 0) {
+        return STAT_PROP_INT;
+    }
+    if (strcmp(type_name, "ConstantFloat") == 0 || strcmp(type_name, "Float") == 0) {
+        return STAT_PROP_FLOAT;
+    }
+    return STAT_PROP_STRING;
+}
+
+int32_t stats_get_property_by_index(StatsObjectPtr obj, int prop_index) {
+    return stats_get_property_raw(obj, prop_index);
+}
+
+const char *stats_resolve_pool_string(int32_t pool_index) {
+    return get_rpgstats_fixedstring(pool_index);
+}
+
+/** Resolve a property's index and declared kind, caching the result. */
+bool stats_get_property_info(StatsObjectPtr obj, const char *prop,
+                             int *out_index, StatPropKind *out_kind) {
+    if (!obj || !prop) return false;
+
+    void *modifier_list = get_object_modifier_list(obj);
+    if (!modifier_list) return false;
+
+    PropCacheSlot *slot = &g_PropCache[prop_cache_hash(modifier_list, prop) & (PROP_CACHE_SIZE - 1)];
+    if (slot->modifier_list == modifier_list && slot->prop && strcmp(slot->prop, prop) == 0) {
+        if (slot->index < 0) return false;
+        *out_index = slot->index;
+        *out_kind = slot->kind;
+        return true;
+    }
+
+    int index = find_property_index_by_name(modifier_list, prop);
+    StatPropKind kind = STAT_PROP_UNKNOWN;
+
+    if (index >= 0) {
+        /* The modifier list is the CNamedElementManager of Modifiers itself. */
+        void *modifier_ptr = get_manager_element(modifier_list, index);
+        if (modifier_ptr) {
+            int32_t enum_index = 0;
+            if (safe_read_u32((char *)modifier_ptr + MODIFIER_OFFSET_ENUM_INDEX,
+                              (uint32_t *)&enum_index) && enum_index >= 0) {
+                void *mvl = get_modifier_value_lists_manager();
+                void *enum_entry = mvl ? get_manager_element(mvl, enum_index) : NULL;
+                if (enum_entry) {
+                    kind = kind_from_type_name(
+                        read_fixed_string((char *)enum_entry + RPGENUM_OFFSET_NAME));
+                }
+            }
+        }
+    }
+
+    free(slot->prop);
+    slot->prop = strdup(prop);
+    slot->modifier_list = slot->prop ? modifier_list : NULL;
+    slot->index = index;
+    slot->kind = kind;
+
+    if (index < 0) return false;
+    *out_index = index;
+    *out_kind = kind;
+    return true;
+}
+
 /*
  * The declared type of one property on a stats object.
  *

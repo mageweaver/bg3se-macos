@@ -189,38 +189,30 @@ static int lua_stats_object_index(lua_State *L) {
         return 1;
     }
 
-    // Fall back to a declared property, using its type rather than assuming a
-    // string. Reading everything as a string meant numeric properties came back
-    // nil, and an unset FixedString came back nil rather than "" -- EasyCheat
-    // does string.gsub(stat.Icon, ...) and Ext.Loca.GetTranslatedString(
-    // stat.DisplayName), both of which need a string in hand.
-    const char *type = stats_get_property_type(ud->obj, key);
-    if (type) {
-        if (strcmp(type, "ConstantInt") == 0 || strcmp(type, "Int") == 0) {
-            int64_t v = 0;
-            if (stats_get_int(ud->obj, key, &v)) {
-                lua_pushinteger(L, (lua_Integer)v);
-                return 1;
-            }
-        } else if (strcmp(type, "ConstantFloat") == 0 || strcmp(type, "Float") == 0) {
-            float f = 0.0f;
-            if (stats_get_float(ud->obj, key, &f)) {
-                lua_pushnumber(L, f);
-                return 1;
-            }
+    // Resolve the property once -- index and declared kind together -- rather
+    // than asking for the type and then reading it, which walked the modifier
+    // list twice per access and became the dominant cost under a mod that reads
+    // every stat.
+    int prop_index = 0;
+    StatPropKind prop_kind = STAT_PROP_UNKNOWN;
+    if (stats_get_property_info(ud->obj, key, &prop_index, &prop_kind)) {
+        int32_t raw = stats_get_property_by_index(ud->obj, prop_index);
+
+        if (prop_kind == STAT_PROP_INT) {
+            lua_pushinteger(L, (lua_Integer)raw);
+            return 1;
         }
-    }
+        if (prop_kind == STAT_PROP_FLOAT) {
+            float f;
+            memcpy(&f, &raw, sizeof(f));
+            lua_pushnumber(L, f);
+            return 1;
+        }
 
-    const char *str_val = stats_get_string(ud->obj, key);
-    if (str_val) {
-        lua_pushstring(L, str_val);
-        return 1;
-    }
-
-    // Declared but empty: an unset FixedString is "", not absent. Only a
-    // genuinely unknown key is nil.
-    if (stats_has_property(ud->obj, key)) {
-        lua_pushstring(L, "");
+        // String-valued, or a type we do not classify: an unset FixedString
+        // reads as "" rather than nil, which is what mods expect.
+        const char *str = (raw >= 0) ? stats_resolve_pool_string(raw) : NULL;
+        lua_pushstring(L, str ? str : "");
         return 1;
     }
 
