@@ -39,4 +39,15 @@ const StaticDataTypeEntry *staticdata_registry_find(const char *name);
  */
 void *staticdata_registry_get_manager(const StaticDataTypeEntry *entry);
 
+/**
+ * Look one resource up by GUID through the manager's own virtual
+ * GetObjectByKey(Guid const&). `guid16` is the 16 raw bytes of the GUID as the
+ * game stores them. NULL if the manager is unavailable or the GUID is absent.
+ */
+void *staticdata_registry_get_object(const StaticDataTypeEntry *entry, const void *guid16);
+
+/** As above, parsing the GUID from its string form. */
+void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
+                                                    const char *guid_str);
+
 #endif // BG3SE_STATICDATA_REGISTRY_H

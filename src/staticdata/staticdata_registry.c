@@ -9,6 +9,7 @@
 #include "../core/safe_memory.h"
 
 #include <string.h>
+#include <stdio.h>
 
 // ls::ImmutableDataHeadmaster::m_ptr — the singleton (build 4.1.1.7398727).
 #define HEADMASTER_PTR_OFFSET   0x08ac13c8
@@ -113,4 +114,64 @@ void *staticdata_registry_get_manager(const StaticDataTypeEntry *entry) {
     }
 
     return NULL;
+}
+
+// ls::ModdableFilesLoader<ls::Guid, T>::GetObjectByKey(Guid const&) const.
+//
+// Vtable slot 6 (+0x30). Slot order from GuidResourceBankBase in
+// upstream/BG3Extender/GameDefinitions/GuidResources.h, remembering the virtual
+// destructor occupies TWO slots under the Itanium ABI:
+//
+//   0,1 ~dtor   2 LoadModuleObjects   3 LEGACY_LoadModuleObjects
+//   4 Clear     5 PostInit            6 GetObjectByKey
+//
+// Verified live rather than counted on faith: for the Background manager, slot 2
+// and slot 6 matched the runtime addresses of LoadModuleObjects and
+// GetObjectByKey exactly.
+#define BANK_VT_GET_OBJECT_BY_KEY   0x30
+
+typedef void *(*GetObjectByKeyFunc)(void *self, const void *guid);
+
+void *staticdata_registry_get_object(const StaticDataTypeEntry *entry, const void *guid16) {
+    if (!entry || !guid16) return NULL;
+
+    void *mgr = staticdata_registry_get_manager(entry);
+    if (!mgr) return NULL;
+
+    void *vtable = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)mgr, &vtable) || !vtable) {
+        return NULL;
+    }
+
+    void *fn = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)vtable + BANK_VT_GET_OBJECT_BY_KEY, &fn)
+        || !fn) {
+        return NULL;
+    }
+
+    return ((GetObjectByKeyFunc)fn)(mgr, guid16);
+}
+
+void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
+                                                    const char *guid_str) {
+    if (!entry || !guid_str) return NULL;
+
+    // Same field order the existing lookups compare against game memory, so the
+    // 16 bytes land in the layout ls::Guid uses.
+    unsigned int d[11];
+    if (sscanf(guid_str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
+               &d[0], &d[1], &d[2], &d[3], &d[4], &d[5],
+               &d[6], &d[7], &d[8], &d[9], &d[10]) != 11) {
+        return NULL;
+    }
+
+    uint8_t guid[16];
+    uint32_t p1 = (uint32_t)d[0];
+    uint16_t p2 = (uint16_t)d[1], p3 = (uint16_t)d[2];
+    memcpy(guid + 0, &p1, 4);
+    memcpy(guid + 4, &p2, 2);
+    memcpy(guid + 6, &p3, 2);
+    for (int i = 0; i < 8; i++) guid[8 + i] = (uint8_t)d[3 + i];
+
+    return staticdata_registry_get_object(entry, guid);
 }

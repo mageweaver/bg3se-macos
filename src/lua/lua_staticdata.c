@@ -177,6 +177,27 @@ static int lua_staticdata_get(lua_State *L) {
         }
     }
 
+    // Fall back to the generic headmaster path for anything the nine
+    // hand-hooked managers do not cover. Three of the four types mods currently
+    // need have no Get<T> accessor symbol at all, so they can only be reached
+    // this way.
+    if (type < 0) {
+        const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
+        if (!entry) {
+            entry = staticdata_registry_find(arg1);
+            if (entry) { guid_str = arg2; }
+        }
+        if (entry) {
+            void *obj = staticdata_registry_get_object_by_guid_string(entry, guid_str);
+            if (!obj) {
+                lua_pushnil(L);
+                return 1;
+            }
+            lua_pushlightuserdata(L, obj);
+            return 1;
+        }
+    }
+
     if (type < 0) {
         return luaL_error(L, "Unknown static data type: %s", type_name);
     }
