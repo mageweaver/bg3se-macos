@@ -1137,12 +1137,35 @@ const char* staticdata_type_name(StaticDataType type) {
     return s_type_names[type];
 }
 
+// Canonical names from upstream/BG3Extender/GameDefinitions/GuidResources.h that
+// differ from the short names in s_type_names. Mods use the canonical ones:
+// DoubleSubclass and SubclassCompatibilityFramework both ask for
+// "ClassDescription" and got "Unknown static data type" purely over the name,
+// even though STATICDATA_CLASS is exactly eoc::ClassDescriptions.
+static const struct {
+    const char *alias;
+    int type;
+} s_type_aliases[] = {
+    { "ClassDescription",  STATICDATA_CLASS },
+    // Only add an alias when the two names denote the SAME manager. Progression
+    // and ProgressionDescription are separate resource types upstream, and ours
+    // is eoc::ProgressionManager, so ProgressionDescription is genuinely absent
+    // rather than misnamed - aliasing it would answer with the wrong data.
+    { NULL, 0 }
+};
+
 int staticdata_type_from_name(const char* name) {
     if (!name) return -1;
 
     for (int i = 0; i < STATICDATA_COUNT; i++) {
         if (strcasecmp(s_type_names[i], name) == 0) {
             return i;
+        }
+    }
+
+    for (int i = 0; s_type_aliases[i].alias; i++) {
+        if (strcasecmp(s_type_aliases[i].alias, name) == 0) {
+            return s_type_aliases[i].type;
         }
     }
 
