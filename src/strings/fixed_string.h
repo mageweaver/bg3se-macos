@@ -96,6 +96,9 @@ bool fixed_string_is_valid(uint32_t index);
  */
 bool fixed_string_is_ready(void);
 
+/** Drop every memoised resolve. Only needed if the string table is rebuilt. */
+void fixed_string_cache_clear(void);
+
 /**
  * Intern a string into the GlobalStringTable and return its FixedString index.
  * This calls the game's ls::FixedString::Create() function.

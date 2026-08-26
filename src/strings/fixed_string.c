@@ -15,6 +15,8 @@
 #include "../core/version.h"
 #include "../core/offset_table.h"
 #include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <stdatomic.h>
 #include <mach-o/dyld.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -152,76 +154,40 @@ static void save_offset_cache(uintptr_t gst_offset) {
 // Safe Memory Access (pattern from stats_manager.c)
 // ============================================================================
 
-static bool safe_read_ptr(void *addr, void **out) {
+/*
+ * These used vm_read, which allocates a fresh VM buffer for the result and
+ * needs a matching vm_deallocate -- two syscalls and a VM map edit for every
+ * four bytes. fixed_string_resolve does six to eight reads per call, so a
+ * profile of a mod walking every stat entry was dominated by them.
+ * mach_vm_read_overwrite copies straight into our stack slot instead, which is
+ * what core/safe_memory.c already used.
+ */
+static bool safe_read_into(void *addr, void *out, size_t len) {
     if (!addr || !out) return false;
 
-    mach_port_t task = mach_task_self();
-    mach_msg_type_number_t bytes_read = 0;
-    vm_offset_t buffer = 0;
+    mach_vm_size_t got = 0;
+    kern_return_t kr = mach_vm_read_overwrite(mach_task_self(),
+                                              (mach_vm_address_t)addr,
+                                              (mach_vm_size_t)len,
+                                              (mach_vm_address_t)out,
+                                              &got);
+    return kr == KERN_SUCCESS && got == (mach_vm_size_t)len;
+}
 
-    kern_return_t kr = vm_read(task, (vm_address_t)addr, sizeof(void *),
-                               &buffer, &bytes_read);
-    if (kr != KERN_SUCCESS || bytes_read != sizeof(void *)) {
-        return false;
-    }
-
-    *out = *(void **)buffer;
-    vm_deallocate(task, buffer, bytes_read);
-    return true;
+static bool safe_read_ptr(void *addr, void **out) {
+    return safe_read_into(addr, out, sizeof(void *));
 }
 
 static bool safe_read_u32(void *addr, uint32_t *out) {
-    if (!addr || !out) return false;
-
-    mach_port_t task = mach_task_self();
-    mach_msg_type_number_t bytes_read = 0;
-    vm_offset_t buffer = 0;
-
-    kern_return_t kr = vm_read(task, (vm_address_t)addr, sizeof(uint32_t),
-                               &buffer, &bytes_read);
-    if (kr != KERN_SUCCESS || bytes_read != sizeof(uint32_t)) {
-        return false;
-    }
-
-    *out = *(uint32_t *)buffer;
-    vm_deallocate(task, buffer, bytes_read);
-    return true;
+    return safe_read_into(addr, out, sizeof(uint32_t));
 }
 
 static bool safe_read_u64(void *addr, uint64_t *out) {
-    if (!addr || !out) return false;
-
-    mach_port_t task = mach_task_self();
-    mach_msg_type_number_t bytes_read = 0;
-    vm_offset_t buffer = 0;
-
-    kern_return_t kr = vm_read(task, (vm_address_t)addr, sizeof(uint64_t),
-                               &buffer, &bytes_read);
-    if (kr != KERN_SUCCESS || bytes_read != sizeof(uint64_t)) {
-        return false;
-    }
-
-    *out = *(uint64_t *)buffer;
-    vm_deallocate(task, buffer, bytes_read);
-    return true;
+    return safe_read_into(addr, out, sizeof(uint64_t));
 }
 
 static bool safe_read_bytes(void *addr, void *out, size_t len) {
-    if (!addr || !out || len == 0) return false;
-
-    mach_port_t task = mach_task_self();
-    mach_msg_type_number_t bytes_read = 0;
-    vm_offset_t buffer = 0;
-
-    kern_return_t kr = vm_read(task, (vm_address_t)addr, (vm_size_t)len,
-                               &buffer, &bytes_read);
-    if (kr != KERN_SUCCESS || bytes_read != len) {
-        return false;
-    }
-
-    memcpy(out, (void *)buffer, len);
-    vm_deallocate(task, buffer, bytes_read);
-    return true;
+    return safe_read_into(addr, out, len);
 }
 
 // ============================================================================
@@ -1313,9 +1279,74 @@ static bool ensure_gst(void) {
     return try_lazy_discovery();
 }
 
+
+/*
+ * Resolve cache.
+ *
+ * A FixedString index is stable for the life of the process and the entry it
+ * points at does not move, so a resolved pointer stays valid once found. Mods
+ * that walk every stat resolve the same handful of indices over and over --
+ * a profile of one such walk sat almost entirely in here -- and each miss costs
+ * six to eight cross-checked reads.
+ *
+ * Direct-mapped: a collision simply re-resolves, so there is no eviction policy
+ * and the memory cost is fixed. Entries are published pointer-first and read
+ * back with the index re-checked afterwards, so a slot being overwritten on
+ * another thread is noticed rather than returning the previous string.
+ */
+#define FS_CACHE_BITS 16
+#define FS_CACHE_SIZE (1u << FS_CACHE_BITS)
+
+typedef struct {
+    _Atomic uint32_t index;
+    _Atomic(const char *) str;
+} FsCacheSlot;
+
+static FsCacheSlot g_FsCache[FS_CACHE_SIZE];
+
+static inline uint32_t fs_cache_slot(uint32_t index) {
+    // The index packs subtable/bucket/entry, so mix before masking.
+    uint32_t h = index * 2654435761u;
+    return (h >> 12) & (FS_CACHE_SIZE - 1);
+}
+
+static const char *fs_cache_get(uint32_t index) {
+    FsCacheSlot *slot = &g_FsCache[fs_cache_slot(index)];
+    if (atomic_load_explicit(&slot->index, memory_order_acquire) != index) {
+        return NULL;
+    }
+    const char *str = atomic_load_explicit(&slot->str, memory_order_acquire);
+    // Re-check: if the slot was taken over between the two loads, str may
+    // belong to the other index.
+    if (atomic_load_explicit(&slot->index, memory_order_acquire) != index) {
+        return NULL;
+    }
+    return str;
+}
+
+static void fs_cache_put(uint32_t index, const char *str) {
+    FsCacheSlot *slot = &g_FsCache[fs_cache_slot(index)];
+    atomic_store_explicit(&slot->index, FS_NULL_INDEX, memory_order_release);
+    atomic_store_explicit(&slot->str, str, memory_order_release);
+    atomic_store_explicit(&slot->index, index, memory_order_release);
+}
+
+void fixed_string_cache_clear(void) {
+    for (uint32_t i = 0; i < FS_CACHE_SIZE; i++) {
+        atomic_store_explicit(&g_FsCache[i].index, FS_NULL_INDEX, memory_order_relaxed);
+        atomic_store_explicit(&g_FsCache[i].str, NULL, memory_order_relaxed);
+    }
+}
+
 const char *fixed_string_resolve(uint32_t index) {
     if (index == FS_NULL_INDEX) {
         return NULL;
+    }
+
+    const char *cached = fs_cache_get(index);
+    if (cached) {
+        g_ResolvedCount++;
+        return cached;
     }
 
     // Ensure GST is resolved (retries via offset table until the game creates it)
@@ -1397,7 +1428,9 @@ const char *fixed_string_resolve(uint32_t index) {
     // String is at entry + 0x18 (after header)
     // Return pointer to string data (caller must treat as read-only)
     g_ResolvedCount++;
-    return (const char *)((char *)entry + STRING_ENTRY_HEADER_SIZE);
+    const char *resolved = (const char *)((char *)entry + STRING_ENTRY_HEADER_SIZE);
+    fs_cache_put(index, resolved);
+    return resolved;
 }
 
 // ============================================================================
