@@ -79,6 +79,32 @@ static int lua_staticdata_getall(lua_State *L) {
     const char* type_name = luaL_checkstring(L, 1);
 
     int type = staticdata_type_from_name(type_name);
+
+    // Generic headmaster path for anything the nine hand-hooked managers do not
+    // cover. Windows returns a Guid[] here, and the bank's key array is exactly
+    // that, so no per-type struct knowledge is needed.
+    if (type < 0) {
+        const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
+        if (entry) {
+            void *keys = NULL;
+            uint32_t count = 0;
+            if (!staticdata_registry_get_keys(entry, &keys, &count)) {
+                lua_newtable(L);
+                return 1;
+            }
+
+            lua_createtable(L, (int)count, 0);
+            int written = 0;
+            for (uint32_t i = 0; i < count; i++) {
+                char guid[40];
+                if (!staticdata_registry_format_key(keys, i, guid, sizeof(guid))) continue;
+                lua_pushstring(L, guid);
+                lua_rawseti(L, -2, ++written);
+            }
+            return 1;
+        }
+    }
+
     if (type < 0) {
         return luaL_error(L, "Unknown static data type: %s", type_name);
     }

@@ -175,3 +175,62 @@ void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *e
 
     return staticdata_registry_get_object(entry, guid);
 }
+
+// GuidResourceBank<T> : GuidResourceBankBase { HashMap<Guid, T> Resources; ... }
+//
+// GuidResourceBankBase is vptr(8) + two FixedStrings(8) + a
+// HashMap<Guid, Array<Guid>> ResourceGuidsByMod(0x40), so Resources starts at
+// 0x50. HashMap is HashSet plus a values array, and HashSet is
+//   StaticArray<int32> HashKeys @+0x00 (buf +0x00, size +0x08)
+//   Array<int32>       NextIds  @+0x10
+//   Array<TKey>        Keys     @+0x20 (buf +0x20, capacity +0x28, size +0x2C)
+// which is the same shape the headmaster lookup above was derived from by
+// disassembly - two independent routes to the same layout.
+//
+// Verified live: Background reports 28 keys, Race 203, Tag 1298 and
+// CharacterCreationAppearanceVisual 9044, each with hashSize > keyCount.
+#define BANK_RESOURCES_OFFSET   0x50
+#define BANK_KEYS_BUF           (BANK_RESOURCES_OFFSET + 0x20)
+#define BANK_KEYS_COUNT         (BANK_RESOURCES_OFFSET + 0x2C)
+
+// Guard against a garbage count turning into a multi-gigabyte loop.
+#define BANK_MAX_KEYS           (1u << 20)
+
+bool staticdata_registry_get_keys(const StaticDataTypeEntry *entry,
+                                  void **out_buf, uint32_t *out_count) {
+    if (!entry || !out_buf || !out_count) return false;
+
+    void *mgr = staticdata_registry_get_manager(entry);
+    if (!mgr) return false;
+
+    void *buf = NULL;
+    uint32_t count = 0;
+    if (!safe_memory_read_pointer((mach_vm_address_t)mgr + BANK_KEYS_BUF, &buf)) return false;
+    if (!safe_memory_read_u32((mach_vm_address_t)mgr + BANK_KEYS_COUNT, &count)) return false;
+    if (count > BANK_MAX_KEYS) return false;
+    if (count > 0 && !buf) return false;
+
+    *out_buf = buf;
+    *out_count = count;
+    return true;
+}
+
+bool staticdata_registry_format_key(void *keys_buf, uint32_t index, char *out, size_t out_size) {
+    if (!keys_buf || !out || out_size < 40) return false;
+
+    uint8_t g[16];
+    for (int i = 0; i < 16; i++) {
+        if (!safe_memory_read_u8((mach_vm_address_t)keys_buf + (size_t)index * 16 + i, &g[i])) {
+            return false;
+        }
+    }
+
+    uint32_t d1;
+    uint16_t d2, d3;
+    memcpy(&d1, g + 0, 4);
+    memcpy(&d2, g + 4, 2);
+    memcpy(&d3, g + 6, 2);
+    snprintf(out, out_size, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             d1, d2, d3, g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
+    return true;
+}

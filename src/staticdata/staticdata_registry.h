@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct {
     const char *name;          // as mods write it, e.g. "Tag"
@@ -49,5 +50,15 @@ void *staticdata_registry_get_object(const StaticDataTypeEntry *entry, const voi
 /** As above, parsing the GUID from its string form. */
 void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
                                                     const char *guid_str);
+
+/**
+ * Fetch the bank's key array — every GUID it holds.
+ * `out_buf` receives the Array<Guid> buffer, `out_count` its length.
+ */
+bool staticdata_registry_get_keys(const StaticDataTypeEntry *entry,
+                                  void **out_buf, uint32_t *out_count);
+
+/** Format the GUID at `index` in a key buffer into `out` (>= 40 bytes). */
+bool staticdata_registry_format_key(void *keys_buf, uint32_t index, char *out, size_t out_size);
 
 #endif // BG3SE_STATICDATA_REGISTRY_H
