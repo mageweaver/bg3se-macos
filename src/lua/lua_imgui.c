@@ -433,6 +433,9 @@ static int imgui_window_add_colorpicker(lua_State *L);
 static int imgui_window_add_drag(lua_State *L);
 static int imgui_window_add_dragint(lua_State *L);
 static int imgui_window_add_inputint(lua_State *L);
+static int imgui_window_add_inputscalar(lua_State *L);
+static int imgui_window_add_textlink(lua_State *L);
+static int imgui_window_add_newline(lua_State *L);
 static int imgui_window_add_tree(lua_State *L);
 static int imgui_window_add_selectable(lua_State *L);
 static int imgui_window_add_table(lua_State *L);
@@ -477,6 +480,9 @@ static const luaL_Reg window_methods[] = {
     {"AddDrag", imgui_window_add_drag},
     {"AddDragInt", imgui_window_add_dragint},
     {"AddInputInt", imgui_window_add_inputint},
+    {"AddInputScalar", imgui_window_add_inputscalar},
+    {"AddTextLink", imgui_window_add_textlink},
+    {"AddNewLine", imgui_window_add_newline},
     {"AddProgressBar", imgui_window_add_progressbar},
     {"AddCollapsingHeader", imgui_window_add_collapsingheader},
     {"AddSeparator", imgui_window_add_separator},
@@ -802,6 +808,7 @@ static int func_name(lua_State *L) { \
 
 IMGUI_HIDDEN_LABEL_WIDGET(imgui_window_add_separator, IMGUI_OBJ_SEPARATOR, "", "separator")
 IMGUI_HIDDEN_LABEL_WIDGET(imgui_window_add_spacing, IMGUI_OBJ_SPACING, "", "spacing")
+IMGUI_HIDDEN_LABEL_WIDGET(imgui_window_add_newline, IMGUI_OBJ_NEW_LINE, "", "new line")
 
 // AddDummy(width, height) — invisible spacer of the given size (MCM uses it for layout).
 static int imgui_window_add_dummy(lua_State *L) {
@@ -1152,6 +1159,50 @@ static int imgui_window_add_dragint(lua_State *L) {
 /**
  * window:AddInputInt(label, [value]) -> input int widget
  */
+
+/**
+ * window:AddInputScalar(label, [value]) -> input scalar widget
+ *
+ * The float counterpart of AddInputInt. MCM's FloatIMGUIWidget is built on
+ * this, so without it every float setting in every mod's settings tab created
+ * nothing and the tab came up empty. The renderer already handled the widget;
+ * only the binding was missing.
+ */
+static int imgui_window_add_inputscalar(lua_State *L) {
+    ImguiUserdata *ud = imgui_to_userdata(L, 1);
+    const char *label = imgui_str_arg(L, 2, __func__);
+    float value = (float)luaL_optnumber(L, 3, 0.0);
+
+    ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_INPUT_SCALAR, label);
+    if (child == IMGUI_INVALID_HANDLE) {
+        return luaL_error(L, "failed to create input scalar widget");
+    }
+
+    ImguiObject *obj = imgui_object_get(child);
+    if (obj) {
+        obj->data.slider.value.x = value;
+    }
+
+    imgui_push_handle(L, child, IMGUI_OBJ_INPUT_SCALAR);
+    return 1;
+}
+
+/**
+ * window:AddTextLink(label) -> text link widget
+ */
+static int imgui_window_add_textlink(lua_State *L) {
+    ImguiUserdata *ud = imgui_to_userdata(L, 1);
+    const char *label = imgui_str_arg(L, 2, __func__);
+
+    ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_TEXT_LINK, label);
+    if (child == IMGUI_INVALID_HANDLE) {
+        return luaL_error(L, "failed to create text link widget");
+    }
+
+    imgui_push_handle(L, child, IMGUI_OBJ_TEXT_LINK);
+    return 1;
+}
+
 static int imgui_window_add_inputint(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *label = imgui_str_arg(L, 2, __func__);
