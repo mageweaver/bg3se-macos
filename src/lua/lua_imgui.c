@@ -273,6 +273,32 @@ static bool imgui_get_vec4(lua_State *L, int idx, float *x, float *y, float *z, 
  * Show the ImGui overlay.
  * Initializes the Metal backend on first call (lazy initialization).
  */
+
+/*
+ * Opening a window makes the overlay visible.
+ *
+ * Windows BG3SE has no global overlay gate: a window renders when it is open.
+ * This port has one, and it starts closed, so a mod that does the documented
+ * thing --
+ *
+ *     MCM_WINDOW.Open = true
+ *     MCM_WINDOW.Visible = true
+ *
+ * -- got a window that was open, visible, fully built, and never drawn. MCM
+ * never calls Ext.IMGUI.Show() because on Windows there is nothing to call.
+ *
+ * Only opening raises the gate. Closing a window does not lower it: other mods
+ * may have windows of their own open, and Ext.IMGUI.Hide() remains the way to
+ * put the overlay away deliberately.
+ */
+static void imgui_overlay_ensure_visible(void) {
+    if (imgui_metal_get_state() == IMGUI_METAL_STATE_UNINITIALIZED) {
+        LOG_IMGUI_INFO("Lazy-initializing ImGui Metal backend (window opened)");
+        if (!imgui_metal_init()) return;
+    }
+    imgui_metal_set_visible(true);
+}
+
 static int lua_imgui_show(lua_State *L) {
     // Lazy initialization - init Metal backend on first Show() call
     if (imgui_metal_get_state() == IMGUI_METAL_STATE_UNINITIALIZED) {
@@ -607,6 +633,7 @@ static int imgui_window_newindex(lua_State *L) {
         }
         obj->data.window.open = open;
         obj->styled.visible = open;
+        if (open) imgui_overlay_ensure_visible();
         return 0;
     }
     if (strcmp(key, "Closeable") == 0) {
@@ -634,6 +661,7 @@ static int imgui_window_newindex(lua_State *L) {
         }
         obj->styled.visible = vis;
         obj->data.window.open = vis;
+        if (vis) imgui_overlay_ensure_visible();
         return 0;
     }
     if (strcmp(key, "SameLine") == 0) {
