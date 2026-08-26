@@ -477,6 +477,7 @@ static const luaL_Reg window_methods[] = {
     {"SetSize", imgui_widget_noop},
     {"SetFocus", imgui_widget_noop},
     {"SetScroll", imgui_widget_noop},
+    {"SetSizeConstraints", imgui_widget_noop},
     {"SetScrollX", imgui_widget_noop},
     {"SetScrollY", imgui_widget_noop},
     {"SetStyleColor", imgui_widget_noop},
@@ -1627,9 +1628,32 @@ static int imgui_window_add_childwindow(lua_State *L) {
  */
 static int imgui_window_add_image(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
-    const char *path = luaL_checkstring(L, 2);
-    float width = (float)luaL_optnumber(L, 3, 100.0);
-    float height = (float)luaL_optnumber(L, 4, 100.0);
+
+    /*
+     * Callers pass what they have, and MCM's is
+     *
+     *     messageGroup:AddImage(icon, { ICON_SIZE, ICON_SIZE })
+     *
+     * -- a size table in the third argument, and an icon that comes from a
+     * lookup which returns nil for an unknown severity. It then writes
+     * `if itemIcon then`, so nil is an expected answer. Reading the icon with
+     * luaL_checkstring and the size with luaL_optnumber raised on both counts,
+     * and a raise here aborts the notification's whole build.
+     */
+    if (lua_type(L, 2) != LUA_TSTRING) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const char *path = lua_tostring(L, 2);
+
+    float width = 100.0f, height = 100.0f;
+    if (lua_type(L, 3) == LUA_TTABLE) {
+        lua_rawgeti(L, 3, 1); width = (float)luaL_optnumber(L, -1, width); lua_pop(L, 1);
+        lua_rawgeti(L, 3, 2); height = (float)luaL_optnumber(L, -1, height); lua_pop(L, 1);
+    } else if (lua_type(L, 3) == LUA_TNUMBER) {
+        width = (float)lua_tonumber(L, 3);
+        height = (float)luaL_optnumber(L, 4, width);
+    }
 
     ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_IMAGE, "##image");
     if (child == IMGUI_INVALID_HANDLE) {
