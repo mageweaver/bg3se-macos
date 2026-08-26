@@ -163,13 +163,20 @@ static void push_guid(lua_State *L, const void *addr) {
     }
 }
 
+/*
+ * An unset FixedString holds the null index and resolves to nothing. That is an
+ * empty string, not an absent value -- the same distinction stats property
+ * reads needed. Handing back nil broke the obvious way to copy a field between
+ * two resources:
+ *
+ *     dst.ExactMatch = src.ExactMatch
+ *
+ * which DoubleSubclass does for every ProgressionDescription field, and which
+ * fails with "string expected, got nil" the moment the source is unset.
+ */
 static void push_fixedstring(lua_State *L, uint32_t index) {
     const char *s = fixed_string_resolve(index);
-    if (s) {
-        lua_pushstring(L, s);
-    } else {
-        lua_pushnil(L);
-    }
+    lua_pushstring(L, s ? s : "");
 }
 
 /** Ext.Loca.GetTranslatedString equivalent for a handle captured as an upvalue. */

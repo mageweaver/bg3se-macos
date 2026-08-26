@@ -1697,6 +1697,39 @@ static int imgui_widget_index(lua_State *L) {
         return 1;
     }
 
+    /*
+     * Children is the widget's child list, as widget objects rather than raw
+     * handles -- callers index into them. MCM walks it to find a mod's tab bar:
+     *
+     *     for _, child in ipairs(group.Children) do
+     *         if child.IDContext and child.IDContext:sub(-5) == "_TABS" then
+     *
+     * and with no Children it reported "No tab bar found" for every mod whose
+     * settings it tried to render.
+     *
+     * Always a table, empty when there are no children: the caller above runs
+     * table.isEmpty on it before iterating, and nil would fail there instead.
+     */
+    if (strcmp(key, "Children") == 0) {
+        // The render thread walks this same tree, so hold the object lock while
+        // reading the child array rather than racing a concurrent Add/Destroy.
+        imgui_objects_lock();
+        int count = 0;
+        ImguiHandle *children = imgui_object_get_children(ud->handle, &count);
+        if (!children) count = 0;
+
+        lua_createtable(L, count, 0);
+        int written = 0;
+        for (int i = 0; i < count; i++) {
+            ImguiObject *child = imgui_object_get(children[i]);
+            if (!child) continue;
+            imgui_push_handle(L, children[i], child->type);
+            lua_rawseti(L, -2, ++written);
+        }
+        imgui_objects_unlock();
+        return 1;
+    }
+
     // Common methods
     if (strcmp(key, "Destroy") == 0) {
         lua_pushcfunction(L, imgui_widget_destroy);
