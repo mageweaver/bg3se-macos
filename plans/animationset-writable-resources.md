@@ -326,3 +326,40 @@ Do this once, deliberately, and read back before trusting anything:
    read back with the ID that went in.
 3. Only then let BG3AF run its own AddLink, and check the mods load clean.
 4. Consider defaulting writes on only after that survives a session.
+
+
+## DONE: writes verified, enabled by default (2026-08-25)
+
+The write test passed on BG3SX's set, and better than designed — the subset was
+supposed to be empty, and had 91 entries in it, because BG3AF's own AddLink calls
+had already succeeded through this path during startup:
+
+    before anims=91
+    insert ok=true
+    after  anims=92                                   (exactly one more)
+    readback ID=11111111-2222-3333-4444-555555555555  (byte-identical)
+
+So the ls::MemoryManager::Allocate convention is right, node linking is right, and
+ItemCount accounting is right. No write-path error was logged all session.
+
+Writes now default ON; `BG3SE_ANIMSET_WRITE=0` turns them off.
+
+### Mod results
+
+- **WickedAnims** — loads clean, gone from the failure list entirely.
+- **BG3SX** — past every animation failure. Its remaining error is unrelated:
+  `Unknown static data type: 8c2f6e91-...` (a PhotoModeEmoteCollection lookup).
+- **BG3AF** — 0 AnimationSet failures, down from 8.
+- **GrazztRing** — still fails on `RemodelledFrameBody` / `DivineCurse`, which is a
+  different problem and not animation-related.
+
+### If this needs revisiting
+
+`flags` currently accepts an integer. Windows passes a table of names
+(`AlwaysIgnore`, `NoFallback`, per Enumerations/Engine.inl). BG3AF passes `{}` in
+the calls seen so far, so nothing depends on it yet; map the names when something
+does.
+
+Removal is unsupported — `Animation[k] = nil` raises rather than pretending. There
+is no verified game free, and unlinking a node we cannot free would leak it into a
+container the game owns.

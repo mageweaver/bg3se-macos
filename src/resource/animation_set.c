@@ -206,17 +206,20 @@ bool animset_animation_find(const AnimSetRefMap *map, uint32_t key, AnimSetAnima
 
 typedef void *(*GameAllocateFunc)(size_t size, uint32_t alloc_type, int a3, size_t a4);
 
-// Off by default. The allocator's argument convention is read from call sites
-// rather than from a header, so until a session has exercised it, writes stay
-// behind BG3SE_ANIMSET_WRITE=1 rather than being on for every player.
+// On by default, since a gated write path means the mods that need it do not
+// work. The allocator convention was read from call sites rather than a header,
+// so it was gated until a session proved it: BG3AF drove 91 real inserts into
+// BG3SX's set, a controlled probe took ItemCount 91 -> 92 and read the value
+// back byte-identical, and no write-path error was logged. Set
+// BG3SE_ANIMSET_WRITE=0 to turn it back off.
 static bool animset_writes_enabled(void) {
     static int cached = -1;
     if (cached < 0) {
         const char *env = getenv("BG3SE_ANIMSET_WRITE");
-        cached = (env && env[0] == '1') ? 1 : 0;
+        cached = (env && env[0] == '0') ? 0 : 1;
         if (!cached) {
-            LOG_CORE_INFO("AnimationSet writes disabled (set BG3SE_ANIMSET_WRITE=1 "
-                          "to enable); reads are unaffected");
+            LOG_CORE_INFO("AnimationSet writes disabled by BG3SE_ANIMSET_WRITE=0; "
+                          "reads are unaffected");
         }
     }
     return cached == 1;
