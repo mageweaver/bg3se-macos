@@ -1002,6 +1002,18 @@ static void render_widget(ImguiObject *obj) {
     // Push style overrides before rendering
     imgui_object_push_style(obj);
 
+    /*
+     * IDContext scopes the widget's ImGui ID. Mods set it so widgets that share
+     * a label stay distinct -- ImGui keys state by label, so without it two
+     * buttons named the same are the same button, and a click on one operates
+     * the other. MCM sets it on almost everything it builds.
+     */
+    bool pushed_id = false;
+    if (obj->styled.id_context[0] != '\0') {
+        ImGui::PushID(obj->styled.id_context);
+        pushed_id = true;
+    }
+
     // Seed a unique ImGui ID per object (its handle). Widgets often have empty
     // labels (e.g. MCM buttons whose text comes from a missing localization
     // string, which we tolerate as ""); an empty label at a window root makes
@@ -1574,6 +1586,9 @@ static void render_widget(ImguiObject *obj) {
     ImGui::PopID();
 
     // Pop style overrides after rendering
+    if (pushed_id) {
+        ImGui::PopID();
+    }
     imgui_object_pop_style(obj);
 }
 

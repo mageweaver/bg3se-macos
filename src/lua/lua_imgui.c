@@ -2065,6 +2065,17 @@ static int imgui_widget_index(lua_State *L) {
         imgui_userdata_push(L, ud->handle);
         return 1;
     }
+    if (strcmp(key, "IDContext") == 0) {
+        lua_pushstring(L, obj->styled.id_context);
+        return 1;
+    }
+    if (strcmp(key, "Image") == 0) {
+        // ExtuiImageReference is not modelled. Mods guard with
+        // `if not w.Image or w.Image.Icon == ""`, so nil is an answer they
+        // already handle -- it just should not be reported as unknown.
+        lua_pushnil(L);
+        return 1;
+    }
 
     /*
      * Children is the widget's child list, as widget objects rather than raw
@@ -2385,6 +2396,12 @@ static int imgui_widget_newindex(lua_State *L) {
 
     if (strcmp(key, "UserData") == 0) {
         imgui_userdata_set(L, ud->handle, 3);
+        return 0;
+    }
+    if (strcmp(key, "IDContext") == 0) {
+        const char *id = lua_tostring(L, 3);
+        snprintf(obj->styled.id_context, sizeof(obj->styled.id_context),
+                 "%s", id ? id : "");
         return 0;
     }
 
