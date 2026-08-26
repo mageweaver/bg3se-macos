@@ -455,6 +455,8 @@ static int imgui_window_add_tooltip(lua_State *L);
 static int imgui_window_add_childwindow(lua_State *L);
 static int imgui_window_add_image(lua_State *L);
 static int imgui_widget_destroy(lua_State *L);
+static int imgui_widget_index(lua_State *L);
+static int imgui_widget_newindex(lua_State *L);
 static uint32_t imgui_optflags(lua_State *L, int index);
 static int imgui_widget_get_style(lua_State *L);
 void imgui_userdata_clear(lua_State *L, uint64_t handle);
@@ -602,11 +604,17 @@ static int imgui_window_index(lua_State *L) {
         return 1;
     }
 
-    // Unknown property/method — log it so we can see what mods expect (a mod that
-    // then calls the nil as a method throws; this reveals the missing method).
-    LOG_IMGUI_DEBUG("IMGUI window: unknown key '%s' (returning nil)", key);
-    lua_pushnil(L);
-    return 1;
+    /*
+     * A window is a widget too. Everything common to styled widgets --
+     * Children, IDContext, UserData, Tooltip, GetStyle, and the rest -- is
+     * implemented once in the widget handler, and windows reached none of it
+     * because they have their own __index.
+     *
+     * That is why walking MCM's tree from its window reported no children at
+     * all while the tree was plainly there: MCM_WINDOW.Children was answered by
+     * this function, which had never heard of it.
+     */
+    return imgui_widget_index(L);
 }
 
 /**
@@ -686,12 +694,11 @@ static int imgui_window_newindex(lua_State *L) {
         return 0;
     }
 
-    // Silently ignore unknown properties. Mods (MCM) set many cosmetic window/
-    // widget properties the port doesn't model (Scaling, IDContext,
-    // NoFocusOnAppearing, AlwaysAutoResize, ...); erroring here aborts their whole
-    // UI construction. Accepting-and-ignoring lets the rest of the UI build.
-    (void)key;
-    return 0;
+    // A window is a widget too: hand anything this does not model to the widget
+    // setter, which stores the common styled properties (IDContext, UserData,
+    // ...). It silently ignores what neither models, so a cosmetic property a
+    // mod sets still cannot abort its UI build.
+    return imgui_widget_newindex(L);
 }
 
 /**
