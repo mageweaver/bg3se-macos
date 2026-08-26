@@ -974,6 +974,18 @@ static int check_layout(void *obj, const ResourceLayout *layout,
                 why = "unreadable string";
             } else if (!looks_like_text(str, len)) {
                 why = "string is not text";
+            } else if (len == 0) {
+                // An empty string passes any text test, so a wrong string size
+                // reads as "fine" here while every later field is shifted. Note
+                // it so the verdict is not quietly built on nothing: if the
+                // bytes just past it are printable, we are probably reading the
+                // wrong end of a string that does have content.
+                const uint8_t *p = (const uint8_t *)addr;
+                uint8_t first = 0;
+                if (safe_memory_read_u8((mach_vm_address_t)p, &first)
+                    && first >= 0x20 && first < 0x7f) {
+                    why = "string reads as empty but starts with text";
+                }
             }
         } else if (resource_field_is_array(f->kind)) {
             uint64_t buf = 0;
@@ -1057,18 +1069,36 @@ static void selftest_layout_once(const ResourceLayout *layout) {
         LOG_CORE_INFO("static data layout for %s checks out (%d fields, size 0x%x)",
                       layout->type_name, layout->field_count, layout->size);
     } else {
-        char dump[3 * 64 + 1];
+        // 256 bytes with ASCII: the field boundaries are legible directly,
+        // and inline strings show both their text and the byte holding their
+        // length -- which is what pins the string size.
+        char dump[4200];
         size_t at = 0;
-        for (int i = 0; i < 64 && at + 3 < sizeof(dump); i++) {
-            uint8_t b = 0;
-            if (!safe_memory_read_u8((mach_vm_address_t)((uint8_t *)sample + i), &b)) break;
-            at += (size_t)snprintf(dump + at, sizeof(dump) - at, "%02x ", b);
+        for (int row = 0; row < 16; row++) {
+            int base = row * 16;
+            char hex[16 * 3 + 1];
+            char asc[17];
+            size_t hx = 0;
+            int got = 0;
+            for (int i = 0; i < 16; i++) {
+                uint8_t b = 0;
+                if (!safe_memory_read_u8((mach_vm_address_t)((uint8_t *)sample + base + i), &b)) break;
+                hx += (size_t)snprintf(hex + hx, sizeof(hex) - hx, "%02x ", b);
+                asc[i] = (b >= 0x20 && b < 0x7f) ? (char)b : '.';
+                got++;
+            }
+            if (got == 0) break;
+            asc[got] = '\0';
+            hex[hx] = '\0';
+            if (at + hx + 32 >= sizeof(dump)) break;
+            at += (size_t)snprintf(dump + at, sizeof(dump) - at,
+                                   "\n    +0x%02x  %-48s |%s|", base, hex, asc);
         }
         dump[at] = '\0';
 
         LOG_CORE_WARN("static data layout for %s looks wrong: %d of %d fields "
                       "failed their type check (%s). Field values for this type "
-                      "may be nonsense. First 64 bytes at %p: %s",
+                      "may be nonsense. Sample at %p:%s",
                       layout->type_name, bad, layout->field_count, note,
                       sample, dump);
     }
