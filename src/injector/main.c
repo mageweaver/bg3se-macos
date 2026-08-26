@@ -3431,13 +3431,20 @@ static void init_lua(void) {
     // Without this, the socket only responds during gameplay (when fake_Event fires).
     dispatch_queue_t poll_queue = dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0);
     s_console_poll_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, poll_queue);
+    /*
+     * ~60Hz, not 100ms. This drives Lua timers as well as the console, and mods
+     * animate through them: MCM's sidebar steps with Ext.Timer.WaitFor(0, step),
+     * which means "next tick". Ticking ten times a second made that crawl, and a
+     * second click landing mid-animation aborted the one in flight -- which is
+     * what "sometimes takes an extra click" was.
+     */
     dispatch_source_set_timer(s_console_poll_timer,
                               dispatch_time(DISPATCH_TIME_NOW, 0),
-                              100 * NSEC_PER_MSEC,
-                              10 * NSEC_PER_MSEC);
+                              16 * NSEC_PER_MSEC,
+                              4 * NSEC_PER_MSEC);
     dispatch_source_set_event_handler(s_console_poll_timer, ^{
-        // trylock, not lock: if the game thread is mid-Lua, skip this poll
-        // and retry on the next 100ms tick instead of stacking GCD threads.
+        // trylock, not lock: if the game thread is mid-Lua, skip this tick
+        // and retry on the next one instead of stacking GCD threads.
         // Count consecutive misses so sustained starvation (e.g. at the menu,
         // where fake_Event's blocking poll never runs) is diagnosable.
         // Resolve through the runtime registry, never the init-time capture:
@@ -3452,12 +3459,22 @@ static void init_lua(void) {
                 LuaContext prev = lua_context_get();
                 lua_context_set(LUA_CONTEXT_SERVER);
                 console_poll(poll_L);
+                /*
+                 * Timers run here too. They are also processed from fake_Event,
+                 * but that fires on Osiris activity, so in a menu it can be
+                 * seconds between ticks -- and a mod animating through
+                 * Ext.Timer has no way to know its "next tick" is not coming.
+                 * Both paths hold the gate, so running them from either is safe.
+                 */
+                timer_update(poll_L);
+                timer_update_persistent(poll_L);
                 lua_context_set(prev);
             }
             lua_gate_unlock();
         } else if (lua_runtime_state_for(LUA_CONTEXT_SERVER)) {
-            if (++poll_misses == 50) {  // ~5s of continuous contention
-                LOG_CORE_WARN("Console poll starved: 50 consecutive gate misses (~5s)");
+            if (++poll_misses == 300) {  // ~5s of continuous contention at 60Hz
+                LOG_CORE_WARN("Lua service tick starved: 300 consecutive gate "
+                              "misses (~5s) — console and mod timers are stalled");
                 poll_misses = 0;
             }
         } else {
