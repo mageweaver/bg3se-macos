@@ -9,6 +9,7 @@
 #include "../stats/stats_manager.h"
 #include "../stats/prototype_managers.h"
 #include "../strings/fixed_string.h"
+#include "../core/safe_memory.h"
 #include "../lifetime/lifetime.h"
 #include "../mod/mod_loader.h"
 #include "logging.h"
@@ -652,14 +653,141 @@ static int lua_stats_setpersistence(lua_State *L) {
     return 0;
 }
 
-// Ext.Stats.GetStatsManager() -> integer (raw RPGStats pointer)
+
+// ============================================================================
+// RPGStats::ExtraData
+// ============================================================================
+//
+// ExtraData is a HashMap<FixedString, float>* somewhere inside RPGStats. Its
+// offset cannot be computed from upstream's declaration order: several of the
+// members before it (CNamedElementManager, ItemTypeManager, LegacyMap) are
+// types we have never sized. Upstream names a neighbour field_2F0, which would
+// put ExtraData near +0x2a8 -- but those field_XX names come from Windows
+// reverse engineering and have already been wrong for this build once, badly,
+// so this finds it by recognising it instead.
+//
+// A HashMap is laid out { StaticArray<int32> HashKeys; Array<int32> NextIds;
+// Array<K> Keys; Array<V> Values; }, so a candidate has to have a bucket array,
+// equal key and value counts, and a first key that actually resolves in the
+// string table. Junk pointers do not pass all three.
+
+#define STATS_HASHMAP_HASHKEYS  0x00
+#define STATS_HASHMAP_HASHSIZE  0x08
+#define STATS_HASHMAP_KEYS_BUF  0x20
+#define STATS_HASHMAP_KEYS_LEN  0x2c
+#define STATS_HASHMAP_VALS_BUF  0x30
+#define STATS_HASHMAP_VALS_LEN  0x3c
+
+/* Search window inside RPGStats; the declared position is around +0x2a8. */
+#define STATS_EXTRADATA_SCAN_LO 0x180
+#define STATS_EXTRADATA_SCAN_HI 0x420
+
+static bool extradata_map_is_plausible(void *map, uint32_t *out_count) {
+    void *hash_keys = NULL, *keys = NULL, *values = NULL;
+    uint32_t hash_size = 0, key_count = 0, val_count = 0;
+
+    if (!safe_memory_read_pointer((mach_vm_address_t)map + STATS_HASHMAP_HASHKEYS, &hash_keys)
+        || !hash_keys) return false;
+    if (!safe_memory_read_u32((mach_vm_address_t)map + STATS_HASHMAP_HASHSIZE, &hash_size)
+        || hash_size == 0 || hash_size > (1u << 22)) return false;
+    if (!safe_memory_read_pointer((mach_vm_address_t)map + STATS_HASHMAP_KEYS_BUF, &keys)
+        || !keys) return false;
+    if (!safe_memory_read_u32((mach_vm_address_t)map + STATS_HASHMAP_KEYS_LEN, &key_count)
+        || key_count == 0 || key_count > (1u << 20)) return false;
+    if (!safe_memory_read_pointer((mach_vm_address_t)map + STATS_HASHMAP_VALS_BUF, &values)
+        || !values) return false;
+    if (!safe_memory_read_u32((mach_vm_address_t)map + STATS_HASHMAP_VALS_LEN, &val_count)
+        || val_count != key_count) return false;
+
+    /* A map of the right shape but the wrong contents still fails here. */
+    uint32_t first = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)keys, &first)) return false;
+    if (!fixed_string_resolve(first)) return false;
+
+    *out_count = key_count;
+    return true;
+}
+
+/** Locate ExtraData once. Returns the map, or NULL if nothing convincing. */
+static void *stats_find_extradata(void) {
+    static void *cached = NULL;
+    static bool searched = false;
+    if (searched) return cached;
+    searched = true;
+
+    void *stats = stats_manager_get_raw();
+    if (!stats) {
+        searched = false;   /* not up yet; try again later */
+        return NULL;
+    }
+
+    for (uint32_t off = STATS_EXTRADATA_SCAN_LO; off <= STATS_EXTRADATA_SCAN_HI; off += 8) {
+        void *candidate = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)stats + off, &candidate) || !candidate) {
+            continue;
+        }
+        uint32_t count = 0;
+        if (!extradata_map_is_plausible(candidate, &count)) continue;
+
+        LOG_LUA_INFO("Stats ExtraData found at RPGStats+0x%x (%u entries)", off, count);
+        cached = candidate;
+        return cached;
+    }
+
+    LOG_LUA_WARN("Stats ExtraData not found in RPGStats+0x%x..0x%x; "
+                 "Ext.Stats.GetStatsManager().ExtraData will be empty",
+                 STATS_EXTRADATA_SCAN_LO, STATS_EXTRADATA_SCAN_HI);
+    return NULL;
+}
+
+/** Push ExtraData as { [name] = number }. */
+static void push_extradata(lua_State *L) {
+    void *map = stats_find_extradata();
+    if (!map) {
+        lua_newtable(L);
+        return;
+    }
+
+    void *keys = NULL, *values = NULL;
+    uint32_t count = 0;
+    safe_memory_read_pointer((mach_vm_address_t)map + STATS_HASHMAP_KEYS_BUF, &keys);
+    safe_memory_read_pointer((mach_vm_address_t)map + STATS_HASHMAP_VALS_BUF, &values);
+    safe_memory_read_u32((mach_vm_address_t)map + STATS_HASHMAP_KEYS_LEN, &count);
+
+    lua_createtable(L, 0, (int)count);
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t key = 0, bits = 0;
+        if (!safe_memory_read_u32((mach_vm_address_t)keys + (size_t)i * 4, &key)) break;
+        if (!safe_memory_read_u32((mach_vm_address_t)values + (size_t)i * 4, &bits)) break;
+        const char *name = fixed_string_resolve(key);
+        if (!name) continue;
+        float f;
+        memcpy(&f, &bits, sizeof(f));
+        lua_pushnumber(L, f);
+        lua_setfield(L, -2, name);
+    }
+}
+
+/*
+ * Ext.Stats.GetStatsManager() -> StatsRPGStats
+ *
+ * This returned the raw pointer as an integer, so the documented
+ * `GetStatsManager().ExtraData` was an index into a number -- which is how
+ * EasyCheat's BackupExtraData failed. The pointer is still available as
+ * Address for anything that was using it.
+ */
 static int lua_stats_getstatsmanager(lua_State *L) {
     void *raw = stats_manager_get_raw();
-    if (raw) {
-        lua_pushinteger(L, (lua_Integer)(uintptr_t)raw);
-    } else {
+    if (!raw) {
         lua_pushnil(L);
+        return 1;
     }
+
+    lua_newtable(L);
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)raw);
+    lua_setfield(L, -2, "Address");
+    push_extradata(L);
+    lua_setfield(L, -2, "ExtraData");
     return 1;
 }
 
