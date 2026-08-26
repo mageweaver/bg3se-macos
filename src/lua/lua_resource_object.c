@@ -481,8 +481,36 @@ static int rebuild_fixedstring_hashset(lua_State *L, void *addr, int value_index
 }
 
 
+
+/*
+ * Copy one struct element, giving the destination its own strings.
+ *
+ * A plain byte copy would leave both resources pointing at the same STDString
+ * buffer, so whichever is torn down first takes the other's string with it.
+ * The bytes are copied first -- that carries the fields the layout does not
+ * model -- and then every string field is rewritten, which allocates afresh for
+ * anything too long to sit inline.
+ */
+static void copy_struct_element(void *dst, const void *src, const ResourceLayout *layout,
+                                size_t size) {
+    memcpy(dst, src, size);
+    if (!layout) return;
+
+    for (int i = 0; i < layout->field_count; i++) {
+        const ResourceField *f = &layout->fields[i];
+        if (f->kind != RF_STDSTRING) continue;
+
+        size_t len = 0;
+        const char *str = read_stdstring((const uint8_t *)src + f->offset, &len);
+        if (!str) continue;
+        write_stdstring((uint8_t *)dst + f->offset, str, len);
+    }
+}
+
 static int write_field(lua_State *L, void *obj, const ResourceField *field, int value_index);
 static int write_element(lua_State *L, void *elem, ResourceFieldKind kind, int value_index);
+static bool array_read_header(const ResourceArrayUD *ud, void **out_buf,
+                              uint32_t *out_capacity, uint32_t *out_size);
 
 /*
  * Replace a whole Array<T> from a Lua table.
@@ -499,14 +527,54 @@ static int write_element(lua_State *L, void *elem, ResourceFieldKind kind, int v
  */
 static int write_array_from_table(lua_State *L, void *addr, const ResourceField *field,
                                   int value_index) {
+    size_t esize = (field->kind == RF_ARRAY_STRUCT)
+                 ? field->elem_size
+                 : array_element_size(field->kind);
+
+    // Assigning one resource's array straight onto another is how merging is
+    // written -- target.SelectSpells = source.SelectSpells -- so the source is
+    // usually one of our own array proxies rather than a table.
+    ResourceArrayUD *src = (ResourceArrayUD *)luaL_testudata(L, value_index, RESOURCE_ARRAY_MT);
+    if (src) {
+        if (src->kind != field->kind || array_element_size_of(src) != esize) {
+            return luaL_error(L, "field '%s' cannot take this array: element types differ",
+                              field->name);
+        }
+
+        void *sbuf = NULL;
+        uint32_t scap = 0, ssize = 0;
+        if (!array_read_header(src, &sbuf, &scap, &ssize)) {
+            return luaL_error(L, "the array assigned to '%s' is not readable", field->name);
+        }
+
+        void *fresh = NULL;
+        if (ssize > 0) {
+            fresh = resource_game_alloc((size_t)ssize * esize);
+            if (!fresh) return luaL_error(L, "could not allocate for field '%s'", field->name);
+            memset(fresh, 0, (size_t)ssize * esize);
+            for (uint32_t i = 0; i < ssize; i++) {
+                void *d = (uint8_t *)fresh + (size_t)i * esize;
+                const void *o = (const uint8_t *)sbuf + (size_t)i * esize;
+                if (field->kind == RF_ARRAY_STRUCT) {
+                    copy_struct_element(d, o, field->elem, esize);
+                } else {
+                    memcpy(d, o, esize);
+                }
+            }
+        }
+
+        uint8_t *p = (uint8_t *)addr;
+        *(void **)(p + ARRAY_BUF_OFFSET) = fresh;
+        *(uint32_t *)(p + ARRAY_CAPACITY_OFFSET) = ssize;
+        *(uint32_t *)(p + ARRAY_SIZE_OFFSET) = ssize;
+        return 0;
+    }
+
     luaL_checktype(L, value_index, LUA_TTABLE);
 
     lua_Integer count = (lua_Integer)lua_rawlen(L, value_index);
     if (count < 0) count = 0;
 
-    size_t esize = (field->kind == RF_ARRAY_STRUCT)
-                 ? field->elem_size
-                 : array_element_size(field->kind);
     if (esize == 0) {
         return luaL_error(L, "field '%s' holds elements we cannot write", field->name);
     }
@@ -531,16 +599,16 @@ static int write_array_from_table(lua_State *L, void *addr, const ResourceField 
             // of another resource, not freshly built tables. Copy those
             // wholesale: it preserves fields the layout does not model, which
             // rebuilding field by field would silently drop.
-            ResourceObjectUD *src = (ResourceObjectUD *)luaL_testudata(L, elem_index,
-                                                                       RESOURCE_OBJECT_MT);
-            if (src) {
-                if (src->layout != field->elem) {
+            ResourceObjectUD *elem_src = (ResourceObjectUD *)luaL_testudata(L, elem_index,
+                                                                            RESOURCE_OBJECT_MT);
+            if (elem_src) {
+                if (elem_src->layout != field->elem) {
                     lua_pop(L, 1);
                     return luaL_error(L, "element %d of '%s' is a %s, not a %s",
                                       (int)(i + 1), field->name,
-                                      src->layout->type_name, field->elem->type_name);
+                                      elem_src->layout->type_name, field->elem->type_name);
                 }
-                memcpy(slot, src->obj, esize);
+                copy_struct_element(slot, elem_src->obj, field->elem, esize);
                 lua_pop(L, 1);
                 continue;
             }
