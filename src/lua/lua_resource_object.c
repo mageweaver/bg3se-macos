@@ -18,6 +18,7 @@
 #include <lauxlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define RESOURCE_OBJECT_MT "BG3SE.ResourceObject"
 #define RESOURCE_ARRAY_MT  "BG3SE.ResourceArray"
@@ -38,6 +39,7 @@ typedef struct {
 typedef struct {
     void *array;                 // address of the Array<T> itself
     ResourceFieldKind kind;      // RF_ARRAY_*
+    bool readonly;               // set for a HashSet's element array
 } ResourceArrayUD;
 
 // ============================================================================
@@ -190,12 +192,18 @@ static void push_translated_string(lua_State *L, const void *addr) {
 
 static void ensure_array_metatable(lua_State *L);
 
-static void push_array_proxy(lua_State *L, void *array_addr, ResourceFieldKind kind) {
+static void push_array_proxy_ex(lua_State *L, void *array_addr, ResourceFieldKind kind,
+                                bool readonly) {
     ResourceArrayUD *ud = (ResourceArrayUD *)lua_newuserdatauv(L, sizeof(ResourceArrayUD), 0);
     ud->array = array_addr;
     ud->kind = kind;
+    ud->readonly = readonly;
     ensure_array_metatable(L);
     lua_setmetatable(L, -2);
+}
+
+static void push_array_proxy(lua_State *L, void *array_addr, ResourceFieldKind kind) {
+    push_array_proxy_ex(L, array_addr, kind, false);
 }
 
 static int push_field(lua_State *L, void *obj, const ResourceField *field) {
@@ -276,6 +284,13 @@ static int push_field(lua_State *L, void *obj, const ResourceField *field) {
             push_translated_string(L, addr);
             return 1;
 
+        case RF_HASHSET_FIXEDSTRING:
+            // The members live in the Keys array; the index arrays beside it
+            // only serve lookup, so iterate Keys and leave them alone.
+            push_array_proxy_ex(L, (uint8_t *)addr + HASHSET_KEYS_OFFSET,
+                                RF_ARRAY_FIXEDSTRING, true);
+            return 1;
+
         default:
             if (resource_field_is_array(field->kind)) {
                 push_array_proxy(L, addr, field->kind);
@@ -284,6 +299,139 @@ static int push_field(lua_State *L, void *obj, const ResourceField *field) {
             lua_pushnil(L);
             return 1;
     }
+}
+
+
+// ============================================================================
+// HashSet<FixedString>
+// ============================================================================
+//
+// Rebuilding a set means rebuilding its bucket index too, so this mirrors
+// CoreLib's HashSet::ResizeHashMap / InsertToHashMap rather than trying to
+// patch the existing one in place. The bucket counts are the game's own prime
+// table; the hash of a FixedString is the murmur value the string table
+// already stores for it.
+
+static const uint32_t MULTI_HASHMAP_PRIMES[] = {
+    0x35, 0x61, 0xC1, 0x185, 0x301, 0x607,
+    0xC07, 0x1807, 0x3001, 0x6011, 0xC005,
+    0x1800D, 0x30005, 0x60019, 0xC0001, 0x180005,
+    0x30000B, 0x60000D, 0xC00005, 0x1800013,
+    0x3000005, 0x6000017, 0x0C000013, 0x18000005,
+    0x30000059, 0x60000005, 0x400CCCCD
+};
+
+static uint32_t nearest_hashmap_prime(uint32_t n) {
+    for (size_t i = 0; i < sizeof(MULTI_HASHMAP_PRIMES) / sizeof(MULTI_HASHMAP_PRIMES[0]); i++) {
+        if (MULTI_HASHMAP_PRIMES[i] >= n) return MULTI_HASHMAP_PRIMES[i];
+    }
+    return MULTI_HASHMAP_PRIMES[sizeof(MULTI_HASHMAP_PRIMES) / sizeof(MULTI_HASHMAP_PRIMES[0]) - 1];
+}
+
+/**
+ * Replace a HashSet<FixedString>'s contents with the strings in a Lua table.
+ *
+ * Both shapes mods use are accepted: an array of strings, and a set written as
+ * { [name] = true }. Duplicates are dropped, since that is what a set means.
+ *
+ * The previous buffers are not freed, for the same reason the array growth
+ * path does not free: we do not resolve the matching deallocator.
+ */
+static int rebuild_fixedstring_hashset(lua_State *L, void *addr, int value_index) {
+    // Collect the members first, so a bad element aborts before anything is
+    // written into the game's memory.
+    uint32_t stack_ids[256];
+    uint32_t *ids = stack_ids;
+    uint32_t count = 0, capacity = (uint32_t)(sizeof(stack_ids) / sizeof(stack_ids[0]));
+    uint32_t *heap_ids = NULL;
+
+    #define HASHSET_FAIL(...) do { free(heap_ids); return luaL_error(L, __VA_ARGS__); } while (0)
+
+    lua_pushnil(L);
+    while (lua_next(L, value_index) != 0) {
+        // Array part gives us the string as the value; set part as the key.
+        // Check the type exactly: lua_isstring also accepts numbers, and
+        // lua_tostring on a numeric key rewrites it in place, which would
+        // derail lua_next.
+        const char *name = NULL;
+        if (lua_type(L, -1) == LUA_TSTRING) {
+            name = lua_tostring(L, -1);
+        } else if (lua_type(L, -2) == LUA_TSTRING) {
+            name = lua_tostring(L, -2);
+        }
+        if (!name) {
+            lua_pop(L, 2);
+            HASHSET_FAIL("a hash set takes strings, either as an array or as "
+                         "{ [name] = true }");
+        }
+
+        uint32_t id = fixed_string_intern(name, (int)strlen(name));
+        if (id == 0xffffffffu) {
+            lua_pop(L, 2);
+            HASHSET_FAIL("could not intern '%s' into the string table", name);
+        }
+
+        bool duplicate = false;
+        for (uint32_t i = 0; i < count; i++) {
+            if (ids[i] == id) { duplicate = true; break; }
+        }
+        if (!duplicate) {
+            if (count == capacity) {
+                uint32_t new_capacity = capacity * 2;
+                uint32_t *grown = (uint32_t *)realloc(heap_ids, new_capacity * sizeof(uint32_t));
+                if (!grown) {
+                    lua_pop(L, 2);
+                    HASHSET_FAIL("out of memory building the hash set");
+                }
+                if (!heap_ids) memcpy(grown, stack_ids, count * sizeof(uint32_t));
+                heap_ids = grown;
+                ids = grown;
+                capacity = new_capacity;
+            }
+            ids[count++] = id;
+        }
+        lua_pop(L, 1);
+    }
+
+    uint32_t buckets = nearest_hashmap_prime(count ? count : 1);
+
+    int32_t *hash_keys = (int32_t *)resource_game_alloc((size_t)buckets * sizeof(int32_t));
+    int32_t *next_ids = count ? (int32_t *)resource_game_alloc((size_t)count * sizeof(int32_t)) : NULL;
+    uint32_t *keys = count ? (uint32_t *)resource_game_alloc((size_t)count * sizeof(uint32_t)) : NULL;
+    if (!hash_keys || (count && (!next_ids || !keys))) {
+        HASHSET_FAIL("could not allocate the hash set");
+    }
+
+    for (uint32_t i = 0; i < buckets; i++) hash_keys[i] = -1;
+
+    for (uint32_t k = 0; k < count; k++) {
+        keys[k] = ids[k];
+
+        uint32_t hash = fixed_string_get_hash(ids[k]);
+        uint32_t bucket = hash % buckets;
+        int32_t previous = hash_keys[bucket];
+        if (previous < 0) {
+            // An empty bucket stores an encoded terminator rather than -1, so
+            // a walk can tell which bucket it ended in.
+            previous = -2 - (int32_t)bucket;
+        }
+        next_ids[k] = previous;
+        hash_keys[bucket] = (int32_t)k;
+    }
+
+    uint8_t *p = (uint8_t *)addr;
+    *(void **)(p + HASHSET_HASHKEYS_OFFSET) = hash_keys;
+    *(uint32_t *)(p + HASHSET_HASHSIZE_OFFSET) = buckets;
+    *(void **)(p + HASHSET_NEXTIDS_OFFSET) = next_ids;
+    *(uint32_t *)(p + HASHSET_NEXTIDS_OFFSET + 8) = count;
+    *(uint32_t *)(p + HASHSET_NEXTIDS_OFFSET + 12) = count;
+    *(void **)(p + HASHSET_KEYS_OFFSET) = keys;
+    *(uint32_t *)(p + HASHSET_KEYS_OFFSET + 8) = count;
+    *(uint32_t *)(p + HASHSET_KEYS_OFFSET + 12) = count;
+
+    free(heap_ids);
+    #undef HASHSET_FAIL
+    return 0;
 }
 
 static int write_field(lua_State *L, void *obj, const ResourceField *field, int value_index) {
@@ -367,6 +515,11 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
             *(uint32_t *)addr = idx;
             *(uint16_t *)((uint8_t *)addr + 4) = (uint16_t)version;
             return 0;
+        }
+
+        case RF_HASHSET_FIXEDSTRING: {
+            luaL_checktype(L, value_index, LUA_TTABLE);
+            return rebuild_fixedstring_hashset(L, addr, value_index);
         }
 
         default:
@@ -609,6 +762,12 @@ static int resource_array_newindex(lua_State *L) {
     ResourceArrayUD *ud = check_array(L, 1);
     lua_Integer i = luaL_checkinteger(L, 2);
 
+    if (ud->readonly) {
+        return luaL_error(L, "this is the element array of a hash set; assign a "
+                             "whole table to the field instead of changing it "
+                             "in place");
+    }
+
     void *buf = NULL;
     uint32_t cap = 0, size = 0;
     if (!array_read_header(ud, &buf, &cap, &size)) {
@@ -780,6 +939,20 @@ static int check_layout(void *obj, const ResourceLayout *layout,
                 why = "array size exceeds capacity";
             } else if (size > 0 && buf == 0) {
                 why = "array has elements but no buffer";
+            }
+        } else if (f->kind == RF_HASHSET_FIXEDSTRING) {
+            uint64_t hash_keys = 0, keys_buf = 0;
+            uint32_t buckets = 0, cap = 0, size = 0;
+            if (!safe_memory_read_u64((mach_vm_address_t)((uint8_t *)addr + HASHSET_HASHKEYS_OFFSET), &hash_keys)
+                || !safe_memory_read_u32((mach_vm_address_t)((uint8_t *)addr + HASHSET_HASHSIZE_OFFSET), &buckets)
+                || !safe_memory_read_u64((mach_vm_address_t)((uint8_t *)addr + HASHSET_KEYS_OFFSET), &keys_buf)
+                || !safe_memory_read_u32((mach_vm_address_t)((uint8_t *)addr + HASHSET_KEYS_OFFSET + 8), &cap)
+                || !safe_memory_read_u32((mach_vm_address_t)((uint8_t *)addr + HASHSET_KEYS_OFFSET + 12), &size)) {
+                why = "unreadable hash set";
+            } else if (size > cap) {
+                why = "hash set size exceeds capacity";
+            } else if (size > 0 && (keys_buf == 0 || buckets == 0 || hash_keys == 0)) {
+                why = "hash set has members but no index";
             }
         } else if (f->kind == RF_FIXEDSTRING) {
             uint32_t idx = 0;

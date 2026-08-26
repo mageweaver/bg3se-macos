@@ -35,6 +35,7 @@ typedef enum {
     RF_ARRAY_FIXEDSTRING,
     RF_ARRAY_I32,
     RF_ARRAY_U8,
+    RF_HASHSET_FIXEDSTRING,
 } ResourceFieldKind;
 
 typedef struct {
@@ -61,5 +62,15 @@ const ResourceField *resource_layout_field(const ResourceLayout *layout, const c
 
 /** True if the kind is one of the RF_ARRAY_* element kinds. */
 bool resource_field_is_array(ResourceFieldKind kind);
+
+/*
+ * HashSet<T> is { StaticArray<int32> HashKeys; Array<int32> NextIds; Array<T> Keys; }.
+ * The elements live in Keys, which is a plain Array at this offset; the two
+ * index arrays only exist to make lookup fast.
+ */
+#define HASHSET_HASHKEYS_OFFSET 0x00
+#define HASHSET_HASHSIZE_OFFSET 0x08
+#define HASHSET_NEXTIDS_OFFSET  0x10
+#define HASHSET_KEYS_OFFSET     0x20
 
 #endif // BG3SE_STATICDATA_FIELDS_H

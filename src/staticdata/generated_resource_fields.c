@@ -34,6 +34,7 @@ static const ResourceField fields_ClassDescription[] = {
     { "CanLearnSpells", 0x87, RF_BOOL },  // bool
     { "HasGod", 0x88, RF_BOOL },  // bool
     { "IsDefaultForUseSpellAction", 0x89, RF_BOOL },  // bool
+    { "SomaticEquipmentSet", 0x90, RF_HASHSET_FIXEDSTRING },  // HashSet<FixedString>
     { "Tags", 0xc0, RF_ARRAY_GUID },  // Array<Guid>
     { "ClassEquipment", 0xd0, RF_FIXEDSTRING },  // FixedString
     { "CharacterCreationPose", 0xd4, RF_FIXEDSTRING },  // FixedString
@@ -267,6 +268,7 @@ static const ResourceField fields_SkillList[] = {
 };
 static const ResourceField fields_SpellList[] = {
     { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
+    { "Spells", 0x20, RF_HASHSET_FIXEDSTRING },  // HashSet<FixedString>
     { "MergedInto", 0x50, RF_GUID },  // Guid
 };
 static const ResourceField fields_AbilityList[] = {
@@ -884,7 +886,7 @@ static const ResourceField fields_PhotoModeVignette[] = {
 
 const ResourceLayout g_resource_layouts[] = {
     { "ActionResource", fields_ActionResource, 13, 0x5f },
-    { "ClassDescription", fields_ClassDescription, 27, 0x110 },
+    { "ClassDescription", fields_ClassDescription, 28, 0x110 },
     { "Tag", fields_Tag, 7, 0x64 },
     { "Faction", fields_Faction, 2, 0x30 },
     { "Race", fields_Race, 23, 0x168 },
@@ -902,7 +904,7 @@ const ResourceLayout g_resource_layouts[] = {
     { "FeatDescription", fields_FeatDescription, 9, 0x60 },
     { "PassiveList", fields_PassiveList, 3, 0x40 },
     { "SkillList", fields_SkillList, 2, 0x40 },
-    { "SpellList", fields_SpellList, 2, 0x60 },
+    { "SpellList", fields_SpellList, 3, 0x60 },
     { "AbilityList", fields_AbilityList, 2, 0x40 },
     { "CompanionPreset", fields_CompanionPreset, 10, 0xb8 },
     { "AbilityDistributionPreset", fields_AbilityDistributionPreset, 8, 0x44 },

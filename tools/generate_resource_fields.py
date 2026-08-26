@@ -36,7 +36,7 @@ TYPES = {
     "TranslatedString": (16, 4, "TRANSLATEDSTRING"),
     "glm::vec3":        (12, 4, None),
     "glm::vec4":        (16, 4, None),
-    "HashSet<FixedString>": (48, 8, None),          # StaticArray + 2x Array
+    "HashSet<FixedString>": (48, 8, "HASHSET_FIXEDSTRING"),  # StaticArray + 2x Array
     "std::optional<Guid>":  (24, 8, None),
     "std::optional<STDString>": (32, 8, None),
     # Enums -- underlying type from Enumerations/*.inl
