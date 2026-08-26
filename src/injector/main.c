@@ -4195,8 +4195,10 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
                 continue;
             }
 
-            // Log callback dispatch
-            LOG_OSIRIS_INFO("Dispatching %s callback (%s, arity=%d)",
+            // Once per listener per event: with a large mod profile this is
+            // tens of thousands of lines a minute at INFO, which buries
+            // everything else in the log.
+            LOG_OSIRIS_DEBUG("Dispatching %s callback (%s, arity=%d)",
                        eventName, timing, listener->arity);
 
             // Begin lifetime scope for this callback

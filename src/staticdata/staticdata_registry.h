@@ -47,6 +47,12 @@ void *staticdata_registry_get_manager(const StaticDataTypeEntry *entry);
  */
 void *staticdata_registry_get_object(const StaticDataTypeEntry *entry, const void *guid16);
 
+/**
+ * Parse a GUID from its canonical string form into 16 raw bytes, in the byte
+ * order ls::Guid uses. `out_guid16` must have room for 16 bytes.
+ */
+bool staticdata_registry_parse_guid(const char *guid_str, void *out_guid16);
+
 /** As above, parsing the GUID from its string form. */
 void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
                                                     const char *guid_str);

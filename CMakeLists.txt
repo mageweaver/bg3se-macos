@@ -224,7 +224,10 @@ add_library(bg3se SHARED
     src/staticdata/staticdata_manager.c
     src/staticdata/staticdata_registry.c
     src/staticdata/generated_staticdata_registry.c
+    src/staticdata/staticdata_fields.c
+    src/staticdata/generated_resource_fields.c
     src/lua/lua_staticdata.c
+    src/lua/lua_resource_object.c
     src/template/template_manager.c
     src/lua/lua_template.c
     src/resource/resource_manager.c

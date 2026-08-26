@@ -155,9 +155,8 @@ void *staticdata_registry_get_object(const StaticDataTypeEntry *entry, const voi
     return ((GetObjectByKeyFunc)fn)(mgr, guid16);
 }
 
-void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
-                                                    const char *guid_str) {
-    if (!entry || !guid_str) return NULL;
+bool staticdata_registry_parse_guid(const char *guid_str, void *out_guid16) {
+    if (!guid_str || !out_guid16) return false;
 
     // Same field order the existing lookups compare against game memory, so the
     // 16 bytes land in the layout ls::Guid uses.
@@ -165,16 +164,25 @@ void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *e
     if (sscanf(guid_str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
                &d[0], &d[1], &d[2], &d[3], &d[4], &d[5],
                &d[6], &d[7], &d[8], &d[9], &d[10]) != 11) {
-        return NULL;
+        return false;
     }
 
-    uint8_t guid[16];
+    uint8_t *guid = (uint8_t *)out_guid16;
     uint32_t p1 = (uint32_t)d[0];
     uint16_t p2 = (uint16_t)d[1], p3 = (uint16_t)d[2];
     memcpy(guid + 0, &p1, 4);
     memcpy(guid + 4, &p2, 2);
     memcpy(guid + 6, &p3, 2);
     for (int i = 0; i < 8; i++) guid[8 + i] = (uint8_t)d[3 + i];
+    return true;
+}
+
+void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
+                                                    const char *guid_str) {
+    if (!entry) return NULL;
+
+    uint8_t guid[16];
+    if (!staticdata_registry_parse_guid(guid_str, guid)) return NULL;
 
     return staticdata_registry_get_object(entry, guid);
 }

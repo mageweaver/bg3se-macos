@@ -12,6 +12,7 @@
 #include "lua_staticdata.h"
 #include "../staticdata/staticdata_manager.h"
 #include "../staticdata/staticdata_registry.h"
+#include "lua_resource_object.h"
 #include "../core/logging.h"
 #include <lua.h>
 #include <lauxlib.h>
@@ -190,7 +191,7 @@ static int lua_staticdata_create(lua_State *L) {
         return 1;
     }
 
-    lua_pushlightuserdata(L, obj);
+    lua_resource_object_push(L, obj, entry->name);
     lua_pushstring(L, created_guid);
     return 2;
 }
@@ -248,7 +249,7 @@ static int lua_staticdata_get(lua_State *L) {
                 lua_pushnil(L);
                 return 1;
             }
-            lua_pushlightuserdata(L, obj);
+            lua_resource_object_push(L, obj, entry->name);
             return 1;
         }
     }
