@@ -62,3 +62,47 @@ requirement entirely.
 Check `upstream/` first for anything structural. Every answer in this document came
 from there — the type list, the engine classes, and the argument order — and the
 AnimationSet work lost a long stretch to disassembly before the same realisation.
+
+
+## DONE: Get and GetAll routed generically (2026-08-26)
+
+All `Unknown static data type` errors are gone. EasyCheat and BG3SX both cleared.
+
+    registry            106 types, generated from upstream + binary symbols
+    manager resolution  via ls::ImmutableDataHeadmaster, verified for all types
+    Get                 the bank's own virtual GetObjectByKey (vtable slot 6)
+    GetAll              the bank's Resources.Keys array (Guid[])
+
+Counts verified live against what the game ships: Background 28, Race 203,
+Tag 1298, CharacterCreationAppearanceVisual 9044.
+
+## Remaining: Ext.StaticData.Create
+
+BG3AF's PhotoModeManager/EmoteCollection.lua:166 calls
+
+    Ext.StaticData.Create("PhotoModeEmoteCollection", uuid)
+
+Our Get fix is what let it reach that line — it now correctly returns nil for a
+resource that does not exist yet, so BG3AF proceeds to create one.
+
+Upstream implements this as `gGuidResourceHelpers.Get(type)->Create(...)`, a C++
+template that knows `sizeof(T)` for each of the 114 types at compile time. That is
+the one thing the generic path cannot get for free: allocating a resource requires
+knowing how big it is.
+
+### If this is picked up
+
+`sizeof(T)` can be derived at runtime rather than tabulated: two GUIDs from the same
+bank, looked up through GetObjectByKey, return pointers into the same values array,
+so `|ptr_j - ptr_i| / |j - i|` is the element size. Adding the object would then go
+through `AddLoadedObject`, vtable slot 7.
+
+The risk is what a zero-filled resource means to the game. That needs checking
+before anything is written, not after.
+
+### Priority note
+
+This only blocks BG3AF's photo-mode emote registration. BG3SX's animation links are
+added earlier in the same file and already work — 91 of them were confirmed present
+in a live session. So the cost of leaving this unimplemented is cosmetic, not
+structural.
