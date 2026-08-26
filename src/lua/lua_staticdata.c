@@ -11,6 +11,7 @@
 
 #include "lua_staticdata.h"
 #include "../staticdata/staticdata_manager.h"
+#include "../staticdata/staticdata_registry.h"
 #include "../core/logging.h"
 #include <lua.h>
 #include <lauxlib.h>
@@ -106,6 +107,37 @@ static int lua_staticdata_getall(lua_State *L) {
     }
 
     return 1;
+}
+
+/**
+ * Ext.StaticData._ResolveManager(type) -> pointer|nil, engineClass
+ *
+ * Diagnostic for the generic headmaster path: does this type's manager resolve
+ * at all? Underscore-prefixed because it is not part of the Windows API and
+ * exists to verify the registry before anything is built on it.
+ */
+static int lua_staticdata_resolve_manager(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+
+    const StaticDataTypeEntry *entry = staticdata_registry_find(name);
+    if (!entry) {
+        lua_pushnil(L);
+        lua_pushliteral(L, "not in registry");
+        return 2;
+    }
+
+    void *mgr = staticdata_registry_get_manager(entry);
+    if (!mgr) {
+        lua_pushnil(L);
+        lua_pushstring(L, entry->engine_class);
+        return 2;
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "0x%llx", (unsigned long long)(uintptr_t)mgr);
+    lua_pushstring(L, buf);
+    lua_pushstring(L, entry->engine_class);
+    return 2;
 }
 
 // ============================================================================
@@ -647,6 +679,7 @@ static const luaL_Reg staticdata_funcs[] = {
     {"GetSources", lua_staticdata_getsources},
     {"GetByModId", lua_staticdata_getbymodid},
     {"ProbeSourcesOffset", lua_staticdata_probesources},
+    {"_ResolveManager", lua_staticdata_resolve_manager},
     {NULL, NULL}
 };
 

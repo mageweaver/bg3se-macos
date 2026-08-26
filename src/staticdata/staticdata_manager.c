@@ -5,6 +5,7 @@
  */
 
 #include "staticdata_manager.h"
+#include "staticdata_registry.h"
 #include "../entity/entity_storage.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
@@ -1076,6 +1077,7 @@ bool staticdata_manager_init(void *main_binary_base) {
     }
 
     g_staticdata.main_binary_base = main_binary_base;
+    staticdata_registry_init(main_binary_base);
 
     // Clear manager pointers
     memset(g_staticdata.managers, 0, sizeof(g_staticdata.managers));
