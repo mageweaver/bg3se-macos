@@ -681,6 +681,119 @@ static bool array_read_header(const ResourceArrayUD *ud, void **out_buf,
  * Shared by whole-array assignment and by arr[i] = element, which merging uses
  * to replace a single entry.
  */
+
+/** Write a glm vector from a table of n numbers. */
+static int write_vec(lua_State *L, void *addr, int n, int value_index,
+                     const char *field_name) {
+    luaL_checktype(L, value_index, LUA_TTABLE);
+    if ((int)lua_rawlen(L, value_index) != n) {
+        return luaL_error(L, "field '%s' needs %d numbers", field_name, n);
+    }
+    for (int i = 0; i < n; i++) {
+        lua_rawgeti(L, value_index, i + 1);
+        float f = (float)luaL_checknumber(L, -1);
+        lua_pop(L, 1);
+        memcpy((uint8_t *)addr + i * 4, &f, sizeof(f));
+    }
+    return 0;
+}
+
+/**
+ * Write a std::optional. A nil value disengages it; anything else is stored and
+ * the flag set. The stored bytes are cleared when disengaging so a stale value
+ * cannot be read back if something later sets the flag without writing.
+ */
+static int write_optional(lua_State *L, void *addr, ResourceFieldKind kind,
+                          int value_index, const char *field_name) {
+    size_t vsize = (kind == RF_OPT_GUID || kind == RF_OPT_STDSTRING) ? 16
+                 : (kind == RF_OPT_I32) ? 4 : 1;
+    uint8_t *p = (uint8_t *)addr;
+
+    if (lua_isnil(L, value_index)) {
+        memset(p, 0, vsize);
+        p[OPTIONAL_FLAG_OFFSET(vsize)] = 0;
+        return 0;
+    }
+
+    switch (kind) {
+        case RF_OPT_GUID: {
+            const char *g = luaL_checkstring(L, value_index);
+            uint8_t raw[16];
+            if (!staticdata_registry_parse_guid(g, raw)) {
+                return luaL_error(L, "'%s' is not a GUID", g);
+            }
+            memcpy(p, raw, sizeof(raw));
+            break;
+        }
+        case RF_OPT_STDSTRING: {
+            size_t len = 0;
+            const char *str = luaL_checklstring(L, value_index, &len);
+            if (!write_stdstring(p, str, len)) {
+                return luaL_error(L, "could not write field '%s'", field_name);
+            }
+            break;
+        }
+        case RF_OPT_I32:
+            *(int32_t *)p = (int32_t)luaL_checkinteger(L, value_index);
+            break;
+        default:
+            *p = (uint8_t)luaL_checkinteger(L, value_index);
+            break;
+    }
+
+    p[OPTIONAL_FLAG_OFFSET(vsize)] = 1;
+    return 0;
+}
+
+/**
+ * Write variant<NoValue, float, int, FixedString, bool>, picking the
+ * alternative from the Lua value's own type. An integer stays an integer rather
+ * than becoming a float, since the two are distinct alternatives here.
+ */
+static int write_variant_scalar(lua_State *L, void *addr, int value_index) {
+    uint8_t *p = (uint8_t *)addr;
+    uint8_t which;
+    uint32_t bits = 0;
+
+    switch (lua_type(L, value_index)) {
+        case LUA_TNIL:
+            which = 0;
+            break;
+        case LUA_TBOOLEAN:
+            which = 4;
+            bits = lua_toboolean(L, value_index) ? 1 : 0;
+            break;
+        case LUA_TSTRING: {
+            const char *str = lua_tostring(L, value_index);
+            uint32_t idx = fixed_string_intern(str, (int)strlen(str));
+            if (idx == 0xffffffffu) {
+                return luaL_error(L, "could not intern '%s'", str);
+            }
+            which = 3;
+            bits = idx;
+            break;
+        }
+        case LUA_TNUMBER:
+            if (lua_isinteger(L, value_index)) {
+                which = 2;
+                int32_t v = (int32_t)lua_tointeger(L, value_index);
+                memcpy(&bits, &v, sizeof(bits));
+            } else {
+                which = 1;
+                float f = (float)lua_tonumber(L, value_index);
+                memcpy(&bits, &f, sizeof(bits));
+            }
+            break;
+        default:
+            return luaL_error(L, "a variant field takes nil, a boolean, a number "
+                                 "or a string");
+    }
+
+    memcpy(p, &bits, sizeof(bits));
+    p[VARIANT_SCALAR_INDEX_OFFSET] = which;
+    return 0;
+}
+
 static int write_struct_element(lua_State *L, void *slot, const ResourceLayout *layout,
                                 size_t esize, int value_index) {
     if (!layout) {
@@ -902,57 +1015,33 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
             return 0;
         }
 
-        case RF_VEC3:
-            push_vec(L, addr, 3);
-            return 1;
-        case RF_VEC4:
-            push_vec(L, addr, 4);
-            return 1;
-
-        case RF_OPT_GUID:
-            if (!optional_engaged(addr, 16)) { lua_pushnil(L); return 1; }
-            push_guid(L, addr);
-            return 1;
-        case RF_OPT_STDSTRING: {
-            if (!optional_engaged(addr, 16)) { lua_pushnil(L); return 1; }
-            size_t len = 0;
-            const char *str = read_stdstring(addr, &len);
-            if (str) lua_pushlstring(L, str, len); else lua_pushnil(L);
-            return 1;
-        }
-        case RF_OPT_I32: {
-            if (!optional_engaged(addr, 4)) { lua_pushnil(L); return 1; }
-            uint32_t v = 0;
-            if (safe_memory_read_u32((mach_vm_address_t)addr, &v)) {
-                lua_pushinteger(L, (int32_t)v);
-            } else {
-                lua_pushnil(L);
-            }
-            return 1;
-        }
-        case RF_OPT_U8: {
-            if (!optional_engaged(addr, 1)) { lua_pushnil(L); return 1; }
-            uint8_t v = 0;
-            if (safe_memory_read_u8((mach_vm_address_t)addr, &v)) {
-                lua_pushinteger(L, v);
-            } else {
-                lua_pushnil(L);
-            }
-            return 1;
-        }
-
-        case RF_VARIANT_SCALAR:
-            push_variant_scalar(L, addr);
-            return 1;
-
-        case RF_HASHMAP_U8_FIXEDSTRING:
-            push_hashmap_u8_fixedstring(L, addr);
-            return 1;
-
         case RF_HASHSET_FIXEDSTRING: {
             luaL_checktype(L, value_index, LUA_TTABLE);
             return rebuild_fixedstring_hashset(L, addr, value_index);
         }
+
+        case RF_VEC3:
+            return write_vec(L, addr, 3, value_index, field->name);
+        case RF_VEC4:
+            return write_vec(L, addr, 4, value_index, field->name);
+
+        case RF_OPT_GUID:
+        case RF_OPT_STDSTRING:
+        case RF_OPT_I32:
+        case RF_OPT_U8:
+            return write_optional(L, addr, field->kind, value_index, field->name);
+
+        case RF_VARIANT_SCALAR:
+            return write_variant_scalar(L, addr, value_index);
+
+        case RF_HASHMAP_U8_FIXEDSTRING:
+            // Readable, but never seen populated in this build -- every
+            // DeathTypeEffect carries an empty one -- so the layout the write
+            // would have to rebuild is unverified. Refuse rather than construct
+            // a hash index from an assumption.
+            return luaL_error(L, "field '%s' is read-only: its map layout has "
+                                 "not been confirmed against live data",
+                              field->name);
 
         default:
             if (resource_field_is_array(field->kind)) {
