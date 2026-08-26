@@ -300,3 +300,29 @@ MapNode, link it at `HashTable[Hash(key) % HashSize]`, bump ItemCount, and grow/
 rehash when needed. Allocation must come from the game's allocator, not malloc, so
 the game can free it. That is the only remaining unknown, and it is a small one
 compared to what this section replaces.
+
+
+## Read path VERIFIED end to end (2026-08-25)
+
+Through the Lua surface, against the same ground truth:
+
+    SX     subsets=1   key=[""]  anims=0                    iterated=1
+    HUM_M  subsets=37  real UUID keys, anims=5/103/272      iterated=37
+
+BG3SX's LSX declares exactly one subset, keyed by the empty string, with an empty
+Animation node — all three reproduce. The empty MapKey (FS_NULL) round-trips as ""
+in both directions, pairs() walks every bucket chain, and __len reports ItemCount.
+
+Reads can be trusted. Remaining unverified: the ls::MemoryManager::Allocate
+argument convention, which is why writes stay behind BG3SE_ANIMSET_WRITE=1.
+
+### Write test protocol
+
+Do this once, deliberately, and read back before trusting anything:
+
+1. Pick BG3SX's set (`bfa9dad2`), whose only subset is empty — a failed insert
+   there damages nothing that was working.
+2. Insert one link, then re-read: `#Animation` must become 1 and the entry must
+   read back with the ID that went in.
+3. Only then let BG3AF run its own AddLink, and check the mods load clean.
+4. Consider defaulting writes on only after that survives a session.
