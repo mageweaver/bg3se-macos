@@ -1112,6 +1112,62 @@ static const char* get_rpgstats_fixedstring(int32_t index) {
 
 // Find a string value in the RPGStats.FixedStrings pool
 // Returns pool index if found, -1 if not found
+static uint32_t stats_name_hash(const char *s);
+
+/*
+ * The FixedStrings pool is searched by content on every string property write.
+ * Walking it resolves and compares every entry, so a mod setting string
+ * properties in bulk turns writes quadratic -- the same shape that made
+ * Ext.Stats.Get unbounded. Index it by content, rebuilt when the pool grows.
+ */
+typedef struct {
+    const char *str;    // interned; stable for the life of the process
+    int32_t index;
+} FsPoolSlot;
+
+static FsPoolSlot *g_FsPoolIndex = NULL;
+static uint32_t g_FsPoolMask = 0;
+static uint32_t g_FsPoolBuiltFor = 0;
+
+static void fs_pool_insert(const char *str, int32_t index) {
+    uint32_t i = stats_name_hash(str) & g_FsPoolMask;
+    for (;;) {
+        if (!g_FsPoolIndex[i].str) {
+            g_FsPoolIndex[i].str = str;
+            g_FsPoolIndex[i].index = index;
+            return;
+        }
+        /* Lowest index wins, matching the scan, which returned the first hit. */
+        if (strcmp(g_FsPoolIndex[i].str, str) == 0) return;
+        i = (i + 1) & g_FsPoolMask;
+    }
+}
+
+static bool fs_pool_build(void *buf, uint32_t size) {
+    uint32_t capacity = 64;
+    while (capacity < size * 2u) capacity <<= 1;
+
+    FsPoolSlot *fresh = (FsPoolSlot *)calloc(capacity, sizeof(FsPoolSlot));
+    if (!fresh) return false;
+
+    free(g_FsPoolIndex);
+    g_FsPoolIndex = fresh;
+    g_FsPoolMask = capacity - 1;
+
+    uint32_t indexed = 0;
+    for (uint32_t i = 1; i < size; i++) {   /* 0 is the null entry */
+        const char *str = read_fixed_string((char *)buf + i * sizeof(uint32_t));
+        if (!str || !*str) continue;
+        fs_pool_insert(str, (int32_t)i);
+        indexed++;
+    }
+
+    g_FsPoolBuiltFor = size;
+    LOG_STATS_INFO("FixedStrings pool index built: %u of %u entries, %u slots",
+                   indexed, size, capacity);
+    return true;
+}
+
 static int32_t find_fixedstring_pool_index(const char *value) {
     if (!value) return -1;
 
@@ -1120,28 +1176,22 @@ static int32_t find_fixedstring_pool_index(const char *value) {
 
     void *fs_array = (char*)rpgstats + RPGSTATS_OFFSET_FIXEDSTRINGS;
 
-    // Read buffer pointer
     void *buf = NULL;
-    if (!safe_read_ptr(fs_array, &buf) || !buf) {
-        return -1;
-    }
+    if (!safe_read_ptr(fs_array, &buf) || !buf) return -1;
 
-    // Read size
     uint32_t size = 0;
-    if (!safe_read_u32((char*)fs_array + 0x0C, &size)) {
-        return -1;
-    }
+    if (!safe_read_u32((char*)fs_array + 0x0C, &size)) return -1;
+    if (size <= 1) return -1;
 
-    // Search through the pool for matching string
-    for (uint32_t i = 1; i < size; i++) {  // Start at 1 since 0 is null
-        void *fs_addr = (char*)buf + i * sizeof(uint32_t);
-        const char *str = read_fixed_string(fs_addr);
-        if (str && strcmp(str, value) == 0) {
-            return (int32_t)i;
-        }
-    }
+    if (size != g_FsPoolBuiltFor && !fs_pool_build(buf, size)) return -1;
+    if (!g_FsPoolIndex) return -1;
 
-    return -1;  // Not found
+    uint32_t i = stats_name_hash(value) & g_FsPoolMask;
+    for (;;) {
+        if (!g_FsPoolIndex[i].str) return -1;
+        if (strcmp(g_FsPoolIndex[i].str, value) == 0) return g_FsPoolIndex[i].index;
+        i = (i + 1) & g_FsPoolMask;
+    }
 }
 
 // Read FixedString - on macOS this is a 32-bit index into GlobalStringTable

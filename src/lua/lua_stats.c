@@ -679,8 +679,8 @@ static int lua_stats_setpersistence(lua_State *L) {
 #define STATS_HASHMAP_VALS_LEN  0x3c
 
 /* Search window inside RPGStats; the declared position is around +0x2a8. */
-#define STATS_EXTRADATA_SCAN_LO 0x180
-#define STATS_EXTRADATA_SCAN_HI 0x420
+#define STATS_EXTRADATA_SCAN_LO 0x80
+#define STATS_EXTRADATA_SCAN_HI 0x800
 
 static bool extradata_map_is_plausible(void *map, uint32_t *out_count) {
     void *hash_keys = NULL, *keys = NULL, *values = NULL;
@@ -708,35 +708,53 @@ static bool extradata_map_is_plausible(void *map, uint32_t *out_count) {
     return true;
 }
 
-/** Locate ExtraData once. Returns the map, or NULL if nothing convincing. */
+/**
+ * Locate ExtraData once. Returns the map, or NULL if nothing convincing.
+ *
+ * Upstream declares the member as a pointer, but a declaration that has already
+ * been wrong about this build's layout is not something to rely on alone, so
+ * each offset is tried both ways: as a HashMap stored inline and as a pointer
+ * to one.
+ */
 static void *stats_find_extradata(void) {
     static void *cached = NULL;
     static bool searched = false;
     if (searched) return cached;
-    searched = true;
 
     void *stats = stats_manager_get_raw();
-    if (!stats) {
-        searched = false;   /* not up yet; try again later */
-        return NULL;
-    }
+    if (!stats) return NULL;   /* not up yet; try again on the next call */
 
+    int near_misses = 0;
     for (uint32_t off = STATS_EXTRADATA_SCAN_LO; off <= STATS_EXTRADATA_SCAN_HI; off += 8) {
-        void *candidate = NULL;
-        if (!safe_memory_read_pointer((mach_vm_address_t)stats + off, &candidate) || !candidate) {
-            continue;
-        }
+        void *inline_map = (uint8_t *)stats + off;
         uint32_t count = 0;
-        if (!extradata_map_is_plausible(candidate, &count)) continue;
 
-        LOG_LUA_INFO("Stats ExtraData found at RPGStats+0x%x (%u entries)", off, count);
-        cached = candidate;
-        return cached;
+        if (extradata_map_is_plausible(inline_map, &count)) {
+            LOG_LUA_INFO("Stats ExtraData found inline at RPGStats+0x%x (%u entries)",
+                         off, count);
+            cached = inline_map;
+            searched = true;
+            return cached;
+        }
+
+        void *pointed = NULL;
+        if (safe_memory_read_pointer((mach_vm_address_t)stats + off, &pointed) && pointed) {
+            if (extradata_map_is_plausible(pointed, &count)) {
+                LOG_LUA_INFO("Stats ExtraData found via pointer at RPGStats+0x%x "
+                             "(%u entries)", off, count);
+                cached = pointed;
+                searched = true;
+                return cached;
+            }
+            near_misses++;
+        }
     }
 
-    LOG_LUA_WARN("Stats ExtraData not found in RPGStats+0x%x..0x%x; "
+    searched = true;
+    LOG_LUA_WARN("Stats ExtraData not found in RPGStats+0x%x..0x%x "
+                 "(%d pointer candidates rejected); "
                  "Ext.Stats.GetStatsManager().ExtraData will be empty",
-                 STATS_EXTRADATA_SCAN_LO, STATS_EXTRADATA_SCAN_HI);
+                 STATS_EXTRADATA_SCAN_LO, STATS_EXTRADATA_SCAN_HI, near_misses);
     return NULL;
 }
 

@@ -770,30 +770,72 @@ typedef struct { char name[96]; void *def; } DbRegEntry;
 static DbRegEntry g_dbReg[MAX_DATABASES];
 static int g_dbRegCount = 0;
 
-void osi_db_clear(void) { g_dbRegCount = 0; }
+/* Both register and lookup used to walk the whole array. Enumeration inserts
+ * one entry per def across the entire name index, so registration alone was
+ * quadratic in the number of defs, and every later dispatch by name paid a full
+ * scan on top. The array stays -- it is the enumeration order -- with a hash of
+ * indices over it for lookup. */
+#define DBREG_HASH_SIZE 65536           /* power of two, > 2 * MAX_DATABASES */
+#define DBREG_HASH_MASK (DBREG_HASH_SIZE - 1)
+#define DBREG_EMPTY (-1)
+
+static int32_t g_dbRegHash[DBREG_HASH_SIZE];
+static bool g_dbRegHashReady = false;
+
+static uint32_t db_name_hash(const char *s) {
+    uint32_t h = 2166136261u;           /* FNV-1a */
+    for (; *s; s++) {
+        h ^= (unsigned char)*s;
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static void db_hash_reset(void) {
+    for (uint32_t i = 0; i < DBREG_HASH_SIZE; i++) g_dbRegHash[i] = DBREG_EMPTY;
+    g_dbRegHashReady = true;
+}
+
+/* Slot holding `name`, or the empty slot it belongs in. */
+static uint32_t db_hash_slot(const char *name) {
+    uint32_t i = db_name_hash(name) & DBREG_HASH_MASK;
+    for (;;) {
+        int32_t at = g_dbRegHash[i];
+        if (at == DBREG_EMPTY) return i;
+        if (strcmp(g_dbReg[at].name, name) == 0) return i;
+        i = (i + 1) & DBREG_HASH_MASK;
+    }
+}
+
+void osi_db_clear(void) {
+    g_dbRegCount = 0;
+    db_hash_reset();
+}
 
 int osi_db_register(const char *name, void *def) {
     if (!name || !name[0] || !def) return 0;
-    for (int i = 0; i < g_dbRegCount; i++) {
-        if (strcmp(g_dbReg[i].name, name) == 0) {
-            g_dbReg[i].def = def;  /* refresh on re-enumeration */
-            return 0;
-        }
+    if (!g_dbRegHashReady) db_hash_reset();
+
+    uint32_t slot = db_hash_slot(name);
+    int32_t at = g_dbRegHash[slot];
+    if (at != DBREG_EMPTY) {
+        g_dbReg[at].def = def;          /* refresh on re-enumeration */
+        return 0;
     }
+
     if (g_dbRegCount >= MAX_DATABASES) return 0;
     strncpy(g_dbReg[g_dbRegCount].name, name, sizeof(g_dbReg[0].name) - 1);
     g_dbReg[g_dbRegCount].name[sizeof(g_dbReg[0].name) - 1] = '\0';
     g_dbReg[g_dbRegCount].def = def;
+    g_dbRegHash[slot] = g_dbRegCount;
     g_dbRegCount++;
     return 1;
 }
 
 void *osi_db_lookup(const char *name) {
-    if (!name) return NULL;
-    for (int i = 0; i < g_dbRegCount; i++) {
-        if (strcmp(g_dbReg[i].name, name) == 0) return g_dbReg[i].def;
-    }
-    return NULL;
+    if (!name || !g_dbRegHashReady) return NULL;
+    int32_t at = g_dbRegHash[db_hash_slot(name)];
+    return (at == DBREG_EMPTY) ? NULL : g_dbReg[at].def;
 }
 
 int osi_db_count(void) { return g_dbRegCount; }
