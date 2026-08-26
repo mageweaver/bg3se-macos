@@ -134,56 +134,18 @@ static const ResourceField fields_God[] = {
     { "MergedInto", 0x50, RF_GUID },  // Guid
 };
 static const ResourceField fields_Progression[] = {
-    { "SpellUUID", 0x18, RF_GUID },  // Guid
-    { "Amount", 0x28, RF_I32 },  // int32_t
-    { "Arg3", 0x2c, RF_I32 },  // int32_t
-    { "SelectorId", 0x30, RF_STDSTRING },  // STDString
-    { "CastingAbility", 0x48, RF_U8 },  // AbilityId
-    { "ActionResource", 0x50, RF_GUID },  // Guid
-    { "PrepareType", 0x60, RF_U8 },  // SpellPrepareType
-    { "CooldownType", 0x61, RF_U8 },  // SpellCooldownType
-    { "ClassUUID", 0x68, RF_GUID },  // Guid
-    { "SpellUUID", 0x78, RF_GUID },  // Guid
-    { "SelectorId", 0x88, RF_STDSTRING },  // STDString
-    { "Ability", 0xa0, RF_U8 },  // AbilityId
-    { "ActionResource", 0xa8, RF_GUID },  // Guid
-    { "PrepareType", 0xb8, RF_U8 },  // SpellPrepareType
-    { "CooldownType", 0xb9, RF_U8 },  // SpellCooldownType
-    { "ClassUUID", 0xc0, RF_GUID },  // Guid
-    { "UUID", 0xd0, RF_GUID },  // Guid
-    { "Arg2", 0xe0, RF_I32 },  // int32_t
-    { "Arg3", 0xe4, RF_I32 },  // int32_t
-    { "Arg4", 0xe8, RF_STDSTRING },  // STDString
-    { "UUID", 0x100, RF_GUID },  // Guid
-    { "Amount", 0x110, RF_I32 },  // int32_t
-    { "Amounts", 0x118, RF_ARRAY_I32 },  // Array<int32_t>
-    { "BonusType", 0x128, RF_STDSTRING },  // STDString
-    { "UUID", 0x140, RF_GUID },  // Guid
-    { "Amount", 0x150, RF_I32 },  // int32_t
-    { "Arg3", 0x158, RF_STDSTRING },  // STDString
-    { "UUID", 0x170, RF_GUID },  // Guid
-    { "Amount", 0x180, RF_I32 },  // int32_t
-    { "Arg3", 0x184, RF_BOOL },  // bool
-    { "Arg4", 0x188, RF_STDSTRING },  // STDString
-    { "UUID", 0x1a0, RF_GUID },  // Guid
-    { "Amount", 0x1b0, RF_I32 },  // int32_t
-    { "Amount2", 0x1b4, RF_I32 },  // int32_t
-    { "Arg3", 0x1b8, RF_STDSTRING },  // STDString
-    { "UUID", 0x1d0, RF_GUID },  // Guid
-    { "Amount", 0x1e0, RF_I32 },  // int32_t
-    { "Arg3", 0x1e8, RF_STDSTRING },  // STDString
-    { "TableUUID", 0x200, RF_GUID },  // Guid
-    { "Name", 0x210, RF_STDSTRING },  // STDString
-    { "SubClasses", 0x228, RF_ARRAY_GUID },  // Array<Guid>
-    { "PassivesAdded", 0x248, RF_STDSTRING },  // STDString
-    { "PassivesRemoved", 0x270, RF_STDSTRING },  // STDString
-    { "BoostPrototypes", 0x288, RF_ARRAY_GUID },  // Array<Guid>
-    { "Boosts", 0x298, RF_STDSTRING },  // STDString
-    { "ProgressionType", 0x2b0, RF_U8 },  // ProgressionType
-    { "Level", 0x2b1, RF_U8 },  // uint8_t
-    { "AllowImprovement", 0x2b2, RF_BOOL },  // bool
-    { "field_D0", 0x2b8, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "IsMulticlass", 0x2c8, RF_BOOL },  // bool
+    { "TableUUID", 0x18, RF_GUID },  // Guid
+    { "Name", 0x28, RF_STDSTRING },  // STDString
+    { "SubClasses", 0x40, RF_ARRAY_GUID },  // Array<Guid>
+    { "PassivesAdded", 0x60, RF_STDSTRING },  // STDString
+    { "PassivesRemoved", 0x88, RF_STDSTRING },  // STDString
+    { "BoostPrototypes", 0xa0, RF_ARRAY_GUID },  // Array<Guid>
+    { "Boosts", 0xb0, RF_STDSTRING },  // STDString
+    { "ProgressionType", 0xc8, RF_U8 },  // ProgressionType
+    { "Level", 0xc9, RF_U8 },  // uint8_t
+    { "AllowImprovement", 0xca, RF_BOOL },  // bool
+    { "field_D0", 0xd0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
+    { "IsMulticlass", 0xe0, RF_BOOL },  // bool
 };
 static const ResourceField fields_ProgressionDescription[] = {
     { "DisplayName", 0x18, RF_TRANSLATEDSTRING },  // TranslatedString
@@ -386,15 +348,11 @@ static const ResourceField fields_CharacterCreationSharedVisual[] = {
     { "Tags", 0x48, RF_ARRAY_GUID },  // Array<Guid>
 };
 static const ResourceField fields_LevelMap[] = {
-    { "DiceValue", 0x18, RF_U8 },  // DiceSizeId
-    { "AmountOfDices", 0x19, RF_U8 },  // uint8_t
-    { "Name", 0x1c, RF_FIXEDSTRING },  // FixedString
+    { "Name", 0x18, RF_FIXEDSTRING },  // FixedString
     { "PreferredClassUUID", 0x20, RF_GUID },  // Guid
 };
 static const ResourceField fields_ApprovalRating[] = {
-    { "id", 0x18, RF_GUID },  // Guid
-    { "value", 0x28, RF_I32 },  // int32_t
-    { "Scope", 0x2c, RF_U8 },  // uint8_t
+    { "Scope", 0x18, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_AreaLevelOverride[] = {
     { "ParentUuid", 0x18, RF_GUID },  // Guid
@@ -704,57 +662,53 @@ static const ResourceField fields_WeightCategories[] = {
     { "ObjectSize", 0x30, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_ShapeshiftRule[] = {
-    { "Type", 0x18, RF_U8 },  // uint8_t
-    { "Value", 0x1c, RF_I32 },  // int32_t
-    { "Type", 0x20, RF_U8 },  // uint8_t
-    { "Value", 0x24, RF_F32 },  // float
-    { "RuleName", 0x28, RF_STDSTRING },  // STDString
-    { "WildShapeHotBar", 0x50, RF_BOOL },  // bool
-    { "FootstepsType", 0x5c, RF_U8 },  // uint8_t
-    { "RemoveOldTags", 0x70, RF_BOOL },  // bool
-    { "ApplyTagsFromTemplate", 0x71, RF_BOOL },  // bool
-    { "TagsAdd", 0x78, RF_ARRAY_GUID },  // Array<Guid>
-    { "TagsRemove", 0x88, RF_ARRAY_GUID },  // Array<Guid>
-    { "ActionCapabilities", 0x98, RF_U16 },  // uint16_t
-    { "InteractionsCapabilities", 0x9a, RF_U16 },  // uint16_t
-    { "AwarenessCapabilities", 0x9c, RF_U16 },  // uint16_t
-    { "SpeakingCapabilities", 0x9e, RF_U16 },  // uint16_t
-    { "ChangeRace", 0xa0, RF_BOOL },  // bool
-    { "ChangeBodyType", 0xa1, RF_BOOL },  // bool
-    { "UseShapeshiftIdentity", 0xa2, RF_BOOL },  // bool
-    { "ChangeAi", 0xa3, RF_BOOL },  // bool
-    { "ApplyVisual", 0xc8, RF_BOOL },  // bool
-    { "ApplyVisualInCC", 0xc9, RF_BOOL },  // bool
-    { "IgnoreCustomLooks", 0xca, RF_BOOL },  // bool
-    { "RetainDisplayName", 0xcb, RF_BOOL },  // bool
-    { "ChangeIcon", 0xcc, RF_BOOL },  // bool
-    { "MuteEquipmentSound", 0xd8, RF_BOOL },  // bool
-    { "OverrideSpeaker", 0xd9, RF_BOOL },  // bool
-    { "RemovePrevSpells", 0xda, RF_BOOL },  // bool
-    { "ApplySpellsFromTemplate", 0xdb, RF_BOOL },  // bool
-    { "SpellsAdd", 0xe0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "SpellsRemove", 0xf0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
-    { "RetainCanSeeThrough", 0x100, RF_BOOL },  // bool
-    { "RetainCanShootThrough", 0x101, RF_BOOL },  // bool
-    { "RetainCanWalkThrough", 0x102, RF_BOOL },  // bool
-    { "BaseACOverride", 0x103, RF_BOOL },  // bool
-    { "UnarmedAbilityFromTemplate", 0x104, RF_BOOL },  // bool
-    { "DisableEquipmentSlots", 0x105, RF_BOOL },  // bool
-    { "UseTemplateEquipmentSet", 0x106, RF_BOOL },  // bool
-    { "KillEntityAtZeroHP", 0x107, RF_BOOL },  // bool
-    { "PathInfluence", 0x108, RF_STDSTRING },  // STDString
-    { "BlockLevelUp", 0x138, RF_BOOL },  // bool
-    { "FlagsInheritanceType", 0x139, RF_U8 },  // uint8_t
-    { "DefaultBoostsInheritanceType", 0x13a, RF_U8 },  // uint8_t
-    { "PersonalStatusImmunitiesInheritanceType", 0x13b, RF_U8 },  // uint8_t
-    { "SpellCastingAbilityInheritanceType", 0x13c, RF_U8 },  // uint8_t
-    { "PassivesInheritanceType", 0x13d, RF_U8 },  // uint8_t
-    { "ResistancesInheritanceType", 0x13e, RF_U8 },  // uint8_t
-    { "DifficultyStatusesInheritanceType", 0x13f, RF_U8 },  // uint8_t
-    { "ProficiencyGroupsInheritanceType", 0x140, RF_U8 },  // uint8_t
-    { "BloodSurfaceTypeInheritanceType", 0x141, RF_U8 },  // uint8_t
-    { "HitBloodTypeInheritanceType", 0x142, RF_U8 },  // uint8_t
-    { "DeathActionsInheritanceType", 0x143, RF_U8 },  // uint8_t
+    { "RuleName", 0x18, RF_STDSTRING },  // STDString
+    { "WildShapeHotBar", 0x40, RF_BOOL },  // bool
+    { "FootstepsType", 0x4c, RF_U8 },  // uint8_t
+    { "RemoveOldTags", 0x60, RF_BOOL },  // bool
+    { "ApplyTagsFromTemplate", 0x61, RF_BOOL },  // bool
+    { "TagsAdd", 0x68, RF_ARRAY_GUID },  // Array<Guid>
+    { "TagsRemove", 0x78, RF_ARRAY_GUID },  // Array<Guid>
+    { "ActionCapabilities", 0x88, RF_U16 },  // uint16_t
+    { "InteractionsCapabilities", 0x8a, RF_U16 },  // uint16_t
+    { "AwarenessCapabilities", 0x8c, RF_U16 },  // uint16_t
+    { "SpeakingCapabilities", 0x8e, RF_U16 },  // uint16_t
+    { "ChangeRace", 0x90, RF_BOOL },  // bool
+    { "ChangeBodyType", 0x91, RF_BOOL },  // bool
+    { "UseShapeshiftIdentity", 0x92, RF_BOOL },  // bool
+    { "ChangeAi", 0x93, RF_BOOL },  // bool
+    { "ApplyVisual", 0xb8, RF_BOOL },  // bool
+    { "ApplyVisualInCC", 0xb9, RF_BOOL },  // bool
+    { "IgnoreCustomLooks", 0xba, RF_BOOL },  // bool
+    { "RetainDisplayName", 0xbb, RF_BOOL },  // bool
+    { "ChangeIcon", 0xbc, RF_BOOL },  // bool
+    { "MuteEquipmentSound", 0xc8, RF_BOOL },  // bool
+    { "OverrideSpeaker", 0xc9, RF_BOOL },  // bool
+    { "RemovePrevSpells", 0xca, RF_BOOL },  // bool
+    { "ApplySpellsFromTemplate", 0xcb, RF_BOOL },  // bool
+    { "SpellsAdd", 0xd0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
+    { "SpellsRemove", 0xe0, RF_ARRAY_FIXEDSTRING },  // Array<FixedString>
+    { "RetainCanSeeThrough", 0xf0, RF_BOOL },  // bool
+    { "RetainCanShootThrough", 0xf1, RF_BOOL },  // bool
+    { "RetainCanWalkThrough", 0xf2, RF_BOOL },  // bool
+    { "BaseACOverride", 0xf3, RF_BOOL },  // bool
+    { "UnarmedAbilityFromTemplate", 0xf4, RF_BOOL },  // bool
+    { "DisableEquipmentSlots", 0xf5, RF_BOOL },  // bool
+    { "UseTemplateEquipmentSet", 0xf6, RF_BOOL },  // bool
+    { "KillEntityAtZeroHP", 0xf7, RF_BOOL },  // bool
+    { "PathInfluence", 0xf8, RF_STDSTRING },  // STDString
+    { "BlockLevelUp", 0x128, RF_BOOL },  // bool
+    { "FlagsInheritanceType", 0x129, RF_U8 },  // uint8_t
+    { "DefaultBoostsInheritanceType", 0x12a, RF_U8 },  // uint8_t
+    { "PersonalStatusImmunitiesInheritanceType", 0x12b, RF_U8 },  // uint8_t
+    { "SpellCastingAbilityInheritanceType", 0x12c, RF_U8 },  // uint8_t
+    { "PassivesInheritanceType", 0x12d, RF_U8 },  // uint8_t
+    { "ResistancesInheritanceType", 0x12e, RF_U8 },  // uint8_t
+    { "DifficultyStatusesInheritanceType", 0x12f, RF_U8 },  // uint8_t
+    { "ProficiencyGroupsInheritanceType", 0x130, RF_U8 },  // uint8_t
+    { "BloodSurfaceTypeInheritanceType", 0x131, RF_U8 },  // uint8_t
+    { "HitBloodTypeInheritanceType", 0x132, RF_U8 },  // uint8_t
+    { "DeathActionsInheritanceType", 0x133, RF_U8 },  // uint8_t
 };
 static const ResourceField fields_AnimationSetPriority[] = {
     { "Name", 0x18, RF_STDSTRING },  // STDString
@@ -893,7 +847,7 @@ const ResourceLayout g_resource_layouts[] = {
     { "Origin", fields_Origin, 30, 0x1b0 },
     { "Background", fields_Background, 5, 0x71 },
     { "God", fields_God, 5, 0x60 },
-    { "Progression", fields_Progression, 50, 0x350 },
+    { "Progression", fields_Progression, 12, 0x168 },
     { "ProgressionDescription", fields_ProgressionDescription, 10, 0x70 },
     { "Gossip", fields_Gossip, 6, 0x58 },
     { "ActionResourceGroup", fields_ActionResourceGroup, 4, 0x60 },
@@ -918,8 +872,8 @@ const ResourceLayout g_resource_layouts[] = {
     { "CharacterCreationPassiveAppearance", fields_CharacterCreationPassiveAppearance, 5, 0x60 },
     { "CharacterCreationPreset", fields_CharacterCreationPreset, 9, 0xa8 },
     { "CharacterCreationSharedVisual", fields_CharacterCreationSharedVisual, 5, 0x58 },
-    { "LevelMap", fields_LevelMap, 4, 0x30 },  // truncated at std::variant<int32_t, DiceRoll> FallbackValue
-    { "ApprovalRating", fields_ApprovalRating, 3, 0x50 },
+    { "LevelMap", fields_LevelMap, 2, 0x30 },  // truncated at std::variant<int32_t, DiceRoll> FallbackValue
+    { "ApprovalRating", fields_ApprovalRating, 1, 0x40 },
     { "AreaLevelOverride", fields_AreaLevelOverride, 3, 0x30 },
     { "AvatarContainerTemplates", fields_AvatarContainerTemplates, 1, 0x28 },
     { "BackgroundGoal", fields_BackgroundGoal, 6, 0x60 },
@@ -967,7 +921,7 @@ const ResourceLayout g_resource_layouts[] = {
     { "Voice", fields_Voice, 5, 0x60 },
     { "WeaponAnimationSet", fields_WeaponAnimationSet, 3, 0x24 },
     { "WeightCategories", fields_WeightCategories, 3, 0x31 },
-    { "ShapeshiftRule", fields_ShapeshiftRule, 51, 0x144 },
+    { "ShapeshiftRule", fields_ShapeshiftRule, 47, 0x134 },
     { "AnimationSetPriority", fields_AnimationSetPriority, 3, 0x48 },
     { "SpellMetaCondition", fields_SpellMetaCondition, 4, 0x51 },
     { "ScriptMaterialParameterOverride", fields_ScriptMaterialParameterOverride, 4, 0x30 },  // truncated at std::variant<float, glm::vec3, glm::vec4, FixedString> Limit

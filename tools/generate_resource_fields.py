@@ -84,12 +84,43 @@ FIELD_RE = re.compile(
     r"\s+(\w+)\s*(\{[^;]*\})?\s*;")       # name, initialiser
 
 
+def strip_nested_structs(body):
+    """
+    Remove nested `struct X { ... };` / enum / union definitions from a struct
+    body. Their members are not fields of the outer struct -- Progression
+    declares Spell, AddedSpell, Ability and friends before its real fields, and
+    treating those as outer members put every offset in the wrong place (and
+    produced duplicate names, which is how it was spotted).
+    """
+    out, i = [], 0
+    while i < len(body):
+        m = re.compile(r"\b(struct|union|enum(?:\s+class)?)\s+\w+[^;{]*\{").search(body, i)
+        if not m:
+            out.append(body[i:])
+            break
+        out.append(body[i:m.start()])
+        depth, j = 0, m.end() - 1
+        while j < len(body):
+            if body[j] == "{":
+                depth += 1
+            elif body[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        # Skip past the closing brace and its trailing declarator/semicolon.
+        k = body.find(";", j)
+        i = (k + 1) if k != -1 else len(body)
+    return "".join(out)
+
+
 def parse(header):
     src = open(header).read()
     blocks = re.findall(
         r"struct\s+(\w+)\s*:\s*public\s+resource::GuidResource\s*\{(.*?)\n\};", src, re.S)
     out = []
     for name, body in blocks:
+        body = strip_nested_structs(body)
         fields, offset, truncated = [], 0x18, None  # VMT(8) + ResourceUUID(16)
         for line in body.splitlines():
             l = line.strip()
