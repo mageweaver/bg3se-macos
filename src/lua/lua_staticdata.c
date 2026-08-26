@@ -324,11 +324,25 @@ static int lua_staticdata_getcount(lua_State *L) {
  * @return Array table of type name strings
  */
 static int lua_staticdata_gettypes(lua_State *L) {
-    lua_createtable(L, STATICDATA_COUNT, 0);
+    /*
+     * Every type a mod can actually pass to Get/GetAll, not just the nine with
+     * hand-written managers. The registry covers all of them, so it is the list;
+     * the hooked names are added only if the registry somehow lacks one, which
+     * keeps this from ever returning less than it used to.
+     */
+    lua_createtable(L, g_staticdata_type_count + STATICDATA_COUNT, 0);
+    int written = 0;
+
+    for (int i = 0; i < g_staticdata_type_count; i++) {
+        lua_pushstring(L, g_staticdata_types[i].name);
+        lua_rawseti(L, -2, ++written);
+    }
 
     for (int i = 0; i < STATICDATA_COUNT; i++) {
-        lua_pushstring(L, staticdata_type_name((StaticDataType)i));
-        lua_rawseti(L, -2, i + 1);
+        const char *name = staticdata_type_name((StaticDataType)i);
+        if (!name || staticdata_registry_find(name)) continue;
+        lua_pushstring(L, name);
+        lua_rawseti(L, -2, ++written);
     }
 
     return 1;
