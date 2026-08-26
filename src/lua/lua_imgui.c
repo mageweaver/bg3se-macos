@@ -426,6 +426,7 @@ static int imgui_window_add_tooltip(lua_State *L);
 static int imgui_window_add_childwindow(lua_State *L);
 static int imgui_window_add_image(lua_State *L);
 static int imgui_widget_destroy(lua_State *L);
+static uint32_t imgui_optflags(lua_State *L, int index);
 static int imgui_widget_get_style(lua_State *L);
 void imgui_userdata_clear(lua_State *L, uint64_t handle);
 static int imgui_widget_set_visible(lua_State *L);
@@ -1196,7 +1197,7 @@ static int imgui_window_add_table(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *label = imgui_str_arg(L, 2, __func__);
     int columns = (int)luaL_checkinteger(L, 3);
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 4, 0);
+    uint32_t flags = imgui_optflags(L, 4);
 
     if (columns < 1 || columns > 64) {
         return luaL_error(L, "table columns must be between 1 and 64");
@@ -1222,7 +1223,7 @@ static int imgui_window_add_table(lua_State *L) {
  */
 static int imgui_window_add_tablerow(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 2, 0);
+    uint32_t flags = imgui_optflags(L, 2);
 
     ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_TABLE_ROW, "##row");
     if (child == IMGUI_INVALID_HANDLE) {
@@ -1346,6 +1347,102 @@ static void columndef_push(lua_State *L, ImguiHandle table, int index) {
     lua_setmetatable(L, -2);
 }
 
+
+
+/*
+ * A flags argument on any Add* constructor, tolerant of what mods actually
+ * pass. Numbers are used directly; a name or list of names we do not model
+ * yields 0 rather than raising.
+ *
+ * Raising here is not a small matter: these run while a mod is building its
+ * interface, and an error aborts the whole build. MCM's AddColumn passing
+ * "WidthFixed" as a string turned a working menu into a blank window, with
+ * nothing in the log to say why.
+ */
+static uint32_t imgui_optflags(lua_State *L, int index) {
+    switch (lua_type(L, index)) {
+        case LUA_TNUMBER:
+            return (uint32_t)lua_tointeger(L, index);
+        case LUA_TTABLE: {
+            uint32_t flags = 0;
+            lua_Integer n = (lua_Integer)lua_rawlen(L, index);
+            for (lua_Integer i = 1; i <= n; i++) {
+                lua_rawgeti(L, index, i);
+                if (lua_type(L, -1) == LUA_TNUMBER) flags |= (uint32_t)lua_tointeger(L, -1);
+                lua_pop(L, 1);
+            }
+            return flags;
+        }
+        default:
+            return 0;
+    }
+}
+
+/*
+ * Column flags arrive as names, not numbers: MCM writes
+ * AddColumn("Menu", "WidthFixed", width). Unknown names map to 0 rather than
+ * raising -- the flag is cosmetic, and throwing here aborts the caller's whole
+ * UI build, which is exactly what a blank MCM window looked like.
+ */
+static uint32_t imgui_column_flag_from_name(const char *name) {
+    static const struct { const char *n; uint32_t v; } m[] = {
+        {"None", 0},
+        {"Disabled", 1u << 0},
+        {"DefaultHide", 1u << 1},
+        {"DefaultSort", 1u << 2},
+        {"WidthStretch", 1u << 3},
+        {"WidthFixed", 1u << 4},
+        {"NoResize", 1u << 5},
+        {"NoReorder", 1u << 6},
+        {"NoHide", 1u << 7},
+        {"NoClip", 1u << 8},
+        {"NoSort", 1u << 9},
+        {"NoSortAscending", 1u << 10},
+        {"NoSortDescending", 1u << 11},
+        {"NoHeaderLabel", 1u << 12},
+        {"NoHeaderWidth", 1u << 13},
+        {"PreferSortAscending", 1u << 14},
+        {"PreferSortDescending", 1u << 15},
+        {"IndentEnable", 1u << 16},
+        {"IndentDisable", 1u << 17},
+        {"AngledHeader", 1u << 18},
+    };
+    if (!name) return 0;
+    for (size_t i = 0; i < sizeof(m) / sizeof(m[0]); i++) {
+        if (strcmp(name, m[i].n) == 0) return m[i].v;
+    }
+    return 0;
+}
+
+/** Column flags as a name, a number, or a list of either. */
+static uint32_t imgui_column_flags_arg(lua_State *L, int index) {
+    switch (lua_type(L, index)) {
+        case LUA_TNONE:
+        case LUA_TNIL:
+            return 0;
+        case LUA_TNUMBER:
+            return (uint32_t)lua_tointeger(L, index);
+        case LUA_TSTRING:
+            return imgui_column_flag_from_name(lua_tostring(L, index));
+        case LUA_TTABLE: {
+            uint32_t flags = 0;
+            lua_Integer n = (lua_Integer)lua_rawlen(L, index);
+            for (lua_Integer i = 1; i <= n; i++) {
+                lua_rawgeti(L, index, i);
+                if (lua_type(L, -1) == LUA_TSTRING) {
+                    flags |= imgui_column_flag_from_name(lua_tostring(L, -1));
+                } else if (lua_type(L, -1) == LUA_TNUMBER) {
+                    flags |= (uint32_t)lua_tointeger(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+            return flags;
+        }
+        default:
+            return 0;
+    }
+}
+
 // table:AddColumn(name, widthFlag, width) -> column definition
 //
 // This used to discard the call and return nil so the DualPane would at least
@@ -1354,7 +1451,7 @@ static void columndef_push(lua_State *L, ImguiHandle table, int index) {
 static int imgui_window_add_column(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *name = luaL_optstring(L, 2, "");
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 3, 0);
+    uint32_t flags = imgui_column_flags_arg(L, 3);
     float width = (float)luaL_optnumber(L, 4, 0.0);
 
     imgui_objects_lock();
@@ -1409,7 +1506,7 @@ static int imgui_window_add_icon(lua_State *L) {
 static int imgui_window_add_tabbar(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *label = imgui_str_arg(L, 2, __func__);
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 3, 0);
+    uint32_t flags = imgui_optflags(L, 3);
 
     ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_TAB_BAR, label);
     if (child == IMGUI_INVALID_HANDLE) {
@@ -1431,7 +1528,7 @@ static int imgui_window_add_tabbar(lua_State *L) {
 static int imgui_window_add_tabitem(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *label = imgui_str_arg(L, 2, __func__);
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 3, 0);
+    uint32_t flags = imgui_optflags(L, 3);
 
     ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_TAB_ITEM, label);
     if (child == IMGUI_INVALID_HANDLE) {
@@ -1479,7 +1576,7 @@ static int imgui_window_add_menuitem(lua_State *L) {
 static int imgui_window_add_popup(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *label = imgui_str_arg(L, 2, __func__);
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 3, 0);
+    uint32_t flags = imgui_optflags(L, 3);
 
     ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_POPUP, label);
     if (child == IMGUI_INVALID_HANDLE) {
@@ -1504,7 +1601,7 @@ static int imgui_window_add_childwindow(lua_State *L) {
     const char *label = imgui_str_arg(L, 2, __func__);
     float width = (float)luaL_optnumber(L, 3, 0.0);
     float height = (float)luaL_optnumber(L, 4, 0.0);
-    uint32_t flags = (uint32_t)luaL_optinteger(L, 5, 0);
+    uint32_t flags = imgui_optflags(L, 5);
 
     ImguiHandle child = imgui_object_create_child(ud->handle, IMGUI_OBJ_CHILD_WINDOW, label);
     if (child == IMGUI_INVALID_HANDLE) {
