@@ -162,32 +162,58 @@ static void push_fixedstring(lua_State *L, uint32_t index) {
     }
 }
 
-/**
- * TranslatedString is { RuntimeStringHandle Handle; RuntimeStringHandle Argument; },
- * each being a FixedString plus a version. Mods want the handle to look it up
- * and usually the text too, so hand back both rather than picking one.
- */
-static void push_translated_string(lua_State *L, const void *addr) {
-    uint32_t handle_idx = 0, version = 0;
-    if (!safe_memory_read_u32((mach_vm_address_t)addr, &handle_idx)) {
+/** Ext.Loca.GetTranslatedString equivalent for a handle captured as an upvalue. */
+static int translated_string_get(lua_State *L) {
+    const char *handle = lua_tostring(L, lua_upvalueindex(1));
+    const char *text = handle ? localization_get(handle, NULL) : NULL;
+    if (text) {
+        lua_pushstring(L, text);
+    } else {
         lua_pushnil(L);
-        return;
     }
-    safe_memory_read_u32((mach_vm_address_t)((const uint8_t *)addr + 4), &version);
+    return 1;
+}
 
-    const char *handle = fixed_string_resolve(handle_idx);
+/** Push one RuntimeStringHandle as { Handle = <FixedString>, Version = n }. */
+static void push_runtime_string_handle(lua_State *L, const void *addr) {
+    uint32_t index = 0;
+    uint8_t lo = 0, hi = 0;
+    safe_memory_read_u32((mach_vm_address_t)addr, &index);
+    safe_memory_read_u8((mach_vm_address_t)((const uint8_t *)addr + 4), &lo);
+    safe_memory_read_u8((mach_vm_address_t)((const uint8_t *)addr + 5), &hi);
+
     lua_newtable(L);
+    const char *handle = fixed_string_resolve(index);
     if (handle) {
         lua_pushstring(L, handle);
-        lua_setfield(L, -2, "Handle");
-        const char *text = localization_get(handle, NULL);
-        if (text) {
-            lua_pushstring(L, text);
-            lua_setfield(L, -2, "Text");
-        }
+    } else {
+        lua_pushstring(L, "");
     }
-    lua_pushinteger(L, (lua_Integer)(version & 0xffff));
+    lua_setfield(L, -2, "Handle");
+    lua_pushinteger(L, (lua_Integer)lo | ((lua_Integer)hi << 8));
     lua_setfield(L, -2, "Version");
+}
+
+/*
+ * TranslatedString is { RuntimeStringHandle Handle; RuntimeStringHandle ArgumentString; }
+ * and Lua sees it that way -- nested, not flattened. Mods reach the string
+ * through ts.Handle.Handle (VolitionCabinet's Loca helper does exactly that),
+ * so collapsing it into a single Handle string breaks them one level in.
+ */
+static void push_translated_string(lua_State *L, const void *addr) {
+    lua_newtable(L);
+
+    push_runtime_string_handle(L, addr);
+    lua_setfield(L, -2, "Handle");
+    push_runtime_string_handle(L, (const uint8_t *)addr + 8);
+    lua_setfield(L, -2, "ArgumentString");
+
+    uint32_t index = 0;
+    safe_memory_read_u32((mach_vm_address_t)addr, &index);
+    const char *handle = fixed_string_resolve(index);
+    lua_pushstring(L, handle ? handle : "");
+    lua_pushcclosure(L, translated_string_get, 1);
+    lua_setfield(L, -2, "Get");
 }
 
 static void ensure_array_metatable(lua_State *L);
@@ -494,13 +520,25 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
             // table, matching what a read hands back.
             const char *handle = NULL;
             lua_Integer version = 1;
+            int popped = 0;
             if (lua_istable(L, value_index)) {
+                // Either a whole TranslatedString ({ Handle = { Handle = ... } })
+                // or a RuntimeStringHandle ({ Handle = "..." }).
                 lua_getfield(L, value_index, "Handle");
+                popped = 1;
+                if (lua_istable(L, -1)) {
+                    lua_getfield(L, -1, "Version");
+                    if (lua_isinteger(L, -1)) version = lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                    lua_getfield(L, -1, "Handle");
+                    popped = 2;
+                }
                 handle = lua_tostring(L, -1);
-                lua_pop(L, 1);
-                lua_getfield(L, value_index, "Version");
-                if (lua_isinteger(L, -1)) version = lua_tointeger(L, -1);
-                lua_pop(L, 1);
+                if (version == 1) {
+                    lua_getfield(L, value_index, "Version");
+                    if (lua_isinteger(L, -1)) version = lua_tointeger(L, -1);
+                    lua_pop(L, 1);
+                }
             } else {
                 handle = luaL_checkstring(L, value_index);
             }
@@ -508,9 +546,11 @@ static int write_field(lua_State *L, void *obj, const ResourceField *field, int 
                 return luaL_error(L, "field '%s' needs a handle string or a table "
                                      "with a Handle field", field->name);
             }
-            uint32_t idx = fixed_string_intern(handle, (int)strlen(handle));
+            uint32_t idx = handle ? fixed_string_intern(handle, (int)strlen(handle))
+                                  : 0xffffffffu;
+            lua_pop(L, popped);
             if (idx == 0xffffffffu) {
-                return luaL_error(L, "could not intern handle '%s'", handle);
+                return luaL_error(L, "could not intern handle for field '%s'", field->name);
             }
             *(uint32_t *)addr = idx;
             *(uint16_t *)((uint8_t *)addr + 4) = (uint16_t)version;
