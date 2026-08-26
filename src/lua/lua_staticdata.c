@@ -13,6 +13,7 @@
 #include "../staticdata/staticdata_manager.h"
 #include "../staticdata/staticdata_registry.h"
 #include "lua_resource_object.h"
+#include "../staticdata/staticdata_fields.h"
 #include "../core/logging.h"
 #include <lua.h>
 #include <lauxlib.h>
@@ -79,21 +80,22 @@ static void push_staticdata_entry(lua_State *L, StaticDataType type, StaticDataP
 static int lua_staticdata_getall(lua_State *L) {
     const char* type_name = luaL_checkstring(L, 1);
 
-    int type = staticdata_type_from_name(type_name);
-
-    // Generic headmaster path for anything the nine hand-hooked managers do not
-    // cover. Windows returns a Guid[] here, and the bank's key array is exactly
-    // that, so no per-type struct knowledge is needed.
-    if (type < 0) {
-        const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
-        if (entry) {
-            void *keys = NULL;
-            uint32_t count = 0;
-            if (!staticdata_registry_get_keys(entry, &keys, &count)) {
-                lua_newtable(L);
-                return 1;
-            }
-
+    // Windows returns a Guid[] here (GetAll fun(a1:ExtResourceManagerType):Guid[]),
+    // and the bank's key array is exactly that. Try the headmaster first for
+    // every type, not just the ones the nine hand-hooked managers miss: those
+    // nine were returning entry tables instead, which is why mods doing the
+    // documented thing --
+    //
+    //     for _, guid in pairs(Ext.StaticData.GetAll("ActionResource")) do
+    //         local res = Ext.StaticData.Get(guid, "ActionResource")
+    //
+    // -- were passing a table back into Get. VolitionCabinet, EasyCheat and
+    // ProgressionPreview all failed on that identically.
+    const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
+    if (entry) {
+        void *keys = NULL;
+        uint32_t count = 0;
+        if (staticdata_registry_get_keys(entry, &keys, &count) && count > 0) {
             lua_createtable(L, (int)count, 0);
             int written = 0;
             for (uint32_t i = 0; i < count; i++) {
@@ -106,7 +108,13 @@ static int lua_staticdata_getall(lua_State *L) {
         }
     }
 
+    int type = staticdata_type_from_name(type_name);
     if (type < 0) {
+        if (entry) {
+            // Known type, but its bank is not populated in this session.
+            lua_newtable(L);
+            return 1;
+        }
         return luaL_error(L, "Unknown static data type: %s", type_name);
     }
 
@@ -125,12 +133,15 @@ static int lua_staticdata_getall(lua_State *L) {
 
     lua_createtable(L, count, 0);
 
+    int written = 0;
     for (int i = 0; i < count; i++) {
-        StaticDataPtr entry = staticdata_get_by_index((StaticDataType)type, i);
-        if (entry) {
-            push_staticdata_entry(L, (StaticDataType)type, entry);
-            lua_rawseti(L, -2, i + 1);  // Lua arrays are 1-indexed
-        }
+        StaticDataPtr obj = staticdata_get_by_index((StaticDataType)type, i);
+        if (!obj) continue;
+
+        char guid[40];
+        if (!staticdata_get_guid_string((StaticDataType)type, obj, guid, sizeof(guid))) continue;
+        lua_pushstring(L, guid);
+        lua_rawseti(L, -2, ++written);
     }
 
     return 1;
@@ -233,16 +244,26 @@ static int lua_staticdata_get(lua_State *L) {
         }
     }
 
-    // Fall back to the generic headmaster path for anything the nine
-    // hand-hooked managers do not cover. Three of the four types mods currently
-    // need have no Get<T> accessor symbol at all, so they can only be reached
-    // this way.
-    if (type < 0) {
-        const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
-        if (!entry) {
-            entry = staticdata_registry_find(arg1);
-            if (entry) { guid_str = arg2; }
+    // Prefer the headmaster path whenever the type is registered and we have a
+    // generated field layout for it. It reaches types the nine hand-hooked
+    // managers do not cover at all, and for the ones they do it hands back the
+    // resource's real fields rather than a three-key summary -- so
+    // `resource.Name` works, which is what mods actually ask for.
+    const StaticDataTypeEntry *entry = staticdata_registry_find(type_name);
+    if (!entry) {
+        entry = staticdata_registry_find(arg1);
+        if (entry) { guid_str = arg2; type_name = arg1; }
+    }
+    if (entry && resource_layout_find(entry->name)) {
+        void *obj = staticdata_registry_get_object_by_guid_string(entry, guid_str);
+        if (obj) {
+            lua_resource_object_push(L, obj, entry->name);
+            return 1;
         }
+        // Not in the bank: fall through so a hooked manager can still answer.
+    }
+
+    if (type < 0) {
         if (entry) {
             void *obj = staticdata_registry_get_object_by_guid_string(entry, guid_str);
             if (!obj) {
@@ -252,9 +273,6 @@ static int lua_staticdata_get(lua_State *L) {
             lua_resource_object_push(L, obj, entry->name);
             return 1;
         }
-    }
-
-    if (type < 0) {
         return luaL_error(L, "Unknown static data type: %s", type_name);
     }
 
@@ -263,13 +281,13 @@ static int lua_staticdata_get(lua_State *L) {
         return 1;
     }
 
-    StaticDataPtr entry = staticdata_get_by_guid_string((StaticDataType)type, guid_str);
-    if (!entry) {
+    StaticDataPtr hooked = staticdata_get_by_guid_string((StaticDataType)type, guid_str);
+    if (!hooked) {
         lua_pushnil(L);
         return 1;
     }
 
-    push_staticdata_entry(L, (StaticDataType)type, entry);
+    push_staticdata_entry(L, (StaticDataType)type, hooked);
     return 1;
 }
 
