@@ -909,10 +909,17 @@ static bool looks_like_text(const char *s, size_t len) {
     return true;
 }
 
-/** Returns the number of fields that do not look like their declared type. */
+/**
+ * Returns the number of fields that do not look like their declared type.
+ *
+ * Every failing field is named, not just the first: a computed layout goes
+ * wrong at one field and stays wrong, so the whole list shows where the drift
+ * starts and whether it is one field or all of them.
+ */
 static int check_layout(void *obj, const ResourceLayout *layout,
                         char *note, size_t note_size) {
     int bad = 0;
+    size_t used = 0;
     note[0] = '\0';
 
     for (int i = 0; i < layout->field_count; i++) {
@@ -965,8 +972,11 @@ static int check_layout(void *obj, const ResourceLayout *layout,
 
         if (why) {
             bad++;
-            if (note[0] == '\0') {
-                snprintf(note, note_size, "%s at +0x%02x: %s", f->name, f->offset, why);
+            if (used + 1 < note_size) {
+                int n = snprintf(note + used, note_size - used, "%s%s at +0x%02x: %s",
+                                 used ? "; " : "", f->name, f->offset, why);
+                if (n > 0) used += (size_t)n;
+                if (used >= note_size) used = note_size - 1;
             }
         }
     }
@@ -1001,16 +1011,26 @@ static void selftest_layout_once(const ResourceLayout *layout) {
     void *sample = staticdata_registry_get_object_by_guid_string(entry, guid);
     if (!sample) return;
 
-    char note[160];
+    char note[512];
     int bad = check_layout(sample, layout, note, sizeof(note));
     if (bad == 0) {
         LOG_CORE_INFO("static data layout for %s checks out (%d fields, size 0x%x)",
                       layout->type_name, layout->field_count, layout->size);
     } else {
+        char dump[3 * 64 + 1];
+        size_t at = 0;
+        for (int i = 0; i < 64 && at + 3 < sizeof(dump); i++) {
+            uint8_t b = 0;
+            if (!safe_memory_read_u8((mach_vm_address_t)((uint8_t *)sample + i), &b)) break;
+            at += (size_t)snprintf(dump + at, sizeof(dump) - at, "%02x ", b);
+        }
+        dump[at] = '\0';
+
         LOG_CORE_WARN("static data layout for %s looks wrong: %d of %d fields "
-                      "failed their type check (first: %s). Field values for this "
-                      "type may be nonsense.",
-                      layout->type_name, bad, layout->field_count, note);
+                      "failed their type check (%s). Field values for this type "
+                      "may be nonsense. First 64 bytes at %p: %s",
+                      layout->type_name, bad, layout->field_count, note,
+                      sample, dump);
     }
 }
 
