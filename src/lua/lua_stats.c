@@ -782,6 +782,32 @@ static void *stats_find_extradata(void) {
                  "(%d pointer candidates rejected); "
                  "Ext.Stats.GetStatsManager().ExtraData will be empty",
                  STATS_EXTRADATA_SCAN_LO, STATS_EXTRADATA_SCAN_HI, near_misses);
+
+    /*
+     * Nothing matched, so the assumed container shape is the thing in doubt --
+     * upstream calls this a HashMap, and upstream has already been wrong about
+     * this build's layout once. Dump a few candidates so the real shape can be
+     * recognised from the log rather than guessed at again.
+     */
+    int shown = 0;
+    for (uint32_t off = STATS_EXTRADATA_SCAN_LO;
+         off <= STATS_EXTRADATA_SCAN_HI && shown < 6; off += 8) {
+        void *pointed = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)stats + off, &pointed) || !pointed) {
+            continue;
+        }
+        char dump[3 * 32 + 1];
+        size_t at = 0;
+        for (int i = 0; i < 32 && at + 3 < sizeof(dump); i++) {
+            uint8_t b = 0;
+            if (!safe_memory_read_u8((mach_vm_address_t)((uint8_t *)pointed + i), &b)) break;
+            at += (size_t)snprintf(dump + at, sizeof(dump) - at, "%02x ", b);
+        }
+        if (at == 0) continue;
+        dump[at] = '\0';
+        LOG_LUA_INFO("  ExtraData candidate +0x%x -> %p: %s", off, pointed, dump);
+        shown++;
+    }
     return NULL;
 }
 
