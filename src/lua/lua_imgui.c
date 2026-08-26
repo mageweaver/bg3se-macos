@@ -426,6 +426,7 @@ static int imgui_window_add_tooltip(lua_State *L);
 static int imgui_window_add_childwindow(lua_State *L);
 static int imgui_window_add_image(lua_State *L);
 static int imgui_widget_destroy(lua_State *L);
+void imgui_userdata_clear(lua_State *L, uint64_t handle);
 static int imgui_widget_set_visible(lua_State *L);
 static int imgui_widget_set_style(lua_State *L);
 static int imgui_widget_set_color(lua_State *L);
@@ -1434,6 +1435,10 @@ static int imgui_window_add_image(lua_State *L) {
  */
 static int imgui_widget_destroy(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
+    // Drop any UserData first: after the handle is cleared there is no key to
+    // find the entry by, and it would keep whatever the mod stored alive for
+    // the rest of the session.
+    imgui_userdata_clear(L, ud->handle);
     imgui_object_destroy(ud->handle);
     ud->handle = IMGUI_INVALID_HANDLE;
     return 0;
@@ -1621,6 +1626,57 @@ static int imgui_widget_open(lua_State *L) {
 /**
  * Generic __index for non-window widgets
  */
+
+/*
+ * Per-widget UserData.
+ *
+ * ExtuiRenderable carries a UserData field holding an arbitrary Lua value.
+ * Mods use it to hang their own state off a widget instead of keeping a
+ * parallel table keyed by handle; MCM reads it while building its UI, and
+ * without it every read came back nil.
+ *
+ * The values live in a registry table keyed by widget handle, and the entry is
+ * dropped when the widget is destroyed so a long session does not accumulate
+ * references to dead widgets.
+ */
+#define IMGUI_USERDATA_REGISTRY "BG3SE.ImguiUserData"
+
+static void imgui_userdata_table(lua_State *L) {
+    if (lua_getfield(L, LUA_REGISTRYINDEX, IMGUI_USERDATA_REGISTRY) != LUA_TTABLE) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, IMGUI_USERDATA_REGISTRY);
+    }
+}
+
+static void imgui_userdata_push(lua_State *L, uint64_t handle) {
+    imgui_userdata_table(L);
+    lua_pushinteger(L, (lua_Integer)handle);
+    lua_rawget(L, -2);
+    lua_remove(L, -2);
+}
+
+static void imgui_userdata_set(lua_State *L, uint64_t handle, int value_index) {
+    int abs_value = lua_absindex(L, value_index);
+    imgui_userdata_table(L);
+    lua_pushinteger(L, (lua_Integer)handle);
+    lua_pushvalue(L, abs_value);
+    lua_rawset(L, -3);
+    lua_pop(L, 1);
+}
+
+void imgui_userdata_clear(lua_State *L, uint64_t handle) {
+    if (lua_getfield(L, LUA_REGISTRYINDEX, IMGUI_USERDATA_REGISTRY) != LUA_TTABLE) {
+        lua_pop(L, 1);
+        return;
+    }
+    lua_pushinteger(L, (lua_Integer)handle);
+    lua_pushnil(L);
+    lua_rawset(L, -3);
+    lua_pop(L, 1);
+}
+
 static int imgui_widget_index(lua_State *L) {
     ImguiUserdata *ud = imgui_to_userdata(L, 1);
     const char *key = luaL_checkstring(L, 2);
@@ -1628,6 +1684,17 @@ static int imgui_widget_index(lua_State *L) {
     ImguiObject *obj = imgui_object_get(ud->handle);
     if (obj == NULL) {
         return luaL_error(L, "invalid widget handle");
+    }
+
+    // Tooltip is a method on the widget -- fun(self):ExtuiTooltip -- and
+    // creates the tooltip the same way AddTooltip does.
+    if (strcmp(key, "Tooltip") == 0) {
+        lua_pushcfunction(L, imgui_window_add_tooltip);
+        return 1;
+    }
+    if (strcmp(key, "UserData") == 0) {
+        imgui_userdata_push(L, ud->handle);
+        return 1;
     }
 
     // Common methods
@@ -1896,6 +1963,11 @@ static int imgui_widget_newindex(lua_State *L) {
     ImguiObject *obj = imgui_object_get(ud->handle);
     if (obj == NULL) {
         return luaL_error(L, "invalid widget handle");
+    }
+
+    if (strcmp(key, "UserData") == 0) {
+        imgui_userdata_set(L, ud->handle, 3);
+        return 0;
     }
 
     // Common styled properties
