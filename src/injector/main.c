@@ -436,7 +436,31 @@ static void push_module_cache(lua_State *L) {
 
 // If `key` is cached, leave its value on top of the stack and return 1;
 // otherwise leave the stack unchanged and return 0.
+/*
+ * Module cache keys are qualified by context.
+ *
+ * A mod's server and client bootstraps require the same files, and those files
+ * branch on Ext.IsServer() to decide what else to pull in. On Windows the two
+ * contexts are separate Lua states with separate caches, so each phase runs the
+ * branch for itself. Here they share one state, so a path cached during the
+ * server phase was returned to the client phase without re-executing -- and the
+ * client half of the mod never loaded.
+ *
+ * EasyCheat is the case that surfaced it: its BootstrapClient requires
+ * _Libs/_InitLibs.lua, already cached from the server phase, so AahzLib's
+ * Client/_Init never ran, KeybindingManager was never defined, and its MCM tab
+ * came up empty with nothing in the log to explain it.
+ */
+static const char *require_cache_key(const char *key, char *buf, size_t buf_size) {
+    const char *ctx = lua_context_is_client() ? "C" : "S";
+    snprintf(buf, buf_size, "%s|%s", ctx, key);
+    return buf;
+}
+
 static int require_cache_hit(lua_State *L, const char *key) {
+    char qualified[MAX_PATH_LEN + 8];
+    key = require_cache_key(key, qualified, sizeof(qualified));
+
     push_module_cache(L);              // [.., cache]
     lua_getfield(L, -1, key);          // [.., cache, val]
     if (lua_isnil(L, -1)) {
@@ -452,6 +476,9 @@ static int require_cache_hit(lua_State *L, const char *key) {
 // true when the module returned nothing/nil, matching Lua require — cache it
 // under `key`, and leave exactly that value on top for return. Returns 1.
 static int require_finish(lua_State *L, const char *key) {
+    char qualified[MAX_PATH_LEN + 8];
+    key = require_cache_key(key, qualified, sizeof(qualified));
+
     if (lua_gettop(L) < 2 || lua_isnil(L, 2)) {
         lua_settop(L, 1);
         lua_pushboolean(L, 1);         // [path, true]
