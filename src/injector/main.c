@@ -2994,6 +2994,32 @@ static void register_global_functions(lua_State *L) {
     lua_pushcfunction(L, lua_global_dump);
     lua_setglobal(L, "_D");
 
+    /*
+     * _C() is the local character's entity. Mods index components off it and
+     * call :Replicate on it, and three separate callbacks failed with "attempt
+     * to call a nil value (global '_C')" -- including MCM's own Toggle MCM
+     * window keybind, which is how the menu is opened.
+     *
+     * Written in Lua rather than C because it is a composition of two calls
+     * that both have to be resolved at call time: Osi is not populated when
+     * globals are registered, and the host character does not exist until a
+     * session is loaded.
+     */
+    static const char *kClientCharacterHelper =
+        "function _C()\n"
+        "  local osi = rawget(_G, 'Osi')\n"
+        "  if not osi or not osi.GetHostCharacter then return nil end\n"
+        "  local ok, uuid = pcall(osi.GetHostCharacter)\n"
+        "  if not ok or not uuid then return nil end\n"
+        "  local ok2, ent = pcall(Ext.Entity.Get, uuid)\n"
+        "  if not ok2 then return nil end\n"
+        "  return ent\n"
+        "end\n";
+    if (luaL_dostring(L, kClientCharacterHelper) != LUA_OK) {
+        LOG_LUA_WARN("Failed to register _C(): %s", lua_tostring(L, -1));
+        lua_pop(L, 1);
+    }
+
     // Override the stock Lua require with a mod-aware loader so mods that use
     // bare require("Some/Module") (MCM, CommunityLibrary) resolve against the
     // current mod's Script Extender Lua folder. The stock require is kept as
