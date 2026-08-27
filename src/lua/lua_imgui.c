@@ -192,6 +192,32 @@ static bool imgui_try_set_event(lua_State *L, ImguiHandle handle, const char *ke
     return false;
 }
 
+
+/**
+ * Read an event callback back off a widget.
+ *
+ * Setting one already worked; reading returned nil and logged the key as
+ * unknown, seventy-odd times in a session. Mods check whether a handler is
+ * installed before replacing it, and chain to the previous one -- reading nil
+ * where a function is set makes both of those quietly wrong.
+ *
+ * Returns true if `key` named an event, whether or not one is set.
+ */
+static bool imgui_try_get_event(lua_State *L, ImguiHandle handle, const char *key) {
+    for (const EventMapping *m = g_event_mappings; m->name != NULL; m++) {
+        if (strcmp(key, m->name) != 0) continue;
+
+        int ref = imgui_object_get_event(handle, m->type);
+        if (ref == -1 || ref == LUA_NOREF || ref == LUA_REFNIL) {
+            lua_pushnil(L);
+        } else {
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        }
+        return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // Vector Helpers
 // ============================================================================
@@ -601,6 +627,18 @@ static int imgui_window_index(lua_State *L) {
     // Type property
     if (strcmp(key, "Type") == 0) {
         lua_pushstring(L, imgui_object_type_name(obj->type));
+        return 1;
+    }
+    if (strcmp(key, "LastPosition") == 0 || strcmp(key, "LastSize") == 0) {
+        // Meaningless until the window has been drawn once; nil says so rather
+        // than reporting an origin-sized window at 0,0.
+        if (!obj->data.window.has_last_geometry) {
+            lua_pushnil(L);
+            return 1;
+        }
+        ImguiVec2 v = (key[4] == 'P') ? obj->data.window.last_position
+                                      : obj->data.window.last_size;
+        imgui_push_vec2(L, v.x, v.y);
         return 1;
     }
 
@@ -2074,6 +2112,9 @@ static int imgui_widget_index(lua_State *L) {
     }
     if (strcmp(key, "IDContext") == 0) {
         lua_pushstring(L, obj->styled.id_context);
+        return 1;
+    }
+    if (imgui_try_get_event(L, ud->handle, key)) {
         return 1;
     }
     if (strcmp(key, "Image") == 0) {

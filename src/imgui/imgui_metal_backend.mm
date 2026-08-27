@@ -1624,6 +1624,16 @@ static void render_window(ImguiObject *win) {
     }
 
     if (window_open) {
+        // Record geometry while the window is current; mods read LastPosition
+        // and LastSize to persist placement.
+        ImVec2 wpos = ImGui::GetWindowPos();
+        ImVec2 wsize = ImGui::GetWindowSize();
+        win->data.window.last_position.x = wpos.x;
+        win->data.window.last_position.y = wpos.y;
+        win->data.window.last_size.x = wsize.x;
+        win->data.window.last_size.y = wsize.y;
+        win->data.window.has_last_geometry = true;
+
         // Render all children
         if (win->children && win->child_count > 0) {
             for (int i = 0; i < win->child_count; i++) {

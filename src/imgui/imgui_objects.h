@@ -167,6 +167,12 @@ typedef struct {
 
 // Window-specific data
 typedef struct {
+    // Geometry as of the last frame this window was drawn. Mods read these to
+    // persist a window's placement between sessions; they mean nothing until
+    // the window has rendered at least once.
+    ImguiVec2 last_position;
+    ImguiVec2 last_size;
+    bool has_last_geometry;
     bool open;
     bool closeable;
     uint32_t flags;  // ImGuiWindowFlags
