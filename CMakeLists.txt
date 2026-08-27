@@ -220,6 +220,7 @@ add_library(bg3se SHARED
     src/lifetime/lifetime.c
     src/localization/localization.c
     src/lua/lua_localization.c
+    src/ui/noesis.c
     src/lua/lua_ui.c
     src/staticdata/staticdata_manager.c
     src/staticdata/staticdata_registry.c
