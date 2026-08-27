@@ -13,6 +13,80 @@ Each entry includes:
 
 ---
 
+## [Unreleased] - 2026-08-27 — Ext.UI element names, FocusHack, and a docs/test truth pass
+
+**Category:** Feature / Fix / Docs | **Test baseline:** Tier 1 **114/114**, Tier 2 **109/110** (the one remaining failure needs manual setup: apply BURNING to the host, allow a status tick)
+
+### Added
+
+- **`Ext.UI` element names** — `element.Name` via the exported
+  `Noesis::FrameworkElement::GetName` (`T` @ 0x1004d86b0), resolved by dlsym.
+  Its disassembly does the `NameProperty` → `InternalGetValue` lookup and
+  returns a plain `const char*` in x0, so **no struct offset is involved**. An
+  earlier attempt to reverse one by scanning live elements was wasted effort
+  that predated checking the export table. Live tree:
+  `CanvasRoot → ViewboxRoot → ContentRoot` (21 visual / 23 logical children);
+  `Ext.UI.GetRoot():Find("ContentRoot")` — MCM's exact expression — resolves,
+  retiring the old "ContentRoot not found" failure.
+- **FocusHack enabled on 7398727** — `baseapp_instance_ptr` RVA `0x08af1288`
+  (`__ZN7BaseApp13s_AppInstanceE`). The `+0x142` flag was re-derived against
+  *this* binary rather than inherited: `BaseApp::HasFocus()` is literally
+  `ldrb w0,[x0,#0x142]; ret`, cross-checked by `Eoc::Shutdown()` writing
+  `+0x141` to match `IsStopRequested`. `focus_hack_init` now shape-validates
+  (vtable in-image, both flags bool-valued) before writing, because the
+  concrete app object is a `BaseApp` *subclass* and an exact-vtable test would
+  fail closed on a correct pointer. Caveat: every observed run logged
+  `Forced focus: 1 -> 1`, so the write is proven safe but never yet proven to
+  *change* anything.
+- **`tools/requirements.txt`** — pyobjc was an undeclared harness dependency.
+
+### Fixed
+
+- **`Ext.Entity.GetAllEntitiesWithUuid` returned an empty table.** It guarded on
+  `Keys.size == Values.size`, but `Keys` is `Array<Guid>` (size = live count)
+  and `Values` is `UninitializedStaticArray<EntityHandle>` (size = allocated
+  slots); they always differ, so it bailed on every call. It hid because
+  single-uuid lookups take a different path and kept working. **0 → 4964
+  entries** live.
+- **`GetEntitiesAroundPosition` argerror described a form it rejected** — said
+  `{x, y, z}` while accepting only positional. Now accepts both.
+- **Launcher no longer double-loads the dylib** — the binary carries a weak
+  `@loader_path/libbg3se.dylib` load command, so `DYLD_INSERT_LIBRARIES` added
+  a second image ("duplicate dylib image IGNORED"). Deploys into the bundle and
+  uses `open`, forwarding `BG3SE_*` via `--env`.
+- **A missing pyobjc no longer reports "BG3 window not found"** — the
+  ImportError was caught alongside the window lookup, so OCR and screenshots
+  were silently dead and the menu watchdog clicked blind fractions.
+- **`BG3SE_NO_HOOKS` log line** now names all five patch groups it skips (it
+  claimed "ALL" while listing three, understating itself).
+
+### Changed
+
+- **Five Tier 2 tests repaired.** The suite reported 7 failures against 2 real
+  defects; the other five asserted contracts that were superseded
+  (`RaycastAll`'s deferral, tracing's `Events`→`Entities` rename) or never
+  existed on this build (`Osi.IsAlive`, funcId 0xffffffff — BG3 uses `IsDead`;
+  `DamageType`, which is not a ValueList here). `AddEnumerationValue` also
+  returns the new index as a *number*, not `true`.
+- **`docs/deferrals.md`: 12 deferred → 7, entirely by correction.** Five rows
+  described work that had already shipped, three of them naming their own
+  completed unlock path (`EnableTracing`/`GetTrace` = Wave 7 A8,
+  `RemoveComponent` = the generated 666/734 dispatch table). `Create`/`Destroy`
+  were listed "absent" while `entity_lifecycle.c` implements them;
+  `Replicate()` was listed "no-op" while it really replicates to peers — only
+  its *effect* is unproven, since single-player has zero peers. The seven
+  survivors were then each verified live. **Any parity number derived from that
+  file before this date is unreliable.**
+
+### Known issues
+
+- **Session loading is intermittent.** The harness needed up to 6 boot attempts
+  in a run. Five theories were tested and disproven (BG3SE itself, the
+  launcher, DEBUG log spam, retry count, mapped-but-inert dylib); cause remains
+  unknown. Use `--boot-retries`.
+- Do not use RSS as an "in-game" detector: a confirmed in-game session read
+  0.98 GB while burning 344% CPU.
+
 ## [Unreleased] - 2026-08-04 (later) — Offset re-migration to 4.1.1.7398727 (offline complete)
 
 **Category:** Migration / RE | **Plan:** docs/plans/2026-08-04-001-feat-offset-remigration-7398727-plan.md
