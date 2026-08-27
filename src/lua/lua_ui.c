@@ -324,6 +324,36 @@ static int lua_ui_find_name_offset(lua_State *L) {
     return 1;
 }
 
+/**
+ * Ext.UI._Symbol(id) -> string|nil -- resolve an interned Noesis Symbol.
+ *
+ * Lets the Name field be located without knowing a name up front: scan an
+ * element's words, resolve each as a symbol, and the offset that yields
+ * readable text across several elements is the one.
+ */
+static int lua_ui_symbol(lua_State *L) {
+    lua_Integer id = luaL_checkinteger(L, 1);
+    if (id <= 0 || id > 0x100000) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const char *text = noesis_symbol_string((unsigned int)id);
+    if (text) lua_pushstring(L, text); else lua_pushnil(L);
+    return 1;
+}
+
+/** Ext.UI._ReadU32(address) -> integer|nil -- read-only word access. */
+static int lua_ui_read_u32(lua_State *L) {
+    lua_Integer addr = luaL_checkinteger(L, 1);
+    uint32_t v = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)(uintptr_t)addr, &v)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, v);
+    return 1;
+}
+
 /** Ext.UI._ImageBase() -> integer. Read-only; useful for locating globals. */
 static int lua_ui_image_base(lua_State *L) {
     lua_pushinteger(L, (lua_Integer)(uintptr_t)_dyld_get_image_header(0));
@@ -412,6 +442,10 @@ void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
     lua_setfield(L, -2, "_ImageBase");
     lua_pushcfunction(L, lua_ui_find_name_offset);
     lua_setfield(L, -2, "_FindNameOffset");
+    lua_pushcfunction(L, lua_ui_symbol);
+    lua_setfield(L, -2, "_Symbol");
+    lua_pushcfunction(L, lua_ui_read_u32);
+    lua_setfield(L, -2, "_ReadU32");
     lua_pushcfunction(L, lua_ui_scan_rm);
     lua_setfield(L, -2, "_ScanRM");
 

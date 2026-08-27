@@ -7,6 +7,18 @@
  * which was simply wrong, and MCM's ESC-menu integration failed against it with
  * "ContentRoot not found".
  *
+ * THREADING. Noesis is driven by the game's own threads. Our Lua service tick
+ * runs on a GCD queue, not the game's main thread, so calls made from there --
+ * the console, and Ext.Timer callbacks -- race the UI. That is not theoretical:
+ * every attempt to walk the tree from the console has ended with the game gone,
+ * usually with no crash report, which is what a torn tree looks like from the
+ * outside. Reads of plain memory are fine; anything that calls into Noesis is
+ * not.
+ *
+ * Mod code invoked from fake_Event runs on a game thread and is the safe
+ * caller. Whether Ext.Timer callbacks are safe depends on which tick delivered
+ * them, and that is worth settling before anything relies on it.
+ *
  * The one thing not exported is a way to reach the root. Noesis::GUI::CreateView
  * is handed the root FrameworkElement of every view the game builds, so hooking
  * it captures them as they appear -- no struct layout to reverse, and it keeps
