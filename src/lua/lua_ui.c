@@ -20,6 +20,8 @@
 
 #include <string.h>
 #include <mach-o/dyld.h>
+#include "../resource/resource_manager.h"
+#include "../core/safe_memory.h"
 
 #define NOESIS_ELEMENT_MT "BG3SE.NoesisElement"
 
@@ -245,6 +247,59 @@ static int lua_ui_image_base(lua_State *L) {
     return 1;
 }
 
+
+/*
+ * Ext.UI._ScanRM(depth) -- read-only survey of the ResourceManager.
+ *
+ * Norbyte reaches the UI root by reading, not hooking:
+ *
+ *     (*ls__gGlobalResourceManager)->UIManager->field_88.Canvas
+ *
+ * We already resolve that same singleton as ls::ResourceManager::m_ptr. The
+ * offsets of UIManager within it, and of Canvas within UIManager, are what has
+ * to be found -- and the field_XX names in upstream's headers describe a
+ * different build, so they are a starting point rather than an answer.
+ *
+ * This only reads. Nothing here calls into Noesis: doing that from this thread
+ * is what destabilised the game four times over, and a candidate is identified
+ * by its vtable landing in the main image, which is a property of the bytes
+ * rather than something that has to be asked of the framework.
+ */
+static int lua_ui_scan_rm(lua_State *L) {
+    lua_Integer max_off = luaL_optinteger(L, 1, 0x600);
+
+    void *rm = resource_manager_get();
+    lua_newtable(L);
+    if (!rm) return 1;
+
+    /* Entry 0 carries the base so callers can search it directly. */
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)rm);
+    lua_setfield(L, -2, "Base");
+
+    uintptr_t lo = (uintptr_t)_dyld_get_image_header(0);
+    int written = 0;
+
+    for (lua_Integer off = 0; off <= max_off; off += 8) {
+        void *member = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)((uint8_t *)rm + off), &member)) continue;
+        if (!member || (uintptr_t)member < 0x100000000ull) continue;
+
+        void *vtable = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)member, &vtable)) continue;
+        if (!vtable || (uintptr_t)vtable < lo) continue;
+
+        void *slot0 = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)vtable, &slot0) || !slot0) continue;
+
+        lua_newtable(L);
+        lua_pushinteger(L, off);                              lua_setfield(L, -2, "Offset");
+        lua_pushinteger(L, (lua_Integer)(uintptr_t)member);   lua_setfield(L, -2, "Ptr");
+        lua_pushinteger(L, (lua_Integer)((uintptr_t)vtable - lo)); lua_setfield(L, -2, "VtableRva");
+        lua_rawseti(L, -2, ++written);
+    }
+    return 1;
+}
+
 void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
     // Normalize index
     if (ext_table_idx < 0) ext_table_idx = lua_gettop(L) + ext_table_idx + 1;
@@ -272,6 +327,8 @@ void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
 
     lua_pushcfunction(L, lua_ui_image_base);
     lua_setfield(L, -2, "_ImageBase");
+    lua_pushcfunction(L, lua_ui_scan_rm);
+    lua_setfield(L, -2, "_ScanRM");
 
     // Set Ext.UI = table
     lua_setfield(L, ext_table_idx, "UI");
