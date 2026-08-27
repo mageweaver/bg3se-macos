@@ -6,7 +6,6 @@
 
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
-#include "../hooks/arm64_hook.h"
 
 #include <dlfcn.h>
 #include <string.h>
@@ -17,7 +16,6 @@
 #define SYM_CHILD_COUNT   "_ZN6Noesis16VisualTreeHelper16GetChildrenCountEPKNS_6VisualE"
 #define SYM_GET_CHILD     "_ZN6Noesis16VisualTreeHelper8GetChildEPKNS_6VisualEj"
 #define SYM_GET_ROOT      "_ZN6Noesis16VisualTreeHelper7GetRootEPKNS_6VisualE"
-#define SYM_ON_POST_INIT  "_ZN6Noesis16FrameworkElement10OnPostInitEv"
 
 typedef void *(*FindNameFn)(const void *element, const char *name);
 typedef int (*ChildCountFn)(const void *visual);
@@ -45,7 +43,7 @@ static void *s_roots[NOESIS_MAX_ROOTS];
 static int s_root_count = 0;
 static bool s_initialized = false;
 
-static void remember_root(void *root) {
+void noesis_register_root(void *root) {
     if (!root) return;
 
     for (int i = 0; i < s_root_count; i++) {
@@ -80,29 +78,6 @@ static void remember_root(void *root) {
  * VisualTreeHelper::GetRoot reaches the root.
  */
 
-typedef void (*OnPostInitFn)(void *self);
-
-static OnPostInitFn s_orig_post_init = NULL;
-static ARM64HookHandle *s_post_init_hook = NULL;
-
-/*
- * OnPostInit fires for every element of every view, so this does as little as
- * possible: once a root is known it costs one integer compare. The counter
- * re-arms it periodically so a view created later is still noticed, without
- * walking the tree on every element init.
- */
-static int s_post_init_countdown = 0;
-
-static void hooked_post_init(void *self) {
-    if (s_orig_post_init) s_orig_post_init(self);
-
-    if (s_root_count > 0 && --s_post_init_countdown > 0) return;
-    s_post_init_countdown = 600;
-
-    if (!s_get_root || !self) return;
-    void *root = s_get_root(self);
-    if (root) remember_root(root);
-}
 
 bool noesis_init(void) {
     if (s_initialized) return s_find_name != NULL;
@@ -127,31 +102,26 @@ bool noesis_init(void) {
         return false;
     }
 
-    void *post_init = dlsym(self, SYM_ON_POST_INIT);
-    if (post_init) {
-        /*
-         * The prologue has an ADRP within the first four instructions, so the
-         * trampoline has to be placed past it -- relocating a PC-relative
-         * instruction to a trampoline changes what it computes. This is the
-         * same check the FeatManager and template hooks make.
-         */
-        if (arm64_has_prologue_adrp(post_init)
-            && arm64_get_recommended_hook_offset(post_init) < 0) {
-            LOG_IMGUI_WARN("Noesis: OnPostInit prologue has no safe hook point; "
-                           "view roots will not be discovered");
-            post_init = NULL;
-        }
-    }
-    if (post_init) {
-        s_post_init_hook = arm64_safe_hook(post_init, (void *)hooked_post_init,
-                                           (void **)&s_orig_post_init);
-    }
-    if (!s_post_init_hook) {
-        LOG_IMGUI_WARN("Noesis: could not hook FrameworkElement::OnPostInit; view "
-                       "roots will not be discovered");
-    } else {
-        LOG_IMGUI_INFO("Noesis bridge ready (OnPostInit hooked at %p)", post_init);
-    }
+    /*
+     * No hook. Two attempts at capturing a view root by interception both took
+     * the game down:
+     *
+     *   GUI::CreateView returns Ptr<View>, a smart pointer returned through the
+     *   indirect-result register, so a void*-returning replacement handed the
+     *   caller garbage and InitGameControlFromUI dereferenced it.
+     *
+     *   FrameworkElement::OnPostInit has the right signature but an ADRP inside
+     *   its first four instructions. Relocating that into a trampoline changes
+     *   the address it computes, and the result was heap corruption inside
+     *   DependencyObject::Init -- a free of a pointer that was never allocated.
+     *
+     * Both are hooks into the middle of UI construction, where being slightly
+     * wrong corrupts rather than fails. The tree helpers below are safe to call
+     * on an element obtained some other way, so they stay; discovering a root
+     * needs a route that reads rather than intercepts, and that is not written
+     * yet.
+     */
+    LOG_IMGUI_INFO("Noesis tree helpers resolved; no view root source (see noesis.c)");
     return true;
 }
 

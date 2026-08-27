@@ -19,7 +19,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/** Resolve the Noesis exports and hook view creation. Safe to call twice. */
+/** Register a view root discovered elsewhere. */
+void noesis_register_root(void *root);
+
+/** Resolve the Noesis exports. Safe to call twice. */
 bool noesis_init(void);
 
 /** True once at least one view root has been captured. */
