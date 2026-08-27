@@ -4668,6 +4668,11 @@ static void resolve_osiris_function_pointers(void *osiris) {
  *   BG3SE_NO_STATICDATA_HOOKS  resource manager Get<T> interception
  *   BG3SE_NO_VIDEOSKIP         Bink intro video patch
  *
+ * Two further groups honor BG3SE_NO_HOOKS but have no individual switch:
+ * savegame_hook_init (itself opt-in via BG3SE_SAVEGAME_SPIKE) and the functor
+ * execution hooks (additionally gated on FUNCTOR_ADDRS_VERIFIED_BUILD). Add a
+ * switch for either if a bisect needs to isolate it.
+ *
  * Added 2026-08-20 while tracking down BG3SE making multiplayer unstartable:
  * the game refuses to start a session with hooks installed, works with
  * BG3SE_NO_HOOKS=1, so the responsible patch is one of the groups above.
@@ -4705,9 +4710,11 @@ static void install_hooks(void) {
     static int no_hooks = -1;
     if (no_hooks < 0) no_hooks = (getenv("BG3SE_NO_HOOKS") != NULL);
     if (no_hooks) {
-        LOG_HOOKS_INFO("BG3SE_NO_HOOKS=1: skipping ALL code patches — Osiris hooks, "
-                       "StaticData hooks, and VideoSkip. Lua runtime stays active; "
-                       "subsystems init in read-only mode.");
+        LOG_HOOKS_INFO("BG3SE_NO_HOOKS=1: skipping ALL code patches — Osiris, "
+                       "StaticData, VideoSkip, savegame, and functor hooks (5 "
+                       "groups). Lua runtime stays active; subsystems init in "
+                       "read-only mode. NOT patches, so still active: input "
+                       "(NSEvent handling) and the ImGui overlay.");
         hooks_installed = 1;  // Prevent re-entry
         // Still initialize subsystems (entity, stats, etc.) for diagnostics.
         // init_subsystems checks no_hooks again to skip the code-patching
