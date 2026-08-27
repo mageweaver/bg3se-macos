@@ -8,6 +8,8 @@
 #include "../core/safe_memory.h"
 
 #include <dlfcn.h>
+#include <mach-o/dyld.h>
+#include <mach-o/getsect.h>
 #include <string.h>
 
 // Exported Noesis entry points. All are `T` symbols in the main binary, so
@@ -140,12 +142,44 @@ void *noesis_get_root(void) {
     return s_root_count > 0 ? s_roots[s_root_count - 1] : NULL;
 }
 
-/* A visual is a live object with a vtable; a freed one usually is not readable. */
+/*
+ * Is this plausibly a live Noesis object?
+ *
+ * "Has a non-null first word" was not enough. Calling GetChildrenCount on such
+ * a pointer dereferences its vtable and calls through it, so a wrong guess is
+ * not a failed read -- it is a call to an arbitrary address. A candidate now has
+ * to carry a vtable pointer that lands inside the main image, which is where
+ * every real Noesis vtable lives, and the slot being called has to be readable.
+ */
+static uintptr_t s_image_lo = 0, s_image_hi = 0;
+
+static void image_bounds(void) {
+    if (s_image_hi) return;
+    const struct mach_header_64 *hdr = (const struct mach_header_64 *)_dyld_get_image_header(0);
+    if (!hdr) return;
+    unsigned long size = 0;
+    uint8_t *text = getsegmentdata((void *)hdr, "__TEXT", &size);
+    if (!text || !size) return;
+    s_image_lo = (uintptr_t)hdr;
+    s_image_hi = (uintptr_t)text + size + (64u << 20);   /* __TEXT plus the data segments after it */
+}
+
 static bool visual_is_plausible(const void *visual) {
     if (!visual) return false;
+    image_bounds();
+
     void *vtable = NULL;
     if (!safe_memory_read_pointer((mach_vm_address_t)visual, &vtable)) return false;
-    return vtable != NULL;
+    if (!vtable) return false;
+
+    uintptr_t vt = (uintptr_t)vtable;
+    if (s_image_hi && (vt < s_image_lo || vt >= s_image_hi)) return false;
+
+    /* The vtable itself must be readable, and its first slot a code address. */
+    void *slot0 = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)vt, &slot0)) return false;
+    uintptr_t s0 = (uintptr_t)slot0;
+    return s_image_hi == 0 || (s0 >= s_image_lo && s0 < s_image_hi);
 }
 
 void *noesis_find_name(void *element, const char *name) {

@@ -19,6 +19,7 @@
 #include "../../lib/lua/src/lauxlib.h"
 
 #include <string.h>
+#include <mach-o/dyld.h>
 
 #define NOESIS_ELEMENT_MT "BG3SE.NoesisElement"
 
@@ -222,6 +223,28 @@ static int lua_ui_get_value(lua_State *L) {
     return 1;
 }
 
+
+/*
+ * There is deliberately no probe here that calls into Noesis.
+ *
+ * Finding a view root by scanning UIManager was tried and repeatedly took the
+ * game down, including once with a validated, image-resident vtable. The
+ * pointer check was not the problem: Noesis is a live UI framework being driven
+ * by the game's own threads, and every one of these attempts called into it
+ * from the console/timer thread. Validating an address makes the dereference
+ * safe; it does nothing about touching a tree another thread is mutating.
+ *
+ * Whatever supplies a root eventually has to run on the UI thread -- a callback
+ * the game already invokes there, not a hook and not the console.
+ * noesis_register_root exists for that.
+ */
+
+/** Ext.UI._ImageBase() -> integer. Read-only; useful for locating globals. */
+static int lua_ui_image_base(lua_State *L) {
+    lua_pushinteger(L, (lua_Integer)(uintptr_t)_dyld_get_image_header(0));
+    return 1;
+}
+
 void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
     // Normalize index
     if (ext_table_idx < 0) ext_table_idx = lua_gettop(L) + ext_table_idx + 1;
@@ -246,6 +269,9 @@ void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
 
     lua_pushcfunction(L, lua_ui_get_value);
     lua_setfield(L, -2, "GetValue");
+
+    lua_pushcfunction(L, lua_ui_image_base);
+    lua_setfield(L, -2, "_ImageBase");
 
     // Set Ext.UI = table
     lua_setfield(L, ext_table_idx, "UI");
