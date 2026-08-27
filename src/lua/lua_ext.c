@@ -2639,9 +2639,11 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  local t = Ext.Entity.GetTrace()\n"
         "  AssertType(t, 'table', 'GetTrace')\n"
         "  AssertType(t.Enabled, 'boolean', 'trace.Enabled')\n"
-        "  AssertType(t.Events, 'table', 'trace.Events')\n"
+        "  AssertType(t.Entities, 'table', 'trace.Entities')\n"
         "  assert(Ext.Entity.ClearTrace() == true, 'ClearTrace returns true')\n"
-        "  assert(#Ext.Entity.GetTrace().Events == 0, 'ClearTrace empties the log')\n"
+        "  local cleared, n = Ext.Entity.GetTrace().Entities, 0\n"
+        "  for _ in pairs(cleared) do n = n + 1 end\n"
+        "  assert(n == 0, 'ClearTrace empties the log')\n"
         "  assert(Ext.Entity.DisableTracing() == true, 'DisableTracing returns true')\n"
         "end)\n";
 
@@ -2773,7 +2775,11 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "    if ne:GetIndex() == e:GetIndex() then found = true break end\n"
         "  end\n"
         "  assert(found, 'host should be within 5m of its own position')\n"
-        "  local none = Ext.Entity.GetEntitiesAroundPosition({pos[1], pos[2], pos[3]}, 0)\n"
+        /* Position is a NAMED {x, y, z} table with no numeric indices, so
+         * pos[1..3] were all nil and built {nil, nil, nil}. The same test
+         * uses pos.x/pos.y/pos.z correctly nine lines above; this line was
+         * simply inconsistent with it. */
+        "  local none = Ext.Entity.GetEntitiesAroundPosition({pos.x, pos.y, pos.z}, 0)\n"
         "  assert(#none == 0, 'zero radius should return no entities')\n"
         "end)\n";
 
@@ -2957,10 +2963,11 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(2, 'Parity.Level.RaycastAllDeferred', function()\n"
         "  AssertType(Ext.Level.RaycastAll, 'function', 'Level.RaycastAll')\n"
         "  local r = Ext.Level.RaycastAll({0, 0, 0}, {0, -10, 0})\n"
-        "  assert(r == nil, 'deferred RaycastAll must return nil')\n"
+        "  AssertType(r, 'table', 'RaycastAll returns a hit array')\n"
         "end)\n"
-        // RaycastAny is no longer deferred (Wave 7 B4b): it is a real VMT-slot-10
-        // binding covered by Wave7.Level.RaycastAny. RaycastClosest/All remain deferred.
+        // RaycastAny (Wave 7 B4b) and RaycastAll/RaycastClosest (2026-08-20) are all
+        // real bindings now; see docs/deferrals.md, where all three left the registry.
+        // This test asserted the old deferred contract until 2026-08-27.
         "BG3SE_AddTest(2, 'Parity.Level.SweepSphereClosest', function()\n"
         "  assert(Ext.Level.IsReady(), 'Level should be ready')\n"
         "  AssertType(Ext.Level.SweepSphereClosest, 'function', 'Level.SweepSphereClosest')\n"

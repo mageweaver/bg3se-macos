@@ -6,8 +6,14 @@
  *   Ext.Entity.EnableTracing()
  *   -- Exercise gameplay or entity/component operations.
  *   local trace = Ext.Entity.GetTrace()
- *   Ext.Print(trace.Enabled, trace.Dropped, #trace.Events)
- *   Ext.Print(trace.Events[1].Entity, trace.Events[1].Op, trace.Events[1].Seq)
+ *   Ext.Print(trace.Enabled, trace.Dropped)
+ *   for handle, log in pairs(trace.Entities) do ... end
+ *
+ * NOTE: the log is `Entities` -- a map keyed by EntityHandle, matching
+ * Windows' ECSChangeLog shape (see the ECSChangeLog comment below). An
+ * earlier flat `Events` ARRAY was replaced by that map; this docstring and a
+ * Tier 2 test both kept saying `Events` until 2026-08-27, so the test failed
+ * against a correct implementation.
  *   Ext.Entity.DisableTracing()
  *   Ext.Entity.ClearTrace()
  *
