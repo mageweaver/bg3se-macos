@@ -60,6 +60,41 @@ bool focus_hack_init(void) {
         return false;
     }
 
+    /*
+     * Shape-validate before trusting this pointer: this module WRITES through
+     * it, so a wrong address is corruption rather than a bad read. The symbol
+     * name alone is not enough -- the concrete app object is a BaseApp
+     * subclass, so its vtable is not necessarily `vtable for BaseApp` and an
+     * exact-vtable test would fail closed on a correct pointer. Check instead
+     * that it looks like the object BaseApp::HasFocus reads from:
+     *   - a vtable pointer that lands inside the main image
+     *   - bool-valued bytes at +0x141 (IsStopRequested) and +0x142 (HasFocus)
+     */
+    void *vtable = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)instance, &vtable) || !vtable) {
+        LOG_CORE_ERROR("[FocusHack] BaseApp at 0x%lx has no readable vtable — refusing to write",
+                       (unsigned long)instance);
+        return false;
+    }
+    // The binary is ~500 MB; 0x20000000 bounds it with room to spare.
+    if ((uintptr_t)vtable < base || (uintptr_t)vtable >= base + 0x20000000) {
+        LOG_CORE_ERROR("[FocusHack] BaseApp vtable 0x%lx outside the game image "
+                       "(base 0x%lx) — refusing to write",
+                       (unsigned long)vtable, (unsigned long)base);
+        return false;
+    }
+
+    uint8_t stop_flag = 0xff, focus_flag = 0xff;
+    if (!safe_memory_read_u8((mach_vm_address_t)((uint8_t *)instance + 0x141), &stop_flag) ||
+        !safe_memory_read_u8((mach_vm_address_t)((uint8_t *)instance + BASEAPP_FOCUS_OFFSET),
+                             &focus_flag) ||
+        stop_flag > 1 || focus_flag > 1) {
+        LOG_CORE_ERROR("[FocusHack] BaseApp flags not bool-valued "
+                       "(+0x141=%u +0x%x=%u) — refusing to write",
+                       stop_flag, BASEAPP_FOCUS_OFFSET, focus_flag);
+        return false;
+    }
+
     s_baseapp = instance;
     s_initialized = true;
     LOG_CORE_INFO("[FocusHack] BaseApp instance at 0x%lx (slide=0x%lx)",
