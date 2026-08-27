@@ -37,7 +37,13 @@
 // Constants
 // ============================================================================
 
-#define MAX_COMPONENT_LAYOUTS 1024  // Enough for all 1,999 components
+/*
+ * Room for a layout per known component, with headroom. The previous value was
+ * 1024 with a comment claiming it was "enough for all 1,999 components", which
+ * it plainly was not -- 533 layouts ship today, so nothing was being dropped
+ * yet, but the next few hundred would have vanished into a DEBUG line.
+ */
+#define MAX_COMPONENT_LAYOUTS 4096
 #define COMPONENT_PROXY_METATABLE "bg3se.ComponentProxy"
 #define ARRAY_PROXY_METATABLE "bg3se.ArrayProxy"
 
@@ -103,7 +109,12 @@ static bool component_property_register_layout_internal(
     const ComponentLayoutDef *layout, bool generated) {
     if (!layout || !layout->componentName) return false;
     if (g_LayoutCount >= MAX_COMPONENT_LAYOUTS) {
-        LOG_ENTITY_DEBUG("Component layout registry full");
+        // WARN, not DEBUG: silently dropping layouts makes components read as
+        // absent from Lua with nothing to explain why, which is exactly how the
+        // uuid component hid.
+        LOG_ENTITY_WARN("Component layout registry full at %d; '%s' and any "
+                        "layouts after it are unreachable",
+                        MAX_COMPONENT_LAYOUTS, layout->componentName);
         return false;
     }
 
