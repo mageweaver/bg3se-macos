@@ -34,6 +34,19 @@ correction rather than by new work — they were already implemented and the
 registry had not caught up. Anyone recomputing parity from this file should
 re-derive the denominator rather than trust a prior count.
 
+**Remaining rows re-verified 2026-08-27.** After five corrections, every
+still-deferred row was checked live rather than assumed, and all matched their
+stated behavior: `GetTileDebugInfo({0,0,0})` → nil, `BeginPathfinding()` → nil,
+`Construct` → "not constructible" (2048 types enumerable via `GetAllTypes`),
+`GetReplicationFlags` → nil, `AddAttribute` → false with no `RPGStats`/
+`ModifierList` insert symbols on this build. `ExecuteFunctors` was re-diagnosed
+(see its row). So the seven survivors are trustworthy; it was the nine
+already-implemented ones that had drifted.
+
+Note that the `Ext.Entity.GetEntitiesAroundPosition` row is a **backend** note,
+not an API deferral — its own text says "No contract deferral" — so it inflates
+any naive count of this table.
+
 **Test-suite caveat (2026-08-27).** Tier 2 reported 7 failures against 2 real
 defects. Five tests asserted contracts that were superseded (RaycastAll's
 deferral, tracing's `Events`→`Entities` rename) or never existed on this build
