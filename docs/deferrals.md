@@ -15,6 +15,17 @@ Last audited: 2026-08-18 (v0.44.0, game build 4.1.1.7398727, arm64 LC_UUID
 `0C51CAED-6D60-3DCD-9299-8519C92631B0` — first live-verified session on this build:
 154/154 offset-audit checks and Tier 1 112/114 passed).
 
+**Partial corrections 2026-08-27** (three entries re-examined against
+4.1.1.7398727; NOT a full re-audit — the 2026-08-18 sweep above still stands as
+the last complete pass):
+
+- `Ext.Stats` / `ExecuteFunctors` — stated rationale was wrong; corrected, with a
+  design in `plans/2026-08-27-001-feat-ext-stats-executefunctors-plan.md`.
+- `Ext.Stats` / `AddAttribute` — rationale re-verified on this build (its stub
+  comment cited 7209685); still blocked, only the build reference was stale.
+- `Ext.UI` scope exclusion — "stub layer only" no longer true; read-only tree
+  surface is real and live-verified.
+
 ## Ext.Level
 
 | API | Returns | Why deferred | Evidence | Unlock path |
@@ -104,7 +115,24 @@ These four surfaces sit outside the parity denominator. This list is now the
 single authority — ROADMAP.md defers to it (Wave 6 reconciled a silent
 disagreement where ROADMAP assumed exclusions this registry never named).
 
-- **Ext.UI** — Windows NsGui/Noesis surface; compatibility stub layer only.
+- **Ext.UI** — Windows NsGui/Noesis surface. **Description corrected 2026-08-27: no
+  longer "stub layer only".** macOS BG3 links Noesis (~82,000 symbols) and the
+  read-only tree surface is now real and live-verified against a loaded session:
+  `GetRoot`, `IsReady`, and on elements `Find`, `Child`, `VisualChild`, `GetRoot`,
+  `Name`, `ChildrenCount`, `VisualChildrenCount`. Walked
+  `CanvasRoot -> ViewboxRoot -> ContentRoot` (21 visual / 23 logical children);
+  `Ext.UI.GetRoot():Find("ContentRoot")` — MCM's exact expression — returns a real
+  element, retiring the old "ContentRoot not found" failure. Element names come
+  from the exported `Noesis::FrameworkElement::GetName`, not a reversed offset.
+  **Still stubs:** `Instantiate`, `RegisterType`, `GetValue`, `SetValue` (general
+  Noesis property reflection needs `TypeClass` internals that are not exported).
+  Whether the working read-only surface earns parity credit is an open scope
+  decision; it is recorded here as fact, not as a claim on the denominator.
+  **Known latent risk:** `GetName` is a non-virtual `FrameworkElement` method, but
+  `VisualChild` returns `Visual*`, which is not guaranteed to be a FrameworkElement.
+  Calling it on a non-FE visual is untested. `FrameworkElement::StaticGetClassType`
+  (0x4e07e0) and `TypeClass::IsAssignableFrom` (0x33fbe8) are both exported if an
+  RTTI guard becomes necessary.
 - **Lua Debugger / DAP** — deferred to Phase 11.
 - **Virtual Textures** — no macOS GTS/GTP pipeline; no vetted-corpus caller.
   Explicit exclusion as of Wave 6 (previously assumed silently).
