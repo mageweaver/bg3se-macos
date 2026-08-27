@@ -12,6 +12,16 @@ This guide covers installation, building, and running BG3SE-macOS.
 - Xcode Command Line Tools: `xcode-select --install`
 - CMake: `brew install cmake`
 
+### For the test harness (`tools/bg3se_harness`)
+
+- pyobjc: `python3 -m pip install --user -r tools/requirements.txt`
+
+  Required for window geometry, screenshots, OCR menu detection, and menu
+  clicks. Without it the harness does **not** fail loudly — until 2026-08-27
+  the ImportError was caught alongside the window lookup and reported as
+  "BG3 window not found", so those features were silently dead. It now names
+  the missing package instead.
+
 ### For Development/Maintenance (Optional)
 
 - Ghidra 11.x: `brew install ghidra` or download from [ghidra-sre.org](https://ghidra-sre.org)

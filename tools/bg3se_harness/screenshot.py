@@ -35,7 +35,15 @@ def get_window_id():
     so System Events window ID lookup fails. We match by PID instead.
     """
     try:
-        import Quartz
+        try:
+            import Quartz
+        except ImportError as e:
+            # Surface the real cause; this used to become "window not found".
+            raise RuntimeError(
+                "pyobjc Quartz is not installed -- screenshots and window "
+                "geometry are unavailable. Install with: python3 -m pip "
+                "install --user pyobjc-framework-Quartz (%s)" % e
+            )
         pid_r = subprocess.run(
             ["pgrep", "-x", "Baldur's Gate 3"],
             capture_output=True, text=True,

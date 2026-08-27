@@ -1,8 +1,13 @@
 """BG3 main menu automation via macOS Vision OCR + CGEvent clicks.
 
 Detects menu state by running Vision OCR (VNRecognizeTextRequest) on a
-window screenshot, then clicks buttons via Quartz CGEvent API. All stdlib,
-no pip dependencies required.
+window screenshot, then clicks buttons via Quartz CGEvent API.
+
+REQUIRES pyobjc (see tools/requirements.txt):
+    python3 -m pip install --user pyobjc-framework-Quartz
+Without it every window lookup here returns nothing. This docstring used to
+say "All stdlib, no pip dependencies required", which was false and helped
+hide a silent failure -- see the QUARTZ_IMPORT_ERROR note below.
 
 Architecture:
     screencapture -l <wid> -> Vision OCR (osascript JXA) -> detected buttons
@@ -331,8 +336,32 @@ def _rect_from_quartz(bounds):
         return None
 
 
+# Resolved once at import so a MISSING DEPENDENCY is distinguishable from a
+# genuinely absent window. Both used to funnel into "BG3 window not found",
+# which cost real debugging time on 2026-08-27: pyobjc was simply not
+# installed, OCR and screenshots were silently dead, and the menu watchdog
+# fell back to blind splash-dismiss fractions forever.
+try:
+    import Quartz as _Quartz
+    QUARTZ_IMPORT_ERROR = None
+except ImportError as _e:                                    # pragma: no cover
+    _Quartz = None
+    QUARTZ_IMPORT_ERROR = (
+        "pyobjc Quartz is not installed -- window geometry, OCR and clicks are "
+        "unavailable. Install with: python3 -m pip install --user "
+        "pyobjc-framework-Quartz  (original error: %s)" % _e
+    )
+
+
+def quartz_unavailable():
+    """Human-readable reason Quartz is missing, or None when it is present."""
+    return QUARTZ_IMPORT_ERROR
+
+
 def _get_quartz_window_info(window_id=None, pid=None):
     """Return Quartz CGWindow metadata for the BG3 game window."""
+    if QUARTZ_IMPORT_ERROR:
+        return None
     try:
         import Quartz
 
@@ -789,6 +818,11 @@ def detect_menu(debug_image=None):
     Returns dict with buttons (matched known labels with screen coords),
     raw_ocr (all recognized text), and window bounds.
     """
+    if QUARTZ_IMPORT_ERROR:
+        # Do not report a dependency problem as an absent window.
+        return {"error": QUARTZ_IMPORT_ERROR, "buttons": [], "raw_ocr": [],
+                "geometry": {}}
+
     window_id = get_window_id()
     screenshot_path = _capture_window_screenshot(window_id=window_id)
     if not screenshot_path:

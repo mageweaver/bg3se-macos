@@ -1,0 +1,12 @@
+# Python dependencies for tools/bg3se_harness.
+#
+# These were undeclared until 2026-08-27. Without pyobjc the harness does not
+# fail loudly: menu.py and screenshot.py caught the ImportError alongside their
+# window lookup and reported "BG3 window not found", so OCR menu detection and
+# screenshots were silently dead and the menu watchdog clicked blind fractions
+# forever. menu.py's docstring still claimed "All stdlib, no pip dependencies
+# required", which had stopped being true.
+#
+#   python3 -m pip install --user -r tools/requirements.txt
+#
+pyobjc-framework-Quartz>=9.0
