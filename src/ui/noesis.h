@@ -48,6 +48,23 @@ void *noesis_find_name(void *element, const char *name);
 int noesis_child_count(void *visual);
 void *noesis_get_child(void *visual, unsigned int index);
 
+/**
+ * Noesis::SymbolManager::GetString -- names are interned Symbol ids, not char*,
+ * so reading a Name means resolving the id stored in the element.
+ */
+const char *noesis_symbol_string(unsigned int symbol);
+
+/** The element's Name, or NULL. */
+const char *noesis_element_name(void *element);
+
+/** Where the Name symbol sits in a FrameworkElement; -1 until discovered. */
+void noesis_set_name_offset(int offset);
+int noesis_get_name_offset(void);
+
+/** Noesis::LogicalTreeHelper -- the logical tree, which is what mods walk. */
+int noesis_logical_child_count(void *element);
+void *noesis_logical_child(void *element, unsigned int index);
+
 /** Noesis::VisualTreeHelper::GetRoot -- the root above any visual. */
 void *noesis_root_of(void *visual);
 

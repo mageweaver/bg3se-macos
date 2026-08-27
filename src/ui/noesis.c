@@ -19,16 +19,34 @@
 #define SYM_CHILD_COUNT   "_ZN6Noesis16VisualTreeHelper16GetChildrenCountEPKNS_6VisualE"
 #define SYM_GET_CHILD     "_ZN6Noesis16VisualTreeHelper8GetChildEPKNS_6VisualEj"
 #define SYM_GET_ROOT      "_ZN6Noesis16VisualTreeHelper7GetRootEPKNS_6VisualE"
+#define SYM_LOG_COUNT     "_ZN6Noesis17LogicalTreeHelper16GetChildrenCountEPKNS_16FrameworkElementE"
+#define SYM_LOG_CHILD     "_ZN6Noesis17LogicalTreeHelper8GetChildEPKNS_16FrameworkElementEj"
+#define SYM_SYMBOL_STR    "_ZN6Noesis13SymbolManager9GetStringEj"
 
 typedef void *(*FindNameFn)(const void *element, const char *name);
 typedef int (*ChildCountFn)(const void *visual);
 typedef void *(*GetChildFn)(const void *visual, unsigned int index);
 typedef void *(*GetRootFn)(const void *visual);
+typedef const char *(*SymbolStringFn)(unsigned int symbol);
 
 static FindNameFn s_find_name = NULL;
 static ChildCountFn s_child_count = NULL;
 static GetChildFn s_get_child = NULL;
 static GetRootFn s_get_root = NULL;
+static ChildCountFn s_log_count = NULL;
+static GetChildFn s_log_child = NULL;
+static SymbolStringFn s_symbol_str = NULL;
+
+/*
+ * Offset of the Name symbol inside a FrameworkElement.
+ *
+ * Names are interned: the element stores a Symbol id, and only
+ * SymbolManager::GetString turns it back into text. The offset is not published
+ * anywhere and differs from upstream's Windows layout, so it is discovered once
+ * against a live element whose name is known -- the same way the canvas chain
+ * was found -- and then reused.
+ */
+static int s_name_offset = -1;
 
 
 /*
@@ -96,6 +114,9 @@ bool noesis_init(void) {
     s_child_count = (ChildCountFn)dlsym(self, SYM_CHILD_COUNT);
     s_get_child = (GetChildFn)dlsym(self, SYM_GET_CHILD);
     s_get_root = (GetRootFn)dlsym(self, SYM_GET_ROOT);
+    s_log_count = (ChildCountFn)dlsym(self, SYM_LOG_COUNT);
+    s_log_child = (GetChildFn)dlsym(self, SYM_LOG_CHILD);
+    s_symbol_str = (SymbolStringFn)dlsym(self, SYM_SYMBOL_STR);
     if (!s_find_name || !s_child_count || !s_get_child) {
         LOG_IMGUI_WARN("Noesis: exports missing (FindName=%p count=%p child=%p) "
                        "— Ext.UI stays inert",
@@ -270,6 +291,36 @@ void *noesis_get_child(void *visual, unsigned int index) {
     if (!s_get_child || !visual_is_plausible(visual)) return NULL;
     if ((int)index >= noesis_child_count(visual)) return NULL;
     return s_get_child(visual, index);
+}
+
+const char *noesis_symbol_string(unsigned int symbol) {
+    if (!s_symbol_str || symbol == 0) return NULL;
+    return s_symbol_str(symbol);
+}
+
+void noesis_set_name_offset(int offset) { s_name_offset = offset; }
+int noesis_get_name_offset(void) { return s_name_offset; }
+
+const char *noesis_element_name(void *element) {
+    if (s_name_offset < 0 || !visual_is_plausible(element)) return NULL;
+
+    uint32_t symbol = 0;
+    if (!safe_memory_read_u32((mach_vm_address_t)((uint8_t *)element + s_name_offset),
+                              &symbol) || symbol == 0) {
+        return NULL;
+    }
+    return noesis_symbol_string(symbol);
+}
+
+int noesis_logical_child_count(void *element) {
+    if (!s_log_count || !visual_is_plausible(element)) return 0;
+    return s_log_count(element);
+}
+
+void *noesis_logical_child(void *element, unsigned int index) {
+    if (!s_log_child || !visual_is_plausible(element)) return NULL;
+    if ((int)index >= noesis_logical_child_count(element)) return NULL;
+    return s_log_child(element, index);
 }
 
 void *noesis_root_of(void *visual) {

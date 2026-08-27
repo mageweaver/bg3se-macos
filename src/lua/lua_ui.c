@@ -31,6 +31,7 @@ typedef struct {
 
 static int lua_ui_stub_method(lua_State *L);
 static void push_element(lua_State *L, void *element);
+static int lua_noesis_get_property(lua_State *L);
 
 static NoesisElementUD *check_element(lua_State *L, int index) {
     return (NoesisElementUD *)luaL_checkudata(L, index, NOESIS_ELEMENT_MT);
@@ -56,6 +57,41 @@ static int lua_noesis_visual_child(lua_State *L) {
     return 1;
 }
 
+/**
+ * element:GetProperty(name) -> value|nil
+ *
+ * Only Name is served. Noesis property reflection lives in TypeClass internals
+ * that are not exported, and MCM -- the only consumer here -- asks for Name and
+ * nothing else. Answering nil for the rest is what the previous stub did and
+ * what callers already handle.
+ */
+static int lua_noesis_get_property(lua_State *L) {
+    NoesisElementUD *ud = check_element(L, 1);
+    const char *prop = luaL_checkstring(L, 2);
+
+    if (strcmp(prop, "Name") == 0) {
+        const char *nm = noesis_element_name(ud->element);
+        if (nm) lua_pushstring(L, nm); else lua_pushnil(L);
+        return 1;
+    }
+    lua_pushnil(L);
+    return 1;
+}
+
+/** element:Child(index) -> logical child. Mods walk the logical tree, not the
+ *  visual one: MCM iterates root.ChildrenCount / root:Child(i) to find a named
+ *  widget, and the two trees are not the same shape. */
+static int lua_noesis_child(lua_State *L) {
+    NoesisElementUD *ud = check_element(L, 1);
+    lua_Integer i = luaL_checkinteger(L, 2);
+    if (i < 1) {
+        lua_pushnil(L);
+        return 1;
+    }
+    push_element(L, noesis_logical_child(ud->element, (unsigned int)(i - 1)));
+    return 1;
+}
+
 /** element:GetRoot() -> the root above this element */
 static int lua_noesis_element_root(lua_State *L) {
     NoesisElementUD *ud = check_element(L, 1);
@@ -67,6 +103,23 @@ static int lua_noesis_index(lua_State *L) {
     NoesisElementUD *ud = check_element(L, 1);
     const char *key = luaL_checkstring(L, 2);
 
+    if (strcmp(key, "Name") == 0) {
+        const char *nm = noesis_element_name(ud->element);
+        if (nm) lua_pushstring(L, nm); else lua_pushnil(L);
+        return 1;
+    }
+    if (strcmp(key, "GetProperty") == 0) {
+        lua_pushcfunction(L, lua_noesis_get_property);
+        return 1;
+    }
+    if (strcmp(key, "ChildrenCount") == 0) {
+        lua_pushinteger(L, noesis_logical_child_count(ud->element));
+        return 1;
+    }
+    if (strcmp(key, "Child") == 0) {
+        lua_pushcfunction(L, lua_noesis_child);
+        return 1;
+    }
     if (strcmp(key, "VisualChildrenCount") == 0) {
         lua_pushinteger(L, noesis_child_count(ud->element));
         return 1;
@@ -241,6 +294,36 @@ static int lua_ui_get_value(lua_State *L) {
  * noesis_register_root exists for that.
  */
 
+/**
+ * Ext.UI._FindNameOffset(element, expectedName) -> offset|nil
+ *
+ * One-time discovery: scan a FrameworkElement for a Symbol id that resolves to
+ * a name we already know, and remember where it sat. SymbolManager::GetString
+ * is a table lookup on an interned id, so a wrong candidate yields nothing
+ * rather than following a pointer.
+ */
+static int lua_ui_find_name_offset(lua_State *L) {
+    NoesisElementUD *ud = check_element(L, 1);
+    const char *expected = luaL_checkstring(L, 2);
+
+    for (int off = 0; off <= 0x400; off += 4) {
+        uint32_t symbol = 0;
+        if (!safe_memory_read_u32((mach_vm_address_t)((uint8_t *)ud->element + off), &symbol)) {
+            continue;
+        }
+        if (symbol == 0 || symbol > 0x100000) continue;
+
+        const char *text = noesis_symbol_string(symbol);
+        if (text && strcmp(text, expected) == 0) {
+            noesis_set_name_offset(off);
+            lua_pushinteger(L, off);
+            return 1;
+        }
+    }
+    lua_pushnil(L);
+    return 1;
+}
+
 /** Ext.UI._ImageBase() -> integer. Read-only; useful for locating globals. */
 static int lua_ui_image_base(lua_State *L) {
     lua_pushinteger(L, (lua_Integer)(uintptr_t)_dyld_get_image_header(0));
@@ -327,6 +410,8 @@ void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
 
     lua_pushcfunction(L, lua_ui_image_base);
     lua_setfield(L, -2, "_ImageBase");
+    lua_pushcfunction(L, lua_ui_find_name_offset);
+    lua_setfield(L, -2, "_FindNameOffset");
     lua_pushcfunction(L, lua_ui_scan_rm);
     lua_setfield(L, -2, "_ScanRM");
 
