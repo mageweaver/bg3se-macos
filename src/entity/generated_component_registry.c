@@ -9,6 +9,7 @@
 
 #include "component_registry.h"
 #include "component_typeid.h"
+#include "component_property.h"
 #include "generated_typeids.h"
 #include "../core/logging.h"
 
@@ -2104,6 +2105,18 @@ int component_typeid_discover_all_generated(void) {
         uint16_t type_index = 0;
         if (component_typeid_read(entry->preferred_va, &type_index) &&
             component_registry_register(entry->name, type_index, 0, false)) {
+            /*
+             * The registry knowing the index is not enough. Property access goes
+             * through the layout table, and a layout whose type index is still
+             * zero reads as absent -- so any component we have offsets for but
+             * that is not in the curated list returned nil.
+             *
+             * ls::uuid::Component is one: entity.Uuid came back nil while
+             * entity.Health worked, purely because Health is curated and Uuid is
+             * not. Setting it here covers every generated component with a
+             * layout, and is a no-op for the ones without.
+             */
+            component_property_set_type_index(entry->name, type_index);
             discovered++;
         }
     }
