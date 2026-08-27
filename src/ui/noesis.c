@@ -22,12 +22,14 @@
 #define SYM_LOG_COUNT     "_ZN6Noesis17LogicalTreeHelper16GetChildrenCountEPKNS_16FrameworkElementE"
 #define SYM_LOG_CHILD     "_ZN6Noesis17LogicalTreeHelper8GetChildEPKNS_16FrameworkElementEj"
 #define SYM_SYMBOL_STR    "_ZN6Noesis13SymbolManager9GetStringEj"
+#define SYM_GET_NAME      "_ZNK6Noesis16FrameworkElement7GetNameEv"
 
 typedef void *(*FindNameFn)(const void *element, const char *name);
 typedef int (*ChildCountFn)(const void *visual);
 typedef void *(*GetChildFn)(const void *visual, unsigned int index);
 typedef void *(*GetRootFn)(const void *visual);
 typedef const char *(*SymbolStringFn)(unsigned int symbol);
+typedef const char *(*GetNameFn)(const void *element);
 
 static FindNameFn s_find_name = NULL;
 static ChildCountFn s_child_count = NULL;
@@ -36,17 +38,8 @@ static GetRootFn s_get_root = NULL;
 static ChildCountFn s_log_count = NULL;
 static GetChildFn s_log_child = NULL;
 static SymbolStringFn s_symbol_str = NULL;
+static GetNameFn s_get_name = NULL;
 
-/*
- * Offset of the Name symbol inside a FrameworkElement.
- *
- * Names are interned: the element stores a Symbol id, and only
- * SymbolManager::GetString turns it back into text. The offset is not published
- * anywhere and differs from upstream's Windows layout, so it is discovered once
- * against a live element whose name is known -- the same way the canvas chain
- * was found -- and then reused.
- */
-static int s_name_offset = -1;
 
 
 /*
@@ -117,6 +110,7 @@ bool noesis_init(void) {
     s_log_count = (ChildCountFn)dlsym(self, SYM_LOG_COUNT);
     s_log_child = (GetChildFn)dlsym(self, SYM_LOG_CHILD);
     s_symbol_str = (SymbolStringFn)dlsym(self, SYM_SYMBOL_STR);
+    s_get_name = (GetNameFn)dlsym(self, SYM_GET_NAME);
     if (!s_find_name || !s_child_count || !s_get_child) {
         LOG_IMGUI_WARN("Noesis: exports missing (FindName=%p count=%p child=%p) "
                        "— Ext.UI stays inert",
@@ -298,18 +292,13 @@ const char *noesis_symbol_string(unsigned int symbol) {
     return s_symbol_str(symbol);
 }
 
-void noesis_set_name_offset(int offset) { s_name_offset = offset; }
-int noesis_get_name_offset(void) { return s_name_offset; }
-
 const char *noesis_element_name(void *element) {
-    if (s_name_offset < 0 || !visual_is_plausible(element)) return NULL;
+    if (!s_get_name || !visual_is_plausible(element)) return NULL;
 
-    uint32_t symbol = 0;
-    if (!safe_memory_read_u32((mach_vm_address_t)((uint8_t *)element + s_name_offset),
-                              &symbol) || symbol == 0) {
-        return NULL;
-    }
-    return noesis_symbol_string(symbol);
+    const char *name = s_get_name(element);
+    // An unnamed element yields the empty string, not NULL; report both as nil
+    // so callers need only one check.
+    return (name && name[0]) ? name : NULL;
 }
 
 int noesis_logical_child_count(void *element) {

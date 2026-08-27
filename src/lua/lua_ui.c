@@ -295,36 +295,6 @@ static int lua_ui_get_value(lua_State *L) {
  */
 
 /**
- * Ext.UI._FindNameOffset(element, expectedName) -> offset|nil
- *
- * One-time discovery: scan a FrameworkElement for a Symbol id that resolves to
- * a name we already know, and remember where it sat. SymbolManager::GetString
- * is a table lookup on an interned id, so a wrong candidate yields nothing
- * rather than following a pointer.
- */
-static int lua_ui_find_name_offset(lua_State *L) {
-    NoesisElementUD *ud = check_element(L, 1);
-    const char *expected = luaL_checkstring(L, 2);
-
-    for (int off = 0; off <= 0x400; off += 4) {
-        uint32_t symbol = 0;
-        if (!safe_memory_read_u32((mach_vm_address_t)((uint8_t *)ud->element + off), &symbol)) {
-            continue;
-        }
-        if (symbol == 0 || symbol > 0x100000) continue;
-
-        const char *text = noesis_symbol_string(symbol);
-        if (text && strcmp(text, expected) == 0) {
-            noesis_set_name_offset(off);
-            lua_pushinteger(L, off);
-            return 1;
-        }
-    }
-    lua_pushnil(L);
-    return 1;
-}
-
-/**
  * Ext.UI._Symbol(id) -> string|nil -- resolve an interned Noesis Symbol.
  *
  * Lets the Name field be located without knowing a name up front: scan an
@@ -440,8 +410,6 @@ void lua_ext_register_ui(lua_State *L, int ext_table_idx) {
 
     lua_pushcfunction(L, lua_ui_image_base);
     lua_setfield(L, -2, "_ImageBase");
-    lua_pushcfunction(L, lua_ui_find_name_offset);
-    lua_setfield(L, -2, "_FindNameOffset");
     lua_pushcfunction(L, lua_ui_symbol);
     lua_setfield(L, -2, "_Symbol");
     lua_pushcfunction(L, lua_ui_read_u32);

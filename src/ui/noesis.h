@@ -7,22 +7,21 @@
  * which was simply wrong, and MCM's ESC-menu integration failed against it with
  * "ContentRoot not found".
  *
- * THREADING. Noesis is driven by the game's own threads. Our Lua service tick
- * runs on a GCD queue, not the game's main thread, so calls made from there --
- * the console, and Ext.Timer callbacks -- race the UI. That is not theoretical:
- * every attempt to walk the tree from the console has ended with the game gone,
- * usually with no crash report, which is what a torn tree looks like from the
- * outside. Reads of plain memory are fine; anything that calls into Noesis is
- * not.
+ * THREADING. An earlier version of this header claimed Noesis could only be
+ * touched from a game thread, on the evidence that console tree walks kept
+ * ending with the game gone. That was measured and is wrong. From the console:
+ * GetRoot, child counts, and an 18-node recursive walk all survive; what dies
+ * is a scan making thousands of calls in one tick while holding the Lua gate,
+ * and it dies by SIGTERM with no crash report -- an unresponsive app being
+ * killed, not a torn tree. The real rule is a budget, not an affinity: keep
+ * per-tick work small. Whether a genuine affinity constraint also exists is
+ * still unproven in either direction, so treat concurrent mutation as unsafe.
  *
- * Mod code invoked from fake_Event runs on a game thread and is the safe
- * caller. Whether Ext.Timer callbacks are safe depends on which tick delivered
- * them, and that is worth settling before anything relies on it.
- *
- * The one thing not exported is a way to reach the root. Noesis::GUI::CreateView
- * is handed the root FrameworkElement of every view the game builds, so hooking
- * it captures them as they appear -- no struct layout to reverse, and it keeps
- * working across game updates as long as the symbol survives.
+ * REACHING THE ROOT is a read, not a hook. The ResourceManager holds the
+ * gui::GameUI, which holds the ui::Canvas; resolve_canvas_root() walks that
+ * chain and validates the vtable. Hooking Noesis::GUI::CreateView was tried
+ * first and cost four crashes -- Ptr<View> returns via the indirect-result
+ * register, which a void* declaration silently corrupts.
  */
 
 #ifndef BG3SE_NOESIS_H
@@ -61,17 +60,20 @@ int noesis_child_count(void *visual);
 void *noesis_get_child(void *visual, unsigned int index);
 
 /**
- * Noesis::SymbolManager::GetString -- names are interned Symbol ids, not char*,
- * so reading a Name means resolving the id stored in the element.
+ * Noesis::SymbolManager::GetString -- resolves an interned Symbol id to text.
+ * Not needed for Name (see below); kept for callers holding a raw Symbol.
  */
 const char *noesis_symbol_string(unsigned int symbol);
 
-/** The element's Name, or NULL. */
+/**
+ * The element's Name, or NULL when unnamed.
+ *
+ * Calls the exported Noesis::FrameworkElement::GetName, which does the
+ * NameProperty lookup internally and returns a plain const char* in x0. There
+ * is no struct offset to discover here -- an earlier attempt to reverse one by
+ * scanning live elements was wasted effort that predated finding the export.
+ */
 const char *noesis_element_name(void *element);
-
-/** Where the Name symbol sits in a FrameworkElement; -1 until discovered. */
-void noesis_set_name_offset(int offset);
-int noesis_get_name_offset(void);
 
 /** Noesis::LogicalTreeHelper -- the logical tree, which is what mods walk. */
 int noesis_logical_child_count(void *element);
