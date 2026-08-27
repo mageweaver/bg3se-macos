@@ -2256,12 +2256,21 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "    if hp then assert(hp > 0, 'HP should be positive: ' .. hp) end\n"
         "  end\n"
         "end)\n"
-        "BG3SE_AddTest(2, 'Osi.IsAlive', function()\n"
+        /* Renamed from 'Osi.IsAlive'. IsAlive is NOT a BG3 Osiris function --
+         * `!osi_info IsAlive` reports funcId 0xffffffff (NOT FOUND) on
+         * 4.1.1.7398727, while IsDead resolves to 0x800000ea. It appears to be
+         * a DOS2 carry-over. The old test called it and blamed the extender
+         * for a correct fail-closed error ("Osiris function could not be
+         * resolved"). Test the liveness query the game actually has, and pin
+         * the fail-closed behavior for the one it does not. */
+        "BG3SE_AddTest(2, 'Osi.IsDead', function()\n"
         "  local host = Osi.GetHostCharacter()\n"
         "  if host then\n"
-        "    local alive = Osi.IsAlive(host)\n"
-        "    assert(alive == nil or type(alive) == 'number', 'Expected number or nil')\n"
-        "    if alive then assert(alive == 0 or alive == 1, 'Expected 0 or 1: ' .. alive) end\n"
+        "    local dead = Osi.IsDead(host)\n"
+        "    assert(dead == nil or type(dead) == 'number', 'Expected number or nil')\n"
+        "    if dead then assert(dead == 0 or dead == 1, 'Expected 0 or 1: ' .. dead) end\n"
+        "    local ok = pcall(function() return Osi.IsAlive(host) end)\n"
+        "    assert(not ok, 'IsAlive does not exist in BG3 Osiris; it must fail closed')\n"
         "  end\n"
         "end)\n";
 
@@ -2615,12 +2624,21 @@ void lua_ext_register_global_helpers(lua_State *L) {
     // reload survival is live-verified manually per VALUELIST_INSERT.md)
     static const char *console_cmd_test_wave7_addenum =
         "BG3SE_AddTest(2, 'Wave7.Stats.AddEnumerationValue', function()\n"
-        "  local enumName = 'DamageType'\n"
+        /* 'DamageType' is not a ValueList on 4.1.1.7398727 -- EnumIndexToLabel
+         * returns nil for index 0, so AddEnumerationValue correctly failed
+         * closed and the test blamed the API. 'Ability' is a real list here
+         * (index 0 = 'None'), as is 'Skill'. */
+        "  local enumName = 'Ability'\n"
         "  local label = 'BG3SE_W7B1_' .. tostring(Ext.Utils.MonotonicTime())\n"
         "  assert(Ext.Stats.EnumLabelToIndex(enumName, label) == nil, 'label must be fresh')\n"
         "  local i = 0\n"
         "  while Ext.Stats.EnumIndexToLabel(enumName, i) ~= nil do i = i + 1 end\n"
-        "  assert(Ext.Stats.AddEnumerationValue(enumName, label) == true, 'insert')\n"
+        /* Returns the NEWLY ASSIGNED INDEX, not a boolean -- Windows' contract
+         * is std::optional<int32_t> holding the new value (docs/deferrals.md).
+         * Asserting == true failed against a correct insert returning e.g. 7. */
+        "  local inserted = Ext.Stats.AddEnumerationValue(enumName, label)\n"
+        "  assert(type(inserted) == 'number', 'insert returns the new index, got ' .. tostring(inserted))\n"
+        "  assert(inserted == i, 'insert index ' .. tostring(inserted) .. ' ~= expected ' .. i)\n"
         "  local index = Ext.Stats.EnumLabelToIndex(enumName, label)\n"
         "  assert(index == i, 'label->index: ' .. tostring(index) .. ' ~= ' .. i)\n"
         "  assert(Ext.Stats.EnumIndexToLabel(enumName, index) == label, 'index->label')\n"
