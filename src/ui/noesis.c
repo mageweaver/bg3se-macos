@@ -6,6 +6,7 @@
 
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
+#include "../resource/resource_manager.h"
 
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
@@ -128,7 +129,9 @@ bool noesis_init(void) {
 }
 
 bool noesis_ready(void) {
-    return s_find_name != NULL && s_root_count > 0;
+    /* Resolve on demand: the canvas does not exist until the game builds it,
+     * so asking early must not latch a permanent "no". */
+    return s_find_name != NULL && noesis_get_root() != NULL;
 }
 
 int noesis_root_count(void) { return s_root_count; }
@@ -138,8 +141,81 @@ void *noesis_root_at(int index) {
     return s_roots[index];
 }
 
+
+static uintptr_t s_image_lo = 0, s_image_hi = 0;
+
+static void image_bounds(void);
+
+/*
+ * Locating the view root.
+ *
+ * Norbyte reads it rather than intercepting anything:
+ *
+ *     (*ls__gGlobalResourceManager)->UIManager->field_88.Canvas
+ *
+ * The shape holds here, the offsets do not. On this build the object hanging
+ * off the resource manager is gui::GameUI, not a ui::UIManager, and the canvas
+ * sits directly in it:
+ *
+ *     ls::ResourceManager::m_ptr -> +0x128 (gui::GameUI) -> +0xe0 (ui::Canvas)
+ *
+ * Both offsets were found by walking live memory and identifying each object by
+ * its vtable, not taken from upstream's headers -- those describe a different
+ * build and have been wrong about this one repeatedly.
+ *
+ * The result is checked against the ui::Canvas vtable before being handed out,
+ * so a layout change after a game update yields nothing rather than a wrong
+ * pointer that something later calls into.
+ */
+#define RM_GAMEUI_OFFSET      0x128
+#define GAMEUI_CANVAS_OFFSET  0xe0
+#define UI_CANVAS_VTABLE_RVA  0x87bc830   /* vtable for ui::Canvas, past the ABI header */
+
+static void *resolve_canvas_root(void) {
+    void *rm = resource_manager_get();
+    if (!rm) return NULL;
+
+    void *game_ui = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)((uint8_t *)rm + RM_GAMEUI_OFFSET),
+                                  &game_ui) || !game_ui) {
+        return NULL;
+    }
+
+    void *canvas = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)((uint8_t *)game_ui + GAMEUI_CANVAS_OFFSET),
+                                  &canvas) || !canvas) {
+        return NULL;
+    }
+
+    void *vtable = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)canvas, &vtable) || !vtable) return NULL;
+
+    image_bounds();
+    if (s_image_lo && (uintptr_t)vtable - s_image_lo != UI_CANVAS_VTABLE_RVA) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_IMGUI_WARN("Noesis: object at ResourceManager+0x%x/+0x%x is not a "
+                           "ui::Canvas (vtable rva 0x%lx, expected 0x%x) — layout "
+                           "changed; Ext.UI has no root",
+                           RM_GAMEUI_OFFSET, GAMEUI_CANVAS_OFFSET,
+                           (unsigned long)((uintptr_t)vtable - s_image_lo),
+                           UI_CANVAS_VTABLE_RVA);
+        }
+        return NULL;
+    }
+    return canvas;
+}
+
 void *noesis_get_root(void) {
-    return s_root_count > 0 ? s_roots[s_root_count - 1] : NULL;
+    if (s_root_count > 0) return s_roots[s_root_count - 1];
+
+    void *canvas = resolve_canvas_root();
+    if (canvas) {
+        noesis_register_root(canvas);
+        return canvas;
+    }
+    return NULL;
 }
 
 /*
@@ -151,8 +227,6 @@ void *noesis_get_root(void) {
  * to carry a vtable pointer that lands inside the main image, which is where
  * every real Noesis vtable lives, and the slot being called has to be readable.
  */
-static uintptr_t s_image_lo = 0, s_image_hi = 0;
-
 static void image_bounds(void) {
     if (s_image_hi) return;
     const struct mach_header_64 *hdr = (const struct mach_header_64 *)_dyld_get_image_header(0);
