@@ -25,6 +25,21 @@ the last complete pass):
   comment cited 7209685); still blocked, only the build reference was stale.
 - `Ext.UI` scope exclusion — "stub layer only" no longer true; read-only tree
   surface is real and live-verified.
+- `Ext.Entity.EnableTracing`/`DisableTracing` and `GetTrace`/`ClearTrace` —
+  both rows said the infrastructure did not exist; the Wave 7 A8 work they each
+  named as their own unlock path had already shipped. Live-verified.
+
+**Counting note.** Four rows moved out of "deferred" on 2026-08-27 by
+correction rather than by new work — they were already implemented and the
+registry had not caught up. Anyone recomputing parity from this file should
+re-derive the denominator rather than trust a prior count.
+
+**Test-suite caveat (2026-08-27).** Tier 2 reported 7 failures against 2 real
+defects. Five tests asserted contracts that were superseded (RaycastAll's
+deferral, tracing's `Events`→`Entities` rename) or never existed on this build
+(`Osi.IsAlive`, whose funcId is 0xffffffff; `DamageType`, which is not a
+ValueList here). A failing test is not evidence of a deferral — check the API
+by hand before trusting either.
 
 ## Ext.Level
 
@@ -49,14 +64,14 @@ diagnostic surface.
 | API | Returns | Why deferred | Evidence | Unlock path |
 |---|---|---|---|---|
 | `entity:RemoveComponent(name)` | `false` | macOS emits only 734 `ImmediateWorldCache::RemoveComponent<T>(EntityHandle)` template instantiations, each with a hard-coded `TypeId<T>`; there is no generic runtime-TypeId entry point. Calling a specialization for a different type would remove the wrong component. | `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md` ("NOT GENERICALLY UNLOCKED") | Generate a per-build type-index→specialization dispatch table, or audit a generic reimplementation of the template body (pending-change handling + destroy callbacks) |
-| `Ext.Entity.EnableTracing` / `DisableTracing` | warn + `nil` | No macOS tracing infrastructure recovered. Contract note: current Windows BG3SE exposes `EnableTracing(bool)` only — `DisableTracing` is a macOS compat wrapper outside the Windows surface. | `src/injector/main.c` | RE the server tracing bookkeeping |
+| `Ext.Entity.EnableTracing` / `DisableTracing` | ~~warn + `nil`~~ **IMPLEMENTED (Wave 7 A8; row corrected 2026-08-27)** | The row's claim — "No macOS tracing infrastructure recovered" — was stale: `src/entity/entity_tracing.c` implements it and the Wave 7 A8 work this row named as its own unlock path had already landed. Live-verified 2026-08-27 in a loaded session: `EnableTracing(true)` → `true`, `DisableTracing()` → `true`. Remains a **prototype, partial vs Windows** (flat bounded log, not the full change tree). Contract note still holds: Windows exposes `EnableTracing(bool)` only; `DisableTracing` is a macOS compat wrapper. | `src/entity/entity_tracing.c` | Close the gap to Windows' full change tree |
 | `entity:GetReplicationFlags(component[,qword])` | number (gated) | Wave 7 C step 2: now a real **read-only** proxy method on the entity proxy (matching the Windows placement, `LuaEntityProxy.inl:415`), traversing the CONFIRMED SyncBuffers → HashMap → DynamicBitSet chain with fully guarded reads. Resolves only the 9 confirmed replicated-type globals; version-gated and fail-closed. **Still a scored deferral**: no parity credit until the live-probe checklist validates the runtime int32 indices and pointer chain in-game (step 2 of the 9-step Phase C plan). | `ghidra/offsets/REPLICATION_SYNCBUFFERS.md`, `src/entity/replication_flags.c` | Run the live-probe checklist; then credit and lift the deferral |
 | `entity:Replicate()` | no-op | Same replication gap. **Highest-demand deferral in the registry**: 5 of 11 vetted mods call it (Community Library, 5e Spells, Expansion, Combat Extender, Transmog Enhanced) — masked in single-player, unproven in multiplayer. Cannot be reclassified as a scope exclusion. | same | same |
 | Component property writes (unknown-size layouts, unsupported field types) | `false` | Writing through an unverified size or field type risks corruption; INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY are proven. Wave 7 A7 added a FLOAT_ARRAY writer with exact-length validation, NaN/Inf rejection, a staged buffer, and atomic commit, but it earns no parity credit yet: the only candidate, `ls::EffectComponent::OverrideFadeCapacity`, has unverified ARM64 offsets because the Ghidra bridge was down. | `src/entity/component_property.c` | Verify `OverrideFadeCapacity` offsets in Ghidra, then exercise the writer against the live component before crediting parity |
 | `Ext.Entity.GetEntitiesAroundPosition` spatial-grid backend | behavioral results | **No contract deferral:** Wave 7 A1 meets the Windows 2D XZ-circle behavior, ignores Y, and defaults includeCharacters/includeItems to true. The backend walks `eoc::character::CharacterComponent` and the item marker component, then reads `ls::TransformComponent` positions. The native spatial-grid `GridStructure` ARM64 layout remains unrecovered. | `BG3Extender/Lua/Libs/Ai.inl:502-537`; `src/entity/entity_system.c` | Recover `GridStructure` only if profiling shows the archetype fallback needs replacement |
 | `Ext.Entity.Create` / `Destroy` | absent | Engine entity lifecycle (allocator + handle mint) not recovered on macOS. | `Entity.inl:305-306` | Wave 7 Phase D4 (recon first, go/no-go on allocator evidence) |
 | `OnSystemUpdate` / `OnSystemPostUpdate` | ~~deferred~~ **IMPLEMENTED 2026-08-20** | Left the registry. The table walk in `ecs_system_update.c` was already correct; a live array probe confirmed the layout (buffer +0x30, size +0x3c = 934, stride 0xf8, 506 populated from slot 311, UpdateProc +0x18) and a ServerPassive hook fired 462 times in ~12s then unsubscribed cleanly. Limits: `Client*` systems need the client world; the name table covers 73 of 454 TypeIds; one hook kind per system. | `ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md` | — |
-| `GetTrace` / `ClearTrace` | absent | Tracing infrastructure not built; faithful Windows tracing scans command-buffer changes and replication dirties, so full credit is gated on the replication foundation. | `Entity.inl:322-323` | Wave 7 Phase A8 prototype → C-gated closure |
+| `GetTrace` / `ClearTrace` | ~~absent~~ **IMPLEMENTED (Wave 7 A8; row corrected 2026-08-27)** | "Tracing infrastructure not built" was stale — the A8 prototype this row pointed to as its unlock path shipped. Live-verified: `GetTrace()` → `{Enabled, Dropped, Entities}`, `ClearTrace()` → `true`. **The log is `Entities`** — a map keyed by EntityHandle matching Windows' `ECSChangeLog` — not a flat `Events` array; a Tier 2 test and the module docstring both said `Events` until 2026-08-27 and failed against a correct implementation. Full Windows parity (command-buffer + replication-dirty scanning) still gated on the replication foundation. | `src/entity/entity_tracing.c` | Close to Windows' full change tree |
 
 Implemented for contrast: `entity:CreateComponent` (verified ComponentOps
 registry at `EntityWorld+0x390`, vptr slot 5), `GetAllEntities`,
