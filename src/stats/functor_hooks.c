@@ -79,6 +79,41 @@ static inline int has_damage_subscribers(void) {
            events_get_handler_count(EVENT_DEAL_DAMAGE);
 }
 
+/*
+ * Dispatch-window tracking for Ext.Stats.ExecuteFunctors.
+ *
+ * The StatsFunctorList* handed to the Lua events is engine-owned and valid
+ * only while the enclosing hook frame is on the stack. A Lua handler may call
+ * back into ExecuteFunctors DURING the dispatch (that is the feature); a
+ * handler that stashes the handle and calls later must be refused. The window
+ * is: seq increments at every dispatch start, depth is nonzero only while
+ * handlers run, and a handle is valid iff its recorded seq matches AND depth
+ * is nonzero. Events fire on the game thread and handlers run synchronously
+ * on it, so plain statics suffice.
+ */
+static uint64_t g_FunctorDispatchSeq = 0;
+static int g_FunctorDispatchDepth = 0;
+
+uint64_t functor_dispatch_begin(void) {
+    if (g_FunctorDispatchDepth == 0) g_FunctorDispatchSeq++;
+    g_FunctorDispatchDepth++;
+    return g_FunctorDispatchSeq;
+}
+
+void functor_dispatch_end(void) {
+    if (g_FunctorDispatchDepth > 0) g_FunctorDispatchDepth--;
+}
+
+bool functor_dispatch_valid(uint64_t seq) {
+    return g_FunctorDispatchDepth > 0 && seq == g_FunctorDispatchSeq;
+}
+
+/* Resolved in functor_hooks_init under the same exact-build gate as the hook
+ * addresses; NULL on any other build. */
+typedef void (*FunctorResultDtor)(void *result);
+static FunctorResultDtor g_ResultDtor = NULL;
+void *functor_hooks_result_dtor(void) { return (void *)g_ResultDtor; }
+
 static void fire_execute_functor_event(const StatsFunctorList* functors, void* context, FunctorContextType ctxType) {
     // Stats functors are server-side (E2.0 audit 1.7) — resolve the server VM.
     if (!atomic_load_explicit(&g_DispatchEnabled, memory_order_acquire)) return;
@@ -294,6 +329,10 @@ static void hook_ProcessDealDamageFunctors(
 // =============================================================================
 
 bool functor_hooks_init(void) {
+    /* main.c only calls this under the FUNCTOR_ADDRS_VERIFIED_BUILD gate, so
+     * the raw dtor address is safe to materialize here. */
+    g_ResultDtor = (FunctorResultDtor)offset_table_fn(ADDR_FUNCTOR_RESULT_DTOR - 0x100000000ULL);
+
     if (g_HooksInstalled) {
         LOG_HOOKS_WARN("Functor hooks already installed");
         return true;

@@ -2,7 +2,7 @@
 
 **Project:** `/Users/jaredspigner/src/BG3SE/macos-port`
 **Game build:** 4.1.1.7398727 (arm64)
-**Status:** planned, not implemented. Scoped 2026-08-27 (~02:00) and deliberately
+**Status:** IMPLEMENTED and live-verified 2026-08-28 (~01:25). The Result-size gap below was resolved by upstream Hit.h naming the type (HitResult); validation step 2 as originally written was WRONG — a zero-filled prepared context crashes in the engine, so the shipped API re-executes against the dispatch's live context when arg 1 is nil. Scoped 2026-08-27 (~02:00) and deliberately
 deferred to a fresh session — see *Why this was not implemented on discovery*.
 
 ## Context

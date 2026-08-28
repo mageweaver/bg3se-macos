@@ -1315,28 +1315,122 @@ static int lua_stats_prepare_functor_params(lua_State *L) {
 // does not close that gap: it accepts one StatsFunctorBase plus a functor ID and
 // only AttackTargetContextData&, so routing arbitrary prepared contexts through
 // it would be ABI-incorrect. Do not accept raw Lua integers as engine pointers.
+/*
+ * Ext.Stats.ExecuteFunctors(functorContext, functorList) -> bool
+ *
+ * The second argument is the `FunctorList` userdata delivered on
+ * ExecuteFunctor / AfterExecuteFunctor events, valid ONLY inside that
+ * dispatch (functor_dispatch_valid). With it, a handler can re-run the
+ * dispatching functor list against a context it prepared -- the upstream
+ * ExecuteFunctor(s) contract. Without it, the legacy warn-once nil behavior
+ * is preserved so existing callers see no change.
+ *
+ * The hidden result_out (upstream Hit.h: HitResult = HitDesc + AttackDesc +
+ * HashMap<FunctorId,int32> + u32, ~0x218 here) is stack-allocated at a strict
+ * upper bound and ZERO-FILLED -- a valid default construction, since every
+ * field's default is zero. The functors allocate into its HashMap/Arrays, so
+ * the ENGINE's own Result::~Result (resolved under the exact-build gate) must
+ * run afterwards; skipping it would leak per call, and hand-rolling it would
+ * be the kind of guess that has burned this port three times.
+ *
+ * Interrupt contexts are refused: their proc has a different ABI
+ * (result_out, EntityWorld&, list, ctx).
+ */
+typedef struct {
+    const void *list;
+    const void *engine_ctx;
+    int ctx_type;
+    uint64_t seq;
+} LuaFunctorListView;   /* layout-compatible with lua_events.c's userdata */
+
 static int lua_stats_execute_functors(lua_State *L) {
     if (!functor_hooks_is_active()) {
         return luaL_error(L, "Functor hooks not installed (game must be in a session)");
     }
 
-    // Retain the legacy one-argument validation until real functor userdata
-    // exists; this prevents the stub from implying that raw pointers are valid.
-    LuaFunctorContext *ctx_ud = (LuaFunctorContext *)luaL_testudata(L, 1, FUNCTOR_CONTEXT_METATABLE);
-    if (!ctx_ud) {
-        return luaL_error(L, "Expected FunctorContext userdata as argument 1");
+    /*
+     * Argument 1 is now OPTIONAL. nil means "re-run against the dispatch's own
+     * live context", which is the only context guaranteed executable: a
+     * PrepareFunctorParams context is default-initialized, and the engine
+     * dereferences live world/entity pointers inside it -- a zero context
+     * crashed in esv::functor::ExecuteStatsFunctors ->
+     * GetComponent<TransformComponent> at +0x2D0 during first validation
+     * (2026-08-28). A prepared context remains accepted for callers who fill
+     * it with real data, with the same rope Windows modders get.
+     */
+    LuaFunctorContext *ctx_ud = NULL;
+    if (!lua_isnoneornil(L, 1)) {
+        ctx_ud = (LuaFunctorContext *)luaL_testudata(L, 1, FUNCTOR_CONTEXT_METATABLE);
+        if (!ctx_ud) {
+            return luaL_error(L, "Expected FunctorContext userdata or nil as argument 1");
+        }
     }
 
-    void *proc = functor_hooks_get_original_proc((int)ctx_ud->type);
+    if (lua_gettop(L) < 2 || lua_isnil(L, 2)) {
+        /* Legacy shape: no list to run. Keep the old contract. */
+        static bool warned = false;
+        if (!warned) {
+            LOG_STATS_WARN("ExecuteFunctors: no FunctorList given — pass "
+                           "ev.FunctorList from an ExecuteFunctor event");
+            warned = true;
+        }
+        return 0;
+    }
+
+    LuaFunctorListView *list_ud =
+        (LuaFunctorListView *)luaL_testudata(L, 2, "bg3se.FunctorList");
+    if (!list_ud) {
+        return luaL_error(L, "Expected the FunctorList userdata from an "
+                             "ExecuteFunctor event as argument 2");
+    }
+
+    if (!functor_dispatch_valid(list_ud->seq)) {
+        LOG_STATS_WARN("ExecuteFunctors: stale FunctorList — the handle is only "
+                       "valid inside the event dispatch that delivered it");
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    if (ctx_ud && (int)ctx_ud->type != list_ud->ctx_type) {
+        LOG_STATS_WARN("ExecuteFunctors: context type %d does not match the "
+                       "list's dispatch type %d — refusing (a mismatch shifts "
+                       "every argument register)",
+                       (int)ctx_ud->type, list_ud->ctx_type);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    if (list_ud->ctx_type == FUNCTOR_CTX_INTERRUPT) {
+        LOG_STATS_WARN("ExecuteFunctors: interrupt contexts have a different "
+                       "ABI and are not supported");
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    ExecuteFunctorsProc proc =
+        (ExecuteFunctorsProc)functor_hooks_get_original_proc(list_ud->ctx_type);
     if (!proc) {
-        return luaL_error(L, "No original proc for context type %d", (int)ctx_ud->type);
+        return luaL_error(L, "No original proc for context type %d", list_ud->ctx_type);
     }
 
-    LOG_STATS_DEBUG(
-        "ExecuteFunctors: context type %d ready, but no bound "
-        "StatsFunctorList/StatsFunctorBase object is available",
-        (int)ctx_ud->type);
-    return 0;
+    void (*dtor)(void *) = (void (*)(void *))functor_hooks_result_dtor();
+    if (!dtor) {
+        LOG_STATS_WARN("ExecuteFunctors: Result destructor unresolved on this "
+                       "build — refusing rather than leaking per call");
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    _Alignas(16) uint8_t result[FUNCTOR_RESULT_BUFSZ];
+    memset(result, 0, sizeof result);
+
+    void *ctx = ctx_ud ? (void *)ctx_ud->ctx : (void *)list_ud->engine_ctx;
+    if (!ctx) { lua_pushboolean(L, 0); return 1; }
+    proc(result, (const StatsFunctorList *)list_ud->list, ctx);
+    dtor(result);
+
+    lua_pushboolean(L, 1);
+    return 1;
 }
 
 // Ext.Stats.ExecuteFunctor(functorContext) -> nil

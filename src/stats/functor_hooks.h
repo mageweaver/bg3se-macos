@@ -53,4 +53,11 @@ uint64_t functor_hooks_get_event_count(void);
  */
 void* functor_hooks_get_original_proc(int ctx_type);
 
+/* Dispatch-window validity for FunctorList handles (see functor_hooks.c). */
+uint64_t functor_dispatch_begin(void);
+void functor_dispatch_end(void);
+bool functor_dispatch_valid(uint64_t seq);
+/* esv::functor::Result::~Result, resolved under the exact-build gate. */
+void *functor_hooks_result_dtor(void);
+
 #endif // FUNCTOR_HOOKS_H
