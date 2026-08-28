@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 #include <unistd.h>
 #include <pwd.h>
 #include <ctype.h>
@@ -789,29 +790,41 @@ static void socket_poll_clients(lua_State *L) {
     // Accept new connections
     socket_accept_clients();
 
-    // Check for data from clients using select with zero timeout
-    fd_set read_fds;
-    FD_ZERO(&read_fds);
-
-    int max_fd = -1;
+    /*
+     * poll(), not select().
+     *
+     * select()'s fd_set is a fixed bitmap of FD_SETSIZE (1024) bits, and on
+     * macOS FD_SET with a descriptor >= FD_SETSIZE does not merely corrupt the
+     * stack -- it trips __darwin_check_fd_set_overflow, which raises
+     * GUARD_TYPE_USER and KILLS THE PROCESS. BG3 keeps a large number of
+     * descriptors open, so a long session that accepts many console
+     * connections eventually gets one numbered past 1024 and the game dies
+     * inside console_poll (observed 2026-08-27 after a day of automated
+     * console use). poll() takes descriptors by value and has no such limit.
+     */
+    struct pollfd pfds[MAX_CLIENTS];
+    int slot_of[MAX_CLIENTS];
+    int n = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (s_client_fds[i] >= 0) {
-            FD_SET(s_client_fds[i], &read_fds);
-            if (s_client_fds[i] > max_fd) max_fd = s_client_fds[i];
+            pfds[n].fd = s_client_fds[i];
+            pfds[n].events = POLLIN;
+            pfds[n].revents = 0;
+            slot_of[n] = i;
+            n++;
         }
     }
 
-    if (max_fd < 0) return;  // No clients connected
+    if (n == 0) return;  // No clients connected
 
-    struct timeval tv = {0, 0};  // Non-blocking
-    int ready = select(max_fd + 1, &read_fds, NULL, NULL, &tv);
+    int ready = poll(pfds, (nfds_t)n, 0);  // zero timeout, non-blocking
 
     if (ready <= 0) return;
 
     // Process clients with data
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (s_client_fds[i] >= 0 && FD_ISSET(s_client_fds[i], &read_fds)) {
-            socket_process_client(L, i);
+    for (int k = 0; k < n; k++) {
+        if (pfds[k].revents & (POLLIN | POLLHUP | POLLERR)) {
+            socket_process_client(L, slot_of[k]);
         }
     }
 }

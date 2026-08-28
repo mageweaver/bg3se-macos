@@ -48,7 +48,8 @@ static ChildCountFn s_log_count = NULL;
 static GetChildFn s_log_child = NULL;
 static SymbolStringFn s_symbol_str = NULL;
 static GetNameFn s_get_name = NULL;
-static const void *s_fe_type = NULL;          /* FrameworkElement's TypeClass */
+static StaticClassTypeFn s_fe_type_fn = NULL; /* resolved at init, CALLED lazily */
+static const void *s_fe_type = NULL;          /* FrameworkElement's TypeClass, on demand */
 static IsAssignableFromFn s_is_assignable = NULL;
 static int s_classtype_slot = -1;             /* index of GetClassType from an object's vptr */
 
@@ -128,17 +129,27 @@ bool noesis_init(void) {
     s_symbol_str = (SymbolStringFn)dlsym(self, SYM_SYMBOL_STR);
     s_get_name = (GetNameFn)dlsym(self, SYM_GET_NAME);
 
-    /* RTTI guard. Optional: if any piece is missing the guard stays off and
-     * FrameworkElement-only accessors refuse rather than guess. */
-    StaticClassTypeFn fe_type_fn = (StaticClassTypeFn)dlsym(self, SYM_FE_CLASSTYPE);
+    /*
+     * RTTI guard: resolve the SYMBOLS here, but do NOT call
+     * StaticGetClassType yet.
+     *
+     * Calling it during our init crashed the game at boot on 2026-08-27:
+     * every launch died ~15s in, inside NsRegisterReflectionCoreTypeConverter
+     * -> Noesis::IdOf -> strlen(NULL), while the launch immediately before the
+     * change ran 13 minutes. StaticGetClassType forces Noesis type
+     * registration, and our constructor runs before Noesis has finished its
+     * own reflection setup. It is resolved lazily instead, on first real use,
+     * by which point the UI exists.
+     */
+    s_fe_type_fn = (StaticClassTypeFn)dlsym(self, SYM_FE_CLASSTYPE);
     s_is_assignable = (IsAssignableFromFn)dlsym(self, SYM_IS_ASSIGNABLE);
-    if (fe_type_fn) s_fe_type = fe_type_fn(NULL);
     resolve_classtype_slot(self);
-    if (!s_fe_type || !s_is_assignable || s_classtype_slot < 0) {
+    if (!s_fe_type_fn || !s_is_assignable || s_classtype_slot < 0) {
         LOG_IMGUI_WARN("Noesis: FrameworkElement RTTI unavailable "
-                       "(type=%p assignable=%p slot=%d) — Name and logical-tree "
-                       "access will refuse non-verified elements",
-                       (void *)s_fe_type, (void *)s_is_assignable, s_classtype_slot);
+                       "(typefn=%p assignable=%p slot=%d) — Name and "
+                       "logical-tree access will refuse elements",
+                       (void *)s_fe_type_fn, (void *)s_is_assignable,
+                       s_classtype_slot);
     }
     if (!s_find_name || !s_child_count || !s_get_child) {
         LOG_IMGUI_WARN("Noesis: exports missing (FindName=%p count=%p child=%p) "
@@ -329,7 +340,15 @@ static bool visual_is_plausible(const void *visual);
  * callers refuse the operation rather than gambling.
  */
 static bool is_framework_element(const void *obj) {
-    if (!s_fe_type || !s_is_assignable || s_classtype_slot < 0) return false;
+    if (!s_fe_type_fn || !s_is_assignable || s_classtype_slot < 0) return false;
+
+    /* Lazy: first call happens once a real element exists, long after Noesis
+     * has registered its own reflection types. Doing this at init killed the
+     * game at boot -- see the note in noesis_init. */
+    if (!s_fe_type) {
+        s_fe_type = s_fe_type_fn(NULL);
+        if (!s_fe_type) return false;
+    }
     if (!visual_is_plausible(obj)) return false;
 
     void *vptr = NULL;
