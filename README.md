@@ -23,7 +23,7 @@ the `Ext.Entity` parity row until implemented.
 
 ## Easiest install: BG3 Mod Manager for Mac
 
-You don't have to build this yourself. [**BG3 Mod Manager for Mac**](https://github.com/mageweaver/BG3ModManagerMac)
+You don't have to build this yourself. [**BG3 Mod Manager for Mac**](https://github.com/mageweaver/BG3ModManagerMac) ([download](https://github.com/mageweaver/BG3ModManagerMac/releases/latest))
 installs the Script Extender with one click — it downloads the pre-built
 `libbg3se.dylib` from this project's [releases](https://github.com/mageweaver/bg3se-macos/releases),
 drops it into the game, and clears the Gatekeeper quarantine for you. It also
