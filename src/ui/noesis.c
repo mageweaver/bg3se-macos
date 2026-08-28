@@ -12,6 +12,10 @@
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
 #include <string.h>
+#include <dispatch/dispatch.h>
+#include <stdatomic.h>
+#include <pthread.h>
+#include <stdlib.h>
 
 // Exported Noesis entry points. All are `T` symbols in the main binary, so
 // dlsym finds them without any address table to keep in step with game updates.
@@ -29,33 +33,76 @@
 #define SYM_IS_ASSIGNABLE "_ZNK6Noesis9TypeClass16IsAssignableFromEPKNS_4TypeE"
 #define SYM_BO_CLASSTYPE  "_ZNK6Noesis10BaseObject12GetClassTypeEv"
 #define SYM_VT_BASEOBJECT "_ZTVN6Noesis10BaseObjectE"
+/* The engine's own checked dynamic cast: NULL-safe, walks TypeClass ancestry
+ * via IsDescendantOf, and applies the ancestor's this-pointer offset -- the
+ * multiple-inheritance adjustment a hand-rolled assignability check misses. */
+#define SYM_CAST          "_ZN6Noesis4CastEPKNS_9TypeClassEPNS_10BaseObjectE"
 
 typedef void *(*FindNameFn)(const void *element, const char *name);
 typedef int (*ChildCountFn)(const void *visual);
 typedef void *(*GetChildFn)(const void *visual, unsigned int index);
+
+/*
+ * LogicalTreeHelper::GetChild returns Ptr<BaseComponent> -- NOT a raw pointer.
+ *
+ * Proven from disassembly (2026-08-28): the helper is a three-instruction tail
+ * trampoline (`ldr x9,[x0]; ldr x2,[x9,#0x438]; br x2`) into the virtual
+ * GetLogicalChild, and Viewbox's override does `mov x19, x8 ... str x0,[x19];
+ * ldadd w9,w8,[x8]` -- it stores the result through the x8 indirect-result
+ * register and BUMPS A REFCOUNT at result+0x8. A plain-pointer typedef never
+ * supplies x8, so the engine stored through whatever garbage x8 held:
+ *   - x8 = 0x17            -> the "BaseCollection::GetComponent at 0x17" crash
+ *   - x8 = a __TEXT address -> SIGBUS KERN_PROTECTION_FAILURE mid-probe
+ *   - x8 = writable garbage -> one silently corrupted word per call, on every
+ *     "successful" logical-tree walk to date
+ * Third occurrence of this exact trap (CreateView's Ptr<View>, the functor
+ * result_out, now this). Rule: any Noesis/engine return of Ptr<T> or a struct
+ * needs a memory-class C return type so the compiler provides x8.
+ *
+ * A >16-byte struct return is AAPCS64 memory-class: the compiler passes x8
+ * pointing at `r`, exactly what the callee expects.
+ */
+typedef struct { void *p; void *pad[3]; } NsPtrRet;
+typedef NsPtrRet (*LogChildPtrFn)(const void *element, unsigned int index);
+
+/* Balance the AddRef GetLogicalChild performs. We cannot run the destructor
+ * chain from C, so if our reference turns out to be the LAST one the node is
+ * pinned alive instead (a leak, never a double-free or corruption). */
+static void ns_ptr_release_ref(void *obj) {
+    if (!obj) return;
+    _Atomic(int32_t) *rc = (_Atomic(int32_t) *)((uint8_t *)obj + 0x8);
+    int32_t prev = atomic_fetch_sub_explicit(rc, 1, memory_order_acq_rel);
+    if (prev <= 1) {
+        atomic_fetch_add_explicit(rc, 1, memory_order_relaxed);   /* pin */
+        LOG_IMGUI_WARN("Noesis: released the last reference to %p — pinning "
+                       "it alive rather than hand-rolling destruction", obj);
+    }
+}
 typedef void *(*GetRootFn)(const void *visual);
 typedef const char *(*SymbolStringFn)(unsigned int symbol);
 typedef const char *(*GetNameFn)(const void *element);
 typedef const void *(*StaticClassTypeFn)(void *tag);
 typedef bool (*IsAssignableFromFn)(const void *typeClass, const void *other);
 typedef const void *(*GetClassTypeFn)(const void *obj);
+typedef void *(*NsCastFn)(const void *typeClass, void *obj);
 
 static FindNameFn s_find_name = NULL;
 static ChildCountFn s_child_count = NULL;
 static GetChildFn s_get_child = NULL;
 static GetRootFn s_get_root = NULL;
 static ChildCountFn s_log_count = NULL;
-static GetChildFn s_log_child = NULL;
+static LogChildPtrFn s_log_child = NULL;
 static SymbolStringFn s_symbol_str = NULL;
 static GetNameFn s_get_name = NULL;
 static StaticClassTypeFn s_fe_type_fn = NULL; /* resolved at init, CALLED lazily */
 static const void *s_fe_type = NULL;          /* FrameworkElement's TypeClass, on demand */
 static IsAssignableFromFn s_is_assignable = NULL;
 static int s_classtype_slot = -1;             /* index of GetClassType from an object's vptr */
+static NsCastFn s_cast = NULL;                /* Noesis::Cast, dlsym'd */
 
 /* Defined further down, next to the image-bounds helpers they depend on. */
 static void resolve_classtype_slot(void *self);
-static bool is_framework_element(const void *obj);
+static bool visual_is_plausible(const void *visual);
 
 
 
@@ -125,7 +172,7 @@ bool noesis_init(void) {
     s_get_child = (GetChildFn)dlsym(self, SYM_GET_CHILD);
     s_get_root = (GetRootFn)dlsym(self, SYM_GET_ROOT);
     s_log_count = (ChildCountFn)dlsym(self, SYM_LOG_COUNT);
-    s_log_child = (GetChildFn)dlsym(self, SYM_LOG_CHILD);
+    s_log_child = (LogChildPtrFn)dlsym(self, SYM_LOG_CHILD);
     s_symbol_str = (SymbolStringFn)dlsym(self, SYM_SYMBOL_STR);
     s_get_name = (GetNameFn)dlsym(self, SYM_GET_NAME);
 
@@ -143,6 +190,7 @@ bool noesis_init(void) {
      */
     s_fe_type_fn = (StaticClassTypeFn)dlsym(self, SYM_FE_CLASSTYPE);
     s_is_assignable = (IsAssignableFromFn)dlsym(self, SYM_IS_ASSIGNABLE);
+    s_cast = (NsCastFn)dlsym(self, SYM_CAST);
     resolve_classtype_slot(self);
     if (!s_fe_type_fn || !s_is_assignable || s_classtype_slot < 0) {
         LOG_IMGUI_WARN("Noesis: FrameworkElement RTTI unavailable "
@@ -304,6 +352,201 @@ static void image_bounds(void) {
  * for X` symbol (offset-to-top + typeinfo), so the scan starts there and the
  * recovered index is usable directly against an object's vptr.
  */
+/*
+ * Run a Noesis call on the MAIN thread, where the engine expects it.
+ *
+ * Why this exists (2026-08-28): two silent, report-less process deaths shared
+ * one shape -- Noesis type registration forced from the wrong thread. Calling
+ * StaticGetClassType during our init killed every boot ~15s in
+ * (NsRegisterReflectionCoreTypeConverter -> IdOf -> strlen(NULL)), and calling
+ * GetClassType on ui::Canvas from the console thread killed a loaded session
+ * mid-probe with nothing in either crash reporter. GetClassType lazily
+ * REGISTERS the type if it has never been materialized, and registration is
+ * only safe where Noesis runs -- the main thread. Windows BG3SE never faces
+ * this because its Lua executes on the game thread by construction.
+ *
+ * dispatch_async + semaphore rather than dispatch_sync, with a timeout that
+ * FAILS CLOSED: if the main thread is blocked on the Lua gate that our caller
+ * holds (console eval), a dispatch_sync would deadlock permanently. With the
+ * timeout the console call returns failure, the gate is released, and the main
+ * thread proceeds -- degraded but recoverable.
+ */
+#define NOESIS_UI_CALL_TIMEOUT_MS 400
+
+/*
+ * Heap box shared by the waiting thread and the dispatched block. Plain-C
+ * blocks do NOT retain captured dispatch objects, and __block stack storage
+ * dies with its frame, so everything either side may touch after a timeout
+ * lives on the heap, refcounted: each side decrements once, the side reaching
+ * zero frees the box, the semaphore, and -- unless ownership was transferred
+ * to the caller -- the payload.
+ */
+typedef struct {
+    void (*fn)(void *payload);
+    void *payload;
+    bool free_payload;           /* cleared when the caller takes ownership */
+    dispatch_semaphore_t sem;
+    _Atomic int refs;
+} UiCallBox;
+
+static void ui_call_box_release(UiCallBox *box) {
+    if (atomic_fetch_sub_explicit(&box->refs, 1, memory_order_acq_rel) == 1) {
+        if (box->free_payload) free(box->payload);
+        dispatch_release(box->sem);
+        free(box);
+    }
+}
+
+/*
+ * Run fn(payload) on the MAIN thread and return the payload for the caller to
+ * read and free -- or NULL on timeout, after which the payload is untouchable
+ * (the block may still run and write to it later; the box frees it).
+ *
+ * Why this exists (2026-08-28): two silent, report-less process deaths shared
+ * one shape -- Noesis type registration forced from the wrong thread.
+ * StaticGetClassType called during init killed every boot ~15s in
+ * (NsRegisterReflectionCoreTypeConverter -> IdOf -> strlen(NULL)), and
+ * GetClassType on ui::Canvas from the console thread killed a loaded session
+ * mid-probe with nothing in either crash reporter. GetClassType lazily
+ * REGISTERS a type that has never been materialized, and registration is only
+ * safe where Noesis runs. Windows BG3SE never faces this: its Lua executes on
+ * the game thread by construction.
+ *
+ * The timeout FAILS CLOSED on the known deadlock shape: a console eval holds
+ * the Lua gate; if the main thread is blocked acquiring that gate, our block
+ * never runs; the wait times out, the caller returns failure and releases the
+ * gate, and the main thread proceeds. Degraded but recoverable.
+ */
+static void *noesis_ui_call(void (*fn)(void *), void *heap_payload) {
+    if (pthread_main_np()) {
+        fn(heap_payload);
+        return heap_payload;                    /* caller reads + frees */
+    }
+
+    UiCallBox *box = (UiCallBox *)malloc(sizeof *box);
+    if (!box) { free(heap_payload); return NULL; }
+    box->fn = fn;
+    box->payload = heap_payload;
+    box->free_payload = true;
+    box->sem = dispatch_semaphore_create(0);
+    atomic_init(&box->refs, 2);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        box->fn(box->payload);                  /* payload untouched after this */
+        dispatch_semaphore_signal(box->sem);    /* box alive: we hold a ref */
+        ui_call_box_release(box);
+    });
+
+    long timed_out = dispatch_semaphore_wait(
+        box->sem, dispatch_time(DISPATCH_TIME_NOW,
+                                (int64_t)NOESIS_UI_CALL_TIMEOUT_MS * 1000000));
+    if (timed_out) {
+        LOG_IMGUI_WARN("Noesis: main-thread call timed out (%dms) — failing "
+                       "closed (main thread likely blocked on the Lua gate "
+                       "this caller holds)", NOESIS_UI_CALL_TIMEOUT_MS);
+        ui_call_box_release(box);
+        return NULL;
+    }
+    /* Success: the block is past its last payload touch (it signalled after
+     * fn). Take ownership before dropping our ref; release-ordering on the
+     * refcount makes the cleared flag visible to whichever side frees. */
+    box->free_payload = false;
+    ui_call_box_release(box);
+    return heap_payload;
+}
+
+/*
+ * All engine-touching operations funnel through one main-thread handler.
+ * Every input and output lives in this heap payload; strings returned by the
+ * engine (SymbolManager interns, Name buffers) outlive the call.
+ */
+typedef enum {
+    NSOP_CLASSIFY,      /* obj -> type_name, is_fe (may lazily register types) */
+    NSOP_ELEMENT_NAME,  /* obj -> str_out (FrameworkElement::GetName)          */
+    NSOP_FIND_NAME,     /* obj + name_in -> ptr_out                            */
+    NSOP_LOG_COUNT,     /* obj -> int_out                                      */
+    NSOP_LOG_CHILD,     /* obj + idx -> ptr_out                                */
+} NsOpKind;
+
+typedef struct {
+    NsOpKind kind;
+    void *obj;
+    const char *name_in;
+    unsigned idx;
+    const char *str_out;
+    void *ptr_out;
+    int int_out;
+    bool is_fe;
+} NsOp;
+
+/* MAIN THREAD ONLY. The one place allowed to call GetClassType / Cast /
+ * FrameworkElement methods, because type registration is safe here. */
+static void nsop_run(void *payload) {
+    NsOp *op = (NsOp *)payload;
+    void *obj = op->obj;
+
+    if (!visual_is_plausible(obj)) return;
+
+    /* Lazy FrameworkElement TypeClass -- first use is on the main thread by
+     * construction now, which is the entire point. */
+    if (!s_fe_type && s_fe_type_fn) s_fe_type = s_fe_type_fn(NULL);
+
+    /* Engine-checked downcast; NULL when obj is not a FrameworkElement.
+     * Includes the ancestor this-pointer adjustment Noesis::Cast applies. */
+    void *fe = (s_cast && s_fe_type) ? s_cast(s_fe_type, obj) : NULL;
+    op->is_fe = (fe != NULL);
+
+    switch (op->kind) {
+    case NSOP_CLASSIFY: {
+        if (s_classtype_slot < 0 || !s_symbol_str) return;
+        void *vptr = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)obj, &vptr) || !vptr) return;
+        void *fn = NULL;
+        if (!safe_memory_read_pointer(
+                (mach_vm_address_t)((void **)vptr + s_classtype_slot), &fn) || !fn) return;
+        if (s_image_hi && ((uintptr_t)fn < s_image_lo || (uintptr_t)fn >= s_image_hi)) return;
+        const void *type = ((GetClassTypeFn)fn)(obj);
+        if (!type) return;
+        uint32_t symbol = 0;
+        if (safe_memory_read_u32((mach_vm_address_t)((const uint8_t *)type + 0x8), &symbol)
+            && symbol != 0) {
+            op->str_out = s_symbol_str(symbol);
+        }
+        break;
+    }
+    case NSOP_ELEMENT_NAME:
+        if (fe && s_get_name) {
+            const char *nm = s_get_name(fe);
+            op->str_out = (nm && nm[0]) ? nm : NULL;
+        }
+        break;
+    case NSOP_FIND_NAME:
+        if (fe && s_find_name && op->name_in) op->ptr_out = s_find_name(fe, op->name_in);
+        break;
+    case NSOP_LOG_COUNT:
+        if (fe && s_log_count) op->int_out = s_log_count(fe);
+        break;
+    case NSOP_LOG_CHILD:
+        if (fe && s_log_count && s_log_child) {
+            int n = s_log_count(fe);
+            if ((int)op->idx < n) {
+                NsPtrRet r = s_log_child(fe, op->idx);   /* x8 now supplied */
+                op->ptr_out = r.p;
+                ns_ptr_release_ref(r.p);   /* balance the callee's AddRef */
+            }
+        }
+        break;
+    }
+}
+
+/* Marshal one op; returns a payload the CALLER frees, or NULL on timeout. */
+static NsOp *nsop(NsOpKind kind, void *obj, const char *name_in, unsigned idx) {
+    NsOp *op = (NsOp *)calloc(1, sizeof *op);
+    if (!op) return NULL;
+    op->kind = kind; op->obj = obj; op->name_in = name_in; op->idx = idx;
+    return (NsOp *)noesis_ui_call(nsop_run, op);
+}
+
 static void resolve_classtype_slot(void *self) {
     if (s_classtype_slot >= 0) return;
 
@@ -327,47 +570,6 @@ static void resolve_classtype_slot(void *self) {
 
 static bool visual_is_plausible(const void *visual);
 
-/*
- * True only when `obj` really is a FrameworkElement.
- *
- * This exists because of a crash: LogicalTreeHelper::GetChild takes a
- * FrameworkElement*, but VisualChild() hands back a Visual*, which need not be
- * one. visual_is_plausible only proves the vtable is image-resident, so a
- * non-FE Visual sailed through, GetChild read a bogus children-collection
- * field, and Noesis::BaseCollection::GetComponent faulted at 0x17.
- *
- * Fails CLOSED: if the RTTI plumbing did not resolve, this returns false and
- * callers refuse the operation rather than gambling.
- */
-static bool is_framework_element(const void *obj) {
-    if (!s_fe_type_fn || !s_is_assignable || s_classtype_slot < 0) return false;
-
-    /* Lazy: first call happens once a real element exists, long after Noesis
-     * has registered its own reflection types. Doing this at init killed the
-     * game at boot -- see the note in noesis_init. */
-    if (!s_fe_type) {
-        s_fe_type = s_fe_type_fn(NULL);
-        if (!s_fe_type) return false;
-    }
-    if (!visual_is_plausible(obj)) return false;
-
-    void *vptr = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)obj, &vptr) || !vptr) return false;
-
-    void *fn = NULL;
-    if (!safe_memory_read_pointer(
-            (mach_vm_address_t)((void **)vptr + s_classtype_slot), &fn) || !fn) {
-        return false;
-    }
-    /* Never call through a slot that is not code in this image. */
-    if (s_image_hi && ((uintptr_t)fn < s_image_lo || (uintptr_t)fn >= s_image_hi)) {
-        return false;
-    }
-
-    const void *type = ((GetClassTypeFn)fn)(obj);
-    if (!type) return false;
-    return s_is_assignable(s_fe_type, type);
-}
 
 static bool visual_is_plausible(const void *visual) {
     if (!visual) return false;
@@ -388,8 +590,11 @@ static bool visual_is_plausible(const void *visual) {
 }
 
 void *noesis_find_name(void *element, const char *name) {
-    if (!s_find_name || !name || !is_framework_element(element)) return NULL;
-    return s_find_name(element, name);
+    NsOp *op = nsop(NSOP_FIND_NAME, element, name, 0);
+    if (!op) return NULL;
+    void *r = op->ptr_out;
+    free(op);
+    return r;
 }
 
 int noesis_child_count(void *visual) {
@@ -408,29 +613,56 @@ const char *noesis_symbol_string(unsigned int symbol) {
     return s_symbol_str(symbol);
 }
 
-const char *noesis_element_name(void *element) {
-    /* GetName is a non-virtual FrameworkElement method; same hazard as the
-     * logical tree if handed a plain Visual*. */
-    if (!s_get_name || !is_framework_element(element)) return NULL;
+/*
+ * The Noesis type name of any object, e.g. "Grid", "TextBlock", "ContentPresenter".
+ *
+ * Upstream (BG3Extender Lua/Libs/ClientUI/NsHelpers.inl) reaches types via
+ * o->GetClassType() and checks with TypeHelpers::IsDescendantOf before casting;
+ * this is the same reach, done through the vtable slot resolved at init.
+ *
+ * Noesis::Type::GetName is `ldr w0,[x0,#8]; b SymbolManager::GetString` -- the
+ * Symbol id lives at Type+0x8 -- so the id is read directly and resolved with
+ * the SymbolManager entry point already held. Works for ANY BaseObject, not
+ * just FrameworkElements, which is what makes it useful for telling them apart.
+ */
+bool noesis_is_framework_element(void *obj) {
+    NsOp *op = nsop(NSOP_CLASSIFY, obj, NULL, 0);
+    if (!op) return false;              /* timeout: fail closed */
+    bool r = op->is_fe;
+    free(op);
+    return r;
+}
 
-    const char *name = s_get_name(element);
-    // An unnamed element yields the empty string, not NULL; report both as nil
-    // so callers need only one check.
-    return (name && name[0]) ? name : NULL;
+const char *noesis_type_name(void *obj) {
+    NsOp *op = nsop(NSOP_CLASSIFY, obj, NULL, 0);
+    if (!op) return NULL;
+    const char *r = op->str_out;        /* interned; outlives the call */
+    free(op);
+    return r;
+}
+
+const char *noesis_element_name(void *element) {
+    NsOp *op = nsop(NSOP_ELEMENT_NAME, element, NULL, 0);
+    if (!op) return NULL;
+    const char *r = op->str_out;
+    free(op);
+    return r;
 }
 
 int noesis_logical_child_count(void *element) {
-    /* LogicalTreeHelper takes a FrameworkElement*. Passing a plain Visual*
-     * here is what crashed the game on 2026-08-27 (BaseCollection::GetComponent
-     * faulted at 0x17 reading a bogus children collection). */
-    if (!s_log_count || !is_framework_element(element)) return 0;
-    return s_log_count(element);
+    NsOp *op = nsop(NSOP_LOG_COUNT, element, NULL, 0);
+    if (!op) return 0;
+    int r = op->int_out;
+    free(op);
+    return r;
 }
 
 void *noesis_logical_child(void *element, unsigned int index) {
-    if (!s_log_child || !is_framework_element(element)) return NULL;
-    if ((int)index >= noesis_logical_child_count(element)) return NULL;
-    return s_log_child(element, index);
+    NsOp *op = nsop(NSOP_LOG_CHILD, element, NULL, index);
+    if (!op) return NULL;
+    void *r = op->ptr_out;
+    free(op);
+    return r;
 }
 
 void *noesis_root_of(void *visual) {

@@ -108,6 +108,21 @@ static int lua_noesis_index(lua_State *L) {
         if (nm) lua_pushstring(L, nm); else lua_pushnil(L);
         return 1;
     }
+    /* The Noesis TYPE ("Grid", "TextBlock", ...) as opposed to the XAML Name.
+     * Available on any object, including Visuals that are not
+     * FrameworkElements -- so a caller can tell before reaching for an
+     * accessor that requires one. */
+    if (strcmp(key, "TypeName") == 0) {
+        const char *tn = noesis_type_name(ud->element);
+        if (tn) lua_pushstring(L, tn); else lua_pushnil(L);
+        return 1;
+    }
+    /* Whether the FrameworkElement-only accessors (Name, Child,
+     * ChildrenCount, Find) will actually do anything on this object. */
+    if (strcmp(key, "IsFrameworkElement") == 0) {
+        lua_pushboolean(L, noesis_is_framework_element(ud->element));
+        return 1;
+    }
     if (strcmp(key, "GetProperty") == 0) {
         lua_pushcfunction(L, lua_noesis_get_property);
         return 1;

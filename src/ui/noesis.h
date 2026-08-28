@@ -66,6 +66,18 @@ void *noesis_get_child(void *visual, unsigned int index);
 const char *noesis_symbol_string(unsigned int symbol);
 
 /**
+ * The Noesis type name of any object ("Grid", "TextBlock", ...), or NULL.
+ *
+ * Works on any BaseObject, including Visuals that are not FrameworkElements --
+ * which is exactly what makes it useful for telling the two apart before
+ * calling an accessor that assumes one.
+ */
+const char *noesis_type_name(void *obj);
+
+/** True when the FrameworkElement-only accessors will act on this object. */
+bool noesis_is_framework_element(void *obj);
+
+/**
  * The element's Name, or NULL when unnamed.
  *
  * Calls the exported Noesis::FrameworkElement::GetName, which does the
