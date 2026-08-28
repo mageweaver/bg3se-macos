@@ -21,7 +21,18 @@ the `Ext.Entity` parity row until implemented.
 > macOS ARM64, so the Windows source serves as an architectural reference while
 > the macOS binary is reverse engineered.
 
-## Quick Start
+## Easiest install: BG3 Mod Manager for Mac
+
+You don't have to build this yourself. [**BG3 Mod Manager for Mac**](https://github.com/mageweaver/BG3ModManagerMac)
+installs the Script Extender with one click — it downloads the pre-built
+`libbg3se.dylib` from this project's [releases](https://github.com/mageweaver/bg3se-macos/releases),
+drops it into the game, and clears the Gatekeeper quarantine for you. It also
+manages your mod load order. If you just want SE-dependent mods working, start there.
+
+Prefer to do it by hand? A pre-built binary is on the [releases page](https://github.com/mageweaver/bg3se-macos/releases/latest)
+— see [docs/INSTALL-TUTORIAL.md](docs/INSTALL-TUTORIAL.md). To build from source, read on.
+
+## Quick Start (build from source)
 
 ### Requirements
 
