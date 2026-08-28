@@ -15,6 +15,45 @@ Last audited: 2026-08-18 (v0.44.0, game build 4.1.1.7398727, arm64 LC_UUID
 `0C51CAED-6D60-3DCD-9299-8519C92631B0` — first live-verified session on this build:
 154/154 offset-audit checks and Tier 1 112/114 passed).
 
+**Partial corrections 2026-08-27** (three entries re-examined against
+4.1.1.7398727; NOT a full re-audit — the 2026-08-18 sweep above still stands as
+the last complete pass):
+
+- `Ext.Stats` / `ExecuteFunctors` — stated rationale was wrong; corrected, with a
+  design in `plans/2026-08-27-001-feat-ext-stats-executefunctors-plan.md`.
+- `Ext.Stats` / `AddAttribute` — rationale re-verified on this build (its stub
+  comment cited 7209685); still blocked, only the build reference was stale.
+- `Ext.UI` scope exclusion — "stub layer only" no longer true; read-only tree
+  surface is real and live-verified.
+- `Ext.Entity.EnableTracing`/`DisableTracing` and `GetTrace`/`ClearTrace` —
+  both rows said the infrastructure did not exist; the Wave 7 A8 work they each
+  named as their own unlock path had already shipped. Live-verified.
+
+**Counting note.** Four rows moved out of "deferred" on 2026-08-27 by
+correction rather than by new work — they were already implemented and the
+registry had not caught up. Anyone recomputing parity from this file should
+re-derive the denominator rather than trust a prior count.
+
+**Remaining rows re-verified 2026-08-27.** After five corrections, every
+still-deferred row was checked live rather than assumed, and all matched their
+stated behavior: `GetTileDebugInfo({0,0,0})` → nil, `BeginPathfinding()` → nil,
+`Construct` → "not constructible" (2048 types enumerable via `GetAllTypes`),
+`GetReplicationFlags` → nil, `AddAttribute` → false with no `RPGStats`/
+`ModifierList` insert symbols on this build. `ExecuteFunctors` was re-diagnosed
+(see its row). So the seven survivors are trustworthy; it was the nine
+already-implemented ones that had drifted.
+
+Note that the `Ext.Entity.GetEntitiesAroundPosition` row is a **backend** note,
+not an API deferral — its own text says "No contract deferral" — so it inflates
+any naive count of this table.
+
+**Test-suite caveat (2026-08-27).** Tier 2 reported 7 failures against 2 real
+defects. Five tests asserted contracts that were superseded (RaycastAll's
+deferral, tracing's `Events`→`Entities` rename) or never existed on this build
+(`Osi.IsAlive`, whose funcId is 0xffffffff; `DamageType`, which is not a
+ValueList here). A failing test is not evidence of a deferral — check the API
+by hand before trusting either.
+
 ## Ext.Level
 
 | API | Returns | Why deferred | Evidence | Unlock path |
@@ -37,15 +76,15 @@ diagnostic surface.
 
 | API | Returns | Why deferred | Evidence | Unlock path |
 |---|---|---|---|---|
-| `entity:RemoveComponent(name)` | `false` | macOS emits only 734 `ImmediateWorldCache::RemoveComponent<T>(EntityHandle)` template instantiations, each with a hard-coded `TypeId<T>`; there is no generic runtime-TypeId entry point. Calling a specialization for a different type would remove the wrong component. | `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md` ("NOT GENERICALLY UNLOCKED") | Generate a per-build type-index→specialization dispatch table, or audit a generic reimplementation of the template body (pending-change handling + destroy callbacks) |
-| `Ext.Entity.EnableTracing` / `DisableTracing` | warn + `nil` | No macOS tracing infrastructure recovered. Contract note: current Windows BG3SE exposes `EnableTracing(bool)` only — `DisableTracing` is a macOS compat wrapper outside the Windows surface. | `src/injector/main.c` | RE the server tracing bookkeeping |
+| `entity:RemoveComponent(name)` | ~~`false`~~ **IMPLEMENTED, 666/734 coverage (row corrected 2026-08-27)** | The stated unlock path — "generate a per-build type-index→specialization dispatch table" — was completed: `src/entity/generated_remove_component.h` maps component names to the 666 of 734 specializations that correspond to a known name. Uncovered names fail closed (live-verified: an unknown component returns `false`). **Caveat worth keeping:** the specialization returns `void` (the mangled symbol encodes it), so a `true` return means only "a specialization existed and was dispatched", not that removal succeeded — Windows' bool-returning `RemoveComponent(EntityHandle, ComponentTypeIndex)` is a different, non-template function. The original concern (calling a specialization for the wrong type) is what the name-keyed table prevents. | `src/entity/generated_remove_component.h`, `src/entity/entity_system.c` | Cover the remaining 68, and find a real success signal |
+| `Ext.Entity.EnableTracing` / `DisableTracing` | ~~warn + `nil`~~ **IMPLEMENTED (Wave 7 A8; row corrected 2026-08-27)** | The row's claim — "No macOS tracing infrastructure recovered" — was stale: `src/entity/entity_tracing.c` implements it and the Wave 7 A8 work this row named as its own unlock path had already landed. Live-verified 2026-08-27 in a loaded session: `EnableTracing(true)` → `true`, `DisableTracing()` → `true`. Remains a **prototype, partial vs Windows** (flat bounded log, not the full change tree). Contract note still holds: Windows exposes `EnableTracing(bool)` only; `DisableTracing` is a macOS compat wrapper. | `src/entity/entity_tracing.c` | Close the gap to Windows' full change tree |
 | `entity:GetReplicationFlags(component[,qword])` | number (gated) | Wave 7 C step 2: now a real **read-only** proxy method on the entity proxy (matching the Windows placement, `LuaEntityProxy.inl:415`), traversing the CONFIRMED SyncBuffers → HashMap → DynamicBitSet chain with fully guarded reads. Resolves only the 9 confirmed replicated-type globals; version-gated and fail-closed. **Still a scored deferral**: no parity credit until the live-probe checklist validates the runtime int32 indices and pointer chain in-game (step 2 of the 9-step Phase C plan). | `ghidra/offsets/REPLICATION_SYNCBUFFERS.md`, `src/entity/replication_flags.c` | Run the live-probe checklist; then credit and lift the deferral |
-| `entity:Replicate()` | no-op | Same replication gap. **Highest-demand deferral in the registry**: 5 of 11 vetted mods call it (Community Library, 5e Spells, Expansion, Combat Extender, Transmog Enhanced) — masked in single-player, unproven in multiplayer. Cannot be reclassified as a scope exclusion. | same | same |
+| `entity:Replicate()` | ~~no-op~~ **IMPLEMENTED; effect unproven without a peer (row corrected 2026-08-27)** | Not a no-op: it calls `net_hooks_sync_active_peers()`, enumerates peers via `peer_manager_list_peers`, invokes `replication_system_replicate_to_peer` per peer, and returns `(sent > 0, sent)`. It warns once when no peer accepts. So the code path is real; what stays unproven is the same thing the row always said — **behaviour with an actual connected client**, since a single-player session has zero peers and every call trivially returns `(false, 0)`. Still the **highest-demand item here**: 5 of 11 vetted mods call it (Community Library, 5e Spells, Expansion, Combat Extender, Transmog Enhanced). Still not a scope exclusion. | `src/entity/entity_system.c`, `src/entity/replication_system.c` | Verify against a real remote peer (console crossplay; Mac must host) |
 | Component property writes (unknown-size layouts, unsupported field types) | `false` | Writing through an unverified size or field type risks corruption; INT32, UINT8, BOOL, FLOAT, and INT32_ARRAY are proven. Wave 7 A7 added a FLOAT_ARRAY writer with exact-length validation, NaN/Inf rejection, a staged buffer, and atomic commit, but it earns no parity credit yet: the only candidate, `ls::EffectComponent::OverrideFadeCapacity`, has unverified ARM64 offsets because the Ghidra bridge was down. | `src/entity/component_property.c` | Verify `OverrideFadeCapacity` offsets in Ghidra, then exercise the writer against the live component before crediting parity |
 | `Ext.Entity.GetEntitiesAroundPosition` spatial-grid backend | behavioral results | **No contract deferral:** Wave 7 A1 meets the Windows 2D XZ-circle behavior, ignores Y, and defaults includeCharacters/includeItems to true. The backend walks `eoc::character::CharacterComponent` and the item marker component, then reads `ls::TransformComponent` positions. The native spatial-grid `GridStructure` ARM64 layout remains unrecovered. | `BG3Extender/Lua/Libs/Ai.inl:502-537`; `src/entity/entity_system.c` | Recover `GridStructure` only if profiling shows the archetype fallback needs replacement |
-| `Ext.Entity.Create` / `Destroy` | absent | Engine entity lifecycle (allocator + handle mint) not recovered on macOS. | `Entity.inl:305-306` | Wave 7 Phase D4 (recon first, go/no-go on allocator evidence) |
+| `Ext.Entity.Create` / `Destroy` | ~~absent~~ **IMPLEMENTED (row corrected 2026-08-27)** | "Engine entity lifecycle not recovered" is stale — `src/entity/entity_lifecycle.c` recovers it and resolves `VA_ECB_CREATE_ENTITY`. `Create` queues on this thread's EntityCommandBuffer and mints a handle via EntityHandleGenerator (materializes on flush, matching Windows' `EntityWorld->Deferred()`); `Destroy` validates the proxy's lifetime first. Both registered (`entity_system.c`) and both fail closed off 4.1.1.7398727 via `entity_lifecycle_available()`. **Verified by reading the implementation and its registration, NOT by invoking them** — they mutate entity state, and the audit was run inside a live player session. Exercise them on a scratch save before claiming behavioral credit. | `src/entity/entity_lifecycle.c`, `src/entity/entity_system.c` | Live-verify on a throwaway save |
 | `OnSystemUpdate` / `OnSystemPostUpdate` | ~~deferred~~ **IMPLEMENTED 2026-08-20** | Left the registry. The table walk in `ecs_system_update.c` was already correct; a live array probe confirmed the layout (buffer +0x30, size +0x3c = 934, stride 0xf8, 506 populated from slot 311, UpdateProc +0x18) and a ServerPassive hook fired 462 times in ~12s then unsubscribed cleanly. Limits: `Client*` systems need the client world; the name table covers 73 of 454 TypeIds; one hook kind per system. | `ghidra/offsets/ECS_SYSTEM_UPDATE_RECON.md` | — |
-| `GetTrace` / `ClearTrace` | absent | Tracing infrastructure not built; faithful Windows tracing scans command-buffer changes and replication dirties, so full credit is gated on the replication foundation. | `Entity.inl:322-323` | Wave 7 Phase A8 prototype → C-gated closure |
+| `GetTrace` / `ClearTrace` | ~~absent~~ **IMPLEMENTED (Wave 7 A8; row corrected 2026-08-27)** | "Tracing infrastructure not built" was stale — the A8 prototype this row pointed to as its unlock path shipped. Live-verified: `GetTrace()` → `{Enabled, Dropped, Entities}`, `ClearTrace()` → `true`. **The log is `Entities`** — a map keyed by EntityHandle matching Windows' `ECSChangeLog` — not a flat `Events` array; a Tier 2 test and the module docstring both said `Events` until 2026-08-27 and failed against a correct implementation. Full Windows parity (command-buffer + replication-dirty scanning) still gated on the replication foundation. | `src/entity/entity_tracing.c` | Close to Windows' full change tree |
 
 Implemented for contrast: `entity:CreateComponent` (verified ComponentOps
 registry at `EntityWorld+0x390`, vptr slot 5), `GetAllEntities`,
@@ -60,8 +99,8 @@ walk; `esv::Character` is not a registered TypeId — use
 |---|---|---|---|---|
 | Passive prototype sync | `false` | **PARTIAL-GO; sync stays false.** `Passives::Parse` needs no loader-private state, but only resolves names to existing prototypes. Existing-entry scalar/description refresh and all three functor-list refreshes are statically safe. `Boosts` remains blocked on an LTO-specialized closure ABI. The map uses `0x220` nodes with an inline `0x210` prototype. | [PASSIVES_PARSE_RECON.md](../ghidra/offsets/PASSIVES_PARSE_RECON.md) | Complete the five-step milestone below before returning success |
 | Interrupt prototype sync | `false` | `eoc::InterruptPrototype` (0x1f0 bytes) has a `FixedString` at offset 0, not a vptr; the manager uses a hash table + contiguous 0x1f0-stride array, structurally incompatible with the generic RefMap insert helper. | `ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md` | Map the inlined object move/build path at `0x103063f94` onward |
-| `AddAttribute` | `false` | Runtime modifier-list allocation and construction remain unverified. | `src/stats/stats_manager.c` | Recover the pre-load modifier allocation path |
-| `ExecuteFunctors` | partial | Full param-block construction unverified for all functor types. | `src/stats/functor_hooks.c` | Extend per-functor param evidence |
+| `AddAttribute` | `false` | Runtime modifier-list allocation and construction remain unverified. **Re-checked 2026-08-27 on 4.1.1.7398727** (the stub's comment cited the older 7209685): still blocked — `nm` exposes no `RPGStats`/`ModifierList` insert symbols on this build at all, so the machinery is inlined and allocating blind would mix heaps. Rationale holds; only its build reference was stale. | `src/stats/stats_manager.c`, `src/lua/lua_stats.c` | Recover the pre-load modifier allocation path |
+| `ExecuteFunctors` | ~~partial~~ **IMPLEMENTED (2026-08-28, live-verified)** | `Ext.Stats.ExecuteFunctors(ctxOrNil, ev.FunctorList)` re-runs the dispatching functor list. The handle is a lifetime-scoped userdata delivered on ExecuteFunctor/AfterExecuteFunctor events, valid only inside that dispatch (seq+depth window); `nil` ctx re-uses the dispatch's LIVE engine context — the safe primary path, after validation proved a zero-filled `PrepareFunctorParams` context crashes inside `esv::functor::ExecuteStatsFunctors` (it dereferences live world/entity pointers). The hidden result is upstream's `HitResult` (~0x218): stack-allocated at 0x400, zero-filled (a valid default construction — every field default is zero), destroyed by the engine's own `Result::~Result` (0x1010c0b08, exact-build-gated). Verified live: reexec=true, wrong-type ctx refused, **stale post-dispatch handle refused**, game alive. Interrupt contexts refused (different ABI). | `src/lua/lua_stats.c`, `src/stats/functor_hooks.c`, `src/lua/lua_events.c` | Interrupt-context variant if demand appears |
 
 Passive sync future milestone:
 
@@ -104,7 +143,24 @@ These four surfaces sit outside the parity denominator. This list is now the
 single authority — ROADMAP.md defers to it (Wave 6 reconciled a silent
 disagreement where ROADMAP assumed exclusions this registry never named).
 
-- **Ext.UI** — Windows NsGui/Noesis surface; compatibility stub layer only.
+- **Ext.UI** — Windows NsGui/Noesis surface. **Description corrected 2026-08-27: no
+  longer "stub layer only".** macOS BG3 links Noesis (~82,000 symbols) and the
+  read-only tree surface is now real and live-verified against a loaded session:
+  `GetRoot`, `IsReady`, and on elements `Find`, `Child`, `VisualChild`, `GetRoot`,
+  `Name`, `ChildrenCount`, `VisualChildrenCount`. Walked
+  `CanvasRoot -> ViewboxRoot -> ContentRoot` (21 visual / 23 logical children);
+  `Ext.UI.GetRoot():Find("ContentRoot")` — MCM's exact expression — returns a real
+  element, retiring the old "ContentRoot not found" failure. Element names come
+  from the exported `Noesis::FrameworkElement::GetName`, not a reversed offset.
+  **Still stubs:** `Instantiate`, `RegisterType`, `GetValue`, `SetValue` (general
+  Noesis property reflection needs `TypeClass` internals that are not exported).
+  Whether the working read-only surface earns parity credit is an open scope
+  decision; it is recorded here as fact, not as a claim on the denominator.
+  **Known latent risk:** `GetName` is a non-virtual `FrameworkElement` method, but
+  `VisualChild` returns `Visual*`, which is not guaranteed to be a FrameworkElement.
+  Calling it on a non-FE visual is untested. `FrameworkElement::StaticGetClassType`
+  (0x4e07e0) and `TypeClass::IsAssignableFrom` (0x33fbe8) are both exported if an
+  RTTI guard becomes necessary.
 - **Lua Debugger / DAP** — deferred to Phase 11.
 - **Virtual Textures** — no macOS GTS/GTP pipeline; no vetted-corpus caller.
   Explicit exclusion as of Wave 6 (previously assumed silently).

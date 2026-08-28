@@ -3132,6 +3132,35 @@ static int load_mod_bootstrap(lua_State *L, const char *mod_name, const char *bo
  * Load all mod bootstraps for SE-enabled mods
  * Uses the dynamically detected SE mods populated by mod_detect_enabled()
  */
+
+#include <ctype.h>
+
+/* Case-insensitive substring match of any comma-separated token in `spec`
+ * against name, dir, or uuid. NULL/empty spec matches nothing. */
+static bool mod_lua_skipped(const char *spec, const char *name,
+                            const char *dir, const char *uuid) {
+    if (!spec || !spec[0]) return false;
+    const char *fields[3] = { name, dir, uuid };
+    char tok[128];
+    const char *p = spec;
+    while (*p) {
+        size_t n = 0;
+        while (*p && *p != ',' && n < sizeof(tok) - 1) tok[n++] = (char)tolower((unsigned char)*p++);
+        tok[n] = '\0';
+        while (*p == ',') p++;
+        if (n == 0) continue;
+        for (int f = 0; f < 3; f++) {
+            if (!fields[f] || !fields[f][0]) continue;
+            char low[256];
+            size_t m2 = 0;
+            for (; fields[f][m2] && m2 < sizeof(low) - 1; m2++) low[m2] = (char)tolower((unsigned char)fields[f][m2]);
+            low[m2] = '\0';
+            if (strstr(low, tok)) return true;
+        }
+    }
+    return false;
+}
+
 static void load_mod_scripts(lua_State *L) {
     LOG_MOD_INFO("=== Loading Mod Scripts ===");
 
@@ -3151,6 +3180,23 @@ static void load_mod_scripts(lua_State *L) {
     // Route mod chunks loaded from PAK through the per-mod _ENV installer too.
     mod_loader_set_chunk_env_hook(mod_env_apply);
 
+    /*
+     * BG3SE_SKIP_MOD_LUA: comma-separated case-insensitive substrings matched
+     * against a mod's display name, resolved directory, and UUID. A match
+     * skips BOTH bootstraps for that mod -- the mod's PAK content still loads
+     * normally; only its Script Extender Lua is suppressed.
+     *
+     * Diagnostic lever, added while chasing the LoadSession crash in
+     * esv::SpellSystem::ProcessInvalidateRequests (a NULL entry in the spell
+     * invalidate-request list, faulting VA 0x105762ef8). The working
+     * hypothesis is that an SE mod's stats writes during load plant the null:
+     * vanilla and BG3SE_DISABLE=1 sessions load fine, and the difference they
+     * share is that no mod Lua runs. This flag lets one mod's scripts be
+     * removed from the equation without touching the player's Mods folder or
+     * modsettings.lsx.
+     */
+    const char *skip_spec = getenv("BG3SE_SKIP_MOD_LUA");
+
     // Phase 1: Load all server bootstraps (in SERVER context)
     LOG_LUA_INFO("=== Loading Server Bootstraps ===");
     lua_context_set(LUA_CONTEXT_SERVER);
@@ -3161,6 +3207,13 @@ static void load_mod_scripts(lua_State *L) {
         const char *mod_dir = mod_get_se_dir(i);
         if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
         const char *mod_uuid = mod_get_se_uuid(i);
+
+        if (mod_lua_skipped(skip_spec, mod_get_se_name(i), mod_dir, mod_uuid)) {
+            LOG_LUA_WARN("BG3SE_SKIP_MOD_LUA: NOT loading server bootstrap for "
+                         "'%s' (%s)", mod_get_se_name(i),
+                         mod_uuid ? mod_uuid : "no uuid");
+            continue;
+        }
 
         // Get ModTable name from Config.json (or fallback to mod_dir)
         char *mod_table = get_mod_table_name(mod_dir);
@@ -3197,6 +3250,12 @@ static void load_mod_scripts(lua_State *L) {
         const char *mod_dir = mod_get_se_dir(i);
         if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
         const char *mod_uuid = mod_get_se_uuid(i);
+
+        if (mod_lua_skipped(skip_spec, mod_get_se_name(i), mod_dir, mod_uuid)) {
+            LOG_LUA_WARN("BG3SE_SKIP_MOD_LUA: NOT loading client bootstrap for "
+                         "'%s'", mod_get_se_name(i));
+            continue;
+        }
 
         // Re-activate this mod's per-mod _ENV for the client phase (the server
         // phase left the ref pointing at the last-loaded mod).
@@ -4668,6 +4727,11 @@ static void resolve_osiris_function_pointers(void *osiris) {
  *   BG3SE_NO_STATICDATA_HOOKS  resource manager Get<T> interception
  *   BG3SE_NO_VIDEOSKIP         Bink intro video patch
  *
+ * Two further groups honor BG3SE_NO_HOOKS but have no individual switch:
+ * savegame_hook_init (itself opt-in via BG3SE_SAVEGAME_SPIKE) and the functor
+ * execution hooks (additionally gated on FUNCTOR_ADDRS_VERIFIED_BUILD). Add a
+ * switch for either if a bisect needs to isolate it.
+ *
  * Added 2026-08-20 while tracking down BG3SE making multiplayer unstartable:
  * the game refuses to start a session with hooks installed, works with
  * BG3SE_NO_HOOKS=1, so the responsible patch is one of the groups above.
@@ -4705,9 +4769,11 @@ static void install_hooks(void) {
     static int no_hooks = -1;
     if (no_hooks < 0) no_hooks = (getenv("BG3SE_NO_HOOKS") != NULL);
     if (no_hooks) {
-        LOG_HOOKS_INFO("BG3SE_NO_HOOKS=1: skipping ALL code patches — Osiris hooks, "
-                       "StaticData hooks, and VideoSkip. Lua runtime stays active; "
-                       "subsystems init in read-only mode.");
+        LOG_HOOKS_INFO("BG3SE_NO_HOOKS=1: skipping ALL code patches — Osiris, "
+                       "StaticData, VideoSkip, savegame, and functor hooks (5 "
+                       "groups). Lua runtime stays active; subsystems init in "
+                       "read-only mode. NOT patches, so still active: input "
+                       "(NSEvent handling) and the ImGui overlay.");
         hooks_installed = 1;  // Prevent re-entry
         // Still initialize subsystems (entity, stats, etc.) for diagnostics.
         // init_subsystems checks no_hooks again to skip the code-patching

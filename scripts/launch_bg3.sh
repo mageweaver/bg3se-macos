@@ -66,10 +66,56 @@ echo "Launching Baldur's Gate 3 with Script Extender..."
 echo "(Session log: $LOG_DIR/latest.log)"
 echo ""
 
-# Set the environment variable and launch
+# Launch through LaunchServices, NOT by exec'ing the binary directly.
+#
+# The game binary carries a weak `@loader_path/libbg3se.dylib` load command, so
+# it loads the extender from its own bundle directory on its own -- no
+# DYLD_INSERT_LIBRARIES required. Deploying into the bundle and using `open` is
+# therefore enough to get BG3SE loaded.
+#
+# Why this matters (2026-08-27): the previous form,
+#     DYLD_INSERT_LIBRARIES="$DYLIB" "$BG3_EXEC" &
+# execs the binary directly, bypassing Steam/LaunchServices. Sessions do not
+# start that way -- loading a save either bounced back to the main menu or died
+# with a null deref in esv::SpellSystem::ProcessInvalidateRequests. The same
+# save loads cleanly via `open` with the extender fully active, so the launch
+# method was the culprit, not BG3SE. It also double-loaded the dylib (the weak
+# bundle copy plus the inserted one), which the loader logged as
+# "duplicate dylib image IGNORED".
 LAUNCH_TS=$(date +%s)
-DYLD_INSERT_LIBRARIES="$DYLIB" "$BG3_EXEC" &
-GAME_PID=$!
+
+BUNDLE_DYLIB="$(dirname "$BG3_EXEC")/libbg3se.dylib"
+if [[ "$DYLIB" != "$BUNDLE_DYLIB" ]]; then
+    echo "Deploying dylib into the app bundle (@loader_path target)..."
+    cp "$DYLIB" "$BUNDLE_DYLIB" || {
+        echo "Error: could not copy dylib into $BUNDLE_DYLIB"
+        exit 1
+    }
+fi
+
+# LaunchServices does not inherit the shell environment, so forward any
+# BG3SE_* vars explicitly.
+OPEN_ARGS=()
+while IFS='=' read -r _k _v; do
+    OPEN_ARGS+=(--env "$_k=$_v")
+done < <(env | grep -E '^BG3SE_[A-Z_]+=' || true)
+
+BG3_APP_BUNDLE="$(cd "$(dirname "$BG3_EXEC")/../.." && pwd)"
+open "${OPEN_ARGS[@]}" "$BG3_APP_BUNDLE" || {
+    echo "Error: open failed for $BG3_APP_BUNDLE"
+    exit 1
+}
+
+# `open` returns immediately and does not report the child pid; poll for it.
+GAME_PID=""
+for _ in $(seq 1 20); do
+    GAME_PID=$(pgrep -f "$BG3_EXEC" | head -1)
+    [[ -n "$GAME_PID" ]] && break
+    sleep 0.5
+done
+if [[ -z "$GAME_PID" ]]; then
+    echo "Warning: launched, but could not resolve the game PID."
+fi
 
 # Wait for the dylib to open its session log (proves injection ran)
 LOADED=""

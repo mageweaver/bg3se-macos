@@ -58,8 +58,15 @@ static const VersionOffsets g_offset_table[] = {
         .passives_ptr            = 0x089b4228,
         .interrupt_proto_mgr_ptr = 0x089b28f0,
         .boost_proto_mgr_ptr     = 0x08991528,
-        .baseapp_instance_ptr    = 0,           // focus_hack postdates this vintage;
-                                                // never verified — fail closed
+        .baseapp_instance_ptr    = 0x08af1288,  // BaseApp::s_AppInstance
+                                                // (nm: __ZN7BaseApp13s_AppInstanceE @0x108af1288).
+                                                // Flag offset cross-checked on THIS binary:
+                                                // BaseApp::HasFocus() is `ldrb w0,[x0,#0x142]; ret`
+                                                // and Eoc::Shutdown() does `strb w9,[x8,#0x141]`,
+                                                // matching IsStopRequested's +0x141 — so the
+                                                // bool-flag block is where focus_hack expects.
+                                                // focus_hack_init still shape-validates before
+                                                // writing; see focus_hack.c.
 
         /* Function offsets */
         .fn_feat_getfeats        = 0x01b752b4,  // FeatManager::GetFeats

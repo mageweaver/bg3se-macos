@@ -10,6 +10,7 @@
  */
 
 #include "lua_events.h"
+#include "../stats/functor_hooks.h"
 #include "lua_gate.h"
 #include "lua_runtime.h"
 #include "../core/logging.h"
@@ -1549,11 +1550,43 @@ void events_fire_status_applied(lua_State *L, uint64_t entity, const char *statu
 // Functor Events (Issue #53)
 // ============================================================================
 
+/*
+ * Lifetime-scoped handle to the engine-owned StatsFunctorList a functor event
+ * is dispatching. Valid only inside that dispatch (functor_dispatch_valid);
+ * Ext.Stats.ExecuteFunctors refuses stale ones. Pushed ALONGSIDE the legacy
+ * FunctorListPtr integer, which stays for compatibility.
+ */
+typedef struct {
+    const void *list;
+    const void *engine_ctx;   /* the LIVE context this dispatch is running with */
+    int ctx_type;
+    uint64_t seq;
+} LuaFunctorListUD;
+
+#define FUNCTOR_LIST_MT "bg3se.FunctorList"
+
+static void push_functor_list_ud(lua_State *L, const void *functors,
+                                 const void *engine_ctx, int ctxType,
+                                 uint64_t seq) {
+    LuaFunctorListUD *ud =
+        (LuaFunctorListUD *)lua_newuserdatauv(L, sizeof *ud, 0);
+    ud->list = functors;
+    ud->engine_ctx = engine_ctx;
+    ud->ctx_type = ctxType;
+    ud->seq = seq;
+    if (luaL_newmetatable(L, FUNCTOR_LIST_MT)) {
+        /* metatable is a name tag only; no methods */
+    }
+    lua_setmetatable(L, -2);
+}
+
 void events_fire_execute_functor(lua_State *L, int ctxType, void *functors, void *context) {
     if (!L) return;
 
     int count = g_handler_counts[EVENT_EXECUTE_FUNCTOR];
     if (count == 0) return;
+
+    uint64_t __dispatch_seq = functor_dispatch_begin();
 
     LOG_EVENTS_DEBUG("Firing ExecuteFunctor (ctx=%d, functors=%p, context=%p, %d handlers)",
                 ctxType, functors, context, count);
@@ -1584,6 +1617,8 @@ void events_fire_execute_functor(lua_State *L, int ctxType, void *functors, void
         lua_setfield(L, -2, "ContextType");
         lua_pushinteger(L, (lua_Integer)(uintptr_t)functors);
         lua_setfield(L, -2, "FunctorListPtr");
+        push_functor_list_ud(L, functors, context, ctxType, __dispatch_seq);
+        lua_setfield(L, -2, "FunctorList");
         lua_pushinteger(L, (lua_Integer)(uintptr_t)context);
         lua_setfield(L, -2, "ContextPtr");
 
@@ -1612,6 +1647,8 @@ void events_fire_execute_functor(lua_State *L, int ctxType, void *functors, void
     if (g_dispatch_depth[EVENT_EXECUTE_FUNCTOR] == 0) {
         process_deferred_unsubscribes(L, EVENT_EXECUTE_FUNCTOR);
     }
+
+    functor_dispatch_end();
 }
 
 void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors, void *context) {
@@ -1619,6 +1656,8 @@ void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors
 
     int count = g_handler_counts[EVENT_AFTER_EXECUTE_FUNCTOR];
     if (count == 0) return;
+
+    uint64_t __dispatch_seq = functor_dispatch_begin();
 
     LOG_EVENTS_DEBUG("Firing AfterExecuteFunctor (ctx=%d, %d handlers)", ctxType, count);
 
@@ -1648,6 +1687,8 @@ void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors
         lua_setfield(L, -2, "ContextType");
         lua_pushinteger(L, (lua_Integer)(uintptr_t)functors);
         lua_setfield(L, -2, "FunctorListPtr");
+        push_functor_list_ud(L, functors, context, ctxType, __dispatch_seq);
+        lua_setfield(L, -2, "FunctorList");
         lua_pushinteger(L, (lua_Integer)(uintptr_t)context);
         lua_setfield(L, -2, "ContextPtr");
 
@@ -1676,6 +1717,8 @@ void events_fire_after_execute_functor(lua_State *L, int ctxType, void *functors
     if (g_dispatch_depth[EVENT_AFTER_EXECUTE_FUNCTOR] == 0) {
         process_deferred_unsubscribes(L, EVENT_AFTER_EXECUTE_FUNCTOR);
     }
+
+    functor_dispatch_end();
 }
 
 static void set_pointer_field(lua_State *L, const char *field, const void *ptr) {
@@ -2168,11 +2211,26 @@ static void log_event_callback(LogLevel level, LogModule module,
     const char *level_str = log_level_name(level);
     const char *module_str = log_module_name(module);
 
-    // Any logging thread can land here. The logging system invokes callbacks
-    // with g_config.mutex released, so taking the Lua gate here is
-    // deadlock-free; re-resolve the state under the gate because shutdown
-    // clears it while holding the same gate.
-    lua_gate_lock();
+    /*
+     * TRYLOCK, never lock. The old comment argued a blocking lua_gate_lock()
+     * was deadlock-free because the LOG mutex is released before callbacks --
+     * true, and insufficient: a logging thread may already hold OTHER locks.
+     * Observed 2026-08-28 (~8 min hang, diagnosed from a `sample` of the
+     * wedged process):
+     *
+     *   render thread: holds the ImGui object mutex (imgui_metal_render_frame)
+     *                  -> logs -> HERE -> waits on the Lua gate
+     *   console eval:  holds the Lua gate (Tier 2 test creating an ImGui
+     *                  window) -> waits on the ImGui object mutex
+     *
+     * Classic two-lock cycle; every Lua consumer then starves ("Lua service
+     * tick starved: 300 consecutive gate misses"). Forwarding log lines to
+     * Lua handlers is best-effort by nature -- dropping one under contention
+     * is invisible; blocking the renderer is fatal. So: trylock, and on
+     * contention this event is simply not delivered to Lua (the file/console
+     * sinks already received it).
+     */
+    if (!lua_gate_trylock()) return;
     lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
     if (L && atomic_load_explicit(&g_log_dispatch_enabled, memory_order_acquire)) {
         events_fire_log(L, level_str, module_str, message);

@@ -401,6 +401,18 @@ typedef struct {
 // Damage processing
 #define ADDR_PROCESS_DEAL_DAMAGE_FUNCTORS      0x10537e8b4
 
+// esv::functor::Result::~Result — local symbol, so dlsym cannot reach it.
+// Needed by Ext.Stats.ExecuteFunctors: we allocate the hidden result_out
+// ourselves (upstream Hit.h names its type: HitResult = HitDesc + AttackDesc +
+// HashMap<FunctorId,int32> + u32 ≈ 0x218 on this layout; a zero-filled buffer
+// is a validly default-constructed value since every field default is zero),
+// and the functors allocate into its HashMap/Arrays, so the ENGINE dtor must
+// run afterwards or every call leaks. Its own body confirms the shape: it
+// frees a heap pointer read from result+0x1F8.
+#define ADDR_FUNCTOR_RESULT_DTOR               0x1010c0b08
+// Upper bound for the stack allocation; must exceed sizeof(HitResult).
+#define FUNCTOR_RESULT_BUFSZ                   0x400
+
 // =============================================================================
 // Function Type Definitions
 // =============================================================================

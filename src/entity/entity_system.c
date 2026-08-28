@@ -3276,13 +3276,31 @@ static int lua_entity_get_all_with_uuid(lua_State *L) {
     if (!mapping) return 1;
 
     HashMapGuidEntityHandle *hashmap = (HashMapGuidEntityHandle *)mapping;
-    if (!hashmap->Keys.buf || !hashmap->Values.buf ||
-        hashmap->Keys.size != hashmap->Values.size) {
+    if (!hashmap->Keys.buf || !hashmap->Values.buf) {
         return 1;
     }
 
+    /*
+     * Do NOT require Keys.size == Values.size. They are different container
+     * types measuring different things:
+     *
+     *   Keys   = Array<Guid>                        {buf, capacity, size}
+     *            -> size is the LIVE ELEMENT COUNT
+     *   Values = UninitializedStaticArray<EntityHandle> {buf, size, _pad}
+     *            -> size is the ALLOCATED SLOT COUNT
+     *
+     * They differ in normal operation, so an equality check bailed out on
+     * every call and this returned an empty table forever -- silently, which
+     * is why it survived: single-uuid lookups kept working (guid_lookup.c
+     * hashes to a bucket and indexes Values.buf directly, never comparing the
+     * two sizes), so the mapping looked healthy from every other angle.
+     *
+     * Iterate the live keys and bounds-check each index against the allocated
+     * value slots, which is what the working single lookup effectively does.
+     */
     LifetimeHandle currentLifetime = lifetime_lua_get_current(L);
     for (uint32_t i = 0; i < hashmap->Keys.size; i++) {
+        if (i >= hashmap->Values.size) break;   /* never read past the allocation */
         char uuidStr[40];
         guid_to_string(&hashmap->Keys.buf[i], uuidStr);
 
@@ -3342,10 +3360,35 @@ static int lua_entity_get_registered_component_types(lua_State *L) {
 }
 
 // Read a {x, y, z} table argument (same convention as Ext.Level)
+/*
+ * Accepts BOTH {x, y, z} positional and {x = .., y = .., z = ..} named tables.
+ *
+ * Only the positional form was read originally, while the caller's argerror
+ * said "expected position table {x, y, z}" -- which reads as named keys. A
+ * Tier 2 test believed the message, passed {x=,y=,z=}, and failed against an
+ * API that was working correctly. Accepting both is strictly more permissive
+ * than the old behavior, so no existing caller changes meaning.
+ */
 static bool entity_read_vec3(lua_State *L, int idx, float out[3]) {
+    if (idx < 0) idx = lua_gettop(L) + idx + 1;   /* pushes below invalidate it */
     if (!lua_istable(L, idx)) return false;
+
+    bool positional = true;
     for (int i = 0; i < 3; i++) {
         lua_rawgeti(L, idx, i + 1);
+        if (!lua_isnumber(L, -1)) {
+            lua_pop(L, 1);
+            positional = false;
+            break;
+        }
+        out[i] = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+    }
+    if (positional) return true;
+
+    static const char *const keys[3] = { "x", "y", "z" };
+    for (int i = 0; i < 3; i++) {
+        lua_getfield(L, idx, keys[i]);
         if (!lua_isnumber(L, -1)) {
             lua_pop(L, 1);
             return false;
@@ -3400,7 +3443,7 @@ static int entity_collect_around(lua_State *L, const char *componentName,
 static int lua_entity_get_entities_around_position(lua_State *L) {
     float pos[3];
     if (!entity_read_vec3(L, 1, pos)) {
-        return luaL_argerror(L, 1, "expected position table {x, y, z}");
+        return luaL_argerror(L, 1, "expected a position table: {x, y, z} or {x = .., y = .., z = ..}");
     }
     float radius = (float)luaL_checknumber(L, 2);
     bool includeCharacters = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3);

@@ -131,6 +131,42 @@ follow-up.
 | `flags [--group X]` | 40 discovered BG3 CLI flags |
 | `ghidra decompile <name\|0xADDR>` | Ghidra HTTP bridge (requires running Ghidra + the Ghidra HTTP bridge) |
 
+## Known limitation: Tier 2 needs a human to click Continue
+
+**`-continueGame` does not work on 4.1.1.7398727.** Measured 2026-08-27 with a
+clean isolated test — game launched with only that flag, no harness, nothing
+clicking, a valid recent save present (173 saves, newest from the previous
+evening). It sat at the main menu for 5+ minutes with "Continue" highlighted
+and unpressed, never leaving the pre-session state. `-loadSaveGame <name>` does
+not load either. Both are real, discovered flags (`harness flags`); they simply
+do not fire.
+
+The watchdog fallback cannot cover for it: its `!click` events reach
+`[LSMTLView mouseDown:]` but **Noesis menu buttons do not respond to synthetic
+input**. Coordinates are not the problem — a click computed onto the Load Game
+button lands exactly on it and nothing happens.
+
+Net effect: **the harness cannot start a session load unattended.** What
+"menu_stalled" means in practice is not "a load failed" but "no load ever
+started". Across three runs the state histogram was 28 x `Init` versus 4 x
+`Running`, and those four coincide with a person clicking Continue.
+
+Practical guidance:
+
+- Tier 1 (`BG3SE_RunTests(1)`) runs fine unattended — it does not need a session.
+- Tier 2 (`BG3SE_RunTests(2)`) needs a loaded save. Launch, click **Continue**
+  yourself, then run the tests against the live game via the console socket.
+  Raising `--boot-retries` does not help; every retry hits the same dead end.
+- Note the console `!test` command takes **no** `--tier` flag; call
+  `BG3SE_RunTests(tier)` directly.
+
+No programmatic load path exists as a workaround: Osiris exposes no `LoadGame`,
+`LoadSave`, `SaveGame` or similar (`!osi_info` reports funcId 0xffffffff for
+each).
+
+Unlock path: make Noesis menu buttons respond to injected input, or find why
+`-continueGame` is inert on this build.
+
 ## How Injection Works
 
 Traditional `DYLD_INSERT_LIBRARIES` injection is fragile—SIP, Hardened Runtime, and Steam's process chain can silently strip the environment variable. The harness replaces this with **static Mach-O patching** via `insert_dylib`:
