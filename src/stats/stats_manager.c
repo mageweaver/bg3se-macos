@@ -2226,16 +2226,35 @@ static void* get_cached_vmt(void) {
 bool stats_sync(const char *name) {
     if (!name) return false;
 
-    // CRASH GUARD: stats_sync is a *mutating* op — it calls the game's
-    // SpellPrototype::Init on prototypes held in the manager's RefMap. During a
-    // session load/unload/sync the game is rebuilding those managers, so a
-    // prototype pointer can be freed mid-call (use-after-free -> SIGBUS). Only
-    // run when the server is in a stable state.
+    /*
+     * Guard REVISED 2026-08-28. The original blocked every state except
+     * Running/Paused, which silently no-op'd all prototype syncs during
+     * LoadSession -- and that is exactly when mods call Sync: 5eSpells (and
+     * per upstream's docs, any mod using Ext.Stats.Create) syncs from
+     * StatsLoaded, which fires mid-LoadSession, on every single load. On
+     * Windows those SyncStat calls are the designed path. Here they returned
+     * false, leaving spells referenced by spell lists with no prototype, and
+     * esv::SpellSystem::ProcessInvalidateRequests later walked a NULL entry
+     * (SIGSEGV at unslid 0x105762ef8 -- six identical crash reports, the
+     * "load bounces back to menu" symptom once Steam auto-restarted).
+     *
+     * The UAF the old guard feared is real only where managers are being TORN
+     * DOWN. Block those; allow the build-up and steady states. If a manager
+     * is not yet constructed during load, get_*_prototype_manager() reads a
+     * NULL singleton and the sync fails closed anyway.
+     */
     ServerGameState gs = game_state_get_current();
-    if (gs != SERVER_STATE_RUNNING && gs != SERVER_STATE_PAUSED) {
-        LOG_STATS_DEBUG("stats_sync: skipped for '%s' — server not stable (state=%s)",
+    switch (gs) {
+    case SERVER_STATE_UNLOAD_LEVEL:
+    case SERVER_STATE_UNLOAD_MODULE:
+    case SERVER_STATE_UNLOAD_SESSION:
+    case SERVER_STATE_EXIT:
+    case SERVER_STATE_DISCONNECT:
+        LOG_STATS_DEBUG("stats_sync: refused for '%s' — managers tearing down (state=%s)",
                         name, game_state_get_name(gs));
         return false;
+    default:
+        break;
     }
 
     // Get the stat object (shadow or game)
