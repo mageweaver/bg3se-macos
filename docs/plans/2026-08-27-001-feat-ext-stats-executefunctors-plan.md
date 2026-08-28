@@ -100,6 +100,49 @@ subsequent register shifts, and that it must never be dereferenced. Any new call
 path must obey the same contract. This has already caused one crash
 (`docs/bugs/wave2-functor-crash-analysis.md`).
 
+## GAP found 2026-08-27 (late): who allocates the Result?
+
+**The design step "call the original proc, forwarding `result_out`" is not
+implementable as written.** The hooks never *allocate* a `result_out` — they
+receive one the game built on its own stack and pass it through. Calling the
+proc from Lua means constructing that object ourselves, and two facts make that
+non-trivial:
+
+    ExecuteFunctorsProc = void (*)(void *result_out,
+                                   const StatsFunctorList *functors,
+                                   void *context)     /* x0..x2 */
+
+1. **Size is unknown and large.** `esv::functor::Result::~Result`
+   (`0x1010c0b08`) does `ldr x20, [x0, #0x1f8]` and `free`s that pointer, so
+   `sizeof(Result) >= 0x200` and the object **owns heap memory**. Under-allocate
+   and the callee writes past the buffer; that is corruption, not a bad return.
+2. **The destructor must run.** Skipping it leaks whatever lives at +0x1F8 on
+   every call. `Result::~Result` is a local symbol (`t`), so it needs an
+   offset-table entry gated on the exact build, like every other raw address
+   here — it cannot be dlsym'd.
+
+Also note the eleven `ADDR_EXECUTE_FUNCTORS_*` constants in `functor_types.h`
+are documented as verified for **7209685** (re-verified byte-identical for
+7398727 in Wave 2C). Any new caller must honour the same
+`FUNCTOR_ADDRS_VERIFIED_BUILD` gate the hooks use.
+
+**Do not resolve this by over-allocating a "generous" buffer.** That is a guess
+about a struct the callee writes into, and the same "identify the risk, note it,
+ship anyway" reasoning produced a live crash on 2026-08-27: the `Ext.UI` RTTI
+gap was written down as latent that morning and faulted the game that evening
+(`Noesis::BaseCollection::GetComponent` at 0x17 via `lua_noesis_child`).
+
+**Recover the exact size first.** Options, cheapest first:
+
+- Disassemble a call site of any `ExecuteFunctors_*` and read the `add x0, sp,
+  #imm` together with the frame size — call sites materialize the result in
+  their own frame, so the gap to the next live slot bounds it.
+- Or capture a real `result_out` inside an existing hook (the hooks already
+  receive one) and compare consecutive stack addresses across contexts.
+
+Until the size is CONFIRMED, this row stays deferred. A partially-safe
+implementation is worse than the current honest stub.
+
 ## Validation
 
 Cannot be validated without a live session, and session loading is currently

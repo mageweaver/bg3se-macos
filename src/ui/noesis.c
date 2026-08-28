@@ -23,6 +23,12 @@
 #define SYM_LOG_CHILD     "_ZN6Noesis17LogicalTreeHelper8GetChildEPKNS_16FrameworkElementEj"
 #define SYM_SYMBOL_STR    "_ZN6Noesis13SymbolManager9GetStringEj"
 #define SYM_GET_NAME      "_ZNK6Noesis16FrameworkElement7GetNameEv"
+/* RTTI, so a Visual* that is NOT a FrameworkElement can be rejected before it
+ * reaches an accessor that assumes one. */
+#define SYM_FE_CLASSTYPE  "_ZN6Noesis16FrameworkElement18StaticGetClassTypeEPNS_7TypeTagIS0_EE"
+#define SYM_IS_ASSIGNABLE "_ZNK6Noesis9TypeClass16IsAssignableFromEPKNS_4TypeE"
+#define SYM_BO_CLASSTYPE  "_ZNK6Noesis10BaseObject12GetClassTypeEv"
+#define SYM_VT_BASEOBJECT "_ZTVN6Noesis10BaseObjectE"
 
 typedef void *(*FindNameFn)(const void *element, const char *name);
 typedef int (*ChildCountFn)(const void *visual);
@@ -30,6 +36,9 @@ typedef void *(*GetChildFn)(const void *visual, unsigned int index);
 typedef void *(*GetRootFn)(const void *visual);
 typedef const char *(*SymbolStringFn)(unsigned int symbol);
 typedef const char *(*GetNameFn)(const void *element);
+typedef const void *(*StaticClassTypeFn)(void *tag);
+typedef bool (*IsAssignableFromFn)(const void *typeClass, const void *other);
+typedef const void *(*GetClassTypeFn)(const void *obj);
 
 static FindNameFn s_find_name = NULL;
 static ChildCountFn s_child_count = NULL;
@@ -39,6 +48,13 @@ static ChildCountFn s_log_count = NULL;
 static GetChildFn s_log_child = NULL;
 static SymbolStringFn s_symbol_str = NULL;
 static GetNameFn s_get_name = NULL;
+static const void *s_fe_type = NULL;          /* FrameworkElement's TypeClass */
+static IsAssignableFromFn s_is_assignable = NULL;
+static int s_classtype_slot = -1;             /* index of GetClassType from an object's vptr */
+
+/* Defined further down, next to the image-bounds helpers they depend on. */
+static void resolve_classtype_slot(void *self);
+static bool is_framework_element(const void *obj);
 
 
 
@@ -111,6 +127,19 @@ bool noesis_init(void) {
     s_log_child = (GetChildFn)dlsym(self, SYM_LOG_CHILD);
     s_symbol_str = (SymbolStringFn)dlsym(self, SYM_SYMBOL_STR);
     s_get_name = (GetNameFn)dlsym(self, SYM_GET_NAME);
+
+    /* RTTI guard. Optional: if any piece is missing the guard stays off and
+     * FrameworkElement-only accessors refuse rather than guess. */
+    StaticClassTypeFn fe_type_fn = (StaticClassTypeFn)dlsym(self, SYM_FE_CLASSTYPE);
+    s_is_assignable = (IsAssignableFromFn)dlsym(self, SYM_IS_ASSIGNABLE);
+    if (fe_type_fn) s_fe_type = fe_type_fn(NULL);
+    resolve_classtype_slot(self);
+    if (!s_fe_type || !s_is_assignable || s_classtype_slot < 0) {
+        LOG_IMGUI_WARN("Noesis: FrameworkElement RTTI unavailable "
+                       "(type=%p assignable=%p slot=%d) — Name and logical-tree "
+                       "access will refuse non-verified elements",
+                       (void *)s_fe_type, (void *)s_is_assignable, s_classtype_slot);
+    }
     if (!s_find_name || !s_child_count || !s_get_child) {
         LOG_IMGUI_WARN("Noesis: exports missing (FindName=%p count=%p child=%p) "
                        "— Ext.UI stays inert",
@@ -253,6 +282,74 @@ static void image_bounds(void) {
     s_image_hi = (uintptr_t)text + size + (64u << 20);   /* __TEXT plus the data segments after it */
 }
 
+/*
+ * Resolve GetClassType's vtable slot once, by scanning BaseObject's vtable for
+ * the address dlsym gives for BaseObject::GetClassType.
+ *
+ * The slot is NOT hardcoded: __DATA_CONST uses chained fixups, so the raw file
+ * bytes are encoded fixup entries rather than final addresses and a static dump
+ * reads several slots as zero. At runtime the fixups are applied and the scan
+ * is exact. Per the Itanium ABI an object's vptr points 0x10 past the `vtable
+ * for X` symbol (offset-to-top + typeinfo), so the scan starts there and the
+ * recovered index is usable directly against an object's vptr.
+ */
+static void resolve_classtype_slot(void *self) {
+    if (s_classtype_slot >= 0) return;
+
+    void *vt_sym = dlsym(self, SYM_VT_BASEOBJECT);
+    void *fn = dlsym(self, SYM_BO_CLASSTYPE);
+    if (!vt_sym || !fn) return;
+
+    void **vptr = (void **)((uint8_t *)vt_sym + 0x10);
+    for (int i = 0; i < 24; i++) {
+        void *slot = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)&vptr[i], &slot)) break;
+        if (slot == fn) {
+            s_classtype_slot = i;
+            LOG_IMGUI_INFO("Noesis: GetClassType at vtable slot %d", i);
+            return;
+        }
+    }
+    LOG_IMGUI_WARN("Noesis: GetClassType slot not found — the FrameworkElement "
+                   "guard stays off and logical-tree access is refused");
+}
+
+static bool visual_is_plausible(const void *visual);
+
+/*
+ * True only when `obj` really is a FrameworkElement.
+ *
+ * This exists because of a crash: LogicalTreeHelper::GetChild takes a
+ * FrameworkElement*, but VisualChild() hands back a Visual*, which need not be
+ * one. visual_is_plausible only proves the vtable is image-resident, so a
+ * non-FE Visual sailed through, GetChild read a bogus children-collection
+ * field, and Noesis::BaseCollection::GetComponent faulted at 0x17.
+ *
+ * Fails CLOSED: if the RTTI plumbing did not resolve, this returns false and
+ * callers refuse the operation rather than gambling.
+ */
+static bool is_framework_element(const void *obj) {
+    if (!s_fe_type || !s_is_assignable || s_classtype_slot < 0) return false;
+    if (!visual_is_plausible(obj)) return false;
+
+    void *vptr = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)obj, &vptr) || !vptr) return false;
+
+    void *fn = NULL;
+    if (!safe_memory_read_pointer(
+            (mach_vm_address_t)((void **)vptr + s_classtype_slot), &fn) || !fn) {
+        return false;
+    }
+    /* Never call through a slot that is not code in this image. */
+    if (s_image_hi && ((uintptr_t)fn < s_image_lo || (uintptr_t)fn >= s_image_hi)) {
+        return false;
+    }
+
+    const void *type = ((GetClassTypeFn)fn)(obj);
+    if (!type) return false;
+    return s_is_assignable(s_fe_type, type);
+}
+
 static bool visual_is_plausible(const void *visual) {
     if (!visual) return false;
     image_bounds();
@@ -272,7 +369,7 @@ static bool visual_is_plausible(const void *visual) {
 }
 
 void *noesis_find_name(void *element, const char *name) {
-    if (!s_find_name || !name || !visual_is_plausible(element)) return NULL;
+    if (!s_find_name || !name || !is_framework_element(element)) return NULL;
     return s_find_name(element, name);
 }
 
@@ -293,7 +390,9 @@ const char *noesis_symbol_string(unsigned int symbol) {
 }
 
 const char *noesis_element_name(void *element) {
-    if (!s_get_name || !visual_is_plausible(element)) return NULL;
+    /* GetName is a non-virtual FrameworkElement method; same hazard as the
+     * logical tree if handed a plain Visual*. */
+    if (!s_get_name || !is_framework_element(element)) return NULL;
 
     const char *name = s_get_name(element);
     // An unnamed element yields the empty string, not NULL; report both as nil
@@ -302,12 +401,15 @@ const char *noesis_element_name(void *element) {
 }
 
 int noesis_logical_child_count(void *element) {
-    if (!s_log_count || !visual_is_plausible(element)) return 0;
+    /* LogicalTreeHelper takes a FrameworkElement*. Passing a plain Visual*
+     * here is what crashed the game on 2026-08-27 (BaseCollection::GetComponent
+     * faulted at 0x17 reading a bogus children collection). */
+    if (!s_log_count || !is_framework_element(element)) return 0;
     return s_log_count(element);
 }
 
 void *noesis_logical_child(void *element, unsigned int index) {
-    if (!s_log_child || !visual_is_plausible(element)) return NULL;
+    if (!s_log_child || !is_framework_element(element)) return NULL;
     if ((int)index >= noesis_logical_child_count(element)) return NULL;
     return s_log_child(element, index);
 }
