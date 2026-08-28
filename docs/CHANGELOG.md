@@ -13,6 +13,45 @@ Each entry includes:
 
 ---
 
+## [v0.44.0] - 2026-08-28 — Session loading fixed at root; Ext.UI crash family closed; ExecuteFunctors
+
+**Category:** Feature / Fix | **Parity:** deferral registry 12 → 6 (5 by correction, 1 implemented) | **Tests:** Tier 1 114/114, Tier 2 110/110 (damage test's trigger flaky in one late session; recorded)
+
+### The headline fixes (all root-caused, all live-verified)
+
+- **Session loading works.** The three-day "load bounces back to menu" was our
+  own `stats_sync` crash guard silently refusing ALL prototype syncs during
+  LoadSession — mods sync from StatsLoaded on every load (the designed Windows
+  path), so mod-created spells had no prototypes and
+  `esv::SpellSystem::ProcessInvalidateRequests` walked a NULL entry
+  (SIGSEGV → Steam auto-restart → "bounce"). Guard now blocks only teardown
+  states. Verified: 21 syncs observed flowing, first-try loads with a 745-mod
+  order, repeatedly.
+- **The Ext.UI crash family is closed.** Two root causes: Noesis type
+  registration forced from the wrong thread (all engine-touching ops now
+  marshal to the main thread, 400ms fail-closed timeout), and
+  `LogicalTreeHelper::GetChild` returning `Ptr<BaseComponent>` via the x8
+  indirect-result register that a raw-pointer typedef never supplied — every
+  prior "successful" logical-tree walk was silently corrupting one word per
+  call. `element.TypeName`/`IsFrameworkElement` added (engine `Noesis::Cast`).
+- **Log-forwarding deadlock fixed** — `log_event_callback` now trylocks the
+  Lua gate (render thread held the ImGui mutex wanting the gate; console eval
+  held the gate wanting the ImGui mutex; 8-minute wedge, diagnosed by
+  `sample`).
+- **`Ext.Stats.ExecuteFunctors` implemented** — dispatch-scoped FunctorList
+  handle, live-context re-execution, stale/mismatch refusal, engine
+  `Result::~Result` cleanup. First validation crashed the game (zero-filled
+  contexts are landmines) and reshaped the API.
+- **`BG3SE_SKIP_MOD_LUA=<substrings>`** — suppress matching mods' SE Lua only;
+  the diagnostic lever that isolated the load crash.
+
+### Also
+
+- console `select()` → `poll()` (fd>1024 tripped a guard fault and killed the
+  process), pyobjc dependency declared and mis-reported errors fixed,
+  five stale deferral rows corrected, six rotten tests repaired,
+  `GetAllEntitiesWithUuid` fixed (0 → 4964 entries).
+
 ## [Unreleased] - 2026-08-27 — Ext.UI element names, FocusHack, and a docs/test truth pass
 
 **Category:** Feature / Fix / Docs | **Test baseline:** Tier 1 **114/114**, Tier 2 **110/110** — full suite green. The last Tier 2 failure was not a defect: `Stats.DamageEvents.PairedFiring` asserts correctly, it just needs a real damage event to have occurred. Applying BURNING to the host produced paired `BeforeDealDamage`/`DealDamage` counts and it passed.
