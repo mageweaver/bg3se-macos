@@ -15,7 +15,7 @@ Each entry includes:
 
 ## [Unreleased] - 2026-08-27 — Ext.UI element names, FocusHack, and a docs/test truth pass
 
-**Category:** Feature / Fix / Docs | **Test baseline:** Tier 1 **114/114**, Tier 2 **109/110** (the one remaining failure needs manual setup: apply BURNING to the host, allow a status tick)
+**Category:** Feature / Fix / Docs | **Test baseline:** Tier 1 **114/114**, Tier 2 **110/110** — full suite green. The last Tier 2 failure was not a defect: `Stats.DamageEvents.PairedFiring` asserts correctly, it just needs a real damage event to have occurred. Applying BURNING to the host produced paired `BeforeDealDamage`/`DealDamage` counts and it passed.
 
 ### Added
 
