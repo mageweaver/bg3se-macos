@@ -2168,11 +2168,26 @@ static void log_event_callback(LogLevel level, LogModule module,
     const char *level_str = log_level_name(level);
     const char *module_str = log_module_name(module);
 
-    // Any logging thread can land here. The logging system invokes callbacks
-    // with g_config.mutex released, so taking the Lua gate here is
-    // deadlock-free; re-resolve the state under the gate because shutdown
-    // clears it while holding the same gate.
-    lua_gate_lock();
+    /*
+     * TRYLOCK, never lock. The old comment argued a blocking lua_gate_lock()
+     * was deadlock-free because the LOG mutex is released before callbacks --
+     * true, and insufficient: a logging thread may already hold OTHER locks.
+     * Observed 2026-08-28 (~8 min hang, diagnosed from a `sample` of the
+     * wedged process):
+     *
+     *   render thread: holds the ImGui object mutex (imgui_metal_render_frame)
+     *                  -> logs -> HERE -> waits on the Lua gate
+     *   console eval:  holds the Lua gate (Tier 2 test creating an ImGui
+     *                  window) -> waits on the ImGui object mutex
+     *
+     * Classic two-lock cycle; every Lua consumer then starves ("Lua service
+     * tick starved: 300 consecutive gate misses"). Forwarding log lines to
+     * Lua handlers is best-effort by nature -- dropping one under contention
+     * is invisible; blocking the renderer is fatal. So: trylock, and on
+     * contention this event is simply not delivered to Lua (the file/console
+     * sinks already received it).
+     */
+    if (!lua_gate_trylock()) return;
     lua_State *L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
     if (L && atomic_load_explicit(&g_log_dispatch_enabled, memory_order_acquire)) {
         events_fire_log(L, level_str, module_str, message);
