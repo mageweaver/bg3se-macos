@@ -890,6 +890,17 @@ static int write_array_from_table(lua_State *L, void *addr, const ResourceField 
             for (uint32_t i = 0; i < ssize; i++) {
                 void *d = (uint8_t *)fresh + (size_t)i * esize;
                 const void *o = (const uint8_t *)sbuf + (size_t)i * esize;
+                // o points into the source array's buffer; array_read_header
+                // vouched only for its first byte, so validate each element's
+                // full span before touching it. On a bad element we bail with a
+                // Lua error -- addr is still untouched (published only below), so
+                // the target field is left intact rather than half-rewritten.
+                if (!safe_memory_read_u8((mach_vm_address_t)o, &(uint8_t){0})
+                    || !safe_memory_read_u8((mach_vm_address_t)((const uint8_t *)o + esize - 1),
+                                            &(uint8_t){0})) {
+                    return luaL_error(L, "field '%s': source element %u is not readable",
+                                      field->name, i);
+                }
                 if (field->kind == RF_ARRAY_STRUCT) {
                     copy_struct_element(d, o, field->elem, esize);
                 } else {
@@ -1186,6 +1197,19 @@ static bool array_read_header(const ResourceArrayUD *ud, void **out_buf,
     if (!safe_memory_read_u32((mach_vm_address_t)(p + ARRAY_CAPACITY_OFFSET), out_capacity)) return false;
     if (!safe_memory_read_u32((mach_vm_address_t)(p + ARRAY_SIZE_OFFSET), out_size)) return false;
     if (*out_size > *out_capacity) return false;   // not a live Array
+
+    // The header can look live while the buffer pointer does not. Source arrays
+    // have been seen reporting a non-zero size with a buffer pointer of 0x1 (an
+    // uninitialised or sentinel Array<T>); the size<=capacity test passes, and a
+    // consumer that copies from the buffer then faults reading address 0x1.
+    // A non-empty array must have a readable buffer, so probe its first byte and
+    // reject the header otherwise -- the array then reads as "not live" rather
+    // than crashing the caller. (Element size is unknown here; the per-element
+    // copy path validates the full span.)
+    if (*out_size > 0) {
+        uint8_t probe;
+        if (!buf || !safe_memory_read_u8((mach_vm_address_t)buf, &probe)) return false;
+    }
     *out_buf = (void *)(uintptr_t)buf;
     return true;
 }
