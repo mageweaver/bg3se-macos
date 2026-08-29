@@ -2,6 +2,18 @@
 
 All notable changes to BG3SE-macOS are documented here.
 
+## v0.44.1 (2026-08-29)
+
+- **Engine bugfix — VT null-tileset crash.** `ls::VirtualTextureManager::Unload`
+  dereferences a NULL tileset (refcount decrement at NULL+0x1C) when asked to
+  unload a tileset that is not registered — a guaranteed SIGSEGV on New Game /
+  module transitions with Levels-overhaul mods (e.g. Deadlier Honour Mode),
+  reproduced with the extender fully absent. The extender now retargets the two
+  not-found branches to the function's own unlock-and-return path, making the
+  unload a no-op. Original encodings are verified before patching; any mismatch
+  fails closed. Kill switch: `BG3SE_NO_VT_GUARD=1`; honors `BG3SE_NO_HOOKS`.
+  Details: `docs/bugs/vt-unload-null-tileset.md`.
+
 ## Format
 
 Each entry includes:

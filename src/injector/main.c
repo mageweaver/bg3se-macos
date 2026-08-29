@@ -110,6 +110,7 @@ extern "C" {
 #include "game_state.h"
 #include "global_switches.h"
 #include "video_skip.h"
+#include "vt_unload_guard.h"
 #include "focus_hack.h"
 #include "savegame_hook.h"
 
@@ -5019,6 +5020,16 @@ init_subsystems:
                         video_skip_init(binary_base);
                     } else {
                         LOG_CORE_INFO("VideoSkip SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
+                    }
+
+                    // Engine bugfix: null-tileset deref in
+                    // ls::VirtualTextureManager::Unload (crashes New Game with
+                    // Levels-overhaul mods, reproduced with the extender fully
+                    // absent). Code patch, so it honors BG3SE_NO_HOOKS.
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_VT_GUARD")) {
+                        vt_unload_guard_init(binary_base);
+                    } else {
+                        LOG_CORE_INFO("VtUnloadGuard SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
                     }
 
                     // Wave 7 E1.1: savegame observation spike. No-op unless
