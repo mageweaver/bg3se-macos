@@ -5041,10 +5041,18 @@ init_subsystems:
                     if (!no_hooks) {
                         pipeline_probe_init(binary_base);   // BG3SE_PIPELINE_PROBE=1 only
                     }
-                    // Engine bugfix: failed pipeline compiles must not freeze
-                    // later requesters. Code patch, honors BG3SE_NO_HOOKS.
-                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_PIPELINE_GUARD")) {
-                        pipeline_wait_guard_init(binary_base);
+                    // Engine bugfix candidate for the failed-compile freeze —
+                    // DISABLED by default: the one-yield early return also
+                    // fires for compiles legitimately in flight during
+                    // parallel loads, and consumers cache the null pipeline
+                    // (observed live: origin models and CC list tiles stopped
+                    // rendering). Needs a bounded wait, not a bounded-at-one
+                    // wait. Opt in with BG3SE_PIPELINE_GUARD=1 for testing.
+                    {
+                        const char *pg = getenv("BG3SE_PIPELINE_GUARD");
+                        if (!no_hooks && pg && pg[0] == '1') {
+                            pipeline_wait_guard_init(binary_base);
+                        }
                     }
                     if (!no_hooks && !hook_group_disabled("BG3SE_NO_SHADER_SHIM")) {
                         shader_clone_shim_init(binary_base);

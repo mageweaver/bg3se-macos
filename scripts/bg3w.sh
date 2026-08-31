@@ -1,6 +1,5 @@
 #!/bin/bash
 # BG3SE-macOS Steam Launch Script
-export BG3SE_PIPELINE_PROBE=1   # TEMPORARY diagnostic — remove after hair-freeze investigation
 # Steam launch options: /path/to/bg3se-macos/scripts/bg3w.sh %command%
 #
 # Steam passes the .app bundle path, but we need to run the actual executable
