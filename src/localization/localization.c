@@ -18,6 +18,7 @@
  */
 
 #include "localization.h"
+#include "../strings/fixed_string.h"
 #include "logging.h"
 #include "fixed_string.h"
 #include "../core/offset_table.h"
@@ -350,6 +351,92 @@ const char* localization_get(const char *handle, const char *fallback) {
     return s_result_buffer;
 }
 
+// ============================================================================
+// Direct value overwrite (upstream parity)
+//
+// Upstream BG3SE's UpdateTranslatedString writes straight into the
+// repository's TextPool hashmaps under the repo lock. Our previous engine
+// add-string path stages the string for a merge that never lands for handles
+// already registered by a .loca file, so updates to EXISTING strings silently
+// failed (observed live: MCM's main-menu label never replaced its fallback
+// warning text). For existing entries we do what upstream does in effect:
+// find every (handle, *) key in the live pools and repoint its LSStringView
+// value at our replacement buffer. No structural changes: buckets, chains and
+// key/value arrays keep their exact shape, so no allocator or lock coupling.
+// The value slot is written size-first-to-zero, then pointer, then final size,
+// so a concurrent reader sees at worst an empty string for one frame.
+//
+// HashMap<RuntimeStringHandle, LSStringView> in-struct layout (upstream
+// CoreLib/Base/BaseMap.h; RuntimeStringHandle = {u32 fs, u16 version, pad},
+// LSStringView = {const char *data, i32 size} padded to 16):
+#define HM_HASHKEYS_BUF   0x00   /* StaticArray<i32>.buf  */
+#define HM_HASHKEYS_SIZE  0x08   /* StaticArray<i32>.size */
+#define HM_NEXTIDS_BUF    0x10   /* Array<i32>.buf        */
+#define HM_KEYS_BUF       0x20   /* Array<K>.buf          */
+#define HM_KEYS_SIZE      0x2C   /* Array<K>.size         */
+#define HM_VALUES_BUF     0x30   /* UninitializedStaticArray<V>.buf */
+
+static int overwrite_pool_entries(void *pool, uint32_t fs,
+                                  const char *buf, size_t len) {
+    if (!pool) return 0;
+    uintptr_t map = (uintptr_t)pool + TEXTPOOL_OFFSET_TEXTS;
+
+    void *hk_buf = NULL, *next_buf = NULL, *keys_buf = NULL, *vals_buf = NULL;
+    uint32_t hk_size = 0, keys_size = 0;
+    if (!safe_memory_read_pointer(map + HM_HASHKEYS_BUF, &hk_buf) || !hk_buf) return 0;
+    if (!safe_memory_read_u32(map + HM_HASHKEYS_SIZE, &hk_size) || hk_size == 0) return 0;
+    if (!safe_memory_read_pointer(map + HM_NEXTIDS_BUF, &next_buf) || !next_buf) return 0;
+    if (!safe_memory_read_pointer(map + HM_KEYS_BUF, &keys_buf) || !keys_buf) return 0;
+    if (!safe_memory_read_u32(map + HM_KEYS_SIZE, &keys_size) || keys_size == 0) return 0;
+    if (!safe_memory_read_pointer(map + HM_VALUES_BUF, &vals_buf) || !vals_buf) return 0;
+
+    uint32_t hash = 0;
+    if (!fixed_string_hash(fs, &hash)) return 0;
+
+    int32_t idx = 0;
+    if (!safe_memory_read_i32((mach_vm_address_t)((uintptr_t)hk_buf
+                              + 4ull * (hash % hk_size)), &idx)) return 0;
+
+    int updated = 0, guard = 0;
+    while (idx >= 0 && guard++ < 100000) {
+        if ((uint32_t)idx >= keys_size) break;
+        uint32_t key_fs = 0;
+        if (!safe_memory_read_u32((mach_vm_address_t)((uintptr_t)keys_buf
+                                  + 8ull * (uint32_t)idx), &key_fs)) break;
+        if (key_fs == fs) {
+            // Overwrite the LSStringView value slot: size 0 -> ptr -> size.
+            uintptr_t slot = (uintptr_t)vals_buf + 16ull * (uint32_t)idx;
+            uint32_t zero = 0, sz = (uint32_t)len;
+            uint64_t ptr = (uint64_t)(uintptr_t)buf;
+            if (safe_memory_write(slot + 8, &zero, sizeof(zero))
+                && safe_memory_write(slot, &ptr, sizeof(ptr))
+                && safe_memory_write(slot + 8, &sz, sizeof(sz))) {
+                updated++;
+            }
+        }
+        if (!safe_memory_read_i32((mach_vm_address_t)((uintptr_t)next_buf
+                                  + 4ull * (uint32_t)idx), &idx)) break;
+    }
+    return updated;
+}
+
+/* Overwrite every live pool that can hold the handle: the active language
+ * pool and both fallbacks (the loca-file entries live in the fallbacks). */
+static int overwrite_existing_string(uint32_t fs, const char *buf, size_t len) {
+    int total = 0;
+    void *pool = NULL;
+    if (safe_memory_read_pointer((mach_vm_address_t)((uintptr_t)s_loca.repo
+            + REPO_OFFSET_TRANSLATED_STRINGS), &pool) && pool)
+        total += overwrite_pool_entries(pool, fs, buf, len);
+    if (safe_memory_read_pointer((mach_vm_address_t)((uintptr_t)s_loca.repo
+            + REPO_OFFSET_VERSIONED_FALLBACK), &pool) && pool)
+        total += overwrite_pool_entries(pool, fs, buf, len);
+    if (safe_memory_read_pointer((mach_vm_address_t)((uintptr_t)s_loca.repo
+            + REPO_OFFSET_FALLBACK_POOL), &pool) && pool)
+        total += overwrite_pool_entries(pool, fs, buf, len);
+    return total;
+}
+
 bool localization_set(const char *handle, const char *value) {
     LOG_CORE_DEBUG("LOCA: UpdateTranslatedString called with handle='%s' value='%s'",
                    handle ? handle : "(null)", value ? value : "(null)");
@@ -373,6 +460,25 @@ bool localization_set(const char *handle, const char *value) {
     uint32_t fixed_string = create_fixedstring_from_handle(handle);
     if (fixed_string == UINT32_MAX) {
         return false;
+    }
+
+    // Existing entries: overwrite their value slots in place (see above).
+    // The buffer is deliberately leaked — the engine keeps reading the view
+    // for the life of the process. Bounded by how often mods update strings.
+    {
+        size_t vlen = strlen(value);
+        char *copy = malloc(vlen + 1);
+        if (copy) {
+            memcpy(copy, value, vlen + 1);
+            int hit = overwrite_existing_string(fixed_string, copy, vlen);
+            if (hit > 0) {
+                LOG_CORE_DEBUG("LOCA: UpdateTranslatedString('%s') overwrote "
+                               "%d live entr%s in place",
+                               handle, hit, hit == 1 ? "y" : "ies");
+                return true;
+            }
+            free(copy);
+        }
     }
 
     void *translated_pool = NULL;

@@ -1437,6 +1437,19 @@ const char *fixed_string_resolve(uint32_t index) {
 // Utility Functions
 // ============================================================================
 
+/**
+ * Read the engine hash of an interned FixedString (StringEntry.Hash, the first
+ * header field, at string_data - STRING_ENTRY_HEADER_SIZE). This is the hash
+ * BG3's HashMap<K,V> uses for FixedString-keyed maps (upstream:
+ * HashMapHash<FixedString> = GetMetadata()->Hash).
+ */
+bool fixed_string_hash(uint32_t index, uint32_t *out_hash) {
+    if (!out_hash) return false;
+    const char *s = fixed_string_resolve(index);
+    if (!s) return false;
+    return safe_read_u32((char *)s - STRING_ENTRY_HEADER_SIZE, out_hash);
+}
+
 bool fixed_string_is_valid(uint32_t index) {
     return index != FS_NULL_INDEX;
 }

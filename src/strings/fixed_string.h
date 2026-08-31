@@ -86,6 +86,9 @@ void fixed_string_init(void *main_binary_base);
  */
 const char *fixed_string_resolve(uint32_t index);
 
+/** Engine hash of an interned FixedString (the hash BG3 HashMaps key on). */
+bool fixed_string_hash(uint32_t index, uint32_t *out_hash);
+
 /**
  * Check if a FixedString index is valid (not null index).
  */
