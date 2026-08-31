@@ -8,6 +8,8 @@
 #include "version.h"
 
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>  // strcasecmp
@@ -334,6 +336,24 @@ void log_init(void) {
     snprintf(latest_link, sizeof(latest_link), "%s/latest.log", g_LogsDir);
     unlink(latest_link);  // Remove old symlink
     symlink(g_session_log_path, latest_link);
+
+    // Capture the game's own stderr. The engine writes real error messages
+    // there (fwrite in e.g. rf pipeline-creation failure paths), and under a
+    // Steam launch they vanish. Redirect fd 2 into the log directory so
+    // engine-side failures become diagnosable. Our own logging never used
+    // stderr for output, so nothing of ours is lost.
+    {
+        char stderr_path[512];
+        snprintf(stderr_path, sizeof(stderr_path), "%s/game_stderr.log", g_LogsDir);
+        int fd = open(stderr_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) {
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+            setvbuf(stderr, NULL, _IONBF, 0);
+            fprintf(stderr, "=== BG3SE stderr capture: session %s ===\n",
+                    g_session_log_path);
+        }
+    }
 }
 
 void log_shutdown(void) {

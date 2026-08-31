@@ -112,6 +112,8 @@ extern "C" {
 #include "video_skip.h"
 #include "vt_unload_guard.h"
 #include "../render/shader_clone_shim.h"
+#include "../render/pipeline_probe.h"
+#include "../render/pipeline_wait_guard.h"
 #include "focus_hack.h"
 #include "savegame_hook.h"
 
@@ -5036,6 +5038,14 @@ init_subsystems:
                     // Clone-named shader lookups (modded hair/head packs)
                     // fall back to their base shader; without this the
                     // pipeline wait in AddPipelineState spins forever.
+                    if (!no_hooks) {
+                        pipeline_probe_init(binary_base);   // BG3SE_PIPELINE_PROBE=1 only
+                    }
+                    // Engine bugfix: failed pipeline compiles must not freeze
+                    // later requesters. Code patch, honors BG3SE_NO_HOOKS.
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_PIPELINE_GUARD")) {
+                        pipeline_wait_guard_init(binary_base);
+                    }
                     if (!no_hooks && !hook_group_disabled("BG3SE_NO_SHADER_SHIM")) {
                         shader_clone_shim_init(binary_base);
                     } else {
