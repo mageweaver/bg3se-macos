@@ -111,6 +111,7 @@ extern "C" {
 #include "global_switches.h"
 #include "video_skip.h"
 #include "vt_unload_guard.h"
+#include "../render/shader_clone_shim.h"
 #include "focus_hack.h"
 #include "savegame_hook.h"
 
@@ -5030,6 +5031,15 @@ init_subsystems:
                         vt_unload_guard_init(binary_base);
                     } else {
                         LOG_CORE_INFO("VtUnloadGuard SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
+                    }
+
+                    // Clone-named shader lookups (modded hair/head packs)
+                    // fall back to their base shader; without this the
+                    // pipeline wait in AddPipelineState spins forever.
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_SHADER_SHIM")) {
+                        shader_clone_shim_init(binary_base);
+                    } else {
+                        LOG_CORE_INFO("ShaderCloneShim SKIPPED (BG3SE_NO_HOOKS: installs code hook)");
                     }
 
                     // Wave 7 E1.1: savegame observation spike. No-op unless

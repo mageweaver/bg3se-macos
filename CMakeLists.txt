@@ -210,6 +210,7 @@ add_library(bg3se SHARED
     src/game/savegame_hook.c
     src/game/video_skip.c
     src/game/vt_unload_guard.c
+    src/render/shader_clone_shim.c
     src/game/focus_hack.c
     src/input/input_hooks.m
     src/input/focusless_input.m
