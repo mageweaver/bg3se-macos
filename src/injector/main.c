@@ -3617,7 +3617,21 @@ static void init_lua(void) {
                  * strings). The flag inside makes this a no-op afterwards and
                  * the session-load path still covers every fallback.
                  */
-                if (!client_bootstraps_loaded && mod_get_se_count() > 0) {
+                /* Opt-in only (BG3SE_MENU_BOOTSTRAP=1): client bootstraps at
+                 * the menu run against pre-session game state, and because
+                 * they only run once per process, mods that wire up visuals
+                 * on bootstrap (e.g. custom-origin frameworks) never
+                 * initialize against real session data — origin models render
+                 * invisible. Windows SE avoids this by recreating the client
+                 * Lua state every session; until we can re-run client
+                 * bootstraps safely, the default stays session-time. */
+                static int menu_bootstrap_optin = -1;
+                if (menu_bootstrap_optin < 0) {
+                    const char *mb = getenv("BG3SE_MENU_BOOTSTRAP");
+                    menu_bootstrap_optin = (mb && mb[0] == '1') ? 1 : 0;
+                }
+                if (menu_bootstrap_optin && !client_bootstraps_loaded &&
+                    mod_get_se_count() > 0) {
                     static int loca_ready_ticks = 0;
                     if (localization_ready()) {
                         if (++loca_ready_ticks >= 120) {   // ~2s at 60Hz
