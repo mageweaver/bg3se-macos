@@ -620,6 +620,20 @@ static int mods_publish_trampoline(lua_State *L) {
 }
 
 static void setup_mod_namespace(lua_State *L, const char *mod_table, const char *uuid) {
+    // Idempotent: with the client half now able to run at the main menu, the
+    // server phase can arrive at a namespace that already exists and is
+    // POPULATED (the mod's whole module lives in it). Re-publishing a fresh
+    // table here would wipe it, so an existing table is left untouched.
+    lua_getglobal(L, "Mods");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, mod_table);
+        bool exists = lua_istable(L, -1);
+        lua_pop(L, 2);
+        if (exists) return;
+    } else {
+        lua_pop(L, 1);
+    }
+
     // Get or create global 'Mods' table
     lua_getglobal(L, "Mods");
     if (lua_isnil(L, -1)) {
@@ -3165,7 +3179,77 @@ static bool mod_lua_skipped(const char *spec, const char *name,
     return false;
 }
 
+// Per-half once-flags: the client half can run early (main menu) while the
+// server half stays at story load. See load_client_bootstraps_at_menu().
+static int server_bootstraps_loaded = 0;
+static int client_bootstraps_loaded = 0;
+
+static void load_mod_bootstraps_client(lua_State *L) {
+    int se_count = mod_get_se_count();
+    if (se_count == 0 || client_bootstraps_loaded) return;
+    client_bootstraps_loaded = 1;
+
+    // This half can run before load_mod_scripts (main-menu path), so the
+    // loader preamble has to be self-contained. Both calls are idempotent.
+    init_mods_base_path();
+    mod_loader_set_chunk_env_hook(mod_env_apply);
+    const char *skip_spec = getenv("BG3SE_SKIP_MOD_LUA");
+
+    LOG_LUA_INFO("=== Loading Client Bootstraps ===");
+    lua_context_set(LUA_CONTEXT_CLIENT);
+
+    for (int i = 0; i < se_count; i++) {
+        const char *mod_dir = mod_get_se_dir(i);
+        if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
+        const char *mod_uuid = mod_get_se_uuid(i);
+
+        if (mod_lua_skipped(skip_spec, mod_get_se_name(i), mod_dir, mod_uuid)) {
+            LOG_LUA_WARN("BG3SE_SKIP_MOD_LUA: NOT loading client bootstrap for "
+                         "'%s'", mod_get_se_name(i));
+            continue;
+        }
+
+        // Ensure the per-mod namespace exists (this half may now run FIRST,
+        // at the main menu) and activate its _ENV for the client phase.
+        char *mod_table = get_mod_table_name(mod_dir);
+        if (mod_table) {
+            setup_mod_namespace(L, mod_table, mod_uuid);
+            mod_env_set(L, mod_table, mod_uuid);
+            free(mod_table);
+        }
+
+        // Set ModuleUUID for this mod before its client bootstrap runs.
+        lua_pushstring(L, (mod_uuid && mod_uuid[0]) ? mod_uuid : "");
+        lua_setglobal(L, "ModuleUUID");
+
+        // Load client bootstrap in CLIENT context (stack discipline as above)
+        int stack_base = lua_gettop(L);
+        if (load_mod_bootstrap(L, mod_dir, "Client") > 0) {
+            LOG_LUA_INFO("Loaded BootstrapClient.lua for: %s (context=Client)",
+                         mod_get_se_name(i));
+        }
+        lua_settop(L, stack_base);
+    }
+
+    // Clear the per-mod loader state: without this, the last-loaded mod's
+    // environment, current-mod paths, and ModuleUUID leak into everything that
+    // runs afterwards (console Ext.Require would resolve as that mod).
+    mod_env_set(L, NULL, NULL);
+    mod_set_current(NULL, NULL, NULL);
+    lua_pushnil(L);
+    lua_setglobal(L, "ModuleUUID");
+
+    // Stay in CLIENT context after loading (we're on a client machine)
+    LOG_MOD_INFO("=== Mod Script Loading Complete (final context=Client) ===");
+}
+
 static void load_mod_scripts(lua_State *L) {
+    if (!server_bootstraps_loaded) {
+        server_bootstraps_loaded = 1;
+    } else {
+        load_mod_bootstraps_client(L);
+        return;
+    }
     LOG_MOD_INFO("=== Loading Mod Scripts ===");
 
     // Initialize the mods base path
@@ -3247,52 +3331,9 @@ static void load_mod_scripts(lua_State *L) {
     }
 
     // Phase 2: Load all client bootstraps (in CLIENT context)
-    LOG_LUA_INFO("=== Loading Client Bootstraps ===");
-    lua_context_set(LUA_CONTEXT_CLIENT);
-
-    for (int i = 0; i < se_count; i++) {
-        const char *mod_dir = mod_get_se_dir(i);
-        if (!mod_dir || !mod_dir[0]) mod_dir = mod_get_se_name(i);
-        const char *mod_uuid = mod_get_se_uuid(i);
-
-        if (mod_lua_skipped(skip_spec, mod_get_se_name(i), mod_dir, mod_uuid)) {
-            LOG_LUA_WARN("BG3SE_SKIP_MOD_LUA: NOT loading client bootstrap for "
-                         "'%s'", mod_get_se_name(i));
-            continue;
-        }
-
-        // Re-activate this mod's per-mod _ENV for the client phase (the server
-        // phase left the ref pointing at the last-loaded mod).
-        char *mod_table = get_mod_table_name(mod_dir);
-        if (mod_table) {
-            mod_env_set(L, mod_table, mod_uuid);
-            free(mod_table);
-        }
-
-        // Set ModuleUUID for this mod before its client bootstrap runs.
-        lua_pushstring(L, (mod_uuid && mod_uuid[0]) ? mod_uuid : "");
-        lua_setglobal(L, "ModuleUUID");
-
-        // Load client bootstrap in CLIENT context (stack discipline as above)
-        int stack_base = lua_gettop(L);
-        if (load_mod_bootstrap(L, mod_dir, "Client") > 0) {
-            LOG_LUA_INFO("Loaded BootstrapClient.lua for: %s (context=Client)",
-                         mod_get_se_name(i));
-        }
-        lua_settop(L, stack_base);
-    }
-
-    // Clear the per-mod loader state: without this, the last-loaded mod's
-    // environment, current-mod paths, and ModuleUUID leak into everything that
-    // runs afterwards (console Ext.Require would resolve as that mod).
-    mod_env_set(L, NULL, NULL);
-    mod_set_current(NULL, NULL, NULL);
-    lua_pushnil(L);
-    lua_setglobal(L, "ModuleUUID");
-
-    // Stay in CLIENT context after loading (we're on a client machine)
-    LOG_MOD_INFO("=== Mod Script Loading Complete (final context=Client) ===");
+    load_mod_bootstraps_client(L);
 }
+
 
 // ============================================================================
 // Overlay Console Callbacks
@@ -3563,6 +3604,32 @@ static void init_lua(void) {
                  */
                 timer_update(poll_L);
                 timer_update_persistent(poll_L);
+
+                /*
+                 * Main-menu client bootstrap. Windows SE initializes client
+                 * mod Lua before the main menu; ours historically waited for
+                 * the first session load, so menu-facing mods (MCM's main-menu
+                 * label swap via Ext.Loca) only took effect after loading a
+                 * game once. Run the client half here as soon as the
+                 * localization repository has been up for ~2s (a readiness
+                 * proxy: loca loads finish well before the menu renders, and
+                 * the cushion keeps mod loca lookups from racing their own
+                 * strings). The flag inside makes this a no-op afterwards and
+                 * the session-load path still covers every fallback.
+                 */
+                if (!client_bootstraps_loaded && mod_get_se_count() > 0) {
+                    static int loca_ready_ticks = 0;
+                    if (localization_ready()) {
+                        if (++loca_ready_ticks >= 120) {   // ~2s at 60Hz
+                            LOG_LUA_INFO("Main menu reached with loca ready — "
+                                         "bootstrapping client mod Lua early");
+                            load_mod_bootstraps_client(poll_L);
+                            lua_context_set(LUA_CONTEXT_SERVER);
+                        }
+                    } else {
+                        loca_ready_ticks = 0;
+                    }
+                }
                 lua_context_set(prev);
             }
             lua_gate_unlock();
