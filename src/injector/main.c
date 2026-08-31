@@ -3580,6 +3580,32 @@ static void init_lua(void) {
         // Resolve through the runtime registry, never the init-time capture:
         // this block outlives init_lua's local L across shutdown/re-init.
         static int poll_misses = 0;
+
+        /*
+         * Loca overwrite replay: land last session's cached string fixes
+         * (e.g. MCM's main-menu label) before the menu renders. Pure C —
+         * no Lua, no gate needed — so it runs even under gate contention.
+         * The ~2s cushion after localization_ready() matches the menu
+         * bootstrap gate below and keeps us clear of in-flight loca loads.
+         */
+        static int loca_replay_ticks = 0;
+        static bool loca_replay_done = false;
+        if (!loca_replay_done) {
+            if (localization_ready()) {
+                if (++loca_replay_ticks >= 120) {   // ~2s at 60Hz
+                    loca_replay_done = true;
+                    localization_replay_apply();
+                }
+            } else {
+                loca_replay_ticks = 0;
+            }
+        }
+        static int loca_flush_ticks = 0;
+        if (++loca_flush_ticks >= 60) {   // persist pending overwrites ~1Hz
+            loca_flush_ticks = 0;
+            localization_replay_flush();
+        }
+
         if (lua_runtime_state_for(LUA_CONTEXT_SERVER) && lua_gate_trylock()) {
             poll_misses = 0;
             lua_State *poll_L = lua_runtime_state_for(LUA_CONTEXT_SERVER);

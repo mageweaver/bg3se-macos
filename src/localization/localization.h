@@ -65,6 +65,23 @@ const char* localization_get(const char *handle, const char *fallback);
 bool localization_set(const char *handle, const char *value);
 
 /**
+ * Replay cached string overwrites from a previous session.
+ *
+ * Successful in-place overwrites made via localization_set() are remembered
+ * on disk; call this once the localization repository is ready (before the
+ * main menu renders) so menu-facing strings mods fixed up last session are
+ * correct before any client Lua has run. Entries that no longer match a
+ * loaded loca entry (e.g. the mod was removed) are skipped.
+ */
+void localization_replay_apply(void);
+
+/**
+ * Persist newly recorded overwrites if any are pending. Cheap no-op when
+ * clean; call periodically from a service tick.
+ */
+void localization_replay_flush(void);
+
+/**
  * Create a new unique localization handle string.
  *
  * Generates a handle in the BG3 format "h{8hex}g{4hex}g{4hex}g{4hex}g{12hex}".

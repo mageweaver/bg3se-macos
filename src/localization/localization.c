@@ -26,6 +26,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+#include <pthread.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
@@ -422,6 +425,8 @@ static int overwrite_pool_entries(void *pool, uint32_t fs,
 
 /* Overwrite every live pool that can hold the handle: the active language
  * pool and both fallbacks (the loca-file entries live in the fallbacks). */
+static void replay_record(const char *handle, const char *value);
+
 static int overwrite_existing_string(uint32_t fs, const char *buf, size_t len) {
     int total = 0;
     void *pool = NULL;
@@ -475,6 +480,7 @@ bool localization_set(const char *handle, const char *value) {
                 LOG_CORE_DEBUG("LOCA: UpdateTranslatedString('%s') overwrote "
                                "%d live entr%s in place",
                                handle, hit, hit == 1 ? "y" : "ies");
+                replay_record(handle, value);
                 return true;
             }
             free(copy);
@@ -549,6 +555,218 @@ bool localization_set(const char *handle, const char *value) {
     }
 
     return true;
+}
+
+// ============================================================================
+// Overwrite replay cache
+// ============================================================================
+// Mods fix up menu-facing strings from client Lua (MCM swaps its main-menu
+// label this way), but on this port client Lua only runs once a session
+// loads — every fresh boot shows the stale fallback text until then. Running
+// client bootstraps at the menu regressed session visuals (see
+// BG3SE_MENU_BOOTSTRAP in main.c), so instead every successful in-place
+// overwrite is remembered on disk and replayed from C on the next boot as
+// soon as the localization repository is ready. An entry whose source mod
+// was removed no longer matches any pool entry and is skipped.
+
+#define REPLAY_MAX_ENTRIES 4096
+#define REPLAY_FILE_NAME   "loca_replay.tsv"
+
+typedef struct {
+    char *handle;
+    char *value;
+} ReplayEntry;
+
+static ReplayEntry *s_replay_entries;
+static int s_replay_count;
+static int s_replay_capacity;
+static bool s_replay_dirty;
+static bool s_replay_cap_warned;
+static pthread_mutex_t s_replay_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void replay_path(char *buf, size_t len) {
+    snprintf(buf, len, "%s/" REPLAY_FILE_NAME, bg3se_get_data_dir());
+}
+
+// Caller holds s_replay_lock. Returns true if the cache changed.
+static bool replay_store(const char *handle, const char *value) {
+    for (int i = 0; i < s_replay_count; i++) {
+        if (strcmp(s_replay_entries[i].handle, handle) == 0) {
+            if (strcmp(s_replay_entries[i].value, value) == 0)
+                return false;
+            char *copy = strdup(value);
+            if (!copy)
+                return false;
+            free(s_replay_entries[i].value);
+            s_replay_entries[i].value = copy;
+            return true;
+        }
+    }
+    if (s_replay_count >= REPLAY_MAX_ENTRIES) {
+        if (!s_replay_cap_warned) {
+            s_replay_cap_warned = true;
+            LOG_CORE_WARN("LOCA replay: cache full (%d entries) — new "
+                          "overwrites will not survive a restart",
+                          REPLAY_MAX_ENTRIES);
+        }
+        return false;
+    }
+    if (s_replay_count == s_replay_capacity) {
+        int cap = s_replay_capacity ? s_replay_capacity * 2 : 64;
+        ReplayEntry *grown =
+            realloc(s_replay_entries, (size_t)cap * sizeof(*grown));
+        if (!grown)
+            return false;
+        s_replay_entries = grown;
+        s_replay_capacity = cap;
+    }
+    char *h = strdup(handle);
+    char *v = strdup(value);
+    if (!h || !v) {
+        free(h);
+        free(v);
+        return false;
+    }
+    s_replay_entries[s_replay_count].handle = h;
+    s_replay_entries[s_replay_count].value = v;
+    s_replay_count++;
+    return true;
+}
+
+static void replay_record(const char *handle, const char *value) {
+    pthread_mutex_lock(&s_replay_lock);
+    if (replay_store(handle, value))
+        s_replay_dirty = true;
+    pthread_mutex_unlock(&s_replay_lock);
+}
+
+static void replay_escape(FILE *f, const char *s) {
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        switch (*p) {
+        case '\\': fputs("\\\\", f); break;
+        case '\t': fputs("\\t", f); break;
+        case '\n': fputs("\\n", f); break;
+        case '\r': fputs("\\r", f); break;
+        default:
+            if (*p < 0x20)
+                fprintf(f, "\\x%02x", *p);
+            else
+                fputc(*p, f);
+        }
+    }
+}
+
+// In-place unescape; always shrinks, so writing over the input is safe.
+static char *replay_unescape(char *s) {
+    char *w = s;
+    for (char *r = s; *r;) {
+        if (*r != '\\') {
+            *w++ = *r++;
+            continue;
+        }
+        r++;
+        switch (*r) {
+        case '\\': *w++ = '\\'; r++; break;
+        case 't':  *w++ = '\t'; r++; break;
+        case 'n':  *w++ = '\n'; r++; break;
+        case 'r':  *w++ = '\r'; r++; break;
+        case 'x':
+            if (isxdigit((unsigned char)r[1])
+                && isxdigit((unsigned char)r[2])) {
+                unsigned v = 0;
+                sscanf(r + 1, "%2x", &v);
+                *w++ = (char)v;
+                r += 3;
+            } else {
+                r++;
+            }
+            break;
+        case '\0': break;
+        default:   *w++ = *r++; break;
+        }
+    }
+    *w = '\0';
+    return s;
+}
+
+void localization_replay_flush(void) {
+    pthread_mutex_lock(&s_replay_lock);
+    if (!s_replay_dirty) {
+        pthread_mutex_unlock(&s_replay_lock);
+        return;
+    }
+    char path[512];
+    char tmp[520];
+    replay_path(path, sizeof(path));
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *f = fopen(tmp, "w");
+    if (!f) {
+        pthread_mutex_unlock(&s_replay_lock);
+        return;
+    }
+    for (int i = 0; i < s_replay_count; i++) {
+        replay_escape(f, s_replay_entries[i].handle);
+        fputc('\t', f);
+        replay_escape(f, s_replay_entries[i].value);
+        fputc('\n', f);
+    }
+    bool ok = fclose(f) == 0;
+    if (ok && rename(tmp, path) == 0)
+        s_replay_dirty = false;
+    else
+        unlink(tmp);
+    pthread_mutex_unlock(&s_replay_lock);
+}
+
+void localization_replay_apply(void) {
+    if (!localization_ready())
+        return;
+    char path[512];
+    replay_path(path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+    int applied = 0;
+    int total = 0;
+    char *line = NULL;
+    size_t line_cap = 0;
+    ssize_t line_len;
+    while ((line_len = getline(&line, &line_cap, f)) > 0) {
+        if (line[line_len - 1] == '\n')
+            line[line_len - 1] = '\0';
+        char *tab = strchr(line, '\t');
+        if (!tab)
+            continue;
+        *tab = '\0';
+        char *handle = replay_unescape(line);
+        char *value = replay_unescape(tab + 1);
+        total++;
+        // Seed the in-memory cache so a later flush this session keeps
+        // entries from mods that did not re-update their strings yet.
+        pthread_mutex_lock(&s_replay_lock);
+        replay_store(handle, value);
+        pthread_mutex_unlock(&s_replay_lock);
+        uint32_t fs = create_fixedstring_from_handle(handle);
+        if (fs == UINT32_MAX)
+            continue;
+        // Leaked on success by design — the engine keeps reading the view
+        // for the life of the process, same as the live overwrite path.
+        size_t vlen = strlen(value);
+        char *copy = malloc(vlen + 1);
+        if (!copy)
+            continue;
+        memcpy(copy, value, vlen + 1);
+        if (overwrite_existing_string(fs, copy, vlen) > 0)
+            applied++;
+        else
+            free(copy);
+    }
+    free(line);
+    fclose(f);
+    if (total > 0)
+        LOG_CORE_INFO("LOCA replay: applied %d of %d cached overwrite(s) "
+                      "before the menu",
+                      applied, total);
 }
 
 // ============================================================================
