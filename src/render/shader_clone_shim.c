@@ -82,11 +82,18 @@ static uint64_t fake_GetShader(void *mgr, const uint32_t *name_fs) {
     }
 
     const char *name = fixed_string_resolve(*name_fs);
-    if (!name) return id;
+    if (!name) {
+        LOG_CORE_INFO("ShaderCloneShim: MISS for unresolvable FixedString 0x%x",
+                      *name_fs);
+        return id;
+    }
 
     char base[256];
     if (!strip_uuid_segment(name, base, sizeof(base))) {
-        return id;   // not a clone-shaped name; a genuine miss stays a miss
+        // Genuine miss with no clone shape — log it: these are the shader
+        // names whose NullHandle IDs end up in pipeline descriptors.
+        LOG_CORE_INFO("ShaderCloneShim: MISS '%s' (no clone pattern)", name);
+        return id;
     }
 
     uint32_t base_fs = fixed_string_intern(base, -1);
