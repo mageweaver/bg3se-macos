@@ -11,6 +11,7 @@
 #define COMPONENT_OFFSETS_H
 
 #include "component_property.h"
+#include "generated_enums.h"
 #include <stddef.h>  // For NULL
 
 // ============================================================================
@@ -64,10 +65,10 @@ static const ComponentLayoutDef g_BaseHpComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_ArmorComponent_Properties[] = {
-    { "ArmorType",          0x00, FIELD_TYPE_INT32, 0, true },
+    { "ArmorType",          0x00, FIELD_TYPE_INT32, 0, true, .enumDef = &g_enum_ArmorType },
     { "ArmorClass",         0x04, FIELD_TYPE_INT32, 0, true },
     { "AbilityModifierCap", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "ArmorClassAbility",  0x0C, FIELD_TYPE_UINT8, 0, true },
+    { "ArmorClassAbility",  0x0C, FIELD_TYPE_UINT8, 0, true, .enumDef = &g_enum_AbilityId },
     { "EquipmentType",      0x0D, FIELD_TYPE_UINT8, 0, true },
 };
 
@@ -696,7 +697,7 @@ static const ComponentLayoutDef g_InventoryIsOwnedComponent_Layout = {
 
 static const ComponentPropertyDef g_EquipableComponent_Properties[] = {
     { "EquipmentTypeID", 0x00, FIELD_TYPE_GUID,  0, true },  // Guid (16 bytes)
-    { "Slot",            0x10, FIELD_TYPE_UINT8, 0, true },  // ItemSlot enum
+    { "Slot",            0x10, FIELD_TYPE_UINT8, 0, true, .enumDef = &g_enum_ItemSlot },
 };
 
 // componentSize is the engine's array STRIDE (EntityStorageData::GetComponent
@@ -2291,7 +2292,7 @@ static const ComponentLayoutDef g_eoc_ACOverrideFormulaBoostComponent_Layout = {
 // eoc::AbilityFailedSavingThrowBoostComponent - 1 bytes (0x1)
 // Source: AbilityFailedSavingThrowBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_AbilityFailedSavingThrowBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AbilityId (u8)
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_AbilityId },
 };
 static const ComponentLayoutDef g_eoc_AbilityFailedSavingThrowBoostComponent_Layout = {
     .componentName = "eoc::AbilityFailedSavingThrowBoostComponent",
@@ -2750,7 +2751,7 @@ static const ComponentLayoutDef g_eoc_CharacterWeaponDamageBoostComponent_Layout
 // eoc::ConcentrationIgnoreDamageBoostComponent - 1 bytes (0x1)
 // Source: ConcentrationIgnoreDamageBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ConcentrationIgnoreDamageBoostComponent_Properties[] = {
-    { "SpellSchool", 0x00, FIELD_TYPE_UINT8, 0, false },  // SpellSchoolId (u8)
+    { "SpellSchool", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_SpellSchoolId },
 };
 static const ComponentLayoutDef g_eoc_ConcentrationIgnoreDamageBoostComponent_Layout = {
     .componentName = "eoc::ConcentrationIgnoreDamageBoostComponent",
@@ -2779,7 +2780,7 @@ static const ComponentLayoutDef g_eoc_CriticalHitBoostComponent_Layout = {
 // Source: CriticalHitExtraDiceBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CriticalHitExtraDiceBoostComponent_Properties[] = {
     { "Amount",     0x00, FIELD_TYPE_UINT8, 0, false },
-    { "AttackType", 0x01, FIELD_TYPE_UINT8, 0, false },  // SpellAttackType (u8)
+    { "AttackType", 0x01, FIELD_TYPE_UINT8, 0, false, .enumDef = &g_enum_SpellAttackType },
 };
 static const ComponentLayoutDef g_eoc_CriticalHitExtraDiceBoostComponent_Layout = {
     .componentName = "eoc::CriticalHitExtraDiceBoostComponent",
@@ -3029,7 +3030,7 @@ static const ComponentLayoutDef g_eoc_EntityThrowDamageBoostComponent_Layout = {
 // eoc::ExpertiseBonusBoostComponent - 1 bytes (0x1)
 // Source: ExpertiseBonusBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ExpertiseBonusBoostComponent_Properties[] = {
-    { "Skill", 0x00, FIELD_TYPE_UINT8, 0, false },  // SkillId (u8)
+    { "Skill", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_SkillId },
 };
 static const ComponentLayoutDef g_eoc_ExpertiseBonusBoostComponent_Layout = {
     .componentName = "eoc::ExpertiseBonusBoostComponent",
@@ -3101,7 +3102,7 @@ static const ComponentLayoutDef g_eoc_GuaranteedChanceRollOutcomeBoostComponent_
 // eoc::HalveWeaponDamageBoostComponent - 1 bytes (0x1)
 // Source: HalveWeaponDamageBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_HalveWeaponDamageBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AbilityId (u8)
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_AbilityId },
 };
 static const ComponentLayoutDef g_eoc_HalveWeaponDamageBoostComponent_Layout = {
     .componentName = "eoc::HalveWeaponDamageBoostComponent",
@@ -3305,7 +3306,7 @@ static const ComponentLayoutDef g_eoc_LootingStateComponent_Layout = {
 // eoc::MaximumRollResultBoostComponent - 2 bytes (0x2)
 // Source: MaximumRollResultBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_MaximumRollResultBoostComponent_Properties[] = {
-    { "RollType", 0x00, FIELD_TYPE_UINT8, 0, false },  // stats::RollType (u8)
+    { "RollType", 0x00, FIELD_TYPE_UINT8, 0, false, .enumDef = &g_enum_StatsRollType },
     { "Result",   0x01, FIELD_TYPE_INT8,  0, false },
 };
 static const ComponentLayoutDef g_eoc_MaximumRollResultBoostComponent_Layout = {
@@ -3320,7 +3321,7 @@ static const ComponentLayoutDef g_eoc_MaximumRollResultBoostComponent_Layout = {
 // eoc::MinimumRollResultBoostComponent - 2 bytes (0x2)
 // Source: MinimumRollResultBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_MinimumRollResultBoostComponent_Properties[] = {
-    { "RollType", 0x00, FIELD_TYPE_UINT8, 0, false },  // stats::RollType (u8)
+    { "RollType", 0x00, FIELD_TYPE_UINT8, 0, false, .enumDef = &g_enum_StatsRollType },
     { "Result",   0x01, FIELD_TYPE_INT8,  0, false },
 };
 static const ComponentLayoutDef g_eoc_MinimumRollResultBoostComponent_Layout = {
@@ -3363,7 +3364,7 @@ static const ComponentLayoutDef g_eoc_MovementSpeedLimitBoostComponent_Layout = 
 // eoc::NullifyAbilityBoostComponent - 1 bytes (0x1)
 // Source: NullifyAbilityBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_NullifyAbilityBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AbilityId (u8)
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_AbilityId },
 };
 static const ComponentLayoutDef g_eoc_NullifyAbilityBoostComponent_Layout = {
     .componentName = "eoc::NullifyAbilityBoostComponent",
@@ -3464,7 +3465,7 @@ static const ComponentLayoutDef g_eoc_ReduceCriticalAttackThresholdBoostComponen
 // eoc::ResistanceBoostComponent - 3 bytes (0x3)
 // Source: ResistanceBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ResistanceBoostComponent_Properties[] = {
-    { "DamageType",       0x00, FIELD_TYPE_UINT8, 0, false },  // DamageType (u8)
+    { "DamageType",       0x00, FIELD_TYPE_UINT8, 0, false, .enumDef = &g_enum_DamageType },
     { "ResistanceFlags",  0x01, FIELD_TYPE_UINT8, 0, false },  // ResistanceBoostFlags (u8)
     { "IsResistantToAll", 0x02, FIELD_TYPE_BOOL,  0, false },
 };
@@ -3748,7 +3749,7 @@ static const ComponentLayoutDef g_eoc_VoiceTagComponent_Layout = {
 // eoc::WeaponAttackRollAbilityOverrideBoostComponent - 1 bytes (0x1)
 // Source: WeaponAttackRollAbilityOverrideBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponAttackRollAbilityOverrideBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AttackRoll (u8)
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_AttackRoll },
 };
 static const ComponentLayoutDef g_eoc_WeaponAttackRollAbilityOverrideBoostComponent_Layout = {
     .componentName = "eoc::WeaponAttackRollAbilityOverrideBoostComponent",
@@ -3762,7 +3763,7 @@ static const ComponentLayoutDef g_eoc_WeaponAttackRollAbilityOverrideBoostCompon
 // eoc::WeaponAttackTypeOverrideBoostComponent - 1 bytes (0x1)
 // Source: WeaponAttackTypeOverrideBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponAttackTypeOverrideBoostComponent_Properties[] = {
-    { "AttackType", 0x00, FIELD_TYPE_UINT8, 0, false },  // SpellAttackType (u8)
+    { "AttackType", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_SpellAttackType },
 };
 static const ComponentLayoutDef g_eoc_WeaponAttackTypeOverrideBoostComponent_Layout = {
     .componentName = "eoc::WeaponAttackTypeOverrideBoostComponent",
@@ -3805,7 +3806,7 @@ static const ComponentLayoutDef g_eoc_WeaponDamageResistanceBoostComponent_Layou
 // eoc::WeaponDamageTypeOverrideBoostComponent - 1 bytes (0x1)
 // Source: WeaponDamageTypeOverrideBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponDamageTypeOverrideBoostComponent_Properties[] = {
-    { "DamageType", 0x00, FIELD_TYPE_UINT8, 0, false },  // DamageType (u8)
+    { "DamageType", 0x00, FIELD_TYPE_UINT8, 0, false , .enumDef = &g_enum_DamageType },
 };
 static const ComponentLayoutDef g_eoc_WeaponDamageTypeOverrideBoostComponent_Layout = {
     .componentName = "eoc::WeaponDamageTypeOverrideBoostComponent",

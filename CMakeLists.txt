@@ -181,6 +181,7 @@ add_library(bg3se SHARED
     src/entity/component_lookup.c
     src/entity/component_typeid.c
     src/entity/component_property.c
+    src/entity/generated_enums.c
     src/entity/entity_events.c
     src/entity/ecs_system_update.h
     src/entity/ecs_system_update.c

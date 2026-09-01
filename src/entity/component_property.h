@@ -64,6 +64,11 @@ typedef enum {
 // Property Definition
 // ============================================================================
 
+// Enum label table (generated_enums.h). When a property carries one, integer
+// reads push the upstream label string (Windows SE parity for mods that
+// compare e.g. Slot == "Boots") and writes accept a label or an integer.
+struct ComponentEnumDef;
+
 typedef struct {
     const char *name;       // Property name (e.g., "Hp", "MaxHp")
     uint16_t offset;        // Byte offset from component base
@@ -73,6 +78,8 @@ typedef struct {
     // For FIELD_TYPE_DYNAMIC_ARRAY:
     ArrayElementType elemType;  // Element type for formatting
     uint16_t elemSize;          // Element size in bytes
+    // Optional enum label table for integer fields (NULL = plain integer).
+    const struct ComponentEnumDef *enumDef;
 } ComponentPropertyDef;
 
 // ============================================================================

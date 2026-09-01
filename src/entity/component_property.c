@@ -5,6 +5,7 @@
  */
 
 #include "component_property.h"
+#include "generated_enums.h"
 
 // Generated layout records intentionally rely on zero-initialization for the
 // optional array metadata fields and use empty arrays for tag components.
@@ -199,6 +200,58 @@ static const ComponentPropertyDef *find_property(const ComponentLayoutDef *layou
 // Property Reading
 // ============================================================================
 
+// Enum-labelled integer fields push the upstream label string, matching what
+// Windows SE mods observe (their patched Lua compares enum objects against
+// label strings; in vanilla Lua the string itself is the only representation
+// that keeps `Slot == "Boots"` working). Unknown values fall back to the
+// integer so nothing is hidden.
+static bool enum_read_underlying(mach_vm_address_t addr, FieldType type,
+                                 uint64_t *out) {
+    switch (type) {
+        case FIELD_TYPE_INT8:
+        case FIELD_TYPE_UINT8: {
+            uint8_t v = 0;
+            if (!safe_memory_read(addr, &v, sizeof(v))) return false;
+            *out = v;
+            return true;
+        }
+        case FIELD_TYPE_INT16:
+        case FIELD_TYPE_UINT16: {
+            uint16_t v = 0;
+            if (!safe_memory_read(addr, &v, sizeof(v))) return false;
+            *out = v;
+            return true;
+        }
+        case FIELD_TYPE_INT32:
+        case FIELD_TYPE_UINT32: {
+            uint32_t v = 0;
+            if (!safe_memory_read_u32(addr, &v)) return false;
+            *out = v;
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+static const char *enum_label_for(const ComponentEnumDef *def, uint64_t value) {
+    for (int i = 0; i < def->count; i++) {
+        if (def->labels[i].value == value) return def->labels[i].label;
+    }
+    return NULL;
+}
+
+static bool enum_value_for(const ComponentEnumDef *def, const char *label,
+                           uint64_t *out) {
+    for (int i = 0; i < def->count; i++) {
+        if (strcmp(def->labels[i].label, label) == 0) {
+            *out = def->labels[i].value;
+            return true;
+        }
+    }
+    return false;
+}
+
 int component_property_read_def(lua_State *L, void *componentPtr,
                                 const ComponentPropertyDef *prop) {
     if (!L || !componentPtr || !prop) {
@@ -207,6 +260,21 @@ int component_property_read_def(lua_State *L, void *componentPtr,
     }
 
     uintptr_t addr = (uintptr_t)componentPtr + prop->offset;
+
+    if (prop->enumDef) {
+        uint64_t value = 0;
+        if (!enum_read_underlying((mach_vm_address_t)addr, prop->type, &value)) {
+            lua_pushnil(L);
+            return 1;
+        }
+        const char *label = enum_label_for(prop->enumDef, value);
+        if (label) {
+            lua_pushstring(L, label);
+        } else {
+            lua_pushinteger(L, (lua_Integer)value);
+        }
+        return 1;
+    }
 
     switch (prop->type) {
         case FIELD_TYPE_INT8: {
@@ -625,6 +693,22 @@ bool component_property_write(lua_State *L, void *componentPtr,
     mach_vm_address_t address =
         (mach_vm_address_t)(componentAddress + prop->offset);
     bool wrote = false;
+
+    // Enum-labelled fields accept the upstream label string (or an integer,
+    // which falls through to the normal typed write below).
+    if (prop->enumDef && lua_type(L, valueIndex) == LUA_TSTRING) {
+        const char *label = lua_tostring(L, valueIndex);
+        uint64_t value = 0;
+        if (!enum_value_for(prop->enumDef, label, &value)) {
+            luaL_error(L, "'%s' is not a valid %s enum label for %s.%s",
+                       label, prop->enumDef->name, layout->componentName,
+                       propertyName);
+            return false;
+        }
+        int absIdx = lua_absindex(L, valueIndex);
+        lua_pushinteger(L, (lua_Integer)value);
+        lua_replace(L, absIdx);
+    }
 
     switch (prop->type) {
         case FIELD_TYPE_INT32: {
