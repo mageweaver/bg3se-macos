@@ -663,7 +663,8 @@ static const ComponentLayoutDef g_InventoryMemberComponent_Layout = {
     .componentName = "eoc::inventory::MemberComponent",
     .shortName = "InventoryMember",
     .componentTypeIndex = 0,
-    .componentSize = 0x0C,
+    // stride = C++ sizeof: EntityHandle(8) + int16 pads to 0x10 (was 0xC)
+    .componentSize = 0x10,
     .properties = g_InventoryMemberComponent_Properties,
     .propertyCount = sizeof(g_InventoryMemberComponent_Properties) / sizeof(g_InventoryMemberComponent_Properties[0]),
 };
@@ -698,11 +699,17 @@ static const ComponentPropertyDef g_EquipableComponent_Properties[] = {
     { "Slot",            0x10, FIELD_TYPE_UINT8, 0, true },  // ItemSlot enum
 };
 
+// componentSize is the engine's array STRIDE (EntityStorageData::GetComponent
+// returns buf + componentSize * EntryIndex), so it must equal the C++
+// sizeof() with compiler padding — NOT the packed field extent. Guid forces
+// 8-byte alignment: sizeof {Guid; uint8} == 0x18. 0x14 here made every
+// entity at EntryIndex > 0 read/write 4*index bytes off target (found via
+// TransmogEnhanced: gloves/boots Slot read 0 with garbage EquipmentTypeIDs).
 static const ComponentLayoutDef g_EquipableComponent_Layout = {
     .componentName = "eoc::EquipableComponent",
     .shortName = "Equipable",
     .componentTypeIndex = 0,
-    .componentSize = 0x14,
+    .componentSize = 0x18,
     .properties = g_EquipableComponent_Properties,
     .propertyCount = sizeof(g_EquipableComponent_Properties) / sizeof(g_EquipableComponent_Properties[0]),
 };
@@ -2284,7 +2291,7 @@ static const ComponentLayoutDef g_eoc_ACOverrideFormulaBoostComponent_Layout = {
 // eoc::AbilityFailedSavingThrowBoostComponent - 1 bytes (0x1)
 // Source: AbilityFailedSavingThrowBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_AbilityFailedSavingThrowBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AbilityId (u8)
 };
 static const ComponentLayoutDef g_eoc_AbilityFailedSavingThrowBoostComponent_Layout = {
     .componentName = "eoc::AbilityFailedSavingThrowBoostComponent",
@@ -2524,7 +2531,7 @@ static const ComponentLayoutDef g_eoc_BoostInfoComponent_Layout = {
 // eoc::CanBeDisarmedComponent - 2 bytes (0x2)
 // Source: CanBeDisarmedComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanBeDisarmedComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, false },  // uint16_t upstream
 };
 static const ComponentLayoutDef g_eoc_CanBeDisarmedComponent_Layout = {
     .componentName = "eoc::CanBeDisarmedComponent",
@@ -2538,7 +2545,7 @@ static const ComponentLayoutDef g_eoc_CanBeDisarmedComponent_Layout = {
 // eoc::CanBeLootedComponent - 2 bytes (0x2)
 // Source: CanBeLootedComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanBeLootedComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, false },  // uint16_t upstream
 };
 static const ComponentLayoutDef g_eoc_CanBeLootedComponent_Layout = {
     .componentName = "eoc::CanBeLootedComponent",
@@ -2552,7 +2559,7 @@ static const ComponentLayoutDef g_eoc_CanBeLootedComponent_Layout = {
 // eoc::CanDeflectProjectilesComponent - 2 bytes (0x2)
 // Source: CanDeflectProjectilesComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanDeflectProjectilesComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, false },  // uint16_t upstream
 };
 static const ComponentLayoutDef g_eoc_CanDeflectProjectilesComponent_Layout = {
     .componentName = "eoc::CanDeflectProjectilesComponent",
@@ -2566,7 +2573,7 @@ static const ComponentLayoutDef g_eoc_CanDeflectProjectilesComponent_Layout = {
 // eoc::CanModifyHealthComponent - 2 bytes (0x2)
 // Source: CanModifyHealthComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanModifyHealthComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, false },  // uint16_t upstream
 };
 static const ComponentLayoutDef g_eoc_CanModifyHealthComponent_Layout = {
     .componentName = "eoc::CanModifyHealthComponent",
@@ -2580,8 +2587,9 @@ static const ComponentLayoutDef g_eoc_CanModifyHealthComponent_Layout = {
 // eoc::CanMoveComponent - 6 bytes (0x6)
 // Source: CanMoveComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanMoveComponent_Properties[] = {
-    { "field_4", 0x00, FIELD_TYPE_UINT32, 0, false },
-    { "field_6", 0x02, FIELD_TYPE_UINT8, 0, false },
+    { "Flags",       0x00, FIELD_TYPE_UINT16, 0, false },  // CanMoveFlags (u16)
+    { "Encumbrance", 0x02, FIELD_TYPE_UINT16, 0, false },
+    { "SpeedLimit",  0x04, FIELD_TYPE_UINT8,  0, false },  // MovementSpeedType (u8)
 };
 static const ComponentLayoutDef g_eoc_CanMoveComponent_Layout = {
     .componentName = "eoc::CanMoveComponent",
@@ -2609,7 +2617,7 @@ static const ComponentLayoutDef g_eoc_CanSeeThroughBoostComponent_Layout = {
 // eoc::CanSenseComponent - 2 bytes (0x2)
 // Source: CanSenseComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanSenseComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, false },  // uint16_t upstream
 };
 static const ComponentLayoutDef g_eoc_CanSenseComponent_Layout = {
     .componentName = "eoc::CanSenseComponent",
@@ -2637,7 +2645,9 @@ static const ComponentLayoutDef g_eoc_CanShootThroughBoostComponent_Layout = {
 // eoc::CanTravelComponent - 6 bytes (0x6)
 // Source: CanTravelComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanTravelComponent_Properties[] = {
-    { "field_2", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags",      0x00, FIELD_TYPE_UINT16, 0, false },  // TravelFlags (u16)
+    { "field_2",    0x02, FIELD_TYPE_UINT16, 0, false },
+    { "ErrorFlags", 0x04, FIELD_TYPE_UINT16, 0, false },  // TravelErrorFlags (u16)
 };
 static const ComponentLayoutDef g_eoc_CanTravelComponent_Layout = {
     .componentName = "eoc::CanTravelComponent",
@@ -2740,7 +2750,7 @@ static const ComponentLayoutDef g_eoc_CharacterWeaponDamageBoostComponent_Layout
 // eoc::ConcentrationIgnoreDamageBoostComponent - 1 bytes (0x1)
 // Source: ConcentrationIgnoreDamageBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ConcentrationIgnoreDamageBoostComponent_Properties[] = {
-    { "SpellSchool", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "SpellSchool", 0x00, FIELD_TYPE_UINT8, 0, false },  // SpellSchoolId (u8)
 };
 static const ComponentLayoutDef g_eoc_ConcentrationIgnoreDamageBoostComponent_Layout = {
     .componentName = "eoc::ConcentrationIgnoreDamageBoostComponent",
@@ -2768,8 +2778,8 @@ static const ComponentLayoutDef g_eoc_CriticalHitBoostComponent_Layout = {
 // eoc::CriticalHitExtraDiceBoostComponent - 2 bytes (0x2)
 // Source: CriticalHitExtraDiceBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CriticalHitExtraDiceBoostComponent_Properties[] = {
-    { "Amount", 0x00, FIELD_TYPE_UINT8, 0, false },
-    { "AttackType", 0x04, FIELD_TYPE_INT32, 0, false },
+    { "Amount",     0x00, FIELD_TYPE_UINT8, 0, false },
+    { "AttackType", 0x01, FIELD_TYPE_UINT8, 0, false },  // SpellAttackType (u8)
 };
 static const ComponentLayoutDef g_eoc_CriticalHitExtraDiceBoostComponent_Layout = {
     .componentName = "eoc::CriticalHitExtraDiceBoostComponent",
@@ -3019,7 +3029,7 @@ static const ComponentLayoutDef g_eoc_EntityThrowDamageBoostComponent_Layout = {
 // eoc::ExpertiseBonusBoostComponent - 1 bytes (0x1)
 // Source: ExpertiseBonusBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ExpertiseBonusBoostComponent_Properties[] = {
-    { "Skill", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Skill", 0x00, FIELD_TYPE_UINT8, 0, false },  // SkillId (u8)
 };
 static const ComponentLayoutDef g_eoc_ExpertiseBonusBoostComponent_Layout = {
     .componentName = "eoc::ExpertiseBonusBoostComponent",
@@ -3091,7 +3101,7 @@ static const ComponentLayoutDef g_eoc_GuaranteedChanceRollOutcomeBoostComponent_
 // eoc::HalveWeaponDamageBoostComponent - 1 bytes (0x1)
 // Source: HalveWeaponDamageBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_HalveWeaponDamageBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AbilityId (u8)
 };
 static const ComponentLayoutDef g_eoc_HalveWeaponDamageBoostComponent_Layout = {
     .componentName = "eoc::HalveWeaponDamageBoostComponent",
@@ -3155,7 +3165,8 @@ static const ComponentLayoutDef g_eoc_IgnorePointBlankDisadvantageBoostComponent
     .componentName = "eoc::IgnorePointBlankDisadvantageBoostComponent",
     .shortName = "IgnorePointBlankDisadvantageBoostComponent",
     .componentTypeIndex = 0,
-    .componentSize = 0x1,
+    // stride = C++ sizeof: WeaponFlags is uint32_t upstream (was 0x1)
+    .componentSize = 0x4,
     .properties = g_eoc_IgnorePointBlankDisadvantageBoostComponent_Properties,
     .propertyCount = sizeof(g_eoc_IgnorePointBlankDisadvantageBoostComponent_Properties) / sizeof(g_eoc_IgnorePointBlankDisadvantageBoostComponent_Properties[0]),
 };
@@ -3294,7 +3305,8 @@ static const ComponentLayoutDef g_eoc_LootingStateComponent_Layout = {
 // eoc::MaximumRollResultBoostComponent - 2 bytes (0x2)
 // Source: MaximumRollResultBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_MaximumRollResultBoostComponent_Properties[] = {
-    { "Result", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "RollType", 0x00, FIELD_TYPE_UINT8, 0, false },  // stats::RollType (u8)
+    { "Result",   0x01, FIELD_TYPE_INT8,  0, false },
 };
 static const ComponentLayoutDef g_eoc_MaximumRollResultBoostComponent_Layout = {
     .componentName = "eoc::MaximumRollResultBoostComponent",
@@ -3308,7 +3320,8 @@ static const ComponentLayoutDef g_eoc_MaximumRollResultBoostComponent_Layout = {
 // eoc::MinimumRollResultBoostComponent - 2 bytes (0x2)
 // Source: MinimumRollResultBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_MinimumRollResultBoostComponent_Properties[] = {
-    { "Result", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "RollType", 0x00, FIELD_TYPE_UINT8, 0, false },  // stats::RollType (u8)
+    { "Result",   0x01, FIELD_TYPE_INT8,  0, false },
 };
 static const ComponentLayoutDef g_eoc_MinimumRollResultBoostComponent_Layout = {
     .componentName = "eoc::MinimumRollResultBoostComponent",
@@ -3350,7 +3363,7 @@ static const ComponentLayoutDef g_eoc_MovementSpeedLimitBoostComponent_Layout = 
 // eoc::NullifyAbilityBoostComponent - 1 bytes (0x1)
 // Source: NullifyAbilityBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_NullifyAbilityBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AbilityId (u8)
 };
 static const ComponentLayoutDef g_eoc_NullifyAbilityBoostComponent_Layout = {
     .componentName = "eoc::NullifyAbilityBoostComponent",
@@ -3451,9 +3464,9 @@ static const ComponentLayoutDef g_eoc_ReduceCriticalAttackThresholdBoostComponen
 // eoc::ResistanceBoostComponent - 3 bytes (0x3)
 // Source: ResistanceBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ResistanceBoostComponent_Properties[] = {
-    { "DamageType", 0x00, FIELD_TYPE_INT32, 0, false },
-    { "ResistanceFlags", 0x04, FIELD_TYPE_UINT8, 0, false },
-    { "IsResistantToAll", 0x05, FIELD_TYPE_BOOL, 0, false },
+    { "DamageType",       0x00, FIELD_TYPE_UINT8, 0, false },  // DamageType (u8)
+    { "ResistanceFlags",  0x01, FIELD_TYPE_UINT8, 0, false },  // ResistanceBoostFlags (u8)
+    { "IsResistantToAll", 0x02, FIELD_TYPE_BOOL,  0, false },
 };
 static const ComponentLayoutDef g_eoc_ResistanceBoostComponent_Layout = {
     .componentName = "eoc::ResistanceBoostComponent",
@@ -3735,7 +3748,7 @@ static const ComponentLayoutDef g_eoc_VoiceTagComponent_Layout = {
 // eoc::WeaponAttackRollAbilityOverrideBoostComponent - 1 bytes (0x1)
 // Source: WeaponAttackRollAbilityOverrideBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponAttackRollAbilityOverrideBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },  // AttackRoll (u8)
 };
 static const ComponentLayoutDef g_eoc_WeaponAttackRollAbilityOverrideBoostComponent_Layout = {
     .componentName = "eoc::WeaponAttackRollAbilityOverrideBoostComponent",
@@ -3749,7 +3762,7 @@ static const ComponentLayoutDef g_eoc_WeaponAttackRollAbilityOverrideBoostCompon
 // eoc::WeaponAttackTypeOverrideBoostComponent - 1 bytes (0x1)
 // Source: WeaponAttackTypeOverrideBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponAttackTypeOverrideBoostComponent_Properties[] = {
-    { "AttackType", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "AttackType", 0x00, FIELD_TYPE_UINT8, 0, false },  // SpellAttackType (u8)
 };
 static const ComponentLayoutDef g_eoc_WeaponAttackTypeOverrideBoostComponent_Layout = {
     .componentName = "eoc::WeaponAttackTypeOverrideBoostComponent",
@@ -3792,7 +3805,7 @@ static const ComponentLayoutDef g_eoc_WeaponDamageResistanceBoostComponent_Layou
 // eoc::WeaponDamageTypeOverrideBoostComponent - 1 bytes (0x1)
 // Source: WeaponDamageTypeOverrideBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponDamageTypeOverrideBoostComponent_Properties[] = {
-    { "DamageType", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "DamageType", 0x00, FIELD_TYPE_UINT8, 0, false },  // DamageType (u8)
 };
 static const ComponentLayoutDef g_eoc_WeaponDamageTypeOverrideBoostComponent_Layout = {
     .componentName = "eoc::WeaponDamageTypeOverrideBoostComponent",
