@@ -22,8 +22,10 @@
 
 #include "../core/safe_memory.h"
 #include "../core/logging.h"
+#include "../core/game_memory.h"
 #include "../lifetime/lifetime.h"
 #include "../strings/fixed_string.h"
+#include "guid_lookup.h"
 
 #include <limits.h>
 #include <math.h>
@@ -253,6 +255,383 @@ static bool enum_value_for(const ComponentEnumDef *def, const char *label,
     return false;
 }
 
+// ============================================================================
+// LegacyRefMap<DamageType, Array<RollDefinition>> (Weapon.Rolls)
+// ============================================================================
+//
+// Upstream CoreLib/Base/LegacyMap.h:
+//   RefMapInternals { uint32_t ItemCount; uint32_t HashSize; MapNode **HashTable; }
+//   MapNode         { MapNode *Next; TKey Key; TValue Value; }
+// with TKey = DamageType (uint8) and TValue = Array<RollDefinition>
+// (buf @0x00, capacity @0x08, size @0x0C). Bucket = Hash(key) % HashSize,
+// Hash(uint8) = value; new keys append at the chain tail; no rehash.
+//
+// Base/ExposedTypes.h RollDefinition:
+//   { DiceSizeId DiceValue; uint8 AmountOfDices; int32 DiceAdditionalValue;
+//     bool DiceNegative; }  -> 12 bytes.
+//
+// Reads produce { [DamageTypeLabel] = { {DiceValue=.., AmountOfDices=..,
+// DiceAdditionalValue=.., DiceNegative=..}, ... } }. Writes follow upstream
+// Unserialize for maps (clear(), then get_or_insert + Array push_back), so
+// the buffers/nodes come from and go back to ls::MemoryManager.
+
+#define ROLLMAP_ITEMCOUNT_OFF 0x00
+#define ROLLMAP_HASHSIZE_OFF  0x04
+#define ROLLMAP_TABLE_OFF     0x08
+#define ROLLMAP_SIZE          0x10
+
+#define ROLLNODE_NEXT_OFF  0x00
+#define ROLLNODE_KEY_OFF   0x08
+#define ROLLNODE_ARRAY_OFF 0x10
+#define ROLLNODE_SIZE      0x20
+
+#define ROLLDEF_DICEVALUE_OFF  0x00
+#define ROLLDEF_AMOUNT_OFF     0x01
+#define ROLLDEF_ADDITIONAL_OFF 0x04
+#define ROLLDEF_NEGATIVE_OFF   0x08
+#define ROLLDEF_SIZE           12
+
+// Sanity bounds; a weapon map has a handful of buckets and 1-3 rolls per type.
+#define ROLLMAP_MAX_BUCKETS 4096
+#define ROLLMAP_MAX_CHAIN   256
+#define ROLLMAP_MAX_ROLLS   64
+#define ROLLMAP_MAX_ENTRIES 32
+
+typedef struct {
+    uint8_t diceValue;
+    uint8_t amountOfDices;
+    int32_t diceAdditionalValue;
+    bool diceNegative;
+} RollDefinitionStaged;
+
+typedef struct {
+    uint8_t key;
+    uint32_t count;
+    RollDefinitionStaged rolls[ROLLMAP_MAX_ROLLS];
+} RollMapEntryStaged;
+
+static bool roll_map_read_header(mach_vm_address_t addr, uint32_t *itemCount,
+                                 uint32_t *hashSize, uint64_t *table) {
+    uint8_t header[ROLLMAP_SIZE];
+    if (!safe_memory_read(addr, header, sizeof(header))) return false;
+    memcpy(itemCount, header + ROLLMAP_ITEMCOUNT_OFF, sizeof(*itemCount));
+    memcpy(hashSize, header + ROLLMAP_HASHSIZE_OFF, sizeof(*hashSize));
+    memcpy(table, header + ROLLMAP_TABLE_OFF, sizeof(*table));
+    return true;
+}
+
+static void roll_map_push_definition(lua_State *L, const uint8_t *def) {
+    int32_t additional = 0;
+    memcpy(&additional, def + ROLLDEF_ADDITIONAL_OFF, sizeof(additional));
+
+    lua_createtable(L, 0, 4);
+    const char *dice = enum_label_for(&g_enum_DiceSizeId, def[ROLLDEF_DICEVALUE_OFF]);
+    if (dice) lua_pushstring(L, dice);
+    else lua_pushinteger(L, def[ROLLDEF_DICEVALUE_OFF]);
+    lua_setfield(L, -2, "DiceValue");
+    lua_pushinteger(L, def[ROLLDEF_AMOUNT_OFF]);
+    lua_setfield(L, -2, "AmountOfDices");
+    lua_pushinteger(L, additional);
+    lua_setfield(L, -2, "DiceAdditionalValue");
+    lua_pushboolean(L, def[ROLLDEF_NEGATIVE_OFF] != 0);
+    lua_setfield(L, -2, "DiceNegative");
+}
+
+// Push the map as a plain Lua table, or nil when the memory does not look
+// like a RefMap. Never allocates or writes game memory.
+static void roll_map_push(lua_State *L, mach_vm_address_t addr) {
+    uint32_t itemCount = 0, hashSize = 0;
+    uint64_t table = 0;
+    if (!roll_map_read_header(addr, &itemCount, &hashSize, &table)) {
+        lua_pushnil(L);
+        return;
+    }
+    if (hashSize > ROLLMAP_MAX_BUCKETS || (hashSize != 0 && table == 0)) {
+        LOG_ENTITY_DEBUG("roll map at %p: implausible header (count=%u buckets=%u table=0x%llx)",
+                         (void *)(uintptr_t)addr, itemCount, hashSize,
+                         (unsigned long long)table);
+        lua_pushnil(L);
+        return;
+    }
+
+    lua_createtable(L, 0, (int)itemCount);
+    for (uint32_t b = 0; b < hashSize; b++) {
+        uint64_t node = 0;
+        if (!safe_memory_read(table + b * sizeof(uint64_t), &node, sizeof(node))) break;
+        for (uint32_t depth = 0; node != 0 && depth < ROLLMAP_MAX_CHAIN; depth++) {
+            uint8_t raw[ROLLNODE_SIZE];
+            if (!safe_memory_read(node, raw, sizeof(raw))) { node = 0; break; }
+            uint64_t next = 0, buf = 0;
+            uint32_t size = 0;
+            memcpy(&next, raw + ROLLNODE_NEXT_OFF, sizeof(next));
+            memcpy(&buf, raw + ROLLNODE_ARRAY_OFF + ARRAY_BUF_OFFSET, sizeof(buf));
+            memcpy(&size, raw + ROLLNODE_ARRAY_OFF + ARRAY_SIZE_OFFSET, sizeof(size));
+            uint8_t key = raw[ROLLNODE_KEY_OFF];
+
+            if (size > ROLLMAP_MAX_ROLLS || (size != 0 && buf == 0)) {
+                LOG_ENTITY_DEBUG("roll map node %p: implausible array (size=%u buf=0x%llx)",
+                                 (void *)(uintptr_t)node, size, (unsigned long long)buf);
+                size = 0;
+            }
+
+            lua_createtable(L, (int)size, 0);
+            for (uint32_t i = 0; i < size; i++) {
+                uint8_t def[ROLLDEF_SIZE];
+                if (!safe_memory_read(buf + i * ROLLDEF_SIZE, def, sizeof(def))) break;
+                roll_map_push_definition(L, def);
+                lua_rawseti(L, -2, (lua_Integer)i + 1);
+            }
+
+            const char *label = enum_label_for(&g_enum_DamageType, key);
+            if (label) {
+                lua_setfield(L, -2, label);
+            } else {
+                lua_rawseti(L, -2, key);
+            }
+            node = next;
+        }
+    }
+}
+
+static bool roll_map_stage_key(lua_State *L, int keyIndex, uint8_t *out) {
+    if (lua_type(L, keyIndex) == LUA_TSTRING) {
+        uint64_t v = 0;
+        if (!enum_value_for(&g_enum_DamageType, lua_tostring(L, keyIndex), &v)) return false;
+        *out = (uint8_t)v;
+        return true;
+    }
+    if (lua_isinteger(L, keyIndex)) {
+        lua_Integer v = lua_tointeger(L, keyIndex);
+        if (v < 0 || v > UINT8_MAX) return false;
+        *out = (uint8_t)v;
+        return true;
+    }
+    return false;
+}
+
+static bool roll_map_stage_u8_field(lua_State *L, int tableIndex, const char *field,
+                                    const ComponentEnumDef *enumDef, uint8_t *out) {
+    lua_getfield(L, tableIndex, field);
+    bool ok = false;
+    if (enumDef && lua_type(L, -1) == LUA_TSTRING) {
+        uint64_t v = 0;
+        ok = enum_value_for(enumDef, lua_tostring(L, -1), &v) && v <= UINT8_MAX;
+        if (ok) *out = (uint8_t)v;
+    } else if (lua_isinteger(L, -1)) {
+        lua_Integer v = lua_tointeger(L, -1);
+        ok = v >= 0 && v <= UINT8_MAX;
+        if (ok) *out = (uint8_t)v;
+    } else if (lua_isnil(L, -1)) {
+        *out = 0;
+        ok = true;
+    }
+    lua_pop(L, 1);
+    return ok;
+}
+
+// Convert the Lua table at tableIndex into staged entries. Raises a Lua
+// error on malformed input so nothing has touched game memory yet.
+static int roll_map_stage(lua_State *L, int tableIndex, RollMapEntryStaged *entries,
+                          const char *what) {
+    int count = 0;
+    lua_pushnil(L);
+    while (lua_next(L, tableIndex) != 0) {
+        if (count >= ROLLMAP_MAX_ENTRIES) {
+            return luaL_error(L, "%s: too many damage types (max %d)", what,
+                              ROLLMAP_MAX_ENTRIES);
+        }
+        RollMapEntryStaged *e = &entries[count];
+        memset(e, 0, sizeof(*e));
+        if (!roll_map_stage_key(L, -2, &e->key)) {
+            return luaL_error(L, "%s: key '%s' is not a DamageType", what,
+                              luaL_tolstring(L, -2, NULL));
+        }
+        if (lua_type(L, -1) != LUA_TTABLE) {
+            return luaL_error(L, "%s: value for damage type %d must be a table", what,
+                              (int)e->key);
+        }
+        int arr = lua_absindex(L, -1);
+        size_t n = lua_rawlen(L, arr);
+        if (n > ROLLMAP_MAX_ROLLS) {
+            return luaL_error(L, "%s: too many rolls for damage type %d (max %d)",
+                              what, (int)e->key, ROLLMAP_MAX_ROLLS);
+        }
+        for (size_t i = 0; i < n; i++) {
+            lua_rawgeti(L, arr, (lua_Integer)i + 1);
+            if (lua_type(L, -1) != LUA_TTABLE) {
+                return luaL_error(L, "%s: roll %zu for damage type %d must be a table",
+                                  what, i + 1, (int)e->key);
+            }
+            int roll = lua_absindex(L, -1);
+            RollDefinitionStaged *r = &e->rolls[i];
+            if (!roll_map_stage_u8_field(L, roll, "DiceValue", &g_enum_DiceSizeId, &r->diceValue)
+                || !roll_map_stage_u8_field(L, roll, "AmountOfDices", NULL, &r->amountOfDices)) {
+                return luaL_error(L, "%s: roll %zu for damage type %d has an invalid "
+                                  "DiceValue/AmountOfDices", what, i + 1, (int)e->key);
+            }
+            lua_getfield(L, roll, "DiceAdditionalValue");
+            if (lua_isnil(L, -1)) {
+                r->diceAdditionalValue = 0;
+            } else if (lua_isinteger(L, -1)) {
+                lua_Integer v = lua_tointeger(L, -1);
+                if (v < INT32_MIN || v > INT32_MAX) {
+                    return luaL_error(L, "%s: DiceAdditionalValue out of int32 range", what);
+                }
+                r->diceAdditionalValue = (int32_t)v;
+            } else {
+                return luaL_error(L, "%s: DiceAdditionalValue must be an integer", what);
+            }
+            lua_pop(L, 1);
+            lua_getfield(L, roll, "DiceNegative");
+            r->diceNegative = lua_toboolean(L, -1) != 0;
+            lua_pop(L, 1);
+            lua_pop(L, 1);  // roll table
+        }
+        e->count = (uint32_t)n;
+        count++;
+        lua_pop(L, 1);  // value; keep key for lua_next
+    }
+    return count;
+}
+
+// Upstream LegacyRefMap::clear(): free every node (and its Array buffer),
+// null the buckets, ItemCount = 0. HashTable itself is kept.
+static bool roll_map_clear(mach_vm_address_t addr, uint32_t hashSize, uint64_t table) {
+    for (uint32_t b = 0; b < hashSize; b++) {
+        uint64_t node = 0;
+        mach_vm_address_t slot = table + b * sizeof(uint64_t);
+        if (!safe_memory_read(slot, &node, sizeof(node))) return false;
+        for (uint32_t depth = 0; node != 0 && depth < ROLLMAP_MAX_CHAIN; depth++) {
+            uint8_t raw[ROLLNODE_SIZE];
+            if (!safe_memory_read(node, raw, sizeof(raw))) return false;
+            uint64_t next = 0, buf = 0;
+            memcpy(&next, raw + ROLLNODE_NEXT_OFF, sizeof(next));
+            memcpy(&buf, raw + ROLLNODE_ARRAY_OFF + ARRAY_BUF_OFFSET, sizeof(buf));
+            game_memory_free((void *)(uintptr_t)buf);
+            game_memory_free((void *)(uintptr_t)node);
+            node = next;
+        }
+        uint64_t zero = 0;
+        if (!safe_memory_write(slot, &zero, sizeof(zero))) return false;
+    }
+    uint32_t zeroCount = 0;
+    return safe_memory_write(addr + ROLLMAP_ITEMCOUNT_OFF, &zeroCount, sizeof(zeroCount));
+}
+
+// Upstream get_or_insert(): walk the bucket chain, append a new node at the
+// tail when the key is absent, ItemCount++. Returns the node address.
+static uint64_t roll_map_get_or_insert(mach_vm_address_t addr, uint32_t hashSize,
+                                       uint64_t table, uint8_t key) {
+    uint32_t bucket = key % hashSize;
+    mach_vm_address_t slot = table + bucket * sizeof(uint64_t);
+    uint64_t node = 0;
+    if (!safe_memory_read(slot, &node, sizeof(node))) return 0;
+    for (uint32_t depth = 0; node != 0 && depth < ROLLMAP_MAX_CHAIN; depth++) {
+        uint8_t raw[ROLLNODE_SIZE];
+        if (!safe_memory_read(node, raw, sizeof(raw))) return 0;
+        if (raw[ROLLNODE_KEY_OFF] == key) return node;
+        uint64_t next = 0;
+        memcpy(&next, raw + ROLLNODE_NEXT_OFF, sizeof(next));
+        if (next == 0) {
+            slot = node + ROLLNODE_NEXT_OFF;
+            break;
+        }
+        node = next;
+    }
+
+    uint8_t *fresh = (uint8_t *)game_memory_alloc(ROLLNODE_SIZE);
+    if (!fresh) return 0;
+    memset(fresh, 0, ROLLNODE_SIZE);
+    fresh[ROLLNODE_KEY_OFF] = key;
+    uint64_t freshAddr = (uint64_t)(uintptr_t)fresh;
+    if (!safe_memory_write(slot, &freshAddr, sizeof(freshAddr))) {
+        game_memory_free(fresh);
+        return 0;
+    }
+    uint32_t itemCount = 0;
+    if (safe_memory_read_u32(addr + ROLLMAP_ITEMCOUNT_OFF, &itemCount)) {
+        itemCount++;
+        safe_memory_write(addr + ROLLMAP_ITEMCOUNT_OFF, &itemCount, sizeof(itemCount));
+    }
+    return freshAddr;
+}
+
+// Replace the node's Array<RollDefinition> contents (clear + push_back).
+static bool roll_map_fill_node(uint64_t node, const RollMapEntryStaged *e) {
+    mach_vm_address_t array = node + ROLLNODE_ARRAY_OFF;
+    uint64_t oldBuf = 0;
+    if (!safe_memory_read(array + ARRAY_BUF_OFFSET, &oldBuf, sizeof(oldBuf))) return false;
+
+    uint8_t *buf = NULL;
+    if (e->count > 0) {
+        buf = (uint8_t *)game_memory_alloc((size_t)e->count * ROLLDEF_SIZE);
+        if (!buf) return false;
+        memset(buf, 0, (size_t)e->count * ROLLDEF_SIZE);
+        for (uint32_t i = 0; i < e->count; i++) {
+            uint8_t *def = buf + i * ROLLDEF_SIZE;
+            def[ROLLDEF_DICEVALUE_OFF] = e->rolls[i].diceValue;
+            def[ROLLDEF_AMOUNT_OFF] = e->rolls[i].amountOfDices;
+            memcpy(def + ROLLDEF_ADDITIONAL_OFF, &e->rolls[i].diceAdditionalValue,
+                   sizeof(int32_t));
+            def[ROLLDEF_NEGATIVE_OFF] = e->rolls[i].diceNegative ? 1 : 0;
+        }
+    }
+
+    uint8_t header[16] = {0};
+    uint64_t bufAddr = (uint64_t)(uintptr_t)buf;
+    memcpy(header + ARRAY_BUF_OFFSET, &bufAddr, sizeof(bufAddr));
+    memcpy(header + ARRAY_CAP_OFFSET, &e->count, sizeof(uint32_t));
+    memcpy(header + ARRAY_SIZE_OFFSET, &e->count, sizeof(uint32_t));
+    if (!safe_memory_write(array, header, sizeof(header))) {
+        game_memory_free(buf);
+        return false;
+    }
+    game_memory_free((void *)(uintptr_t)oldBuf);
+    return true;
+}
+
+// Rebuild the map at addr from the Lua table at tableIndex. Mirrors upstream
+// Unserialize for LegacyRefMap: clear(), then get_or_insert + Array fill.
+static bool roll_map_write(lua_State *L, mach_vm_address_t addr, int tableIndex,
+                           const char *what) {
+    luaL_checktype(L, tableIndex, LUA_TTABLE);
+    if (!game_memory_available()) {
+        LOG_ENTITY_DEBUG("%s: game allocator unavailable; refusing roll map write", what);
+        return false;
+    }
+
+    uint32_t itemCount = 0, hashSize = 0;
+    uint64_t table = 0;
+    if (!roll_map_read_header(addr, &itemCount, &hashSize, &table)) return false;
+    // A map that has never allocated its bucket table would need
+    // LegacyRefMap's resize path; every WeaponComponent we have seen has one.
+    if (hashSize == 0 || hashSize > ROLLMAP_MAX_BUCKETS || table == 0) {
+        LOG_ENTITY_DEBUG("%s: map has no bucket table (count=%u buckets=%u table=0x%llx); "
+                         "refusing write", what, itemCount, hashSize,
+                         (unsigned long long)table);
+        return false;
+    }
+
+    RollMapEntryStaged *entries = calloc(ROLLMAP_MAX_ENTRIES, sizeof(*entries));
+    if (!entries) return false;
+    // roll_map_stage longjmps out on bad input; entries leaks in that case,
+    // which is acceptable for a mod-authoring error.
+    int count = roll_map_stage(L, lua_absindex(L, tableIndex), entries, what);
+
+    bool ok = roll_map_clear(addr, hashSize, table);
+    for (int i = 0; ok && i < count; i++) {
+        uint64_t node = roll_map_get_or_insert(addr, hashSize, table, entries[i].key);
+        ok = node != 0 && roll_map_fill_node(node, &entries[i]);
+    }
+    if (ok) {
+        LOG_ENTITY_DEBUG("%s: rebuilt roll map with %d damage type(s)", what, count);
+    } else {
+        LOG_ENTITY_DEBUG("%s: roll map rebuild failed partway", what);
+    }
+    free(entries);
+    return ok;
+}
+
 int component_property_read_def(lua_State *L, void *componentPtr,
                                 const ComponentPropertyDef *prop) {
     if (!L || !componentPtr || !prop) {
@@ -452,20 +831,22 @@ int component_property_read_def(lua_State *L, void *componentPtr,
         }
 
         case FIELD_TYPE_GUID: {
-            // GUID is 16 bytes, format as string
-            uint8_t guid[16] = {0};
-            if (safe_memory_read((mach_vm_address_t)addr, guid, 16)) {
-                char buf[64];
-                snprintf(buf, sizeof(buf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        guid[0], guid[1], guid[2], guid[3],
-                        guid[4], guid[5], guid[6], guid[7],
-                        guid[8], guid[9], guid[10], guid[11],
-                        guid[12], guid[13], guid[14], guid[15]);
+            // ls::Guid {uint64 lo, hi}; upstream Guid::ToString byte order,
+            // so the string matches what mods compare against (and what
+            // guid_parse accepts on the write side).
+            Guid guid = {0, 0};
+            if (safe_memory_read((mach_vm_address_t)addr, &guid, sizeof(guid))) {
+                char buf[37];
+                guid_to_string(&guid, buf);
                 lua_pushstring(L, buf);
             } else {
                 lua_pushnil(L);
             }
+            return 1;
+        }
+
+        case FIELD_TYPE_ROLL_MAP: {
+            roll_map_push(L, (mach_vm_address_t)addr);
             return 1;
         }
 
@@ -576,14 +957,33 @@ static size_t component_property_field_size(const ComponentPropertyDef *prop) {
     if (!prop) return 0;
 
     switch (prop->type) {
+        case FIELD_TYPE_INT8:
         case FIELD_TYPE_UINT8:
         case FIELD_TYPE_BOOL:
             return sizeof(uint8_t);
 
+        case FIELD_TYPE_INT16:
+        case FIELD_TYPE_UINT16:
+            return sizeof(uint16_t);
+
         case FIELD_TYPE_INT32:
+        case FIELD_TYPE_UINT32:
         case FIELD_TYPE_FLOAT:
         case FIELD_TYPE_FIXEDSTRING:
             return sizeof(uint32_t);
+
+        case FIELD_TYPE_INT64:
+        case FIELD_TYPE_UINT64:
+        case FIELD_TYPE_DOUBLE:
+        case FIELD_TYPE_ENTITY_HANDLE:
+            return sizeof(uint64_t);
+
+        case FIELD_TYPE_GUID:
+            return sizeof(Guid);
+
+        case FIELD_TYPE_ROLL_MAP:
+            // RefMapInternals header; the nodes hang off HashTable.
+            return ROLLMAP_SIZE;
 
         case FIELD_TYPE_INT32_ARRAY:
             if (prop->arraySize == 0) return 0;
@@ -772,6 +1172,118 @@ bool component_property_write(lua_State *L, void *componentPtr,
             }
             uint8_t value = (uint8_t)raw;
             wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_INT8: {
+            lua_Integer raw = luaL_checkinteger(L, valueIndex);
+            if (raw < INT8_MIN || raw > INT8_MAX) {
+                luaL_error(L, "Value for %s.%s is outside int8 range",
+                           layout->componentName, propertyName);
+                return false;
+            }
+            int8_t value = (int8_t)raw;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_INT16: {
+            lua_Integer raw = luaL_checkinteger(L, valueIndex);
+            if (raw < INT16_MIN || raw > INT16_MAX) {
+                luaL_error(L, "Value for %s.%s is outside int16 range",
+                           layout->componentName, propertyName);
+                return false;
+            }
+            int16_t value = (int16_t)raw;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_UINT16: {
+            lua_Integer raw = luaL_checkinteger(L, valueIndex);
+            if (raw < 0 || raw > UINT16_MAX) {
+                luaL_error(L, "Value for %s.%s is outside uint16 range",
+                           layout->componentName, propertyName);
+                return false;
+            }
+            uint16_t value = (uint16_t)raw;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_UINT32: {
+            lua_Integer raw = luaL_checkinteger(L, valueIndex);
+            if (raw < 0 || raw > UINT32_MAX) {
+                luaL_error(L, "Value for %s.%s is outside uint32 range",
+                           layout->componentName, propertyName);
+                return false;
+            }
+            uint32_t value = (uint32_t)raw;
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_INT64: {
+            int64_t value = (int64_t)luaL_checkinteger(L, valueIndex);
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_UINT64: {
+            // lua_Integer is int64; the bit pattern is what the engine keeps.
+            uint64_t value = (uint64_t)luaL_checkinteger(L, valueIndex);
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_DOUBLE: {
+            double value = (double)luaL_checknumber(L, valueIndex);
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_GUID: {
+            // Accepts the canonical 36-char form, or anything ending in one
+            // (upstream tolerates "Name_<uuid>" template ids).
+            size_t slen = 0;
+            const char *s = luaL_checklstring(L, valueIndex, &slen);
+            Guid value = {0, 0};
+            if (slen > 0) {
+                const char *tail = slen > 36 ? s + slen - 36 : s;
+                if (!guid_parse(tail, &value)) {
+                    luaL_error(L, "'%s' is not a valid GUID for %s.%s", s,
+                               layout->componentName, propertyName);
+                    return false;
+                }
+            }
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_ENTITY_HANDLE: {
+            // Reads surface handles as "0x..." strings; accept those and
+            // plain integers (upstream EntityHandle is a uint64).
+            uint64_t value = 0;
+            if (lua_type(L, valueIndex) == LUA_TSTRING) {
+                const char *s = lua_tostring(L, valueIndex);
+                char *end = NULL;
+                value = strtoull(s, &end, 0);
+                if (end == s || *end != '\0') {
+                    luaL_error(L, "'%s' is not a valid entity handle for %s.%s", s,
+                               layout->componentName, propertyName);
+                    return false;
+                }
+            } else {
+                value = (uint64_t)luaL_checkinteger(L, valueIndex);
+            }
+            wrote = safe_memory_write(address, &value, sizeof(value));
+            break;
+        }
+
+        case FIELD_TYPE_ROLL_MAP: {
+            char what[160];
+            snprintf(what, sizeof(what), "%s.%s", layout->componentName, propertyName);
+            wrote = roll_map_write(L, address, valueIndex, what);
             break;
         }
 
@@ -1164,15 +1676,11 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
 
     switch (proxy->elemType) {
         case ELEM_TYPE_GUID: {
-            uint8_t guid[16] = {0};
-            if (safe_memory_read((mach_vm_address_t)elemAddr, guid, 16)) {
-                char buf[64];
-                snprintf(buf, sizeof(buf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        guid[0], guid[1], guid[2], guid[3],
-                        guid[4], guid[5], guid[6], guid[7],
-                        guid[8], guid[9], guid[10], guid[11],
-                        guid[12], guid[13], guid[14], guid[15]);
+            // Upstream Guid::ToString byte order (see FIELD_TYPE_GUID).
+            Guid guid = {0, 0};
+            if (safe_memory_read((mach_vm_address_t)elemAddr, &guid, sizeof(guid))) {
+                char buf[37];
+                guid_to_string(&guid, buf);
                 lua_pushstring(L, buf);
             } else {
                 lua_pushnil(L);

@@ -333,6 +333,7 @@ static const VersionOffsets g_offset_table[] = {
             [GAME_FN_BINK_LOAD_VIDEO] = 0x03916380,
             [GAME_FN_VALUELIST_INSERT] = 0x01c42014,
             [GAME_FN_MEMORY_ALLOCATE] = 0x0650cf2c,
+            [GAME_FN_MEMORY_DEALLOCATE] = 0x0650d1dc,
         },
     },
 

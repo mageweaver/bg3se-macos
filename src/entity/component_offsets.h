@@ -307,7 +307,7 @@ static const ComponentLayoutDef g_ResistancesComponent_Layout = {
 static const ComponentPropertyDef g_PassiveContainerComponent_Properties[] = {
     // Array<EntityHandle> Passives at 0x00 - each EntityHandle is 8 bytes
     { "Passives",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_ENTITY_HANDLE, 8 },
-    { "PassiveCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "PassiveCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_PassiveContainerComponent_Layout = {
@@ -329,7 +329,7 @@ static const ComponentLayoutDef g_PassiveContainerComponent_Layout = {
 static const ComponentPropertyDef g_TagComponent_Properties[] = {
     // Array<Guid> Tags at 0x00 - each Guid is 16 bytes
     { "Tags",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_GUID, 16 },
-    { "TagCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "TagCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_TagComponent_Layout = {
@@ -389,7 +389,7 @@ static const ComponentLayoutDef g_OriginComponent_Layout = {
 static const ComponentPropertyDef g_ClassesComponent_Properties[] = {
     // Array<ClassInfo> Classes at 0x00 - ClassInfo is 40 bytes (2x Guid + Level + padding)
     { "Classes",    0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_CLASS_INFO, 40 },
-    { "ClassCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "ClassCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_ClassesComponent_Layout = {
@@ -533,7 +533,10 @@ static const ComponentLayoutDef g_TurnBasedComponent_Layout = {
 //   DiceSizeId DamageDice; DiceSizeId VersatileDamageDice;          @0x48/0x49
 // LegacyRefMap (RefMapInternals) is 0x10: {u32 ItemCount; u32 HashSize; MapNode**}.
 static const ComponentPropertyDef g_WeaponComponent_Properties[] = {
-    // Rolls / VersatileRolls maps at 0x00/0x10: nested containers, not exposed
+    // The damage rolls themselves: without these a Weapon round trip keeps
+    // the target's dice (TransmogEnhanced "damage doesn't transfer").
+    { "Rolls",               0x00, FIELD_TYPE_ROLL_MAP, 0, false },
+    { "VersatileRolls",      0x10, FIELD_TYPE_ROLL_MAP, 0, false },
     { "WeaponRange",         0x20, FIELD_TYPE_FLOAT,  0, false },
     { "DamageRange",         0x24, FIELD_TYPE_FLOAT,  0, false },
     // WeaponFunctors* at 0x28 (pointer, skip)
@@ -567,7 +570,7 @@ static const ComponentPropertyDef g_SpellBookComponent_Properties[] = {
     // Array<SpellData> Spells at 0x08 - dynamic array with iteration support
     { "Spells",     0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_SPELL_DATA, 88 },
     // Also expose count for convenience
-    { "SpellCount", 0x14, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size_ at 0x08+0x0C
+    { "SpellCount", 0x14, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size_ at 0x08+0x0C
 };
 
 static const ComponentLayoutDef g_SpellBookComponent_Layout = {
@@ -588,7 +591,7 @@ static const ComponentLayoutDef g_SpellBookComponent_Layout = {
 static const ComponentPropertyDef g_StatusContainerComponent_Properties[] = {
     // HashMap<EntityHandle, FixedString> Statuses at 0x00
     // HashMap layout: HashSet (0x40) contains count at offset ~0x18
-    { "StatusCount", 0x18, FIELD_TYPE_UINT32, 0, false },  // HashMap element count
+    { "StatusCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_StatusContainerComponent_Layout = {
@@ -608,7 +611,7 @@ static const ComponentLayoutDef g_StatusContainerComponent_Layout = {
 
 static const ComponentPropertyDef g_InventoryContainerComponent_Properties[] = {
     // HashMap<uint16_t, ContainerSlotData> Items at 0x00
-    { "ItemCount", 0x18, FIELD_TYPE_UINT32, 0, false },  // HashMap element count
+    { "ItemCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_InventoryContainerComponent_Layout = {
@@ -629,7 +632,7 @@ static const ComponentLayoutDef g_InventoryContainerComponent_Layout = {
 
 static const ComponentPropertyDef g_ActionResourcesComponent_Properties[] = {
     // HashMap<Guid, Array<ActionResourceEntry>> Resources at 0x00
-    { "ResourceTypeCount", 0x18, FIELD_TYPE_UINT32, 0, false },  // HashMap element count
+    { "ResourceTypeCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_ActionResourcesComponent_Layout = {
@@ -649,7 +652,7 @@ static const ComponentLayoutDef g_ActionResourcesComponent_Layout = {
 
 static const ComponentPropertyDef g_InventoryOwnerComponent_Properties[] = {
     // Array<EntityHandle> Inventories at 0x00 (ptr + size + capacity = 24 bytes)
-    { "InventoryCount",    0x08, FIELD_TYPE_UINT32,        0, false },  // Array size
+    { "InventoryCount",    0x08, FIELD_TYPE_UINT32,        0, true },  // Array size
     { "PrimaryInventory",  0x18, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
 };
 
@@ -737,7 +740,7 @@ static const ComponentLayoutDef g_EquipableComponent_Layout = {
 static const ComponentPropertyDef g_SpellContainerComponent_Properties[] = {
     // Array<SpellMeta> Spells at 0x00 - SpellMeta is 80 bytes
     { "Spells",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_SPELL_META, 80 },
-    { "SpellCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "SpellCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_SpellContainerComponent_Layout = {
@@ -757,7 +760,7 @@ static const ComponentLayoutDef g_SpellContainerComponent_Layout = {
 static const ComponentPropertyDef g_ConcentrationComponent_Properties[] = {
     { "Caster",      0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
     // Array<ConcentrationTarget> Targets at 0x08 (complex, expose count only)
-    { "TargetCount", 0x10, FIELD_TYPE_UINT32, 0, false },  // Array.size field
+    { "TargetCount", 0x10, FIELD_TYPE_UINT32, 0, true },  // Array.size field
     // SpellId at 0x18 is complex (FixedString + padding + enum + 2x Guid = ~0x30 bytes)
     // Just expose the spell prototype FixedString
     { "SpellPrototype", 0x18, FIELD_TYPE_FIXEDSTRING, 0, false },
@@ -782,7 +785,7 @@ static const ComponentLayoutDef g_ConcentrationComponent_Layout = {
 static const ComponentPropertyDef g_BoostsContainerComponent_Properties[] = {
     // Array<BoostEntry> Boosts at 0x00 - BoostEntry is 24 bytes (BoostType + padding + Array)
     { "Boosts",         0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_BOOST_ENTRY, 24 },
-    { "BoostTypeCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "BoostTypeCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_BoostsContainerComponent_Layout = {

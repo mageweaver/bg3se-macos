@@ -47,6 +47,10 @@ typedef enum GameFunctionId {
     // Needed to add nodes to game-owned containers: anything the game will
     // later free must come from its allocator, not malloc.
     GAME_FN_MEMORY_ALLOCATE,
+    // ls::MemoryManager::Deallocate(void*, ls::AllocType, int). Pairs with
+    // Allocate; on this build both bottom out in libc malloc/free, but the
+    // game's entry points are still the contract.
+    GAME_FN_MEMORY_DEALLOCATE,
     GAME_FN_COUNT
 } GameFunctionId;
 

@@ -18,6 +18,7 @@
 #include "../entity/component_registry.h"
 #include "../entity/component_lookup.h"
 #include "../lifetime/lifetime.h"
+#include "../timer/timer.h"
 
 #include <stdatomic.h>
 #include <string.h>
@@ -483,10 +484,21 @@ void events_fire_tick(lua_State *L, float delta_time) {
             continue;
         }
 
-        // Create event data table with DeltaTime
+        // Event data: upstream's TickEvent carries a GameTime struct as
+        // e.Time = { Time (s), DeltaTime (s), Ticks } (LuaBinding.h:379,
+        // ExposedTypes.h:7); mods read e.Time.DeltaTime. Keep the flat
+        // DeltaTime too for scripts written against the older port.
         lua_newtable(L);
         lua_pushnumber(L, delta_time);
         lua_setfield(L, -2, "DeltaTime");
+        lua_createtable(L, 0, 3);
+        lua_pushnumber(L, timer_get_game_time());
+        lua_setfield(L, -2, "Time");
+        lua_pushnumber(L, delta_time);
+        lua_setfield(L, -2, "DeltaTime");
+        lua_pushinteger(L, (lua_Integer)timer_get_tick_count());
+        lua_setfield(L, -2, "Ticks");
+        lua_setfield(L, -2, "Time");
 
         // Protected call
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {

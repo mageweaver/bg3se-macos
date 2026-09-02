@@ -42,6 +42,11 @@ typedef enum {
     FIELD_TYPE_INT32_ARRAY,     // Fixed-size int32 array
     FIELD_TYPE_FLOAT_ARRAY,     // Fixed-size float array
     FIELD_TYPE_DYNAMIC_ARRAY,   // Dynamic Array<T> with runtime size
+    // LegacyRefMap<DamageType, Array<RollDefinition>> (upstream
+    // CoreLib/Base/LegacyMap.h RefMapInternals + Base/ExposedTypes.h
+    // RollDefinition). Reads as { [DamageTypeLabel] = { roll, ... } };
+    // writes rebuild the map through the game allocator.
+    FIELD_TYPE_ROLL_MAP,
 } FieldType;
 
 // ============================================================================
