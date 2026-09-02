@@ -683,6 +683,14 @@ bool component_property_write(lua_State *L, void *componentPtr,
         return false;
     }
 
+    // See property_can_unserialize: unverified generated layouts never write.
+    if (layout->generated) {
+        LOG_ENTITY_DEBUG("Refusing component write: %s.%s layout is "
+                         "generated/unverified", layout->componentName,
+                         propertyName);
+        return false;
+    }
+
     uintptr_t componentAddress = (uintptr_t)componentPtr;
     if (componentAddress > UINTPTR_MAX - prop->offset) {
         LOG_ENTITY_DEBUG("Refusing component write: address overflow for %s.%s",
@@ -1481,6 +1489,11 @@ bool component_property_serialize_proxy(lua_State *L, int index) {
 static bool property_can_unserialize(const ComponentLayoutDef *layout,
                                      const ComponentPropertyDef *prop) {
     if (!layout || !prop || prop->readOnly) return false;
+    // Generated layouts are unverified against this binary; writing through
+    // them corrupts engine memory (a transmog stat-clone crashed the server
+    // status system this way). Reads stay allowed; writes require a
+    // hand-verified layout.
+    if (layout->generated) return false;
     if (strstr(layout->componentName, "OneFrame") != NULL
         || strstr(layout->componentName, "Request") != NULL) {
         return false;
@@ -1515,6 +1528,10 @@ bool component_property_unserialize_proxy(lua_State *L, int proxyIndex,
         }
 
         lua_getfield(L, absoluteTable, prop->name);
+        if (!lua_isnil(L, -1)) {
+            LOG_ENTITY_DEBUG("unserialize write %s.%s",
+                             component->layout->componentName, prop->name);
+        }
         if (!lua_isnil(L, -1)
             && !component_property_write(
                 L, component->componentPtr, component->layout, prop->name, -1)) {
