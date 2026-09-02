@@ -65,11 +65,11 @@ static const ComponentLayoutDef g_BaseHpComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_ArmorComponent_Properties[] = {
-    { "ArmorType",          0x00, FIELD_TYPE_INT32, 0, true, .enumDef = &g_enum_ArmorType },
-    { "ArmorClass",         0x04, FIELD_TYPE_INT32, 0, true },
-    { "AbilityModifierCap", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "ArmorClassAbility",  0x0C, FIELD_TYPE_UINT8, 0, true, .enumDef = &g_enum_AbilityId },
-    { "EquipmentType",      0x0D, FIELD_TYPE_UINT8, 0, true },
+    { "ArmorType",          0x00, FIELD_TYPE_INT32, 0, false, .enumDef = &g_enum_ArmorType },
+    { "ArmorClass",         0x04, FIELD_TYPE_INT32, 0, false },
+    { "AbilityModifierCap", 0x08, FIELD_TYPE_INT32, 0, false },
+    { "ArmorClassAbility",  0x0C, FIELD_TYPE_UINT8, 0, false, .enumDef = &g_enum_AbilityId },
+    { "EquipmentType",      0x0D, FIELD_TYPE_UINT8, 0, false },
 };
 
 static const ComponentLayoutDef g_ArmorComponent_Layout = {
@@ -90,16 +90,16 @@ static const ComponentLayoutDef g_ArmorComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_StatsComponent_Properties[] = {
-    { "InitiativeBonus",     0x00, FIELD_TYPE_INT32,       0, true },
-    { "Abilities",           0x04, FIELD_TYPE_INT32_ARRAY, 7, true },  // [1]=None, [2]=STR...[7]=CHA
-    { "AbilityModifiers",    0x20, FIELD_TYPE_INT32_ARRAY, 7, true },  // Matches Abilities indexing
-    { "Skills",              0x3C, FIELD_TYPE_INT32_ARRAY, 18, true },
-    { "ProficiencyBonus",    0x84, FIELD_TYPE_INT32,       0, true },
-    { "SpellCastingAbility", 0x88, FIELD_TYPE_UINT8,       0, true },
-    { "ArmorType",           0x94, FIELD_TYPE_INT32,       0, true },
-    { "ArmorType2",          0x98, FIELD_TYPE_INT32,       0, true },
-    { "UnarmedAttackAbility",0x9C, FIELD_TYPE_UINT8,       0, true },
-    { "RangedAttackAbility", 0x9D, FIELD_TYPE_UINT8,       0, true },
+    { "InitiativeBonus",     0x00, FIELD_TYPE_INT32,       0, false },
+    { "Abilities",           0x04, FIELD_TYPE_INT32_ARRAY, 7, false },  // [1]=None, [2]=STR...[7]=CHA
+    { "AbilityModifiers",    0x20, FIELD_TYPE_INT32_ARRAY, 7, false },  // Matches Abilities indexing
+    { "Skills",              0x3C, FIELD_TYPE_INT32_ARRAY, 18, false },
+    { "ProficiencyBonus",    0x84, FIELD_TYPE_INT32,       0, false },
+    { "SpellCastingAbility", 0x88, FIELD_TYPE_UINT8,       0, false },
+    { "ArmorType",           0x94, FIELD_TYPE_INT32,       0, false },
+    { "ArmorType2",          0x98, FIELD_TYPE_INT32,       0, false },
+    { "UnarmedAttackAbility",0x9C, FIELD_TYPE_UINT8,       0, false },
+    { "RangedAttackAbility", 0x9D, FIELD_TYPE_UINT8,       0, false },
 };
 
 static const ComponentLayoutDef g_StatsComponent_Layout = {
@@ -117,7 +117,7 @@ static const ComponentLayoutDef g_StatsComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_BaseStatsComponent_Properties[] = {
-    { "BaseAbilities", 0x00, FIELD_TYPE_INT32_ARRAY, 7, true },
+    { "BaseAbilities", 0x00, FIELD_TYPE_INT32_ARRAY, 7, false },
 };
 
 static const ComponentLayoutDef g_BaseStatsComponent_Layout = {
@@ -136,9 +136,9 @@ static const ComponentLayoutDef g_BaseStatsComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_TransformComponent_Properties[] = {
-    { "Rotation",  0x00, FIELD_TYPE_VEC4, 0, true },  // glm::quat (x,y,z,w)
-    { "Position",  0x10, FIELD_TYPE_VEC3, 0, true },  // glm::vec3 (Translate)
-    { "Scale",     0x1C, FIELD_TYPE_VEC3, 0, true },  // glm::vec3
+    { "Rotation",  0x00, FIELD_TYPE_VEC4, 0, false },  // glm::quat (x,y,z,w)
+    { "Position",  0x10, FIELD_TYPE_VEC3, 0, false },  // glm::vec3 (Translate)
+    { "Scale",     0x1C, FIELD_TYPE_VEC3, 0, false },  // glm::vec3
 };
 
 static const ComponentLayoutDef g_TransformComponent_Layout = {
@@ -156,8 +156,8 @@ static const ComponentLayoutDef g_TransformComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_LevelComponent_Properties[] = {
-    { "LevelHandle", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle field_0
-    { "LevelName",   0x08, FIELD_TYPE_FIXEDSTRING,   0, true },  // FixedString
+    { "LevelHandle", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle field_0
+    { "LevelName",   0x08, FIELD_TYPE_FIXEDSTRING,   0, false },  // FixedString
 };
 
 static const ComponentLayoutDef g_LevelComponent_Layout = {
@@ -176,9 +176,9 @@ static const ComponentLayoutDef g_LevelComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_DataComponent_Properties[] = {
-    { "Weight",    0x00, FIELD_TYPE_INT32,       0, true },  // int32_t
-    { "StatsId",   0x04, FIELD_TYPE_FIXEDSTRING, 0, true },  // FixedString index
-    { "StepsType", 0x08, FIELD_TYPE_UINT32,      0, true },  // uint32_t
+    { "Weight",    0x00, FIELD_TYPE_INT32,       0, false },  // int32_t
+    { "StatsId",   0x04, FIELD_TYPE_FIXEDSTRING, 0, false },  // FixedString index
+    { "StepsType", 0x08, FIELD_TYPE_UINT32,      0, false },  // uint32_t
 };
 
 static const ComponentLayoutDef g_DataComponent_Layout = {
@@ -197,9 +197,9 @@ static const ComponentLayoutDef g_DataComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_ExperienceComponent_Properties[] = {
-    { "CurrentLevelExperience", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "NextLevelExperience",    0x04, FIELD_TYPE_INT32, 0, true },
-    { "TotalExperience",        0x08, FIELD_TYPE_INT32, 0, true },
+    { "CurrentLevelExperience", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "NextLevelExperience",    0x04, FIELD_TYPE_INT32, 0, false },
+    { "TotalExperience",        0x08, FIELD_TYPE_INT32, 0, false },
     // Additional fields at 0x0C-0x17 (total size 0x18)
 };
 
@@ -218,7 +218,7 @@ static const ComponentLayoutDef g_ExperienceComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_AvailableLevelComponent_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Level", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 
 static const ComponentLayoutDef g_AvailableLevelComponent_Layout = {
@@ -237,7 +237,7 @@ static const ComponentLayoutDef g_AvailableLevelComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_EocLevelComponent_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Level", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 
 static const ComponentLayoutDef g_EocLevelComponent_Layout = {
@@ -255,12 +255,12 @@ static const ComponentLayoutDef g_EocLevelComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_PassiveComponent_Properties[] = {
-    { "Type",       0x00, FIELD_TYPE_UINT32,        0, true },  // PassiveSourceType enum
-    { "PassiveId",  0x04, FIELD_TYPE_FIXEDSTRING,   0, true },  // FixedString
-    { "Source",     0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle
-    { "Item",       0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle
-    { "ToggledOn",  0x18, FIELD_TYPE_BOOL,          0, true },  // bool
-    { "Disabled",   0x19, FIELD_TYPE_BOOL,          0, true },  // bool
+    { "Type",       0x00, FIELD_TYPE_UINT32,        0, false },  // PassiveSourceType enum
+    { "PassiveId",  0x04, FIELD_TYPE_FIXEDSTRING,   0, false },  // FixedString
+    { "Source",     0x08, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
+    { "Item",       0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
+    { "ToggledOn",  0x18, FIELD_TYPE_BOOL,          0, false },  // bool
+    { "Disabled",   0x19, FIELD_TYPE_BOOL,          0, false },  // bool
 };
 
 static const ComponentLayoutDef g_PassiveComponent_Layout = {
@@ -281,7 +281,7 @@ static const ComponentLayoutDef g_PassiveComponent_Layout = {
 
 static const ComponentPropertyDef g_ResistancesComponent_Properties[] = {
     // Resistances array (14 x ResistanceBoostFlags) at 0x00 - needs ENUM_ARRAY
-    { "AC",         0x10, FIELD_TYPE_INT32, 0, true },  // After 14 bytes of flags + 1 byte field + padding
+    { "AC",         0x10, FIELD_TYPE_INT32, 0, false },  // After 14 bytes of flags + 1 byte field + padding
     // PerDamageTypeHealthThresholds arrays are complex, skipping for now
 };
 
@@ -303,8 +303,8 @@ static const ComponentLayoutDef g_ResistancesComponent_Layout = {
 
 static const ComponentPropertyDef g_PassiveContainerComponent_Properties[] = {
     // Array<EntityHandle> Passives at 0x00 - each EntityHandle is 8 bytes
-    { "Passives",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_ENTITY_HANDLE, 8 },
-    { "PassiveCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "Passives",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_ENTITY_HANDLE, 8 },
+    { "PassiveCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_PassiveContainerComponent_Layout = {
@@ -325,8 +325,8 @@ static const ComponentLayoutDef g_PassiveContainerComponent_Layout = {
 
 static const ComponentPropertyDef g_TagComponent_Properties[] = {
     // Array<Guid> Tags at 0x00 - each Guid is 16 bytes
-    { "Tags",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_GUID, 16 },
-    { "TagCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "Tags",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_GUID, 16 },
+    { "TagCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_TagComponent_Layout = {
@@ -345,7 +345,7 @@ static const ComponentLayoutDef g_TagComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_RaceComponent_Properties[] = {
-    { "Race", 0x00, FIELD_TYPE_GUID, 0, true },  // Guid
+    { "Race", 0x00, FIELD_TYPE_GUID, 0, false },  // Guid
 };
 
 static const ComponentLayoutDef g_RaceComponent_Layout = {
@@ -364,8 +364,8 @@ static const ComponentLayoutDef g_RaceComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_OriginComponent_Properties[] = {
-    { "field_18", 0x00, FIELD_TYPE_GUID,        0, true },  // Guid (unknown purpose)
-    { "Origin",   0x10, FIELD_TYPE_FIXEDSTRING, 0, true },  // FixedString origin name
+    { "field_18", 0x00, FIELD_TYPE_GUID,        0, false },  // Guid (unknown purpose)
+    { "Origin",   0x10, FIELD_TYPE_FIXEDSTRING, 0, false },  // FixedString origin name
 };
 
 static const ComponentLayoutDef g_OriginComponent_Layout = {
@@ -385,8 +385,8 @@ static const ComponentLayoutDef g_OriginComponent_Layout = {
 
 static const ComponentPropertyDef g_ClassesComponent_Properties[] = {
     // Array<ClassInfo> Classes at 0x00 - ClassInfo is 40 bytes (2x Guid + Level + padding)
-    { "Classes",    0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_CLASS_INFO, 40 },
-    { "ClassCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "Classes",    0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_CLASS_INFO, 40 },
+    { "ClassCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_ClassesComponent_Layout = {
@@ -404,10 +404,10 @@ static const ComponentLayoutDef g_ClassesComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_MovementComponent_Properties[] = {
-    { "Direction",    0x00, FIELD_TYPE_VEC3,  0, true },  // glm::vec3
-    { "Acceleration", 0x0C, FIELD_TYPE_FLOAT, 0, true },  // float
-    { "Speed",        0x10, FIELD_TYPE_FLOAT, 0, true },  // float
-    { "Speed2",       0x14, FIELD_TYPE_FLOAT, 0, true },  // float
+    { "Direction",    0x00, FIELD_TYPE_VEC3,  0, false },  // glm::vec3
+    { "Acceleration", 0x0C, FIELD_TYPE_FLOAT, 0, false },  // float
+    { "Speed",        0x10, FIELD_TYPE_FLOAT, 0, false },  // float
+    { "Speed2",       0x14, FIELD_TYPE_FLOAT, 0, false },  // float
 };
 
 static const ComponentLayoutDef g_MovementComponent_Layout = {
@@ -426,7 +426,7 @@ static const ComponentLayoutDef g_MovementComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_BackgroundComponent_Properties[] = {
-    { "Background", 0x00, FIELD_TYPE_GUID, 0, true },  // Guid
+    { "Background", 0x00, FIELD_TYPE_GUID, 0, false },  // Guid
 };
 
 static const ComponentLayoutDef g_BackgroundComponent_Layout = {
@@ -446,11 +446,11 @@ static const ComponentLayoutDef g_BackgroundComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_GodComponent_Properties[] = {
-    { "God",            0x00, FIELD_TYPE_GUID, 0, true },  // Guid
+    { "God",            0x00, FIELD_TYPE_GUID, 0, false },  // Guid
     // GodOverride is std::optional<Guid>: has_value byte at 0x10, then Guid at 0x11
     // Alignment may push Guid to 0x18, check at runtime
-    { "HasGodOverride", 0x10, FIELD_TYPE_BOOL, 0, true },  // optional::has_value
-    { "GodOverride",    0x18, FIELD_TYPE_GUID, 0, true },  // optional::value (aligned)
+    { "HasGodOverride", 0x10, FIELD_TYPE_BOOL, 0, false },  // optional::has_value
+    { "GodOverride",    0x18, FIELD_TYPE_GUID, 0, false },  // optional::value (aligned)
 };
 
 static const ComponentLayoutDef g_GodComponent_Layout = {
@@ -468,9 +468,9 @@ static const ComponentLayoutDef g_GodComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_ValueComponent_Properties[] = {
-    { "Value",  0x00, FIELD_TYPE_INT32, 0, true },  // int32_t
-    { "Rarity", 0x04, FIELD_TYPE_UINT8, 0, true },  // uint8_t enum
-    { "Unique", 0x05, FIELD_TYPE_BOOL,  0, true },  // bool
+    { "Value",  0x00, FIELD_TYPE_INT32, 0, false },  // int32_t
+    { "Rarity", 0x04, FIELD_TYPE_UINT8, 0, false },  // uint8_t enum
+    { "Unique", 0x05, FIELD_TYPE_BOOL,  0, false },  // bool
 };
 
 static const ComponentLayoutDef g_ValueComponent_Layout = {
@@ -490,18 +490,18 @@ static const ComponentLayoutDef g_ValueComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_TurnBasedComponent_Properties[] = {
-    { "IsActiveCombatTurn",    0x00, FIELD_TYPE_BOOL, 0, true },
-    { "Removed",               0x01, FIELD_TYPE_BOOL, 0, true },
-    { "RequestedEndTurn",      0x02, FIELD_TYPE_BOOL, 0, true },
-    { "TurnActionsCompleted",  0x03, FIELD_TYPE_BOOL, 0, true },
-    { "ActedThisRoundInCombat",0x04, FIELD_TYPE_BOOL, 0, true },
-    { "HadTurnInCombat",       0x05, FIELD_TYPE_BOOL, 0, true },
-    { "CanActInCombat",        0x06, FIELD_TYPE_BOOL, 0, true },
+    { "IsActiveCombatTurn",    0x00, FIELD_TYPE_BOOL, 0, false },
+    { "Removed",               0x01, FIELD_TYPE_BOOL, 0, false },
+    { "RequestedEndTurn",      0x02, FIELD_TYPE_BOOL, 0, false },
+    { "TurnActionsCompleted",  0x03, FIELD_TYPE_BOOL, 0, false },
+    { "ActedThisRoundInCombat",0x04, FIELD_TYPE_BOOL, 0, false },
+    { "HadTurnInCombat",       0x05, FIELD_TYPE_BOOL, 0, false },
+    { "CanActInCombat",        0x06, FIELD_TYPE_BOOL, 0, false },
     // 0x08: std::optional<float> Timeout (8 bytes: has_value + pad + float)
     // 0x10: std::optional<float> PauseTimer
     // 0x18: std::optional<float> EndTurnHoldTimer
     // 0x20: Guid CombatTeam (16 bytes)
-    { "CombatTeam",            0x20, FIELD_TYPE_GUID, 0, true },
+    { "CombatTeam",            0x20, FIELD_TYPE_GUID, 0, false },
 };
 
 static const ComponentLayoutDef g_TurnBasedComponent_Layout = {
@@ -523,12 +523,12 @@ static const ComponentPropertyDef g_WeaponComponent_Properties[] = {
     // LegacyRefMap<AbilityId, Array<RollDefinition>> Rolls at 0x00 (complex, skip)
     // LegacyRefMap<AbilityId, Array<RollDefinition>> Rolls2 at 0x?? (complex, skip)
     // Estimate: 2 RefMaps ~= 0x30 each = 0x60, then floats
-    { "WeaponRange",      0x60, FIELD_TYPE_FLOAT,  0, true },
-    { "DamageRange",      0x64, FIELD_TYPE_FLOAT,  0, true },
+    { "WeaponRange",      0x60, FIELD_TYPE_FLOAT,  0, false },
+    { "DamageRange",      0x64, FIELD_TYPE_FLOAT,  0, false },
     // WeaponFunctors* at 0x68 (pointer, skip)
-    { "WeaponProperties", 0x70, FIELD_TYPE_UINT32, 0, true },  // Flags
-    { "WeaponGroup",      0x74, FIELD_TYPE_UINT8,  0, true },
-    { "Ability",          0x75, FIELD_TYPE_UINT8,  0, true },  // AbilityId enum
+    { "WeaponProperties", 0x70, FIELD_TYPE_UINT32, 0, false },  // Flags
+    { "WeaponGroup",      0x74, FIELD_TYPE_UINT8,  0, false },
+    { "Ability",          0x75, FIELD_TYPE_UINT8,  0, false },  // AbilityId enum
     // Array<StatsExpressionWithMetadata> DamageValues after
     // DiceSizeId at end
 };
@@ -550,11 +550,11 @@ static const ComponentLayoutDef g_WeaponComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_SpellBookComponent_Properties[] = {
-    { "Entity",     0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true, ELEM_TYPE_UNKNOWN, 0 },
+    { "Entity",     0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false, ELEM_TYPE_UNKNOWN, 0 },
     // Array<SpellData> Spells at 0x08 - dynamic array with iteration support
-    { "Spells",     0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_DATA, 88 },
+    { "Spells",     0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_SPELL_DATA, 88 },
     // Also expose count for convenience
-    { "SpellCount", 0x14, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size_ at 0x08+0x0C
+    { "SpellCount", 0x14, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size_ at 0x08+0x0C
 };
 
 static const ComponentLayoutDef g_SpellBookComponent_Layout = {
@@ -575,7 +575,7 @@ static const ComponentLayoutDef g_SpellBookComponent_Layout = {
 static const ComponentPropertyDef g_StatusContainerComponent_Properties[] = {
     // HashMap<EntityHandle, FixedString> Statuses at 0x00
     // HashMap layout: HashSet (0x40) contains count at offset ~0x18
-    { "StatusCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
+    { "StatusCount", 0x18, FIELD_TYPE_UINT32, 0, false },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_StatusContainerComponent_Layout = {
@@ -595,7 +595,7 @@ static const ComponentLayoutDef g_StatusContainerComponent_Layout = {
 
 static const ComponentPropertyDef g_InventoryContainerComponent_Properties[] = {
     // HashMap<uint16_t, ContainerSlotData> Items at 0x00
-    { "ItemCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
+    { "ItemCount", 0x18, FIELD_TYPE_UINT32, 0, false },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_InventoryContainerComponent_Layout = {
@@ -616,7 +616,7 @@ static const ComponentLayoutDef g_InventoryContainerComponent_Layout = {
 
 static const ComponentPropertyDef g_ActionResourcesComponent_Properties[] = {
     // HashMap<Guid, Array<ActionResourceEntry>> Resources at 0x00
-    { "ResourceTypeCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
+    { "ResourceTypeCount", 0x18, FIELD_TYPE_UINT32, 0, false },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_ActionResourcesComponent_Layout = {
@@ -636,8 +636,8 @@ static const ComponentLayoutDef g_ActionResourcesComponent_Layout = {
 
 static const ComponentPropertyDef g_InventoryOwnerComponent_Properties[] = {
     // Array<EntityHandle> Inventories at 0x00 (ptr + size + capacity = 24 bytes)
-    { "InventoryCount",    0x08, FIELD_TYPE_UINT32,        0, true },  // Array size
-    { "PrimaryInventory",  0x18, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle
+    { "InventoryCount",    0x08, FIELD_TYPE_UINT32,        0, false },  // Array size
+    { "PrimaryInventory",  0x18, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
 };
 
 static const ComponentLayoutDef g_InventoryOwnerComponent_Layout = {
@@ -656,8 +656,8 @@ static const ComponentLayoutDef g_InventoryOwnerComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_InventoryMemberComponent_Properties[] = {
-    { "Inventory",      0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle
-    { "EquipmentSlot",  0x08, FIELD_TYPE_INT16,         0, true },  // -1 if not equipped
+    { "Inventory",      0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
+    { "EquipmentSlot",  0x08, FIELD_TYPE_INT16,         0, false },  // -1 if not equipped
 };
 
 static const ComponentLayoutDef g_InventoryMemberComponent_Layout = {
@@ -677,7 +677,7 @@ static const ComponentLayoutDef g_InventoryMemberComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_InventoryIsOwnedComponent_Properties[] = {
-    { "Owner", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle to owner
+    { "Owner", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle to owner
 };
 
 static const ComponentLayoutDef g_InventoryIsOwnedComponent_Layout = {
@@ -696,8 +696,8 @@ static const ComponentLayoutDef g_InventoryIsOwnedComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_EquipableComponent_Properties[] = {
-    { "EquipmentTypeID", 0x00, FIELD_TYPE_GUID,  0, true },  // Guid (16 bytes)
-    { "Slot",            0x10, FIELD_TYPE_UINT8, 0, true, .enumDef = &g_enum_ItemSlot },
+    { "EquipmentTypeID", 0x00, FIELD_TYPE_GUID,  0, false },  // Guid (16 bytes)
+    { "Slot",            0x10, FIELD_TYPE_UINT8, 0, false, .enumDef = &g_enum_ItemSlot },
 };
 
 // componentSize is the engine's array STRIDE (EntityStorageData::GetComponent
@@ -723,8 +723,8 @@ static const ComponentLayoutDef g_EquipableComponent_Layout = {
 
 static const ComponentPropertyDef g_SpellContainerComponent_Properties[] = {
     // Array<SpellMeta> Spells at 0x00 - SpellMeta is 80 bytes
-    { "Spells",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_META, 80 },
-    { "SpellCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "Spells",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_SPELL_META, 80 },
+    { "SpellCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_SpellContainerComponent_Layout = {
@@ -742,12 +742,12 @@ static const ComponentLayoutDef g_SpellContainerComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_ConcentrationComponent_Properties[] = {
-    { "Caster",      0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle
+    { "Caster",      0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
     // Array<ConcentrationTarget> Targets at 0x08 (complex, expose count only)
-    { "TargetCount", 0x10, FIELD_TYPE_UINT32, 0, true },  // Array.size field
+    { "TargetCount", 0x10, FIELD_TYPE_UINT32, 0, false },  // Array.size field
     // SpellId at 0x18 is complex (FixedString + padding + enum + 2x Guid = ~0x30 bytes)
     // Just expose the spell prototype FixedString
-    { "SpellPrototype", 0x18, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "SpellPrototype", 0x18, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 
 static const ComponentLayoutDef g_ConcentrationComponent_Layout = {
@@ -768,8 +768,8 @@ static const ComponentLayoutDef g_ConcentrationComponent_Layout = {
 
 static const ComponentPropertyDef g_BoostsContainerComponent_Properties[] = {
     // Array<BoostEntry> Boosts at 0x00 - BoostEntry is 24 bytes (BoostType + padding + Array)
-    { "Boosts",         0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_BOOST_ENTRY, 24 },
-    { "BoostTypeCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+    { "Boosts",         0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_BOOST_ENTRY, 24 },
+    { "BoostTypeCount", 0x0C, FIELD_TYPE_UINT32, 0, false, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 
 static const ComponentLayoutDef g_BoostsContainerComponent_Layout = {
@@ -789,8 +789,8 @@ static const ComponentLayoutDef g_BoostsContainerComponent_Layout = {
 // AbilityBoostComponent (eoc::AbilityBoostComponent)
 // ARM64 Verified: Size 0x10 (16 bytes)
 static const ComponentPropertyDef g_AbilityBoostComponent_Properties[] = {
-    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, true },
-    { "Value",   0x04, FIELD_TYPE_INT32, 0, true },
+    { "Ability", 0x00, FIELD_TYPE_UINT8, 0, false },
+    { "Value",   0x04, FIELD_TYPE_INT32, 0, false },
 };
 
 static const ComponentLayoutDef g_AbilityBoostComponent_Layout = {
@@ -805,7 +805,7 @@ static const ComponentLayoutDef g_AbilityBoostComponent_Layout = {
 // ArmorClassBoostComponent (eoc::ArmorClassBoostComponent)
 // ARM64 Verified: Size 0x04 (4 bytes)
 static const ComponentPropertyDef g_ArmorClassBoostComponent_Properties[] = {
-    { "AC", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "AC", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 
 static const ComponentLayoutDef g_ArmorClassBoostComponent_Layout = {
@@ -820,10 +820,10 @@ static const ComponentLayoutDef g_ArmorClassBoostComponent_Layout = {
 // AdvantageBoostComponent (eoc::AdvantageBoostComponent)
 // ARM64 Verified: Size 0x18 (24 bytes)
 static const ComponentPropertyDef g_AdvantageBoostComponent_Properties[] = {
-    { "Type",      0x00, FIELD_TYPE_UINT8, 0, true },  // Advantage/Disadvantage enum
-    { "Ability",   0x04, FIELD_TYPE_UINT8, 0, true },
-    { "SkillType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Tags",      0x10, FIELD_TYPE_UINT64, 0, true },  // Tag bitfield
+    { "Type",      0x00, FIELD_TYPE_UINT8, 0, false },  // Advantage/Disadvantage enum
+    { "Ability",   0x04, FIELD_TYPE_UINT8, 0, false },
+    { "SkillType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Tags",      0x10, FIELD_TYPE_UINT64, 0, false },  // Tag bitfield
 };
 
 static const ComponentLayoutDef g_AdvantageBoostComponent_Layout = {
@@ -838,7 +838,7 @@ static const ComponentLayoutDef g_AdvantageBoostComponent_Layout = {
 // AddTagBoostComponent (eoc::AddTagBoostComponent)
 // ARM64 Verified: Size 0x10 (16 bytes)
 static const ComponentPropertyDef g_AddTagBoostComponent_Properties[] = {
-    { "Tag", 0x00, FIELD_TYPE_GUID, 0, true },  // Guid (16 bytes)
+    { "Tag", 0x00, FIELD_TYPE_GUID, 0, false },  // Guid (16 bytes)
 };
 
 static const ComponentLayoutDef g_AddTagBoostComponent_Layout = {
@@ -853,7 +853,7 @@ static const ComponentLayoutDef g_AddTagBoostComponent_Layout = {
 // AttributeBoostComponent (eoc::AttributeBoostComponent)
 // ARM64 Verified: Size 0x04 (4 bytes)
 static const ComponentPropertyDef g_AttributeBoostComponent_Properties[] = {
-    { "AttributeFlags", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "AttributeFlags", 0x00, FIELD_TYPE_UINT32, 0, false },
 };
 
 static const ComponentLayoutDef g_AttributeBoostComponent_Layout = {
@@ -874,9 +874,9 @@ static const ComponentLayoutDef g_AttributeBoostComponent_Layout = {
 
 static const ComponentPropertyDef g_DisplayNameComponent_Properties[] = {
     // TranslatedString Name at 0x00 (Handle + Version = ~32 bytes on ARM64)
-    { "NameHandle",   0x00, FIELD_TYPE_FIXEDSTRING, 0, true },  // TranslatedString.Handle
+    { "NameHandle",   0x00, FIELD_TYPE_FIXEDSTRING, 0, false },  // TranslatedString.Handle
     // TranslatedString Title at 0x20
-    { "TitleHandle",  0x20, FIELD_TYPE_FIXEDSTRING, 0, true },  // TranslatedString.Handle
+    { "TitleHandle",  0x20, FIELD_TYPE_FIXEDSTRING, 0, false },  // TranslatedString.Handle
 };
 
 static const ComponentLayoutDef g_DisplayNameComponent_Layout = {
@@ -896,7 +896,7 @@ static const ComponentLayoutDef g_DisplayNameComponent_Layout = {
 // DeathStateComponent (eoc::death::StateComponent)
 // From: BG3Extender/GameDefinitions/Components/Death.h:60-65
 static const ComponentPropertyDef g_DeathStateComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_UINT32, 0, true },  // Death state enum
+    { "State", 0x00, FIELD_TYPE_UINT32, 0, false },  // Death state enum
 };
 
 static const ComponentLayoutDef g_DeathStateComponent_Layout = {
@@ -911,7 +911,7 @@ static const ComponentLayoutDef g_DeathStateComponent_Layout = {
 // DeathTypeComponent (eoc::death::DeathTypeComponent)
 // From: BG3Extender/GameDefinitions/Components/Death.h:67-72
 static const ComponentPropertyDef g_DeathTypeComponent_Properties[] = {
-    { "DeathType", 0x00, FIELD_TYPE_UINT8, 0, true },  // Death type enum
+    { "DeathType", 0x00, FIELD_TYPE_UINT8, 0, false },  // Death type enum
 };
 
 static const ComponentLayoutDef g_DeathTypeComponent_Layout = {
@@ -926,7 +926,7 @@ static const ComponentLayoutDef g_DeathTypeComponent_Layout = {
 // InventoryWeightComponent (eoc::inventory::WeightComponent)
 // From: BG3Extender/GameDefinitions/Components/Inventory.h:93-98
 static const ComponentPropertyDef g_InventoryWeightComponent_Properties[] = {
-    { "Weight", 0x00, FIELD_TYPE_INT32, 0, true },  // Total inventory weight
+    { "Weight", 0x00, FIELD_TYPE_INT32, 0, false },  // Total inventory weight
 };
 
 static const ComponentLayoutDef g_InventoryWeightComponent_Layout = {
@@ -941,9 +941,9 @@ static const ComponentLayoutDef g_InventoryWeightComponent_Layout = {
 // ThreatRangeComponent (eoc::combat::ThreatRangeComponent)
 // From: BG3Extender/GameDefinitions/Components/Combat.h:115-122
 static const ComponentPropertyDef g_ThreatRangeComponent_Properties[] = {
-    { "Range",        0x00, FIELD_TYPE_FLOAT, 0, true },  // Threat range
-    { "TargetCeiling", 0x04, FIELD_TYPE_FLOAT, 0, true }, // Target ceiling
-    { "TargetFloor",   0x08, FIELD_TYPE_FLOAT, 0, true }, // Target floor
+    { "Range",        0x00, FIELD_TYPE_FLOAT, 0, false },  // Threat range
+    { "TargetCeiling", 0x04, FIELD_TYPE_FLOAT, 0, false }, // Target ceiling
+    { "TargetFloor",   0x08, FIELD_TYPE_FLOAT, 0, false }, // Target floor
 };
 
 static const ComponentLayoutDef g_ThreatRangeComponent_Layout = {
@@ -974,11 +974,11 @@ static const ComponentLayoutDef g_IsInCombatComponent_Layout = {
 // CombatParticipantComponent (eoc::combat::ParticipantComponent)
 // From: BG3Extender/GameDefinitions/Components/Combat.h:18-27
 static const ComponentPropertyDef g_CombatParticipantComponent_Properties[] = {
-    { "CombatHandle",   0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },  // EntityHandle
-    { "CombatGroupId",  0x08, FIELD_TYPE_FIXEDSTRING,   0, true },  // FixedString
-    { "InitiativeRoll", 0x0C, FIELD_TYPE_INT32,         0, true },  // int
-    { "Flags",          0x10, FIELD_TYPE_UINT32,        0, true },  // CombatParticipantFlags
-    { "AiHint",         0x18, FIELD_TYPE_GUID,          0, true },  // Guid (aligned to 8)
+    { "CombatHandle",   0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },  // EntityHandle
+    { "CombatGroupId",  0x08, FIELD_TYPE_FIXEDSTRING,   0, false },  // FixedString
+    { "InitiativeRoll", 0x0C, FIELD_TYPE_INT32,         0, false },  // int
+    { "Flags",          0x10, FIELD_TYPE_UINT32,        0, false },  // CombatParticipantFlags
+    { "AiHint",         0x18, FIELD_TYPE_GUID,          0, false },  // Guid (aligned to 8)
 };
 
 static const ComponentLayoutDef g_CombatParticipantComponent_Layout = {
@@ -994,7 +994,7 @@ static const ComponentLayoutDef g_CombatParticipantComponent_Layout = {
 // From: BG3Extender/GameDefinitions/Components/Combat.h:37-52
 // NOTE: Only exposing simple leading fields, skipping HashMaps/Arrays
 static const ComponentPropertyDef g_CombatStateComponent_Properties[] = {
-    { "MyGuid", 0x00, FIELD_TYPE_GUID, 0, true },  // Guid (16 bytes)
+    { "MyGuid", 0x00, FIELD_TYPE_GUID, 0, false },  // Guid (16 bytes)
 };
 
 static const ComponentLayoutDef g_CombatStateComponent_Layout = {
@@ -1728,8 +1728,8 @@ static const ComponentLayoutDef g_IsMarkedForDeletionComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_OriginalTemplateComponent_Properties[] = {
-    { "OriginalTemplate", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },  // Template ID
-    { "TemplateType",     0x04, FIELD_TYPE_UINT8,       0, true },  // Template type enum
+    { "OriginalTemplate", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },  // Template ID
+    { "TemplateType",     0x04, FIELD_TYPE_UINT8,       0, false },  // Template type enum
 };
 
 static const ComponentLayoutDef g_OriginalTemplateComponent_Layout = {
@@ -2192,7 +2192,7 @@ static const ComponentLayoutDef g_LevelInstanceUnloadingComponent_Layout = {
 // EquipmentVisualsComponent (ecl::EquipmentVisualsComponent)
 // ARM64 Verified: Size 0x48 (72 bytes)
 static const ComponentPropertyDef g_ClientEquipmentVisualsComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "State", 0x00, FIELD_TYPE_UINT32, 0, false },
     // Complex visual data follows (meshes, materials, etc.)
 };
 
@@ -2278,7 +2278,7 @@ static const ComponentLayoutDef g_ClientPaperdollComponent_Layout = {
 static const ComponentPropertyDef g_eoc_ACOverrideFormulaBoostComponent_Properties[] = {
     { "AC", 0x00, FIELD_TYPE_INT32, 0, false },
     { "field_4", 0x04, FIELD_TYPE_BOOL, 0, false },
-    { "AddAbilityModifiers", 0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "AddAbilityModifiers", 0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_ACOverrideFormulaBoostComponent_Layout = {
     .componentName = "eoc::ACOverrideFormulaBoostComponent",
@@ -2708,7 +2708,7 @@ static const ComponentPropertyDef g_eoc_CharacterCreationStatsComponent_Properti
     { "SubRace", 0x10, FIELD_TYPE_GUID, 0, false },
     { "BodyType", 0x20, FIELD_TYPE_UINT8, 0, false },
     { "BodyShape", 0x21, FIELD_TYPE_UINT8, 0, false },
-    { "Abilities", 0x24, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Abilities", 0x24, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
     { "field_5C", 0x34, FIELD_TYPE_UINT8, 0, false },
 };
 static const ComponentLayoutDef g_eoc_CharacterCreationStatsComponent_Layout = {
@@ -2911,8 +2911,8 @@ static const ComponentLayoutDef g_eoc_DetachedComponent_Layout = {
 // eoc::DifficultyCheckComponent - 72 bytes (0x48)
 // Source: DifficultyCheckComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_DifficultyCheckComponent_Properties[] = {
-    { "Abilities", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "field_30", 0x10, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Abilities", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
+    { "field_30", 0x10, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
     { "field_40", 0x20, FIELD_TYPE_INT32, 0, false },
     { "field_44", 0x24, FIELD_TYPE_INT32, 0, false },
 };
@@ -3378,7 +3378,7 @@ static const ComponentLayoutDef g_eoc_NullifyAbilityBoostComponent_Layout = {
 // eoc::ObjectInteractionComponent - 16 bytes (0x10)
 // Source: ObjectInteractionComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ObjectInteractionComponent_Properties[] = {
-    { "Interactions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Interactions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_ObjectInteractionComponent_Layout = {
     .componentName = "eoc::ObjectInteractionComponent",
@@ -3655,8 +3655,8 @@ static const ComponentLayoutDef g_eoc_StealthComponent_Layout = {
 // eoc::TurnOrderComponent - 80 bytes (0x50)
 // Source: TurnOrderComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_TurnOrderComponent_Properties[] = {
-    { "TurnOrderIndices", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "TurnOrderIndices2", 0x10, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "TurnOrderIndices", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
+    { "TurnOrderIndices2", 0x10, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
     { "field_40", 0x20, FIELD_TYPE_INT32, 0, false },
     { "field_44", 0x24, FIELD_TYPE_INT32, 0, false },
     { "field_48", 0x28, FIELD_TYPE_INT32, 0, false },
@@ -3688,7 +3688,7 @@ static const ComponentLayoutDef g_eoc_UnlockInterruptBoostComponent_Layout = {
 // eoc::UseBoostsComponent - 16 bytes (0x10)
 // Source: UseBoostsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_UseBoostsComponent_Properties[] = {
-    { "Boosts", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Boosts", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_UseBoostsComponent_Layout = {
     .componentName = "eoc::UseBoostsComponent",
@@ -3702,12 +3702,12 @@ static const ComponentLayoutDef g_eoc_UseBoostsComponent_Layout = {
 // eoc::UseComponent - 80 bytes (0x50)
 // Source: UseComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_UseComponent_Properties[] = {
-    { "Requirements", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Requirements", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
     { "Charges", 0x10, FIELD_TYPE_INT32, 0, false },
     { "MaxCharges", 0x14, FIELD_TYPE_INT32, 0, false },
-    { "Boosts", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "BoostsOnEquipMainHand", 0x28, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "BoostsOnEquipOffHand", 0x38, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Boosts", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
+    { "BoostsOnEquipMainHand", 0x28, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
+    { "BoostsOnEquipOffHand", 0x38, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_UseComponent_Layout = {
     .componentName = "eoc::UseComponent",
@@ -3735,7 +3735,7 @@ static const ComponentLayoutDef g_eoc_VoiceComponent_Layout = {
 // eoc::VoiceTagComponent - 16 bytes (0x10)
 // Source: VoiceTagComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_VoiceTagComponent_Properties[] = {
-    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_VoiceTagComponent_Layout = {
     .componentName = "eoc::VoiceTagComponent",
@@ -3792,7 +3792,7 @@ static const ComponentLayoutDef g_eoc_WeaponDamageBoostComponent_Layout = {
 // eoc::WeaponDamageResistanceBoostComponent - 16 bytes (0x10)
 // Source: WeaponDamageResistanceBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponDamageResistanceBoostComponent_Properties[] = {
-    { "DamageTypes", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "DamageTypes", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_WeaponDamageResistanceBoostComponent_Layout = {
     .componentName = "eoc::WeaponDamageResistanceBoostComponent",
@@ -3876,7 +3876,7 @@ static const ComponentLayoutDef g_eoc_WeightCategoryBoostComponent_Layout = {
 // eoc::action::ActionUseConditionsComponent - 16 bytes (0x10)
 // Source: ActionUseConditionsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ActionUseConditionsComponent_Properties[] = {
-    { "Conditions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Conditions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_ActionUseConditionsComponent_Layout = {
     .componentName = "eoc::action::ActionUseConditionsComponent",
@@ -3905,7 +3905,7 @@ static const ComponentLayoutDef g_eoc_RatingsComponent_Layout = {
 // eoc::background::GoalsComponent - 64 bytes (0x40)
 // Source: GoalsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_GoalsComponent_Properties[] = {
-    { "Goals", 0x00, FIELD_TYPE_GUID, 0, true },
+    { "Goals", 0x00, FIELD_TYPE_GUID, 0, false },
 };
 static const ComponentLayoutDef g_eoc_GoalsComponent_Layout = {
     .componentName = "eoc::background::GoalsComponent",
@@ -3948,7 +3948,7 @@ static const ComponentLayoutDef g_eoc_StartingDateComponent_Layout = {
 // eoc::character_creation::LevelUpComponent - 16 bytes (0x10)
 // Source: LevelUpComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_LevelUpComponent_Properties[] = {
-    { "LevelUps", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "LevelUps", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_LevelUpComponent_Layout = {
     .componentName = "eoc::character_creation::LevelUpComponent",
@@ -3994,7 +3994,7 @@ static const ComponentLayoutDef g_eoc_StateComponent_Layout = {
 // eoc::combat::IsThreatenedComponent - 16 bytes (0x10)
 // Source: IsThreatenedComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_IsThreatenedComponent_Properties[] = {
-    { "ThreatenedBy", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "ThreatenedBy", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_IsThreatenedComponent_Layout = {
     .componentName = "eoc::combat::IsThreatenedComponent",
@@ -4050,7 +4050,7 @@ static const ComponentLayoutDef g_eoc_ZoneBlockReasonComponent_Layout = {
 // eoc::god::TagComponent - 16 bytes (0x10)
 // Source: GodTagComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_TagComponent_Properties[] = {
-    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_TagComponent_Layout = {
     .componentName = "eoc::god::TagComponent",
@@ -4212,7 +4212,7 @@ static const ComponentPropertyDef g_eoc_LockComponent_Properties[] = {
     { "Key_M", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
     { "LockDC", 0x04, FIELD_TYPE_INT32, 0, false },
     { "field_8", 0x08, FIELD_TYPE_GUID, 0, false },
-    { "field_18", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "field_18", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_LockComponent_Layout = {
     .componentName = "eoc::lock::LockComponent",
@@ -4241,7 +4241,7 @@ static const ComponentLayoutDef g_eoc_PickUpRequestComponent_Layout = {
 // eoc::spell::AddedSpellsComponent - 16 bytes (0x10)
 // Source: AddedSpellsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_AddedSpellsComponent_Properties[] = {
-    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_AddedSpellsComponent_Layout = {
     .componentName = "eoc::spell::AddedSpellsComponent",
@@ -4255,7 +4255,7 @@ static const ComponentLayoutDef g_eoc_AddedSpellsComponent_Layout = {
 // eoc::spell::BookCooldownsComponent - 16 bytes (0x10)
 // Source: SpellBookCooldownsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_BookCooldownsComponent_Properties[] = {
-    { "Cooldowns", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Cooldowns", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_BookCooldownsComponent_Layout = {
     .componentName = "eoc::spell::BookCooldownsComponent",
@@ -4269,7 +4269,7 @@ static const ComponentLayoutDef g_eoc_BookCooldownsComponent_Layout = {
 // eoc::spell::CCPrepareSpellComponent - 16 bytes (0x10)
 // Source: CCPrepareSpellComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CCPrepareSpellComponent_Properties[] = {
-    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_CCPrepareSpellComponent_Layout = {
     .componentName = "eoc::spell::CCPrepareSpellComponent",
@@ -4283,7 +4283,7 @@ static const ComponentLayoutDef g_eoc_CCPrepareSpellComponent_Layout = {
 // eoc::spell::PlayerPrepareSpellComponent - 24 bytes (0x18)
 // Source: PlayerPrepareSpellComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_PlayerPrepareSpellComponent_Properties[] = {
-    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_eoc_PlayerPrepareSpellComponent_Layout = {
     .componentName = "eoc::spell::PlayerPrepareSpellComponent",
@@ -4400,7 +4400,7 @@ static const ComponentLayoutDef g_eoc_IsSummonComponent_Layout = {
 
 // esv::AIHintAreaTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_AIHintAreaTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_AIHintAreaTrigger_Layout = {
     .componentName = "esv::AIHintAreaTrigger",
@@ -4414,7 +4414,7 @@ static const ComponentLayoutDef g_esv_AIHintAreaTrigger_Layout = {
 // esv::ActivationGroupContainerComponent - 16 bytes (0x10)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_ActivationGroupContainerComponent_Properties[] = {
-    { "Groups", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },  // Array<ActivationGroupData>
+    { "Groups", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },  // Array<ActivationGroupData>
 };
 static const ComponentLayoutDef g_esv_ActivationGroupContainerComponent_Layout = {
     .componentName = "esv::ActivationGroupContainerComponent",
@@ -4427,7 +4427,7 @@ static const ComponentLayoutDef g_esv_ActivationGroupContainerComponent_Layout =
 
 // esv::ActiveCharacterLightComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_ActiveCharacterLightComponent_Properties[] = {
-    { "LightUUID", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "LightUUID", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_esv_ActiveCharacterLightComponent_Layout = {
     .componentName = "esv::ActiveCharacterLightComponent",
@@ -4440,7 +4440,7 @@ static const ComponentLayoutDef g_esv_ActiveCharacterLightComponent_Layout = {
 
 // esv::ActiveMusicVolumeComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_ActiveMusicVolumeComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_ActiveMusicVolumeComponent_Layout = {
     .componentName = "esv::ActiveMusicVolumeComponent",
@@ -4453,7 +4453,7 @@ static const ComponentLayoutDef g_esv_ActiveMusicVolumeComponent_Layout = {
 
 // esv::AiGridAreaTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_AiGridAreaTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_AiGridAreaTrigger_Layout = {
     .componentName = "esv::AiGridAreaTrigger",
@@ -4467,9 +4467,9 @@ static const ComponentLayoutDef g_esv_AiGridAreaTrigger_Layout = {
 // esv::ArmorClassComponent - 32 bytes (0x20)
 // Source: COMPONENT_SIZES_ESV_CORE.md
 static const ComponentPropertyDef g_esv_ArmorClassComponent_Properties[] = {
-    { "AC", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "ArmorType", 0x04, FIELD_TYPE_INT32, 0, true },
-    { "AbilityModifierCap", 0x08, FIELD_TYPE_INT32, 0, true },
+    { "AC", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "ArmorType", 0x04, FIELD_TYPE_INT32, 0, false },
+    { "AbilityModifierCap", 0x08, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_ArmorClassComponent_Layout = {
     .componentName = "esv::ArmorClassComponent",
@@ -4482,7 +4482,7 @@ static const ComponentLayoutDef g_esv_ArmorClassComponent_Layout = {
 
 // esv::AtmosphereTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_AtmosphereTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_AtmosphereTrigger_Layout = {
     .componentName = "esv::AtmosphereTrigger",
@@ -4495,7 +4495,7 @@ static const ComponentLayoutDef g_esv_AtmosphereTrigger_Layout = {
 
 // esv::AvailableLevelComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_AvailableLevelComponent_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Level", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_AvailableLevelComponent_Layout = {
     .componentName = "esv::AvailableLevelComponent",
@@ -4509,9 +4509,9 @@ static const ComponentLayoutDef g_esv_AvailableLevelComponent_Layout = {
 // esv::BaseDataComponent - 24 bytes (0x18)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_BaseDataComponent_Properties[] = {
-    { "Resistances", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },  // std::array<std::array<ResistanceBoostFlags, 7>, 2>
-    { "Weight", 0x0E, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x12, FIELD_TYPE_UINT32, 0, true },
+    { "Resistances", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },  // std::array<std::array<ResistanceBoostFlags, 7>, 2>
+    { "Weight", 0x0E, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x12, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_BaseDataComponent_Layout = {
     .componentName = "esv::BaseDataComponent",
@@ -4525,9 +4525,9 @@ static const ComponentLayoutDef g_esv_BaseDataComponent_Layout = {
 // esv::BaseHpComponent - 16 bytes (0x10)
 // Source: COMPONENT_SIZES_ESV_CORE.md
 static const ComponentPropertyDef g_esv_BaseHpComponent_Properties[] = {
-    { "Hp", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "MaxHp", 0x04, FIELD_TYPE_INT32, 0, true },
-    { "VitalityBoost", 0x08, FIELD_TYPE_INT32, 0, true },
+    { "Hp", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "MaxHp", 0x04, FIELD_TYPE_INT32, 0, false },
+    { "VitalityBoost", 0x08, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_BaseHpComponent_Layout = {
     .componentName = "esv::BaseHpComponent",
@@ -4541,8 +4541,8 @@ static const ComponentLayoutDef g_esv_BaseHpComponent_Layout = {
 // esv::BaseSizeComponent - 2 bytes (0x02)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_BaseSizeComponent_Properties[] = {
-    { "GameSize", 0x00, FIELD_TYPE_UINT8, 0, true },
-    { "SoundSize", 0x01, FIELD_TYPE_UINT8, 0, true },
+    { "GameSize", 0x00, FIELD_TYPE_UINT8, 0, false },
+    { "SoundSize", 0x01, FIELD_TYPE_UINT8, 0, false },
 };
 static const ComponentLayoutDef g_esv_BaseSizeComponent_Layout = {
     .componentName = "esv::BaseSizeComponent",
@@ -4556,7 +4556,7 @@ static const ComponentLayoutDef g_esv_BaseSizeComponent_Layout = {
 // esv::BaseStatsComponent - 4 bytes (0x04)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_BaseStatsComponent_Properties[] = {
-    { "Initiative", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Initiative", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_BaseStatsComponent_Layout = {
     .componentName = "esv::BaseStatsComponent",
@@ -4570,7 +4570,7 @@ static const ComponentLayoutDef g_esv_BaseStatsComponent_Layout = {
 // esv::BaseWeaponComponent - 16 bytes (0x10)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_BaseWeaponComponent_Properties[] = {
-    { "DamageList", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },  // Array<BaseWeaponDamage>
+    { "DamageList", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },  // Array<BaseWeaponDamage>
 };
 static const ComponentLayoutDef g_esv_BaseWeaponComponent_Layout = {
     .componentName = "esv::BaseWeaponComponent",
@@ -4583,7 +4583,7 @@ static const ComponentLayoutDef g_esv_BaseWeaponComponent_Layout = {
 
 // esv::BlockBronzeTimelinePlacementTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_BlockBronzeTimelinePlacementTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_BlockBronzeTimelinePlacementTrigger_Layout = {
     .componentName = "esv::BlockBronzeTimelinePlacementTrigger",
@@ -4596,7 +4596,7 @@ static const ComponentLayoutDef g_esv_BlockBronzeTimelinePlacementTrigger_Layout
 
 // esv::CampChestTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_CampChestTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_CampChestTrigger_Layout = {
     .componentName = "esv::CampChestTrigger",
@@ -4609,7 +4609,7 @@ static const ComponentLayoutDef g_esv_CampChestTrigger_Layout = {
 
 // esv::CampRegionTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_CampRegionTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_CampRegionTrigger_Layout = {
     .componentName = "esv::CampRegionTrigger",
@@ -4622,7 +4622,7 @@ static const ComponentLayoutDef g_esv_CampRegionTrigger_Layout = {
 
 // esv::Character - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_Character_Properties[] = {
-    { "CharacterPtr", 0x00, FIELD_TYPE_UINT64, 0, true },  // Ptr to 0x1a8 (424b) malloc
+    { "CharacterPtr", 0x00, FIELD_TYPE_UINT64, 0, false },  // Ptr to 0x1a8 (424b) malloc
 };
 static const ComponentLayoutDef g_esv_Character_Layout = {
     .componentName = "esv::Character",
@@ -4635,8 +4635,8 @@ static const ComponentLayoutDef g_esv_Character_Layout = {
 
 // esv::CharacterComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_CharacterComponent_Properties[] = {
-    { "Template", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, true },
+    { "Template", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_CharacterComponent_Layout = {
     .componentName = "esv::CharacterComponent",
@@ -4649,7 +4649,7 @@ static const ComponentLayoutDef g_esv_CharacterComponent_Layout = {
 
 // esv::ChasmDataComponent - 48 bytes (0x30)
 static const ComponentPropertyDef g_esv_ChasmDataComponent_Properties[] = {
-    { "Data", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Data", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_ChasmDataComponent_Layout = {
     .componentName = "esv::ChasmDataComponent",
@@ -4662,7 +4662,7 @@ static const ComponentLayoutDef g_esv_ChasmDataComponent_Layout = {
 
 // esv::ChasmSeederTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_ChasmSeederTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_ChasmSeederTrigger_Layout = {
     .componentName = "esv::ChasmSeederTrigger",
@@ -4675,7 +4675,7 @@ static const ComponentLayoutDef g_esv_ChasmSeederTrigger_Layout = {
 
 // esv::CombatComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_CombatComponent_Properties[] = {
-    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_CombatComponent_Layout = {
     .componentName = "esv::CombatComponent",
@@ -4688,7 +4688,7 @@ static const ComponentLayoutDef g_esv_CombatComponent_Layout = {
 
 // esv::CombatGroupMappingComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_CombatGroupMappingComponent_Properties[] = {
-    { "CombatGroup", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "CombatGroup", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_CombatGroupMappingComponent_Layout = {
     .componentName = "esv::CombatGroupMappingComponent",
@@ -4701,8 +4701,8 @@ static const ComponentLayoutDef g_esv_CombatGroupMappingComponent_Layout = {
 
 // esv::CombatParticipantComponent - 48 bytes (0x30)
 static const ComponentPropertyDef g_esv_CombatParticipantComponent_Properties[] = {
-    { "CombatHandle", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "CombatGroupId", 0x08, FIELD_TYPE_GUID, 0, true },
+    { "CombatHandle", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "CombatGroupId", 0x08, FIELD_TYPE_GUID, 0, false },
 };
 static const ComponentLayoutDef g_esv_CombatParticipantComponent_Layout = {
     .componentName = "esv::CombatParticipantComponent",
@@ -4715,7 +4715,7 @@ static const ComponentLayoutDef g_esv_CombatParticipantComponent_Layout = {
 
 // esv::ConstellationChildComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_ConstellationChildComponent_Properties[] = {
-    { "Parent", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Parent", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_ConstellationChildComponent_Layout = {
     .componentName = "esv::ConstellationChildComponent",
@@ -4728,7 +4728,7 @@ static const ComponentLayoutDef g_esv_ConstellationChildComponent_Layout = {
 
 // esv::ConstellationHelperComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_ConstellationHelperComponent_Properties[] = {
-    { "Data", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Data", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_ConstellationHelperComponent_Layout = {
     .componentName = "esv::ConstellationHelperComponent",
@@ -4741,7 +4741,7 @@ static const ComponentLayoutDef g_esv_ConstellationHelperComponent_Layout = {
 
 // esv::CrimeAreaTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_CrimeAreaTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_CrimeAreaTrigger_Layout = {
     .componentName = "esv::CrimeAreaTrigger",
@@ -4754,7 +4754,7 @@ static const ComponentLayoutDef g_esv_CrimeAreaTrigger_Layout = {
 
 // esv::CustomStatsComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_CustomStatsComponent_Properties[] = {
-    { "Stats", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Stats", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_CustomStatsComponent_Layout = {
     .componentName = "esv::CustomStatsComponent",
@@ -4767,7 +4767,7 @@ static const ComponentLayoutDef g_esv_CustomStatsComponent_Layout = {
 
 // esv::DisplayNameListComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_DisplayNameListComponent_Properties[] = {
-    { "Names", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Names", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_DisplayNameListComponent_Layout = {
     .componentName = "esv::DisplayNameListComponent",
@@ -4780,7 +4780,7 @@ static const ComponentLayoutDef g_esv_DisplayNameListComponent_Layout = {
 
 // esv::Effect - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_Effect_Properties[] = {
-    { "EffectPtr", 0x00, FIELD_TYPE_UINT64, 0, true },  // Ptr to 0x70 (112b) malloc
+    { "EffectPtr", 0x00, FIELD_TYPE_UINT64, 0, false },  // Ptr to 0x70 (112b) malloc
 };
 static const ComponentLayoutDef g_esv_Effect_Layout = {
     .componentName = "esv::Effect",
@@ -4793,7 +4793,7 @@ static const ComponentLayoutDef g_esv_Effect_Layout = {
 
 // esv::EocLevelComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_EocLevelComponent_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Level", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_EocLevelComponent_Layout = {
     .componentName = "esv::EocLevelComponent",
@@ -4807,7 +4807,7 @@ static const ComponentLayoutDef g_esv_EocLevelComponent_Layout = {
 // esv::ExperienceComponent - 8 bytes (0x08)
 // Source: COMPONENT_SIZES_ESV_CORE.md (no Windows header struct found)
 static const ComponentPropertyDef g_esv_ExperienceComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT32, 0, true },  // Estimated field
+    { "Value", 0x00, FIELD_TYPE_INT32, 0, false },  // Estimated field
 };
 static const ComponentLayoutDef g_esv_ExperienceComponent_Layout = {
     .componentName = "esv::ExperienceComponent",
@@ -4821,7 +4821,7 @@ static const ComponentLayoutDef g_esv_ExperienceComponent_Layout = {
 // esv::ExperienceGaveOutComponent - 4 bytes (0x04)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_ExperienceGaveOutComponent_Properties[] = {
-    { "Experience", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Experience", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_ExperienceGaveOutComponent_Layout = {
     .componentName = "esv::exp::ExperienceGaveOutComponent",
@@ -4834,7 +4834,7 @@ static const ComponentLayoutDef g_esv_ExperienceGaveOutComponent_Layout = {
 
 // esv::ExplorationAwardStateComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_ExplorationAwardStateComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "State", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_ExplorationAwardStateComponent_Layout = {
     .componentName = "esv::ExplorationAwardStateComponent",
@@ -4847,7 +4847,7 @@ static const ComponentLayoutDef g_esv_ExplorationAwardStateComponent_Layout = {
 
 // esv::FollowersComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_FollowersComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_FollowersComponent_Layout = {
     .componentName = "esv::FollowersComponent",
@@ -4861,13 +4861,13 @@ static const ComponentLayoutDef g_esv_FollowersComponent_Layout = {
 // esv::GameTimerComponent - 40 bytes (0x28)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_GameTimerComponent_Properties[] = {
-    { "field_18", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "field_20", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "field_28", 0x10, FIELD_TYPE_INT32, 0, true },
-    { "field_2C", 0x14, FIELD_TYPE_INT32, 0, true },
-    { "field_30", 0x18, FIELD_TYPE_INT32, 0, true },
-    { "field_34", 0x1C, FIELD_TYPE_INT32, 0, true },
-    { "field_38", 0x20, FIELD_TYPE_UINT8, 0, true },
+    { "field_18", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "field_20", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "field_28", 0x10, FIELD_TYPE_INT32, 0, false },
+    { "field_2C", 0x14, FIELD_TYPE_INT32, 0, false },
+    { "field_30", 0x18, FIELD_TYPE_INT32, 0, false },
+    { "field_34", 0x1C, FIELD_TYPE_INT32, 0, false },
+    { "field_38", 0x20, FIELD_TYPE_UINT8, 0, false },
 };
 static const ComponentLayoutDef g_esv_GameTimerComponent_Layout = {
     .componentName = "esv::GameTimerComponent",
@@ -4880,7 +4880,7 @@ static const ComponentLayoutDef g_esv_GameTimerComponent_Layout = {
 
 // esv::GravityActiveTimeoutComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_GravityActiveTimeoutComponent_Properties[] = {
-    { "Timeout", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Timeout", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_esv_GravityActiveTimeoutComponent_Layout = {
     .componentName = "esv::GravityActiveTimeoutComponent",
@@ -4893,7 +4893,7 @@ static const ComponentLayoutDef g_esv_GravityActiveTimeoutComponent_Layout = {
 
 // esv::GravityInstigatorComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_GravityInstigatorComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_GravityInstigatorComponent_Layout = {
     .componentName = "esv::GravityInstigatorComponent",
@@ -4907,9 +4907,9 @@ static const ComponentLayoutDef g_esv_GravityInstigatorComponent_Layout = {
 // esv::HealthComponent - 16 bytes (0x10)
 // Source: COMPONENT_SIZES_ESV_CORE.md
 static const ComponentPropertyDef g_esv_HealthComponent_Properties[] = {
-    { "Hp", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "MaxHp", 0x04, FIELD_TYPE_INT32, 0, true },
-    { "TempHp", 0x08, FIELD_TYPE_INT32, 0, true },
+    { "Hp", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "MaxHp", 0x04, FIELD_TYPE_INT32, 0, false },
+    { "TempHp", 0x08, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_HealthComponent_Layout = {
     .componentName = "esv::HealthComponent",
@@ -4922,7 +4922,7 @@ static const ComponentLayoutDef g_esv_HealthComponent_Layout = {
 
 // esv::IconListComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_IconListComponent_Properties[] = {
-    { "Icons", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Icons", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_IconListComponent_Layout = {
     .componentName = "esv::IconListComponent",
@@ -4935,7 +4935,7 @@ static const ComponentLayoutDef g_esv_IconListComponent_Layout = {
 
 // esv::IdentifiedComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_IdentifiedComponent_Properties[] = {
-    { "Identified", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Identified", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_IdentifiedComponent_Layout = {
     .componentName = "esv::IdentifiedComponent",
@@ -4948,7 +4948,7 @@ static const ComponentLayoutDef g_esv_IdentifiedComponent_Layout = {
 
 // esv::InterruptDataComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_InterruptDataComponent_Properties[] = {
-    { "Data", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Data", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_InterruptDataComponent_Layout = {
     .componentName = "esv::InterruptDataComponent",
@@ -4961,7 +4961,7 @@ static const ComponentLayoutDef g_esv_InterruptDataComponent_Layout = {
 
 // esv::InterruptPreferencesComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_InterruptPreferencesComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Flags", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_InterruptPreferencesComponent_Layout = {
     .componentName = "esv::InterruptPreferencesComponent",
@@ -4974,7 +4974,7 @@ static const ComponentLayoutDef g_esv_InterruptPreferencesComponent_Layout = {
 
 // esv::InterruptZoneParticipantComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_InterruptZoneParticipantComponent_Properties[] = {
-    { "ZoneId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "ZoneId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_InterruptZoneParticipantComponent_Layout = {
     .componentName = "esv::InterruptZoneParticipantComponent",
@@ -4987,7 +4987,7 @@ static const ComponentLayoutDef g_esv_InterruptZoneParticipantComponent_Layout =
 
 // esv::InventoryDataComponent - 32 bytes (0x20)
 static const ComponentPropertyDef g_esv_InventoryDataComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "Flags", 0x00, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_InventoryDataComponent_Layout = {
     .componentName = "esv::InventoryDataComponent",
@@ -5000,8 +5000,8 @@ static const ComponentLayoutDef g_esv_InventoryDataComponent_Layout = {
 
 // esv::InventoryMemberComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_InventoryMemberComponent_Properties[] = {
-    { "Inventory", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "EquipmentSlot", 0x08, FIELD_TYPE_INT32, 0, true },
+    { "Inventory", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "EquipmentSlot", 0x08, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_InventoryMemberComponent_Layout = {
     .componentName = "esv::InventoryMemberComponent",
@@ -5014,7 +5014,7 @@ static const ComponentLayoutDef g_esv_InventoryMemberComponent_Layout = {
 
 // esv::InventoryOwnerComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_InventoryOwnerComponent_Properties[] = {
-    { "Inventories", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Inventories", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_InventoryOwnerComponent_Layout = {
     .componentName = "esv::InventoryOwnerComponent",
@@ -5027,7 +5027,7 @@ static const ComponentLayoutDef g_esv_InventoryOwnerComponent_Layout = {
 
 // esv::InventoryPropertyCanBePickpocketedComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_InventoryPropertyCanBePickpocketedComponent_Properties[] = {
-    { "CanBePickpocketed", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "CanBePickpocketed", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_InventoryPropertyCanBePickpocketedComponent_Layout = {
     .componentName = "esv::InventoryPropertyCanBePickpocketedComponent",
@@ -5040,7 +5040,7 @@ static const ComponentLayoutDef g_esv_InventoryPropertyCanBePickpocketedComponen
 
 // esv::InventoryPropertyIsDroppedOnDeathComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_InventoryPropertyIsDroppedOnDeathComponent_Properties[] = {
-    { "IsDroppedOnDeath", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "IsDroppedOnDeath", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_InventoryPropertyIsDroppedOnDeathComponent_Layout = {
     .componentName = "esv::InventoryPropertyIsDroppedOnDeathComponent",
@@ -5053,7 +5053,7 @@ static const ComponentLayoutDef g_esv_InventoryPropertyIsDroppedOnDeathComponent
 
 // esv::InventoryPropertyIsTradableComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_InventoryPropertyIsTradableComponent_Properties[] = {
-    { "IsTradable", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "IsTradable", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_InventoryPropertyIsTradableComponent_Layout = {
     .componentName = "esv::InventoryPropertyIsTradableComponent",
@@ -5066,7 +5066,7 @@ static const ComponentLayoutDef g_esv_InventoryPropertyIsTradableComponent_Layou
 
 // esv::IsGlobalComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_IsGlobalComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_IsGlobalComponent_Layout = {
     .componentName = "esv::IsGlobalComponent",
@@ -5079,7 +5079,7 @@ static const ComponentLayoutDef g_esv_IsGlobalComponent_Layout = {
 
 // esv::Item - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_Item_Properties[] = {
-    { "ItemPtr", 0x00, FIELD_TYPE_UINT64, 0, true },  // Ptr to 0xb0 (176b) malloc
+    { "ItemPtr", 0x00, FIELD_TYPE_UINT64, 0, false },  // Ptr to 0xb0 (176b) malloc
 };
 static const ComponentLayoutDef g_esv_Item_Layout = {
     .componentName = "esv::Item",
@@ -5092,8 +5092,8 @@ static const ComponentLayoutDef g_esv_Item_Layout = {
 
 // esv::ItemComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_ItemComponent_Properties[] = {
-    { "Template", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, true },
+    { "Template", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_ItemComponent_Layout = {
     .componentName = "esv::ItemComponent",
@@ -5106,7 +5106,7 @@ static const ComponentLayoutDef g_esv_ItemComponent_Layout = {
 
 // esv::LevelComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_LevelComponent_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Level", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_LevelComponent_Layout = {
     .componentName = "esv::LevelComponent",
@@ -5119,8 +5119,8 @@ static const ComponentLayoutDef g_esv_LevelComponent_Layout = {
 
 // esv::LockComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_LockComponent_Properties[] = {
-    { "Key", 0x00, FIELD_TYPE_GUID, 0, true },
-    { "LockDC", 0x10, FIELD_TYPE_INT32, 0, true },
+    { "Key", 0x00, FIELD_TYPE_GUID, 0, false },
+    { "LockDC", 0x10, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_LockComponent_Layout = {
     .componentName = "esv::LockComponent",
@@ -5133,7 +5133,7 @@ static const ComponentLayoutDef g_esv_LockComponent_Layout = {
 
 // esv::MusicVolumeTriggerStateComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_MusicVolumeTriggerStateComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "State", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_MusicVolumeTriggerStateComponent_Layout = {
     .componentName = "esv::MusicVolumeTriggerStateComponent",
@@ -5146,7 +5146,7 @@ static const ComponentLayoutDef g_esv_MusicVolumeTriggerStateComponent_Layout = 
 
 // esv::OriginalTemplateComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_OriginalTemplateComponent_Properties[] = {
-    { "TemplateId", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "TemplateId", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_esv_OriginalTemplateComponent_Layout = {
     .componentName = "esv::OriginalTemplateComponent",
@@ -5159,7 +5159,7 @@ static const ComponentLayoutDef g_esv_OriginalTemplateComponent_Layout = {
 
 // esv::OsirisPingRequestSingletonComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_OsirisPingRequestSingletonComponent_Properties[] = {
-    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_OsirisPingRequestSingletonComponent_Layout = {
     .componentName = "esv::OsirisPingRequestSingletonComponent",
@@ -5172,7 +5172,7 @@ static const ComponentLayoutDef g_esv_OsirisPingRequestSingletonComponent_Layout
 
 // esv::PartyMemberComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_PartyMemberComponent_Properties[] = {
-    { "Party", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "Party", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_esv_PartyMemberComponent_Layout = {
     .componentName = "esv::PartyMemberComponent",
@@ -5185,7 +5185,7 @@ static const ComponentLayoutDef g_esv_PartyMemberComponent_Layout = {
 
 // esv::PingRequestSingletonComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_PingRequestSingletonComponent_Properties[] = {
-    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_PingRequestSingletonComponent_Layout = {
     .componentName = "esv::PingRequestSingletonComponent",
@@ -5198,7 +5198,7 @@ static const ComponentLayoutDef g_esv_PingRequestSingletonComponent_Layout = {
 
 // esv::PlayerComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_PlayerComponent_Properties[] = {
-    { "UserId", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "UserId", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_PlayerComponent_Layout = {
     .componentName = "esv::PlayerComponent",
@@ -5211,7 +5211,7 @@ static const ComponentLayoutDef g_esv_PlayerComponent_Layout = {
 
 // esv::Projectile - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_Projectile_Properties[] = {
-    { "ProjectilePtr", 0x00, FIELD_TYPE_UINT64, 0, true },  // Ptr to 0x5b8 (1464b) malloc
+    { "ProjectilePtr", 0x00, FIELD_TYPE_UINT64, 0, false },  // Ptr to 0x5b8 (1464b) malloc
 };
 static const ComponentLayoutDef g_esv_Projectile_Layout = {
     .componentName = "esv::Projectile",
@@ -5225,7 +5225,7 @@ static const ComponentLayoutDef g_esv_Projectile_Layout = {
 // esv::RecruitedByComponent - 8 bytes (0x08)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_RecruitedByComponent_Properties[] = {
-    { "RecruitedBy", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "RecruitedBy", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_RecruitedByComponent_Layout = {
     .componentName = "esv::recruit::RecruitedByComponent",
@@ -5238,7 +5238,7 @@ static const ComponentLayoutDef g_esv_RecruitedByComponent_Layout = {
 
 // esv::ReplicationDependencyComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_ReplicationDependencyComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_ReplicationDependencyComponent_Layout = {
     .componentName = "esv::ReplicationDependencyComponent",
@@ -5252,8 +5252,8 @@ static const ComponentLayoutDef g_esv_ReplicationDependencyComponent_Layout = {
 // esv::SafePositionComponent - 16 bytes (0x10)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_SafePositionComponent_Properties[] = {
-    { "Position", 0x00, FIELD_TYPE_VEC3, 0, true },  // glm::vec3 (12 bytes)
-    { "field_24", 0x0C, FIELD_TYPE_BOOL, 0, true },
+    { "Position", 0x00, FIELD_TYPE_VEC3, 0, false },  // glm::vec3 (12 bytes)
+    { "field_24", 0x0C, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_SafePositionComponent_Layout = {
     .componentName = "esv::SafePositionComponent",
@@ -5266,7 +5266,7 @@ static const ComponentLayoutDef g_esv_SafePositionComponent_Layout = {
 
 // esv::SafePositionUpdatedEventOneFrameComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_SafePositionUpdatedEventOneFrameComponent_Properties[] = {
-    { "Entity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Entity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_SafePositionUpdatedEventOneFrameComponent_Layout = {
     .componentName = "esv::SafePositionUpdatedEventOneFrameComponent",
@@ -5279,7 +5279,7 @@ static const ComponentLayoutDef g_esv_SafePositionUpdatedEventOneFrameComponent_
 
 // esv::SaveCompletedOneFrameComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_SaveCompletedOneFrameComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_SaveCompletedOneFrameComponent_Layout = {
     .componentName = "esv::SaveCompletedOneFrameComponent",
@@ -5292,7 +5292,7 @@ static const ComponentLayoutDef g_esv_SaveCompletedOneFrameComponent_Layout = {
 
 // esv::SaveWorldPrepareEventComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_SaveWorldPrepareEventComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_SaveWorldPrepareEventComponent_Layout = {
     .componentName = "esv::SaveWorldPrepareEventComponent",
@@ -5305,7 +5305,7 @@ static const ComponentLayoutDef g_esv_SaveWorldPrepareEventComponent_Layout = {
 
 // esv::ServerDisplayNameListComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_ServerDisplayNameListComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_esv_ServerDisplayNameListComponent_Layout = {
     .componentName = "esv::ServerDisplayNameListComponent",
@@ -5318,7 +5318,7 @@ static const ComponentLayoutDef g_esv_ServerDisplayNameListComponent_Layout = {
 
 // esv::ServerReplicationDependencyOwnerComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_ServerReplicationDependencyOwnerComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_ServerReplicationDependencyOwnerComponent_Layout = {
     .componentName = "esv::ServerReplicationDependencyOwnerComponent",
@@ -5331,7 +5331,7 @@ static const ComponentLayoutDef g_esv_ServerReplicationDependencyOwnerComponent_
 
 // esv::SetGravityActiveRequestOneFrameComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_SetGravityActiveRequestOneFrameComponent_Properties[] = {
-    { "Active", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Active", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_SetGravityActiveRequestOneFrameComponent_Layout = {
     .componentName = "esv::SetGravityActiveRequestOneFrameComponent",
@@ -5344,7 +5344,7 @@ static const ComponentLayoutDef g_esv_SetGravityActiveRequestOneFrameComponent_L
 
 // esv::StartTrigger - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_StartTrigger_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT64, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT64, 0, false },
 };
 static const ComponentLayoutDef g_esv_StartTrigger_Layout = {
     .componentName = "esv::StartTrigger",
@@ -5357,7 +5357,7 @@ static const ComponentLayoutDef g_esv_StartTrigger_Layout = {
 
 // esv::StatesComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_StatesComponent_Properties[] = {
-    { "States", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "States", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_StatesComponent_Layout = {
     .componentName = "esv::StatesComponent",
@@ -5370,7 +5370,7 @@ static const ComponentLayoutDef g_esv_StatesComponent_Layout = {
 
 // esv::StatusContainerComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_StatusContainerComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_StatusContainerComponent_Layout = {
     .componentName = "esv::StatusContainerComponent",
@@ -5383,8 +5383,8 @@ static const ComponentLayoutDef g_esv_StatusContainerComponent_Layout = {
 
 // esv::StealthComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_StealthComponent_Properties[] = {
-    { "Seeking", 0x00, FIELD_TYPE_BOOL, 0, true },
-    { "SeekHiddenFlag", 0x01, FIELD_TYPE_BOOL, 0, true },
+    { "Seeking", 0x00, FIELD_TYPE_BOOL, 0, false },
+    { "SeekHiddenFlag", 0x01, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_StealthComponent_Layout = {
     .componentName = "esv::StealthComponent",
@@ -5397,7 +5397,7 @@ static const ComponentLayoutDef g_esv_StealthComponent_Layout = {
 
 // esv::SummonContainerComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_SummonContainerComponent_Properties[] = {
-    { "Summons", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Summons", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_SummonContainerComponent_Layout = {
     .componentName = "esv::SummonContainerComponent",
@@ -5410,7 +5410,7 @@ static const ComponentLayoutDef g_esv_SummonContainerComponent_Layout = {
 
 // esv::SurfacePathInfluencesComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_SurfacePathInfluencesComponent_Properties[] = {
-    { "PathInfluences", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "PathInfluences", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_SurfacePathInfluencesComponent_Layout = {
     .componentName = "esv::SurfacePathInfluencesComponent",
@@ -5423,7 +5423,7 @@ static const ComponentLayoutDef g_esv_SurfacePathInfluencesComponent_Layout = {
 
 // esv::TurnStartedEventOneFrameComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_TurnStartedEventOneFrameComponent_Properties[] = {
-    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_TurnStartedEventOneFrameComponent_Layout = {
     .componentName = "esv::TurnStartedEventOneFrameComponent",
@@ -5436,8 +5436,8 @@ static const ComponentLayoutDef g_esv_TurnStartedEventOneFrameComponent_Layout =
 
 // esv::UseComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_UseComponent_Properties[] = {
-    { "Charges", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "MaxCharges", 0x04, FIELD_TYPE_INT32, 0, true },
+    { "Charges", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "MaxCharges", 0x04, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_UseComponent_Layout = {
     .componentName = "esv::UseComponent",
@@ -5450,7 +5450,7 @@ static const ComponentLayoutDef g_esv_UseComponent_Layout = {
 
 // esv::UseSocketComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_UseSocketComponent_Properties[] = {
-    { "Socket", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Socket", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_UseSocketComponent_Layout = {
     .componentName = "esv::UseSocketComponent",
@@ -5463,7 +5463,7 @@ static const ComponentLayoutDef g_esv_UseSocketComponent_Layout = {
 
 // esv::UserReservedComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_UserReservedComponent_Properties[] = {
-    { "UserID", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "UserID", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_UserReservedComponent_Layout = {
     .componentName = "esv::UserReservedComponent",
@@ -5476,7 +5476,7 @@ static const ComponentLayoutDef g_esv_UserReservedComponent_Layout = {
 
 // esv::ai::AiComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_ai_AiComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_ai_AiComponent_Layout = {
     .componentName = "esv::ai::AiComponent",
@@ -5489,8 +5489,8 @@ static const ComponentLayoutDef g_esv_ai_AiComponent_Layout = {
 
 // esv::combat::CombatStateComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_combat_CombatStateComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "Initiative", 0x04, FIELD_TYPE_INT32, 0, true },
+    { "State", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Initiative", 0x04, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_CombatStateComponent_Layout = {
     .componentName = "esv::combat::CombatStateComponent",
@@ -5503,8 +5503,8 @@ static const ComponentLayoutDef g_esv_combat_CombatStateComponent_Layout = {
 
 // esv::combat::CombatSwitchedComponent - 48 bytes (0x30)
 static const ComponentPropertyDef g_esv_combat_CombatSwitchedComponent_Properties[] = {
-    { "FromCombat", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "ToCombat", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "FromCombat", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "ToCombat", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_CombatSwitchedComponent_Layout = {
     .componentName = "esv::combat::CombatSwitchedComponent",
@@ -5517,8 +5517,8 @@ static const ComponentLayoutDef g_esv_combat_CombatSwitchedComponent_Layout = {
 
 // esv::combat::EnterRequestComponent - 48 bytes (0x30)
 static const ComponentPropertyDef g_esv_combat_EnterRequestComponent_Properties[] = {
-    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Position", 0x08, FIELD_TYPE_VEC3, 0, true },
+    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Position", 0x08, FIELD_TYPE_VEC3, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_EnterRequestComponent_Layout = {
     .componentName = "esv::combat::EnterRequestComponent",
@@ -5531,7 +5531,7 @@ static const ComponentLayoutDef g_esv_combat_EnterRequestComponent_Layout = {
 
 // esv::combat::IsInCombatComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_combat_IsInCombatComponent_Properties[] = {
-    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_IsInCombatComponent_Layout = {
     .componentName = "esv::combat::IsInCombatComponent",
@@ -5544,7 +5544,7 @@ static const ComponentLayoutDef g_esv_combat_IsInCombatComponent_Layout = {
 
 // esv::combat::JoiningComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_combat_JoiningComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "State", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_JoiningComponent_Layout = {
     .componentName = "esv::combat::JoiningComponent",
@@ -5557,7 +5557,7 @@ static const ComponentLayoutDef g_esv_combat_JoiningComponent_Layout = {
 
 // esv::combat::LateJoinPenaltyComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_combat_LateJoinPenaltyComponent_Properties[] = {
-    { "Penalty", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Penalty", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_LateJoinPenaltyComponent_Layout = {
     .componentName = "esv::combat::LateJoinPenaltyComponent",
@@ -5570,7 +5570,7 @@ static const ComponentLayoutDef g_esv_combat_LateJoinPenaltyComponent_Layout = {
 
 // esv::combat::LeftEventOneFrameComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_combat_LeftEventOneFrameComponent_Properties[] = {
-    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "CombatId", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_combat_LeftEventOneFrameComponent_Layout = {
     .componentName = "esv::combat::LeftEventOneFrameComponent",
@@ -5584,8 +5584,8 @@ static const ComponentLayoutDef g_esv_combat_LeftEventOneFrameComponent_Layout =
 // esv::inventory::ContainerDataComponent - 8 bytes (0x08)
 // Source: Inventory.h
 static const ComponentPropertyDef g_esv_inventory_ContainerDataComponent_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, true },
-    { "field_4", 0x04, FIELD_TYPE_INT32, 0, true },
+    { "Flags", 0x00, FIELD_TYPE_UINT16, 0, false },
+    { "field_4", 0x04, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_ContainerDataComponent_Layout = {
     .componentName = "esv::inventory::ContainerDataComponent",
@@ -5599,7 +5599,7 @@ static const ComponentLayoutDef g_esv_inventory_ContainerDataComponent_Layout = 
 // esv::inventory::GroupCheckComponent - 4 bytes (0x04)
 // Source: Inventory.h
 static const ComponentPropertyDef g_esv_inventory_GroupCheckComponent_Properties[] = {
-    { "Conditions", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "Conditions", 0x00, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_GroupCheckComponent_Layout = {
     .componentName = "esv::inventory::GroupCheckComponent",
@@ -5612,7 +5612,7 @@ static const ComponentLayoutDef g_esv_inventory_GroupCheckComponent_Layout = {
 
 // esv::inventory::IsReplicatedComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_inventory_IsReplicatedComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_IsReplicatedComponent_Layout = {
     .componentName = "esv::inventory::IsReplicatedComponent",
@@ -5625,7 +5625,7 @@ static const ComponentLayoutDef g_esv_inventory_IsReplicatedComponent_Layout = {
 
 // esv::inventory::MemberIsReplicatedWithComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_inventory_MemberIsReplicatedWithComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_MemberIsReplicatedWithComponent_Layout = {
     .componentName = "esv::inventory::MemberIsReplicatedWithComponent",
@@ -5638,7 +5638,7 @@ static const ComponentLayoutDef g_esv_inventory_MemberIsReplicatedWithComponent_
 
 // esv::inventory::MemberRemovedEventOneFrameComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_inventory_MemberRemovedEventOneFrameComponent_Properties[] = {
-    { "Member", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Member", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_MemberRemovedEventOneFrameComponent_Layout = {
     .componentName = "esv::inventory::MemberRemovedEventOneFrameComponent",
@@ -5651,7 +5651,7 @@ static const ComponentLayoutDef g_esv_inventory_MemberRemovedEventOneFrameCompon
 
 // esv::inventory::ReturnToOwnerComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_inventory_ReturnToOwnerComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_ReturnToOwnerComponent_Layout = {
     .componentName = "esv::inventory::ReturnToOwnerComponent",
@@ -5664,7 +5664,7 @@ static const ComponentLayoutDef g_esv_inventory_ReturnToOwnerComponent_Layout = 
 
 // esv::inventory::ShapeshiftAddedEquipmentComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_inventory_ShapeshiftAddedEquipmentComponent_Properties[] = {
-    { "Equipment", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Equipment", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_ShapeshiftAddedEquipmentComponent_Layout = {
     .componentName = "esv::inventory::ShapeshiftAddedEquipmentComponent",
@@ -5678,7 +5678,7 @@ static const ComponentLayoutDef g_esv_inventory_ShapeshiftAddedEquipmentComponen
 // esv::inventory::ShapeshiftEquipmentHistoryComponent - 16 bytes (0x10)
 // Source: Inventory.h
 static const ComponentPropertyDef g_esv_inventory_ShapeshiftEquipmentHistoryComponent_Properties[] = {
-    { "History", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "History", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_ShapeshiftEquipmentHistoryComponent_Layout = {
     .componentName = "esv::inventory::ShapeshiftEquipmentHistoryComponent",
@@ -5691,7 +5691,7 @@ static const ComponentLayoutDef g_esv_inventory_ShapeshiftEquipmentHistoryCompon
 
 // esv::inventory::ShapeshiftUnequippedEquipmentComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_inventory_ShapeshiftUnequippedEquipmentComponent_Properties[] = {
-    { "Equipment", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Equipment", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_ShapeshiftUnequippedEquipmentComponent_Layout = {
     .componentName = "esv::inventory::ShapeshiftUnequippedEquipmentComponent",
@@ -5704,7 +5704,7 @@ static const ComponentLayoutDef g_esv_inventory_ShapeshiftUnequippedEquipmentCom
 
 // esv::inventory::StackBlockedDuringTradeComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_inventory_StackBlockedDuringTradeComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_inventory_StackBlockedDuringTradeComponent_Layout = {
     .componentName = "esv::inventory::StackBlockedDuringTradeComponent",
@@ -5717,7 +5717,7 @@ static const ComponentLayoutDef g_esv_inventory_StackBlockedDuringTradeComponent
 
 // esv::item::DestroyingEventOneFrameComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_item_DestroyingEventOneFrameComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_DestroyingEventOneFrameComponent_Layout = {
     .componentName = "esv::item::DestroyingEventOneFrameComponent",
@@ -5730,7 +5730,7 @@ static const ComponentLayoutDef g_esv_item_DestroyingEventOneFrameComponent_Layo
 
 // esv::item::DestroyingWaitingForDeactivationComponent - 2 bytes (0x02)
 static const ComponentPropertyDef g_esv_item_DestroyingWaitingForDeactivationComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_UINT16, 0, true },
+    { "Value", 0x00, FIELD_TYPE_UINT16, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_DestroyingWaitingForDeactivationComponent_Layout = {
     .componentName = "esv::item::DestroyingWaitingForDeactivationComponent",
@@ -5743,7 +5743,7 @@ static const ComponentLayoutDef g_esv_item_DestroyingWaitingForDeactivationCompo
 
 // esv::item::DestroyingWaitingForEffectComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_item_DestroyingWaitingForEffectComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_INT32, 0, true },
+    { "Value", 0x00, FIELD_TYPE_INT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_DestroyingWaitingForEffectComponent_Layout = {
     .componentName = "esv::item::DestroyingWaitingForEffectComponent",
@@ -5756,7 +5756,7 @@ static const ComponentLayoutDef g_esv_item_DestroyingWaitingForEffectComponent_L
 
 // esv::item::DynamicLayerOwnerComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_item_DynamicLayerOwnerComponent_Properties[] = {
-    { "Owner", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "Owner", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_DynamicLayerOwnerComponent_Layout = {
     .componentName = "esv::item::DynamicLayerOwnerComponent",
@@ -5769,7 +5769,7 @@ static const ComponentLayoutDef g_esv_item_DynamicLayerOwnerComponent_Layout = {
 
 // esv::item::EntityMovingComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_item_EntityMovingComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_EntityMovingComponent_Layout = {
     .componentName = "esv::item::EntityMovingComponent",
@@ -5782,7 +5782,7 @@ static const ComponentLayoutDef g_esv_item_EntityMovingComponent_Layout = {
 
 // esv::item::MarkEntityForDestructionComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_item_MarkEntityForDestructionComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_MarkEntityForDestructionComponent_Layout = {
     .componentName = "esv::item::MarkEntityForDestructionComponent",
@@ -5795,7 +5795,7 @@ static const ComponentLayoutDef g_esv_item_MarkEntityForDestructionComponent_Lay
 
 // esv::item::TransformedOnDestroyEventOneFrameComponent - 1 byte (0x01)
 static const ComponentPropertyDef g_esv_item_TransformedOnDestroyEventOneFrameComponent_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Value", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_esv_item_TransformedOnDestroyEventOneFrameComponent_Layout = {
     .componentName = "esv::item::TransformedOnDestroyEventOneFrameComponent",
@@ -5808,8 +5808,8 @@ static const ComponentLayoutDef g_esv_item_TransformedOnDestroyEventOneFrameComp
 
 // esv::status::LifeTimeComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_status_LifeTimeComponent_Properties[] = {
-    { "Duration", 0x00, FIELD_TYPE_FLOAT, 0, true },
-    { "TurnTimer", 0x04, FIELD_TYPE_FLOAT, 0, true },
+    { "Duration", 0x00, FIELD_TYPE_FLOAT, 0, false },
+    { "TurnTimer", 0x04, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_esv_status_LifeTimeComponent_Layout = {
     .componentName = "esv::status::LifeTimeComponent",
@@ -5822,7 +5822,7 @@ static const ComponentLayoutDef g_esv_status_LifeTimeComponent_Layout = {
 
 // esv::status::OwnershipComponent - 8 bytes (0x08)
 static const ComponentPropertyDef g_esv_status_OwnershipComponent_Properties[] = {
-    { "Owner", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Owner", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_esv_status_OwnershipComponent_Layout = {
     .componentName = "esv::status::OwnershipComponent",
@@ -5835,7 +5835,7 @@ static const ComponentLayoutDef g_esv_status_OwnershipComponent_Layout = {
 
 // esv::status::PerformingComponent - 4 bytes (0x04)
 static const ComponentPropertyDef g_esv_status_PerformingComponent_Properties[] = {
-    { "StatusId", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "StatusId", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_esv_status_PerformingComponent_Layout = {
     .componentName = "esv::status::PerformingComponent",
@@ -5848,8 +5848,8 @@ static const ComponentLayoutDef g_esv_status_PerformingComponent_Layout = {
 
 // esv::status::StatusComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_status_StatusComponent_Properties[] = {
-    { "StatusId", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, true },
+    { "StatusId", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_esv_status_StatusComponent_Layout = {
     .componentName = "esv::status::StatusComponent",
@@ -5862,7 +5862,7 @@ static const ComponentLayoutDef g_esv_status_StatusComponent_Layout = {
 
 // esv::status::StatusIDComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_status_StatusIDComponent_Properties[] = {
-    { "ID", 0x00, FIELD_TYPE_GUID, 0, true },
+    { "ID", 0x00, FIELD_TYPE_GUID, 0, false },
 };
 static const ComponentLayoutDef g_esv_status_StatusIDComponent_Layout = {
     .componentName = "esv::status::StatusIDComponent",
@@ -5879,7 +5879,7 @@ static const ComponentLayoutDef g_esv_status_StatusIDComponent_Layout = {
 // ecl::ActiveTurnComponent - 12 bytes (0xc)
 // Source: Combat.h (inferred tag component)
 static const ComponentPropertyDef g_ecl_ActiveTurnComponent_Properties[] = {
-    { "Active", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Active", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_ActiveTurnComponent_Layout = {
     .componentName = "ecl::ActiveTurnComponent",
@@ -5893,27 +5893,27 @@ static const ComponentLayoutDef g_ecl_ActiveTurnComponent_Layout = {
 // ecl::CharacterIconResultComponent - 88 bytes (0x58)
 // Source: Visual.h (verified from Visual.h:870-875)
 static const ComponentPropertyDef g_ecl_CharacterIconResultComponent_Properties[] = {
-    { "IconData", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Width", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "Height", 0x0C, FIELD_TYPE_INT32, 0, true },
-    { "Format", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved12", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved13", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved14", 0x4C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved15", 0x50, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved16", 0x54, FIELD_TYPE_UINT32, 0, true },
+    { "IconData", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Width", 0x08, FIELD_TYPE_INT32, 0, false },
+    { "Height", 0x0C, FIELD_TYPE_INT32, 0, false },
+    { "Format", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved12", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved13", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved14", 0x4C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved15", 0x50, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved16", 0x54, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_CharacterIconResultComponent_Layout = {
     .componentName = "ecl::CharacterIconResultComponent",
@@ -5927,11 +5927,11 @@ static const ComponentLayoutDef g_ecl_CharacterIconResultComponent_Layout = {
 // ecl::CharacterLightComponent - 24 bytes (0x18)
 // Source: Visual.h
 static const ComponentPropertyDef g_ecl_CharacterLightComponent_Properties[] = {
-    { "LightEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "LightType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Intensity", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Radius", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "LightEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "LightType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Intensity", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Radius", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_CharacterLightComponent_Layout = {
     .componentName = "ecl::CharacterLightComponent",
@@ -5945,15 +5945,15 @@ static const ComponentLayoutDef g_ecl_CharacterLightComponent_Layout = {
 // ecl::ClientTimelineActorControlComponent - 40 bytes (0x28)
 // Source: Timeline.h (verified from Camera.h:42)
 static const ComponentPropertyDef g_ecl_ClientTimelineActorControlComponent_Properties[] = {
-    { "ActorEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "ControlType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Priority", 0x0C, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x24, FIELD_TYPE_UINT32, 0, true },
+    { "ActorEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "ControlType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Priority", 0x0C, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x24, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_ClientTimelineActorControlComponent_Layout = {
     .componentName = "ecl::ClientTimelineActorControlComponent",
@@ -5967,7 +5967,7 @@ static const ComponentLayoutDef g_ecl_ClientTimelineActorControlComponent_Layout
 // ecl::DeathEffectComponent - 8 bytes (0x8)
 // Source: Death.h (effect pointer)
 static const ComponentPropertyDef g_ecl_DeathEffectComponent_Properties[] = {
-    { "Effect", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Effect", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_DeathEffectComponent_Layout = {
     .componentName = "ecl::DeathEffectComponent",
@@ -5981,7 +5981,7 @@ static const ComponentLayoutDef g_ecl_DeathEffectComponent_Layout = {
 // ecl::DetachedComponent - 4 bytes (0x4)
 // Source: Components.h (simple state flag)
 static const ComponentPropertyDef g_ecl_DetachedComponent_Properties[] = {
-    { "Detached", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "Detached", 0x00, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_DetachedComponent_Layout = {
     .componentName = "ecl::DetachedComponent",
@@ -5995,21 +5995,21 @@ static const ComponentLayoutDef g_ecl_DetachedComponent_Layout = {
 // ecl::DifficultyCheckComponent - 72 bytes (0x48)
 // Source: Combat.h
 static const ComponentPropertyDef g_ecl_DifficultyCheckComponent_Properties[] = {
-    { "CheckEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "DifficultyClass", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "RollType", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "Ability", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Skill", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "SourceEntity", 0x18, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "TargetEntity", 0x20, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Flags", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x44, FIELD_TYPE_UINT32, 0, true },
+    { "CheckEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "DifficultyClass", 0x08, FIELD_TYPE_INT32, 0, false },
+    { "RollType", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "Ability", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Skill", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "SourceEntity", 0x18, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "TargetEntity", 0x20, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Flags", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x44, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_DifficultyCheckComponent_Layout = {
     .componentName = "ecl::DifficultyCheckComponent",
@@ -6023,7 +6023,7 @@ static const ComponentLayoutDef g_ecl_DifficultyCheckComponent_Layout = {
 // ecl::DisabledEquipmentComponent - 1 byte (0x1)
 // Source: Equipment.h (tag component)
 static const ComponentPropertyDef g_ecl_DisabledEquipmentComponent_Properties[] = {
-    { "Disabled", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Disabled", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_DisabledEquipmentComponent_Layout = {
     .componentName = "ecl::DisabledEquipmentComponent",
@@ -6037,11 +6037,11 @@ static const ComponentLayoutDef g_ecl_DisabledEquipmentComponent_Layout = {
 // ecl::DisarmableComponent - 24 bytes (0x18)
 // Source: Combat.h
 static const ComponentPropertyDef g_ecl_DisarmableComponent_Properties[] = {
-    { "DisarmerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "DisarmTime", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "DisarmType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "DisarmerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "DisarmTime", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "DisarmType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_DisarmableComponent_Layout = {
     .componentName = "ecl::DisarmableComponent",
@@ -6055,14 +6055,14 @@ static const ComponentLayoutDef g_ecl_DisarmableComponent_Layout = {
 // ecl::DisplayNameComponent - 32 bytes (0x20)
 // Source: Components.h
 static const ComponentPropertyDef g_ecl_DisplayNameComponent_Properties[] = {
-    { "Name", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "NameKey", 0x04, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "UnknownKey", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x1C, FIELD_TYPE_UINT32, 0, true },
+    { "Name", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "NameKey", 0x04, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "UnknownKey", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x1C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_DisplayNameComponent_Layout = {
     .componentName = "ecl::DisplayNameComponent",
@@ -6076,19 +6076,19 @@ static const ComponentLayoutDef g_ecl_DisplayNameComponent_Layout = {
 // ecl::EocCameraBehavior - 64 bytes (0x40)
 // Source: Camera.h
 static const ComponentPropertyDef g_ecl_EocCameraBehavior_Properties[] = {
-    { "BehaviorType", 0x00, FIELD_TYPE_UINT32, 0, true },
-    { "CameraEntity", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "FOV", 0x18, FIELD_TYPE_FLOAT, 0, true },
-    { "Distance", 0x1C, FIELD_TYPE_FLOAT, 0, true },
-    { "Pitch", 0x20, FIELD_TYPE_FLOAT, 0, true },
-    { "Yaw", 0x24, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x3C, FIELD_TYPE_UINT32, 0, true },
+    { "BehaviorType", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "CameraEntity", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "FOV", 0x18, FIELD_TYPE_FLOAT, 0, false },
+    { "Distance", 0x1C, FIELD_TYPE_FLOAT, 0, false },
+    { "Pitch", 0x20, FIELD_TYPE_FLOAT, 0, false },
+    { "Yaw", 0x24, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x3C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_EocCameraBehavior_Layout = {
     .componentName = "ecl::EocCameraBehavior",
@@ -6102,7 +6102,7 @@ static const ComponentLayoutDef g_ecl_EocCameraBehavior_Layout = {
 // ecl::GroundMaterialComponent - 2 bytes (0x2)
 // Source: Visual.h (material index)
 static const ComponentPropertyDef g_ecl_GroundMaterialComponent_Properties[] = {
-    { "MaterialIndex", 0x00, FIELD_TYPE_UINT16, 0, true },
+    { "MaterialIndex", 0x00, FIELD_TYPE_UINT16, 0, false },
 };
 static const ComponentLayoutDef g_ecl_GroundMaterialComponent_Layout = {
     .componentName = "ecl::GroundMaterialComponent",
@@ -6116,7 +6116,7 @@ static const ComponentLayoutDef g_ecl_GroundMaterialComponent_Layout = {
 // ecl::IgnoredComponent - 1 byte (0x1)
 // Source: Components.h (tag)
 static const ComponentPropertyDef g_ecl_IgnoredComponent_Properties[] = {
-    { "Ignored", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Ignored", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_IgnoredComponent_Layout = {
     .componentName = "ecl::IgnoredComponent",
@@ -6130,7 +6130,7 @@ static const ComponentLayoutDef g_ecl_IgnoredComponent_Layout = {
 // ecl::InSelectComponent - 1 byte (0x1)
 // Source: Components.h (tag)
 static const ComponentPropertyDef g_ecl_InSelectComponent_Properties[] = {
-    { "InSelect", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "InSelect", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_InSelectComponent_Layout = {
     .componentName = "ecl::InSelectComponent",
@@ -6144,7 +6144,7 @@ static const ComponentLayoutDef g_ecl_InSelectComponent_Layout = {
 // ecl::InvisibilityAttachmentComponent - 1 byte (0x1)
 // Source: Visual.h (tag)
 static const ComponentPropertyDef g_ecl_InvisibilityAttachmentComponent_Properties[] = {
-    { "HasAttachment", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "HasAttachment", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_InvisibilityAttachmentComponent_Layout = {
     .componentName = "ecl::InvisibilityAttachmentComponent",
@@ -6158,9 +6158,9 @@ static const ComponentLayoutDef g_ecl_InvisibilityAttachmentComponent_Layout = {
 // ecl::InvisibilityFadingComponent - 12 bytes (0xc)
 // Source: Visual.h (fade parameters)
 static const ComponentPropertyDef g_ecl_InvisibilityFadingComponent_Properties[] = {
-    { "FadeValue", 0x00, FIELD_TYPE_FLOAT, 0, true },
-    { "FadeTarget", 0x04, FIELD_TYPE_FLOAT, 0, true },
-    { "FadeSpeed", 0x08, FIELD_TYPE_FLOAT, 0, true },
+    { "FadeValue", 0x00, FIELD_TYPE_FLOAT, 0, false },
+    { "FadeTarget", 0x04, FIELD_TYPE_FLOAT, 0, false },
+    { "FadeSpeed", 0x08, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ecl_InvisibilityFadingComponent_Layout = {
     .componentName = "ecl::InvisibilityFadingComponent",
@@ -6174,9 +6174,9 @@ static const ComponentLayoutDef g_ecl_InvisibilityFadingComponent_Layout = {
 // ecl::InvisibilityVisualComponent - 12 bytes (0xc)
 // Source: Visual.h (visual state)
 static const ComponentPropertyDef g_ecl_InvisibilityVisualComponent_Properties[] = {
-    { "Alpha", 0x00, FIELD_TYPE_FLOAT, 0, true },
-    { "TargetAlpha", 0x04, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, true },
+    { "Alpha", 0x00, FIELD_TYPE_FLOAT, 0, false },
+    { "TargetAlpha", 0x04, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_InvisibilityVisualComponent_Layout = {
     .componentName = "ecl::InvisibilityVisualComponent",
@@ -6190,7 +6190,7 @@ static const ComponentLayoutDef g_ecl_InvisibilityVisualComponent_Layout = {
 // ecl::IsHoveredOverComponent - 1 byte (0x1)
 // Source: Components.h (tag)
 static const ComponentPropertyDef g_ecl_IsHoveredOverComponent_Properties[] = {
-    { "IsHovered", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "IsHovered", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_IsHoveredOverComponent_Layout = {
     .componentName = "ecl::IsHoveredOverComponent",
@@ -6204,27 +6204,27 @@ static const ComponentLayoutDef g_ecl_IsHoveredOverComponent_Layout = {
 // ecl::MeshPreviewComponent - 88 bytes (0x58)
 // Source: Visual.h
 static const ComponentPropertyDef g_ecl_MeshPreviewComponent_Properties[] = {
-    { "MeshEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "MeshResource", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "MaterialOverride", 0x0C, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "PreviewType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved12", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved13", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved14", 0x4C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved15", 0x50, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved16", 0x54, FIELD_TYPE_UINT32, 0, true },
+    { "MeshEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "MeshResource", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "MaterialOverride", 0x0C, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "PreviewType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved12", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved13", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved14", 0x4C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved15", 0x50, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved16", 0x54, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_MeshPreviewComponent_Layout = {
     .componentName = "ecl::MeshPreviewComponent",
@@ -6238,11 +6238,11 @@ static const ComponentLayoutDef g_ecl_MeshPreviewComponent_Layout = {
 // ecl::MovementComponent - 24 bytes (0x18)
 // Source: Movement.h
 static const ComponentPropertyDef g_ecl_MovementComponent_Properties[] = {
-    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Speed", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "Acceleration", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "MovementType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Speed", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "Acceleration", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "MovementType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_MovementComponent_Layout = {
     .componentName = "ecl::MovementComponent",
@@ -6256,9 +6256,9 @@ static const ComponentLayoutDef g_ecl_MovementComponent_Layout = {
 // ecl::ObjectInteractionComponent - 16 bytes (0x10)
 // Source: Components.h
 static const ComponentPropertyDef g_ecl_ObjectInteractionComponent_Properties[] = {
-    { "InteractionEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Type", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "InteractionEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Type", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_ObjectInteractionComponent_Layout = {
     .componentName = "ecl::ObjectInteractionComponent",
@@ -6272,24 +6272,24 @@ static const ComponentLayoutDef g_ecl_ObjectInteractionComponent_Layout = {
 // ecl::PathingComponent - 80 bytes (0x50)
 // Source: Movement.h
 static const ComponentPropertyDef g_ecl_PathingComponent_Properties[] = {
-    { "PathEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "TargetEntity", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "PathType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "PathFlags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "CurrentNode", 0x18, FIELD_TYPE_INT32, 0, true },
-    { "TotalNodes", 0x1C, FIELD_TYPE_INT32, 0, true },
-    { "Reserved1", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved12", 0x4C, FIELD_TYPE_UINT32, 0, true },
+    { "PathEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "TargetEntity", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "PathType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "PathFlags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "CurrentNode", 0x18, FIELD_TYPE_INT32, 0, false },
+    { "TotalNodes", 0x1C, FIELD_TYPE_INT32, 0, false },
+    { "Reserved1", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved12", 0x4C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_PathingComponent_Layout = {
     .componentName = "ecl::PathingComponent",
@@ -6303,7 +6303,7 @@ static const ComponentLayoutDef g_ecl_PathingComponent_Layout = {
 // ecl::PickingStateComponent - 1 byte (0x1)
 // Source: Components.h (tag)
 static const ComponentPropertyDef g_ecl_PickingStateComponent_Properties[] = {
-    { "Picking", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Picking", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_PickingStateComponent_Layout = {
     .componentName = "ecl::PickingStateComponent",
@@ -6317,7 +6317,7 @@ static const ComponentLayoutDef g_ecl_PickingStateComponent_Layout = {
 // ecl::PlayerComponent - 1 byte (0x1)
 // Source: Components.h (tag)
 static const ComponentPropertyDef g_ecl_PlayerComponent_Properties[] = {
-    { "IsPlayer", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "IsPlayer", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_PlayerComponent_Layout = {
     .componentName = "ecl::PlayerComponent",
@@ -6331,7 +6331,7 @@ static const ComponentLayoutDef g_ecl_PlayerComponent_Layout = {
 // ecl::PointSoundTriggerDummy - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_PointSoundTriggerDummy_Properties[] = {
-    { "Dummy", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Dummy", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_PointSoundTriggerDummy_Layout = {
     .componentName = "ecl::PointSoundTriggerDummy",
@@ -6345,7 +6345,7 @@ static const ComponentLayoutDef g_ecl_PointSoundTriggerDummy_Layout = {
 // ecl::PointTrigger - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_PointTrigger_Properties[] = {
-    { "TriggerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "TriggerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_PointTrigger_Layout = {
     .componentName = "ecl::PointTrigger",
@@ -6359,7 +6359,7 @@ static const ComponentLayoutDef g_ecl_PointTrigger_Layout = {
 // ecl::PortalTrigger - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_PortalTrigger_Properties[] = {
-    { "Portal", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Portal", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_PortalTrigger_Layout = {
     .componentName = "ecl::PortalTrigger",
@@ -6373,7 +6373,7 @@ static const ComponentLayoutDef g_ecl_PortalTrigger_Layout = {
 // ecl::RegionTrigger - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_RegionTrigger_Properties[] = {
-    { "Region", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Region", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_RegionTrigger_Layout = {
     .componentName = "ecl::RegionTrigger",
@@ -6387,7 +6387,7 @@ static const ComponentLayoutDef g_ecl_RegionTrigger_Layout = {
 // ecl::RoomTrigger - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_RoomTrigger_Properties[] = {
-    { "Room", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Room", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_RoomTrigger_Layout = {
     .componentName = "ecl::RoomTrigger",
@@ -6401,7 +6401,7 @@ static const ComponentLayoutDef g_ecl_RoomTrigger_Layout = {
 // ecl::SelectedComponent - 1 byte (0x1)
 // Source: Components.h (tag)
 static const ComponentPropertyDef g_ecl_SelectedComponent_Properties[] = {
-    { "Selected", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Selected", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_SelectedComponent_Layout = {
     .componentName = "ecl::SelectedComponent",
@@ -6415,9 +6415,9 @@ static const ComponentLayoutDef g_ecl_SelectedComponent_Layout = {
 // ecl::SoundAttachmentComponent - 16 bytes (0x10)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_SoundAttachmentComponent_Properties[] = {
-    { "SoundEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "AttachmentType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "SoundEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "AttachmentType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_SoundAttachmentComponent_Layout = {
     .componentName = "ecl::SoundAttachmentComponent",
@@ -6431,7 +6431,7 @@ static const ComponentLayoutDef g_ecl_SoundAttachmentComponent_Layout = {
 // ecl::SoundVolumeTrigger - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_SoundVolumeTrigger_Properties[] = {
-    { "Volume", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Volume", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_SoundVolumeTrigger_Layout = {
     .componentName = "ecl::SoundVolumeTrigger",
@@ -6445,7 +6445,7 @@ static const ComponentLayoutDef g_ecl_SoundVolumeTrigger_Layout = {
 // ecl::SpectatorTrigger - 8 bytes (0x8)
 // Source: Trigger.h (pointer)
 static const ComponentPropertyDef g_ecl_SpectatorTrigger_Properties[] = {
-    { "Spectator", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Spectator", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_SpectatorTrigger_Layout = {
     .componentName = "ecl::SpectatorTrigger",
@@ -6459,25 +6459,25 @@ static const ComponentLayoutDef g_ecl_SpectatorTrigger_Layout = {
 // ecl::TerrainWalkableAreaComponent - 80 bytes (0x50)
 // Source: Visual.h
 static const ComponentPropertyDef g_ecl_TerrainWalkableAreaComponent_Properties[] = {
-    { "TerrainEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "AreaType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "AreaFlags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "MinHeight", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "MaxHeight", 0x14, FIELD_TYPE_FLOAT, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved12", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved13", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved14", 0x4C, FIELD_TYPE_UINT32, 0, true },
+    { "TerrainEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "AreaType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "AreaFlags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "MinHeight", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "MaxHeight", 0x14, FIELD_TYPE_FLOAT, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved12", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved13", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved14", 0x4C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TerrainWalkableAreaComponent_Layout = {
     .componentName = "ecl::TerrainWalkableAreaComponent",
@@ -6491,7 +6491,7 @@ static const ComponentLayoutDef g_ecl_TerrainWalkableAreaComponent_Layout = {
 // ecl::TimelineAnimationStateComponent - 8 bytes (0x8)
 // Source: Timeline.h (state pointer)
 static const ComponentPropertyDef g_ecl_TimelineAnimationStateComponent_Properties[] = {
-    { "AnimationState", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "AnimationState", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineAnimationStateComponent_Layout = {
     .componentName = "ecl::TimelineAnimationStateComponent",
@@ -6505,13 +6505,13 @@ static const ComponentLayoutDef g_ecl_TimelineAnimationStateComponent_Layout = {
 // ecl::TimelineAutomatedLookatComponent - 32 bytes (0x20)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelineAutomatedLookatComponent_Properties[] = {
-    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "LookAtSpeed", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "BlendTime", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "State", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
+    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "LookAtSpeed", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "BlendTime", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "State", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineAutomatedLookatComponent_Layout = {
     .componentName = "ecl::TimelineAutomatedLookatComponent",
@@ -6525,13 +6525,13 @@ static const ComponentLayoutDef g_ecl_TimelineAutomatedLookatComponent_Layout = 
 // ecl::TimelineCameraRequestComponent - 32 bytes (0x20)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelineCameraRequestComponent_Properties[] = {
-    { "CameraEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "RequestType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Priority", 0x0C, FIELD_TYPE_INT32, 0, true },
-    { "BlendTime", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
+    { "CameraEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "RequestType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Priority", 0x0C, FIELD_TYPE_INT32, 0, false },
+    { "BlendTime", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineCameraRequestComponent_Layout = {
     .componentName = "ecl::TimelineCameraRequestComponent",
@@ -6545,30 +6545,30 @@ static const ComponentLayoutDef g_ecl_TimelineCameraRequestComponent_Layout = {
 // ecl::TimelineCameraShotComponent - 104 bytes (0x68)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelineCameraShotComponent_Properties[] = {
-    { "CameraEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "ShotType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "ShotFlags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "FOV", 0x18, FIELD_TYPE_FLOAT, 0, true },
-    { "BlendTime", 0x1C, FIELD_TYPE_FLOAT, 0, true },
-    { "Duration", 0x20, FIELD_TYPE_FLOAT, 0, true },
-    { "Priority", 0x24, FIELD_TYPE_INT32, 0, true },
-    { "Reserved1", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x4C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x50, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved12", 0x54, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved13", 0x58, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved14", 0x5C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved15", 0x60, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved16", 0x64, FIELD_TYPE_UINT32, 0, true },
+    { "CameraEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "ShotType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "ShotFlags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "FOV", 0x18, FIELD_TYPE_FLOAT, 0, false },
+    { "BlendTime", 0x1C, FIELD_TYPE_FLOAT, 0, false },
+    { "Duration", 0x20, FIELD_TYPE_FLOAT, 0, false },
+    { "Priority", 0x24, FIELD_TYPE_INT32, 0, false },
+    { "Reserved1", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x4C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x50, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved12", 0x54, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved13", 0x58, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved14", 0x5C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved15", 0x60, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved16", 0x64, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineCameraShotComponent_Layout = {
     .componentName = "ecl::TimelineCameraShotComponent",
@@ -6582,17 +6582,17 @@ static const ComponentLayoutDef g_ecl_TimelineCameraShotComponent_Layout = {
 // ecl::TimelineEyeLookAtOverrideComponent - 48 bytes (0x30)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelineEyeLookAtOverrideComponent_Properties[] = {
-    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "OverrideType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "BlendTime", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Weight", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, true },
+    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "OverrideType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "BlendTime", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Weight", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineEyeLookAtOverrideComponent_Layout = {
     .componentName = "ecl::TimelineEyeLookAtOverrideComponent",
@@ -6606,19 +6606,19 @@ static const ComponentLayoutDef g_ecl_TimelineEyeLookAtOverrideComponent_Layout 
 // ecl::TimelinePlayerTransitionEventOneFrameComponent - 64 bytes (0x40)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelinePlayerTransitionEventOneFrameComponent_Properties[] = {
-    { "PlayerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "TransitionType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "BlendTime", 0x18, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x3C, FIELD_TYPE_UINT32, 0, true },
+    { "PlayerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "TransitionType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "BlendTime", 0x18, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x3C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelinePlayerTransitionEventOneFrameComponent_Layout = {
     .componentName = "ecl::TimelinePlayerTransitionEventOneFrameComponent",
@@ -6632,12 +6632,12 @@ static const ComponentLayoutDef g_ecl_TimelinePlayerTransitionEventOneFrameCompo
 // ecl::TimelineQuestionHoldAutomationComponent - 28 bytes (0x1c)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelineQuestionHoldAutomationComponent_Properties[] = {
-    { "QuestionEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "HoldDuration", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "CurrentTime", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "State", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved", 0x18, FIELD_TYPE_UINT32, 0, true },
+    { "QuestionEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "HoldDuration", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "CurrentTime", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "State", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved", 0x18, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineQuestionHoldAutomationComponent_Layout = {
     .componentName = "ecl::TimelineQuestionHoldAutomationComponent",
@@ -6651,7 +6651,7 @@ static const ComponentLayoutDef g_ecl_TimelineQuestionHoldAutomationComponent_La
 // ecl::TimelineSceneTrigger - 8 bytes (0x8)
 // Source: Timeline.h (trigger pointer)
 static const ComponentPropertyDef g_ecl_TimelineSceneTrigger_Properties[] = {
-    { "Trigger", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Trigger", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineSceneTrigger_Layout = {
     .componentName = "ecl::TimelineSceneTrigger",
@@ -6665,14 +6665,14 @@ static const ComponentLayoutDef g_ecl_TimelineSceneTrigger_Layout = {
 // ecl::TimelineSplatterComponent - 36 bytes (0x24)
 // Source: Timeline.h
 static const ComponentPropertyDef g_ecl_TimelineSplatterComponent_Properties[] = {
-    { "SplatterEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "SplatterType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Intensity", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Radius", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "Duration", 0x14, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x20, FIELD_TYPE_UINT32, 0, true },
+    { "SplatterEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "SplatterType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Intensity", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Radius", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "Duration", 0x14, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x20, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineSplatterComponent_Layout = {
     .componentName = "ecl::TimelineSplatterComponent",
@@ -6686,7 +6686,7 @@ static const ComponentLayoutDef g_ecl_TimelineSplatterComponent_Layout = {
 // ecl::TimelineSpringsComponent - 8 bytes (0x8)
 // Source: Timeline.h (springs data pointer)
 static const ComponentPropertyDef g_ecl_TimelineSpringsComponent_Properties[] = {
-    { "Springs", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Springs", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineSpringsComponent_Layout = {
     .componentName = "ecl::TimelineSpringsComponent",
@@ -6700,7 +6700,7 @@ static const ComponentLayoutDef g_ecl_TimelineSpringsComponent_Layout = {
 // ecl::TimelineSteppingFadeComponent - 8 bytes (0x8)
 // Source: Timeline.h (fade data pointer)
 static const ComponentPropertyDef g_ecl_TimelineSteppingFadeComponent_Properties[] = {
-    { "Fade", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Fade", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TimelineSteppingFadeComponent_Layout = {
     .componentName = "ecl::TimelineSteppingFadeComponent",
@@ -6714,7 +6714,7 @@ static const ComponentLayoutDef g_ecl_TimelineSteppingFadeComponent_Layout = {
 // ecl::TurnActionsDoneOneFrameComponent - 1 byte (0x1)
 // Source: Timeline.h (one-frame tag)
 static const ComponentPropertyDef g_ecl_TurnActionsDoneOneFrameComponent_Properties[] = {
-    { "Done", 0x00, FIELD_TYPE_BOOL, 0, true },
+    { "Done", 0x00, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TurnActionsDoneOneFrameComponent_Layout = {
     .componentName = "ecl::TurnActionsDoneOneFrameComponent",
@@ -6728,18 +6728,18 @@ static const ComponentLayoutDef g_ecl_TurnActionsDoneOneFrameComponent_Layout = 
 // ecl::TurnBasedComponent - 48 bytes (0x30)
 // Source: Combat.h
 static const ComponentPropertyDef g_ecl_TurnBasedComponent_Properties[] = {
-    { "TurnOrder", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "Initiative", 0x04, FIELD_TYPE_INT32, 0, true },
-    { "CurrentTurn", 0x08, FIELD_TYPE_BOOL, 0, true },
-    { "CombatId", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "TeamId", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, true },
+    { "TurnOrder", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "Initiative", 0x04, FIELD_TYPE_INT32, 0, false },
+    { "CurrentTurn", 0x08, FIELD_TYPE_BOOL, 0, false },
+    { "CombatId", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "TeamId", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x2C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_TurnBasedComponent_Layout = {
     .componentName = "ecl::TurnBasedComponent",
@@ -6753,24 +6753,24 @@ static const ComponentLayoutDef g_ecl_TurnBasedComponent_Layout = {
 // ecl::UseComponent - 80 bytes (0x50)
 // Source: Components.h
 static const ComponentPropertyDef g_ecl_UseComponent_Properties[] = {
-    { "UseEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "UserEntity", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "UseType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "UseFlags", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "UseAction", 0x18, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Charges", 0x1C, FIELD_TYPE_INT32, 0, true },
-    { "MaxCharges", 0x20, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x4C, FIELD_TYPE_UINT32, 0, true },
+    { "UseEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "UserEntity", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "UseType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "UseFlags", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "UseAction", 0x18, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Charges", 0x1C, FIELD_TYPE_INT32, 0, false },
+    { "MaxCharges", 0x20, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x4C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_UseComponent_Layout = {
     .componentName = "ecl::UseComponent",
@@ -6784,11 +6784,11 @@ static const ComponentLayoutDef g_ecl_UseComponent_Layout = {
 // ecl::VoiceComponent - 24 bytes (0x18)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_VoiceComponent_Properties[] = {
-    { "VoiceEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "VoiceType", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Volume", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Pitch", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "VoiceEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "VoiceType", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Volume", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Pitch", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_VoiceComponent_Layout = {
     .componentName = "ecl::VoiceComponent",
@@ -6802,10 +6802,10 @@ static const ComponentLayoutDef g_ecl_VoiceComponent_Layout = {
 // ecl::WalkableSurfaceComponent - 16 bytes (0x10)
 // Source: Visual.h
 static const ComponentPropertyDef g_ecl_WalkableSurfaceComponent_Properties[] = {
-    { "SurfaceType", 0x00, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, true },
-    { "Material", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Reserved", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "SurfaceType", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x04, FIELD_TYPE_UINT32, 0, false },
+    { "Material", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Reserved", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_WalkableSurfaceComponent_Layout = {
     .componentName = "ecl::WalkableSurfaceComponent",
@@ -6819,25 +6819,25 @@ static const ComponentLayoutDef g_ecl_WalkableSurfaceComponent_Layout = {
 // ecl::WeaponComponent - 80 bytes (0x50)
 // Source: Item.h
 static const ComponentPropertyDef g_ecl_WeaponComponent_Properties[] = {
-    { "WeaponEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "WeaponType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "DamageType", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "MinDamage", 0x10, FIELD_TYPE_INT32, 0, true },
-    { "MaxDamage", 0x14, FIELD_TYPE_INT32, 0, true },
-    { "AttackBonus", 0x18, FIELD_TYPE_INT32, 0, true },
-    { "DamageBonus", 0x1C, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x4C, FIELD_TYPE_UINT32, 0, true },
+    { "WeaponEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "WeaponType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "DamageType", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "MinDamage", 0x10, FIELD_TYPE_INT32, 0, false },
+    { "MaxDamage", 0x14, FIELD_TYPE_INT32, 0, false },
+    { "AttackBonus", 0x18, FIELD_TYPE_INT32, 0, false },
+    { "DamageBonus", 0x1C, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x4C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_WeaponComponent_Layout = {
     .componentName = "ecl::WeaponComponent",
@@ -6851,17 +6851,17 @@ static const ComponentLayoutDef g_ecl_WeaponComponent_Layout = {
 // ecl::camera::CombatTargetComponent - 48 bytes (0x30)
 // Source: Camera.h (verified from Camera.h:336-341)
 static const ComponentPropertyDef g_ecl_camera_CombatTargetComponent_Properties[] = {
-    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Priority", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "Position", 0x10, FIELD_TYPE_FLOAT, 0, true },  // vec3 x
-    { "PositionY", 0x14, FIELD_TYPE_FLOAT, 0, true },  // vec3 y
-    { "PositionZ", 0x18, FIELD_TYPE_FLOAT, 0, true },  // vec3 z
-    { "Distance", 0x1C, FIELD_TYPE_FLOAT, 0, true },
-    { "Zoom", 0x20, FIELD_TYPE_FLOAT, 0, true },
-    { "Reserved1", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x2C, FIELD_TYPE_UINT32, 0, true },
+    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Priority", 0x08, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "Position", 0x10, FIELD_TYPE_FLOAT, 0, false },  // vec3 x
+    { "PositionY", 0x14, FIELD_TYPE_FLOAT, 0, false },  // vec3 y
+    { "PositionZ", 0x18, FIELD_TYPE_FLOAT, 0, false },  // vec3 z
+    { "Distance", 0x1C, FIELD_TYPE_FLOAT, 0, false },
+    { "Zoom", 0x20, FIELD_TYPE_FLOAT, 0, false },
+    { "Reserved1", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x2C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_camera_CombatTargetComponent_Layout = {
     .componentName = "ecl::camera::CombatTargetComponent",
@@ -6875,9 +6875,9 @@ static const ComponentLayoutDef g_ecl_camera_CombatTargetComponent_Layout = {
 // ecl::camera::CombatTargetRequestsComponent - 16 bytes (0x10)
 // Source: Camera.h
 static const ComponentPropertyDef g_ecl_camera_CombatTargetRequestsComponent_Properties[] = {
-    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Priority", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "TargetEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Priority", 0x08, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_camera_CombatTargetRequestsComponent_Layout = {
     .componentName = "ecl::camera::CombatTargetRequestsComponent",
@@ -6891,19 +6891,19 @@ static const ComponentLayoutDef g_ecl_camera_CombatTargetRequestsComponent_Layou
 // ecl::crowds::SoundVolumeComponent - 56 bytes (0x38)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_crowds_SoundVolumeComponent_Properties[] = {
-    { "VolumeEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Volume", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "TargetVolume", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "FadeTime", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "CurrentFadeTime", 0x14, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x34, FIELD_TYPE_UINT32, 0, true },
+    { "VolumeEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Volume", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "TargetVolume", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "FadeTime", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "CurrentFadeTime", 0x14, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x34, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_crowds_SoundVolumeComponent_Layout = {
     .componentName = "ecl::crowds::SoundVolumeComponent",
@@ -6917,11 +6917,11 @@ static const ComponentLayoutDef g_ecl_crowds_SoundVolumeComponent_Layout = {
 // ecl::death::DeathImpactComponent - 24 bytes (0x18)
 // Source: Death.h
 static const ComponentPropertyDef g_ecl_death_DeathImpactComponent_Properties[] = {
-    { "ImpactEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "ImpactForce", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "ImpactType", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "DamageType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "ImpactEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "ImpactForce", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "ImpactType", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "DamageType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Flags", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_death_DeathImpactComponent_Layout = {
     .componentName = "ecl::death::DeathImpactComponent",
@@ -6935,10 +6935,10 @@ static const ComponentLayoutDef g_ecl_death_DeathImpactComponent_Layout = {
 // ecl::death::StateComponent - 16 bytes (0x10)
 // Source: Death.h
 static const ComponentPropertyDef g_ecl_death_StateComponent_Properties[] = {
-    { "State", 0x00, FIELD_TYPE_UINT32, 0, true },
-    { "DeathTime", 0x04, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "State", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "DeathTime", 0x04, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_death_StateComponent_Layout = {
     .componentName = "ecl::death::StateComponent",
@@ -6952,7 +6952,7 @@ static const ComponentLayoutDef g_ecl_death_StateComponent_Layout = {
 // ecl::effect::HandlerComponent - 8 bytes (0x8)
 // Source: Effect.h (handler pointer)
 static const ComponentPropertyDef g_ecl_effect_HandlerComponent_Properties[] = {
-    { "Handler", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Handler", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_effect_HandlerComponent_Layout = {
     .componentName = "ecl::effect::HandlerComponent",
@@ -6966,27 +6966,27 @@ static const ComponentLayoutDef g_ecl_effect_HandlerComponent_Layout = {
 // ecl::effect::InfluenceTrackerComponent - 96 bytes (0x60)
 // Source: Effect.h
 static const ComponentPropertyDef g_ecl_effect_InfluenceTrackerComponent_Properties[] = {
-    { "TrackerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "InfluenceType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "InfluenceFlags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "SourceEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "TargetEntity", 0x18, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "InfluenceValue", 0x20, FIELD_TYPE_FLOAT, 0, true },
-    { "Reserved1", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x4C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved12", 0x50, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved13", 0x54, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved14", 0x58, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved15", 0x5C, FIELD_TYPE_UINT32, 0, true },
+    { "TrackerEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "InfluenceType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "InfluenceFlags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "SourceEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "TargetEntity", 0x18, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "InfluenceValue", 0x20, FIELD_TYPE_FLOAT, 0, false },
+    { "Reserved1", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x4C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved12", 0x50, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved13", 0x54, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved14", 0x58, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved15", 0x5C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_effect_InfluenceTrackerComponent_Layout = {
     .componentName = "ecl::effect::InfluenceTrackerComponent",
@@ -7000,13 +7000,13 @@ static const ComponentLayoutDef g_ecl_effect_InfluenceTrackerComponent_Layout = 
 // ecl::effect::InteractionEventOneFrameComponent - 40 bytes (0x28)
 // Source: Effect.h
 static const ComponentPropertyDef g_ecl_effect_InteractionEventOneFrameComponent_Properties[] = {
-    { "InteractionEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "InteractionType", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Flags", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x24, FIELD_TYPE_UINT32, 0, true },
+    { "InteractionEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "InteractionType", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "TargetEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "Flags", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x24, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_effect_InteractionEventOneFrameComponent_Layout = {
     .componentName = "ecl::effect::InteractionEventOneFrameComponent",
@@ -7020,12 +7020,12 @@ static const ComponentLayoutDef g_ecl_effect_InteractionEventOneFrameComponent_L
 // ecl::effect::SharedTimerComponent - 24 bytes (0x18)
 // Source: Effect.h
 static const ComponentPropertyDef g_ecl_effect_SharedTimerComponent_Properties[] = {
-    { "Timer", 0x00, FIELD_TYPE_FLOAT, 0, true },
-    { "Duration", 0x04, FIELD_TYPE_FLOAT, 0, true },
-    { "StartTime", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "TimerType", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "Timer", 0x00, FIELD_TYPE_FLOAT, 0, false },
+    { "Duration", 0x04, FIELD_TYPE_FLOAT, 0, false },
+    { "StartTime", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "TimerType", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_effect_SharedTimerComponent_Layout = {
     .componentName = "ecl::effect::SharedTimerComponent",
@@ -7039,10 +7039,10 @@ static const ComponentLayoutDef g_ecl_effect_SharedTimerComponent_Layout = {
 // ecl::effect::SpawnedComponent - 24 bytes (0x18)
 // Source: Effect.h
 static const ComponentPropertyDef g_ecl_effect_SpawnedComponent_Properties[] = {
-    { "SpawnedEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "SpawnTime", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "SpawnType", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "ParentEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "SpawnedEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "SpawnTime", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "SpawnType", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "ParentEntity", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_effect_SpawnedComponent_Layout = {
     .componentName = "ecl::effect::SpawnedComponent",
@@ -7056,12 +7056,12 @@ static const ComponentLayoutDef g_ecl_effect_SpawnedComponent_Layout = {
 // ecl::multiplayer::UsersComponent - 24 bytes (0x18)
 // Source: Multiplayer.h
 static const ComponentPropertyDef g_ecl_multiplayer_UsersComponent_Properties[] = {
-    { "UserCount", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "MaxUsers", 0x04, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x14, FIELD_TYPE_UINT32, 0, true },
+    { "UserCount", 0x00, FIELD_TYPE_INT32, 0, false },
+    { "MaxUsers", 0x04, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x14, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_multiplayer_UsersComponent_Layout = {
     .componentName = "ecl::multiplayer::UsersComponent",
@@ -7075,7 +7075,7 @@ static const ComponentLayoutDef g_ecl_multiplayer_UsersComponent_Layout = {
 // ecl::projectile::AttachmentComponent - 8 bytes (0x8)
 // Source: Projectile.h (attachment reference)
 static const ComponentPropertyDef g_ecl_projectile_AttachmentComponent_Properties[] = {
-    { "Attachment", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Attachment", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_projectile_AttachmentComponent_Layout = {
     .componentName = "ecl::projectile::AttachmentComponent",
@@ -7089,7 +7089,7 @@ static const ComponentLayoutDef g_ecl_projectile_AttachmentComponent_Layout = {
 // ecl::relation::RelationChangedEventOneFrameComponent - 8 bytes (0x8)
 // Source: Events.h (relation event)
 static const ComponentPropertyDef g_ecl_relation_RelationChangedEventOneFrameComponent_Properties[] = {
-    { "RelationEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "RelationEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ecl_relation_RelationChangedEventOneFrameComponent_Layout = {
     .componentName = "ecl::relation::RelationChangedEventOneFrameComponent",
@@ -7103,14 +7103,14 @@ static const ComponentLayoutDef g_ecl_relation_RelationChangedEventOneFrameCompo
 // ecl::sound::CharacterSwitchDataComponent - 120 bytes (0x78)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_sound_CharacterSwitchDataComponent_Properties[] = {
-    { "CharacterEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "SwitchGroup1", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchState1", 0x0C, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchGroup2", 0x10, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchState2", 0x14, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchGroup3", 0x18, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchState3", 0x1C, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x20, FIELD_TYPE_UINT32, 0, true },
+    { "CharacterEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "SwitchGroup1", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchState1", 0x0C, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchGroup2", 0x10, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchState2", 0x14, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchGroup3", 0x18, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchState3", 0x1C, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x20, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_sound_CharacterSwitchDataComponent_Layout = {
     .componentName = "ecl::sound::CharacterSwitchDataComponent",
@@ -7124,18 +7124,18 @@ static const ComponentLayoutDef g_ecl_sound_CharacterSwitchDataComponent_Layout 
 // ecl::sound::DecoratorSwitchDataComponent - 48 bytes (0x30)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_sound_DecoratorSwitchDataComponent_Properties[] = {
-    { "SwitchGroup", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchState", 0x04, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x2C, FIELD_TYPE_UINT32, 0, true },
+    { "SwitchGroup", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchState", 0x04, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x2C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_sound_DecoratorSwitchDataComponent_Layout = {
     .componentName = "ecl::sound::DecoratorSwitchDataComponent",
@@ -7149,21 +7149,21 @@ static const ComponentLayoutDef g_ecl_sound_DecoratorSwitchDataComponent_Layout 
 // ecl::sound::ItemSwitchDataComponent - 64 bytes (0x40)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_sound_ItemSwitchDataComponent_Properties[] = {
-    { "ItemEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "SwitchGroup", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchState", 0x0C, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved11", 0x3C, FIELD_TYPE_UINT32, 0, true },
+    { "ItemEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "SwitchGroup", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchState", 0x0C, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved11", 0x3C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_sound_ItemSwitchDataComponent_Layout = {
     .componentName = "ecl::sound::ItemSwitchDataComponent",
@@ -7177,16 +7177,16 @@ static const ComponentLayoutDef g_ecl_sound_ItemSwitchDataComponent_Layout = {
 // ecl::sound::SoundCacheComponent - 40 bytes (0x28)
 // Source: Sound.h
 static const ComponentPropertyDef g_ecl_sound_SoundCacheComponent_Properties[] = {
-    { "CachedSound", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Volume", 0x04, FIELD_TYPE_FLOAT, 0, true },
-    { "Pitch", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "CacheTime", 0x0C, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x14, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x18, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x1C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x20, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x24, FIELD_TYPE_UINT32, 0, true },
+    { "CachedSound", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Volume", 0x04, FIELD_TYPE_FLOAT, 0, false },
+    { "Pitch", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "CacheTime", 0x0C, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x14, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x18, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x1C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x20, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x24, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_sound_SoundCacheComponent_Layout = {
     .componentName = "ecl::sound::SoundCacheComponent",
@@ -7200,10 +7200,10 @@ static const ComponentLayoutDef g_ecl_sound_SoundCacheComponent_Layout = {
 // ecl::spell_cast::PlaySoundRequestOneFrameComponent - 16 bytes (0x10)
 // Source: SpellCast.h
 static const ComponentPropertyDef g_ecl_spell_cast_PlaySoundRequestOneFrameComponent_Properties[] = {
-    { "SoundResource", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Volume", 0x04, FIELD_TYPE_FLOAT, 0, true },
-    { "Pitch", 0x08, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "SoundResource", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Volume", 0x04, FIELD_TYPE_FLOAT, 0, false },
+    { "Pitch", 0x08, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_spell_cast_PlaySoundRequestOneFrameComponent_Layout = {
     .componentName = "ecl::spell_cast::PlaySoundRequestOneFrameComponent",
@@ -7217,10 +7217,10 @@ static const ComponentLayoutDef g_ecl_spell_cast_PlaySoundRequestOneFrameCompone
 // ecl::spell_cast::SetSoundSwitchesRequestOneFrameComponent - 16 bytes (0x10)
 // Source: SpellCast.h
 static const ComponentPropertyDef g_ecl_spell_cast_SetSoundSwitchesRequestOneFrameComponent_Properties[] = {
-    { "SwitchGroup", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SwitchState", 0x04, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Priority", 0x08, FIELD_TYPE_INT32, 0, true },
-    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, true },
+    { "SwitchGroup", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "SwitchState", 0x04, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "Priority", 0x08, FIELD_TYPE_INT32, 0, false },
+    { "Flags", 0x0C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_spell_cast_SetSoundSwitchesRequestOneFrameComponent_Layout = {
     .componentName = "ecl::spell_cast::SetSoundSwitchesRequestOneFrameComponent",
@@ -7234,25 +7234,25 @@ static const ComponentLayoutDef g_ecl_spell_cast_SetSoundSwitchesRequestOneFrame
 // ecl::spell_cast::SoundImpactEventOneFrameComponent - 80 bytes (0x50)
 // Source: SpellCast.h
 static const ComponentPropertyDef g_ecl_spell_cast_SoundImpactEventOneFrameComponent_Properties[] = {
-    { "ImpactEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "SoundResource", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "ImpactType", 0x0C, FIELD_TYPE_UINT32, 0, true },
-    { "Volume", 0x10, FIELD_TYPE_FLOAT, 0, true },
-    { "Pitch", 0x14, FIELD_TYPE_FLOAT, 0, true },
-    { "PositionX", 0x18, FIELD_TYPE_FLOAT, 0, true },
-    { "PositionY", 0x1C, FIELD_TYPE_FLOAT, 0, true },
-    { "PositionZ", 0x20, FIELD_TYPE_FLOAT, 0, true },
-    { "Flags", 0x24, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved1", 0x28, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved2", 0x2C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved3", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved4", 0x34, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved5", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved6", 0x3C, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved7", 0x40, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved8", 0x44, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved9", 0x48, FIELD_TYPE_UINT32, 0, true },
-    { "Reserved10", 0x4C, FIELD_TYPE_UINT32, 0, true },
+    { "ImpactEntity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "SoundResource", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "ImpactType", 0x0C, FIELD_TYPE_UINT32, 0, false },
+    { "Volume", 0x10, FIELD_TYPE_FLOAT, 0, false },
+    { "Pitch", 0x14, FIELD_TYPE_FLOAT, 0, false },
+    { "PositionX", 0x18, FIELD_TYPE_FLOAT, 0, false },
+    { "PositionY", 0x1C, FIELD_TYPE_FLOAT, 0, false },
+    { "PositionZ", 0x20, FIELD_TYPE_FLOAT, 0, false },
+    { "Flags", 0x24, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved1", 0x28, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved2", 0x2C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved3", 0x30, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved4", 0x34, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved5", 0x38, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved6", 0x3C, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved7", 0x40, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved8", 0x44, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved9", 0x48, FIELD_TYPE_UINT32, 0, false },
+    { "Reserved10", 0x4C, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ecl_spell_cast_SoundImpactEventOneFrameComponent_Layout = {
     .componentName = "ecl::spell_cast::SoundImpactEventOneFrameComponent",
@@ -7269,7 +7269,7 @@ static const ComponentLayoutDef g_ecl_spell_cast_SoundImpactEventOneFrameCompone
 // ls::AnimationBlueprintComponent - 8 bytes (0x08)
 // Source: Visual.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_AnimationBlueprint_Properties[] = {
-    { "Instance", 0x00, FIELD_TYPE_UINT64, 0, true },
+    { "Instance", 0x00, FIELD_TYPE_UINT64, 0, false },
 };
 static const ComponentLayoutDef g_ls_AnimationBlueprint_Layout = {
     .componentName = "ls::AnimationBlueprintComponent",
@@ -7283,7 +7283,7 @@ static const ComponentLayoutDef g_ls_AnimationBlueprint_Layout = {
 // ls::AnimationSetComponent - 8 bytes (0x08)
 // Source: Visual.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_AnimationSet_Properties[] = {
-    { "Entries", 0x00, FIELD_TYPE_UINT64, 0, true },
+    { "Entries", 0x00, FIELD_TYPE_UINT64, 0, false },
 };
 static const ComponentLayoutDef g_ls_AnimationSet_Layout = {
     .componentName = "ls::AnimationSetComponent",
@@ -7309,7 +7309,7 @@ static const ComponentLayoutDef g_ls_ClusterAttachRequest_Layout = {
 // ls::ClusterBoundMaxComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterBoundMax_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterBoundMax_Layout = {
     .componentName = "ls::ClusterBoundMaxComponent",
@@ -7335,7 +7335,7 @@ static const ComponentLayoutDef g_ls_Cluster_Layout = {
 // ls::ClusterDistMaxComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterDistMax_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterDistMax_Layout = {
     .componentName = "ls::ClusterDistMaxComponent",
@@ -7349,7 +7349,7 @@ static const ComponentLayoutDef g_ls_ClusterDistMax_Layout = {
 // ls::ClusterDistMinComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterDistMin_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterDistMin_Layout = {
     .componentName = "ls::ClusterDistMinComponent",
@@ -7363,7 +7363,7 @@ static const ComponentLayoutDef g_ls_ClusterDistMin_Layout = {
 // ls::ClusterPositionXComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterPositionX_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterPositionX_Layout = {
     .componentName = "ls::ClusterPositionXComponent",
@@ -7377,7 +7377,7 @@ static const ComponentLayoutDef g_ls_ClusterPositionX_Layout = {
 // ls::ClusterPositionYComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterPositionY_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterPositionY_Layout = {
     .componentName = "ls::ClusterPositionYComponent",
@@ -7391,7 +7391,7 @@ static const ComponentLayoutDef g_ls_ClusterPositionY_Layout = {
 // ls::ClusterPositionZComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterPositionZ_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterPositionZ_Layout = {
     .componentName = "ls::ClusterPositionZComponent",
@@ -7405,7 +7405,7 @@ static const ComponentLayoutDef g_ls_ClusterPositionZ_Layout = {
 // ls::ClusterRadiusComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ClusterRadius_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_ClusterRadius_Layout = {
     .componentName = "ls::ClusterRadiusComponent",
@@ -7419,8 +7419,8 @@ static const ComponentLayoutDef g_ls_ClusterRadius_Layout = {
 // ls::CullComponent - 2 bytes (0x02)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_Cull_Properties[] = {
-    { "Flags", 0x00, FIELD_TYPE_UINT8, 0, true },
-    { "Flags2", 0x01, FIELD_TYPE_UINT8, 0, true },
+    { "Flags", 0x00, FIELD_TYPE_UINT8, 0, false },
+    { "Flags2", 0x01, FIELD_TYPE_UINT8, 0, false },
 };
 static const ComponentLayoutDef g_ls_Cull_Layout = {
     .componentName = "ls::CullComponent",
@@ -7446,15 +7446,15 @@ static const ComponentLayoutDef g_ls_EffectCreateOneFrame_Layout = {
 // ls::LevelInstanceComponent - 64 bytes (0x40)
 // Source: Components.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_LevelInstance_Properties[] = {
-    { "LevelInstanceID", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "LevelName", 0x04, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "LevelInstanceTemplate", 0x08, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "LevelType", 0x0c, FIELD_TYPE_UINT8, 0, true },
-    { "Active", 0x0d, FIELD_TYPE_BOOL, 0, true },
-    { "Platform", 0x0e, FIELD_TYPE_BOOL, 0, true },
-    { "MovingPlatform", 0x0f, FIELD_TYPE_BOOL, 0, true },
-    { "DynamicLayer", 0x10, FIELD_TYPE_BOOL, 0, true },
-    { "NeedsPhysics", 0x11, FIELD_TYPE_BOOL, 0, true },
+    { "LevelInstanceID", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "LevelName", 0x04, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "LevelInstanceTemplate", 0x08, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "LevelType", 0x0c, FIELD_TYPE_UINT8, 0, false },
+    { "Active", 0x0d, FIELD_TYPE_BOOL, 0, false },
+    { "Platform", 0x0e, FIELD_TYPE_BOOL, 0, false },
+    { "MovingPlatform", 0x0f, FIELD_TYPE_BOOL, 0, false },
+    { "DynamicLayer", 0x10, FIELD_TYPE_BOOL, 0, false },
+    { "NeedsPhysics", 0x11, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ls_LevelInstance_Layout = {
     .componentName = "ls::LevelInstanceComponent",
@@ -7480,7 +7480,7 @@ static const ComponentLayoutDef g_ls_LevelInstanceLoad_Layout = {
 // ls::LevelRootComponent - 4 bytes (0x04)
 // Source: Components.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_LevelRoot_Properties[] = {
-    { "LevelName", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "LevelName", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_ls_LevelRoot_Layout = {
     .componentName = "ls::LevelRootComponent",
@@ -7494,7 +7494,7 @@ static const ComponentLayoutDef g_ls_LevelRoot_Layout = {
 // ls::LevelUnloadedOneFrameComponent - 4 bytes (0x04)
 // Source: Components.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_LevelUnloadedOneFrame_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "Level", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_ls_LevelUnloadedOneFrame_Layout = {
     .componentName = "ls::LevelUnloadedOneFrameComponent",
@@ -7508,7 +7508,7 @@ static const ComponentLayoutDef g_ls_LevelUnloadedOneFrame_Layout = {
 // ls::ParentEntityComponent - 8 bytes (0x8)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_ParentEntity_Properties[] = {
-    { "Parent", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Parent", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ls_ParentEntity_Layout = {
     .componentName = "ls::ParentEntityComponent",
@@ -7522,13 +7522,13 @@ static const ComponentLayoutDef g_ls_ParentEntity_Layout = {
 // ls::PhysicsComponent - 24 bytes (0x18)
 // Source: Visual.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_Physics_Properties[] = {
-    { "Physics", 0x00, FIELD_TYPE_UINT64, 0, true },
-    { "PhysicsGroup", 0x08, FIELD_TYPE_UINT32, 0, true },
-    { "CollidesWith", 0x0c, FIELD_TYPE_UINT32, 0, true },
-    { "ExtraFlags", 0x10, FIELD_TYPE_UINT32, 0, true },
-    { "HasPhysics", 0x14, FIELD_TYPE_BOOL, 0, true },
-    { "field_15", 0x15, FIELD_TYPE_UINT8, 0, true },
-    { "IsClustered", 0x16, FIELD_TYPE_BOOL, 0, true },
+    { "Physics", 0x00, FIELD_TYPE_UINT64, 0, false },
+    { "PhysicsGroup", 0x08, FIELD_TYPE_UINT32, 0, false },
+    { "CollidesWith", 0x0c, FIELD_TYPE_UINT32, 0, false },
+    { "ExtraFlags", 0x10, FIELD_TYPE_UINT32, 0, false },
+    { "HasPhysics", 0x14, FIELD_TYPE_BOOL, 0, false },
+    { "field_15", 0x15, FIELD_TYPE_UINT8, 0, false },
+    { "IsClustered", 0x16, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ls_Physics_Layout = {
     .componentName = "ls::PhysicsComponent",
@@ -7578,7 +7578,7 @@ static const ComponentLayoutDef g_ls_RoomTriggerTag_Layout = {
 // ls::SaveWithComponent - 8 bytes (0x08)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_SaveWith_Properties[] = {
-    { "Entity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Entity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ls_SaveWith_Layout = {
     .componentName = "ls::SaveWithComponent",
@@ -7604,7 +7604,7 @@ static const ComponentLayoutDef g_ls_SoundActivated_Layout = {
 // ls::TimeFactorComponent - 4 bytes (0x04)
 // Source: Components.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_TimeFactor_Properties[] = {
-    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, true },
+    { "Value", 0x00, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_ls_TimeFactor_Layout = {
     .componentName = "ls::TimeFactorComponent",
@@ -7630,10 +7630,10 @@ static const ComponentLayoutDef g_ls_VisualChangedEventOneFrame_Layout = {
 // ls::VisualComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_Visual_Properties[] = {
-    { "Visual", 0x00, FIELD_TYPE_UINT64, 0, true },
-    { "field_8", 0x08, FIELD_TYPE_UINT8, 0, true },
-    { "field_9", 0x09, FIELD_TYPE_UINT8, 0, true },
-    { "NotClustered", 0x0a, FIELD_TYPE_BOOL, 0, true },
+    { "Visual", 0x00, FIELD_TYPE_UINT64, 0, false },
+    { "field_8", 0x08, FIELD_TYPE_UINT8, 0, false },
+    { "field_9", 0x09, FIELD_TYPE_UINT8, 0, false },
+    { "NotClustered", 0x0a, FIELD_TYPE_BOOL, 0, false },
 };
 static const ComponentLayoutDef g_ls_Visual_Layout = {
     .componentName = "ls::VisualComponent",
@@ -7647,7 +7647,7 @@ static const ComponentLayoutDef g_ls_Visual_Layout = {
 // ls::VisualStreamHintComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_CORE.md
 static const ComponentPropertyDef g_ls_VisualStreamHint_Properties[] = {
-    { "Hint", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "Hint", 0x00, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ls_VisualStreamHint_Layout = {
     .componentName = "ls::VisualStreamHintComponent",
@@ -7673,7 +7673,7 @@ static const ComponentLayoutDef g_ls_AnimationSetUpdateRequest_Layout = {
 // ls::animation::DynamicAnimationTagsComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_DynamicAnimationTags_Properties[] = {
-    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_ls_DynamicAnimationTags_Layout = {
     .componentName = "ls::animation::DynamicAnimationTagsComponent",
@@ -7687,7 +7687,7 @@ static const ComponentLayoutDef g_ls_DynamicAnimationTags_Layout = {
 // ls::animation::LoadAnimationSetGameplayRequestOneFrameComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_LoadAnimationSetGameplayRequestOneFrame_Properties[] = {
-    { "Animations", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Animations", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_ls_LoadAnimationSetGameplayRequestOneFrame_Layout = {
     .componentName = "ls::animation::LoadAnimationSetGameplayRequestOneFrameComponent",
@@ -7701,7 +7701,7 @@ static const ComponentLayoutDef g_ls_LoadAnimationSetGameplayRequestOneFrame_Lay
 // ls::animation::RemoveAnimationSetsGameplayRequestOneFrameComponent - 48 bytes (0x30)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_RemoveAnimationSetsGameplayRequestOneFrame_Properties[] = {
-    { "AnimationSets", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "AnimationSets", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_ls_RemoveAnimationSetsGameplayRequestOneFrame_Layout = {
     .componentName = "ls::animation::RemoveAnimationSetsGameplayRequestOneFrameComponent",
@@ -7715,7 +7715,7 @@ static const ComponentLayoutDef g_ls_RemoveAnimationSetsGameplayRequestOneFrame_
 // ls::animation::TemplateAnimationSetOverrideComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_TemplateAnimationSetOverride_Properties[] = {
-    { "Overrides", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Overrides", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_ls_TemplateAnimationSetOverride_Layout = {
     .componentName = "ls::animation::TemplateAnimationSetOverrideComponent",
@@ -7729,7 +7729,7 @@ static const ComponentLayoutDef g_ls_TemplateAnimationSetOverride_Layout = {
 // ls::anubis::LoadRequestOneFrameComponent - 8 bytes (0x8)
 // Source: COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_LoadRequestOneFrame_Properties[] = {
-    { "Request", 0x00, FIELD_TYPE_UINT64, 0, true },
+    { "Request", 0x00, FIELD_TYPE_UINT64, 0, false },
 };
 static const ComponentLayoutDef g_ls_LoadRequestOneFrame_Layout = {
     .componentName = "ls::anubis::LoadRequestOneFrameComponent",
@@ -7743,7 +7743,7 @@ static const ComponentLayoutDef g_ls_LoadRequestOneFrame_Layout = {
 // ls::level::LevelInstanceTempDestroyedComponent - 8 bytes (0x8)
 // Source: Components.h, COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_LevelInstanceTempDestroyed_Properties[] = {
-    { "Level", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Level", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_ls_LevelInstanceTempDestroyed_Layout = {
     .componentName = "ls::level::LevelInstanceTempDestroyedComponent",
@@ -7757,7 +7757,7 @@ static const ComponentLayoutDef g_ls_LevelInstanceTempDestroyed_Layout = {
 // ls::scene::SceneStageComponent - 4 bytes (0x04)
 // Source: COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_SceneStage_Properties[] = {
-    { "Stage", 0x00, FIELD_TYPE_UINT32, 0, true },
+    { "Stage", 0x00, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_ls_SceneStage_Layout = {
     .componentName = "ls::scene::SceneStageComponent",
@@ -7771,7 +7771,7 @@ static const ComponentLayoutDef g_ls_SceneStage_Layout = {
 // ls::trigger::IsInsideOfComponent - 16 bytes (0x10)
 // Source: COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_IsInsideOf_Properties[] = {
-    { "Triggers", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Triggers", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_ls_IsInsideOf_Layout = {
     .componentName = "ls::trigger::IsInsideOfComponent",
@@ -7785,7 +7785,7 @@ static const ComponentLayoutDef g_ls_IsInsideOf_Layout = {
 // ls::uuid::Component - 16 bytes (0x10)
 // Source: Components.h, COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_Uuid_Properties[] = {
-    { "EntityUuid", 0x00, FIELD_TYPE_GUID, 0, true },
+    { "EntityUuid", 0x00, FIELD_TYPE_GUID, 0, false },
 };
 static const ComponentLayoutDef g_ls_Uuid_Layout = {
     .componentName = "ls::uuid::Component",
@@ -7799,7 +7799,7 @@ static const ComponentLayoutDef g_ls_Uuid_Layout = {
 // ls::uuid::ToHandleMappingComponent - 64 bytes (0x40)
 // Source: Components.h, COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_UuidToHandleMapping_Properties[] = {
-    { "Mappings", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Mappings", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false },
 };
 static const ComponentLayoutDef g_ls_UuidToHandleMapping_Layout = {
     .componentName = "ls::uuid::ToHandleMappingComponent",
