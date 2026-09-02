@@ -1272,7 +1272,7 @@ static int lua_entity_get(lua_State *L) {
     // Create entity userdata with lifetime scoping
     EntityUserdata *ud = (EntityUserdata*)lua_newuserdata(L, sizeof(EntityUserdata));
     ud->handle = handle;
-    ud->lifetime = lifetime_lua_get_current(L);
+    ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
 
     // Set metatable
     luaL_getmetatable(L, "BG3Entity");
@@ -1327,7 +1327,7 @@ static int lua_entity_get_by_handle(lua_State *L) {
     // Create entity userdata with lifetime scoping
     EntityUserdata *ud = (EntityUserdata*)lua_newuserdata(L, sizeof(EntityUserdata));
     ud->handle = handle;
-    ud->lifetime = lifetime_lua_get_current(L);
+    ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
 
     // Set metatable
     luaL_getmetatable(L, "BG3Entity");
@@ -1641,7 +1641,7 @@ static int lua_entity_create(lua_State *L) {
     }
     EntityUserdata *ud = (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
     ud->handle = (EntityHandle)handle;
-    ud->lifetime = lifetime_lua_get_current(L);
+    ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
     luaL_getmetatable(L, "BG3Entity");
     lua_setmetatable(L, -2);
     return 1;
@@ -3083,13 +3083,12 @@ static int lua_entity_get_all(lua_State *L) {
     static uint64_t handles[65536];
     int count = component_lookup_get_all_entities(handles, 65536);
     lua_createtable(L, count, 0);
-    LifetimeHandle currentLifetime = lifetime_lua_get_current(L);
 
     for (int i = 0; i < count; i++) {
         EntityUserdata *ud =
             (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
         ud->handle = handles[i];
-        ud->lifetime = currentLifetime;
+        ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
         luaL_getmetatable(L, "BG3Entity");
         lua_setmetatable(L, -2);
         lua_rawseti(L, -2, i + 1);
@@ -3142,13 +3141,12 @@ static int lua_entity_get_all_with_component(lua_State *L) {
 
     // Create result table of entity userdata with lifetime scoping
     lua_createtable(L, count, 0);
-    LifetimeHandle currentLifetime = lifetime_lua_get_current(L);
 
     for (int i = 0; i < count; i++) {
         // Push entity as userdata (same pattern as lua_entity_get)
         EntityUserdata *ud = (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
         ud->handle = handles[i];
-        ud->lifetime = currentLifetime;
+        ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
         luaL_getmetatable(L, "BG3Entity");
         lua_setmetatable(L, -2);
         lua_rawseti(L, -2, i + 1);
@@ -3254,7 +3252,7 @@ static int lua_entity_uuid_to_handle(lua_State *L) {
 
     EntityUserdata *ud = (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
     ud->handle = handle;
-    ud->lifetime = lifetime_lua_get_current(L);
+    ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
     luaL_getmetatable(L, "BG3Entity");
     lua_setmetatable(L, -2);
     return 1;
@@ -3298,7 +3296,6 @@ static int lua_entity_get_all_with_uuid(lua_State *L) {
      * Iterate the live keys and bounds-check each index against the allocated
      * value slots, which is what the working single lookup effectively does.
      */
-    LifetimeHandle currentLifetime = lifetime_lua_get_current(L);
     for (uint32_t i = 0; i < hashmap->Keys.size; i++) {
         if (i >= hashmap->Values.size) break;   /* never read past the allocation */
         char uuidStr[40];
@@ -3307,7 +3304,7 @@ static int lua_entity_get_all_with_uuid(lua_State *L) {
         EntityUserdata *ud =
             (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
         ud->handle = hashmap->Values.buf[i];
-        ud->lifetime = currentLifetime;
+        ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
         luaL_getmetatable(L, "BG3Entity");
         lua_setmetatable(L, -2);
         lua_setfield(L, -2, uuidStr);
@@ -3404,7 +3401,7 @@ static bool entity_read_vec3(lua_State *L, int idx, float out[3]) {
 // (Ai.inl:502-537). Returns the updated array index.
 static int entity_collect_around(lua_State *L, const char *componentName,
                                  float x, float z, float radiusSq,
-                                 LifetimeHandle lifetime, int luaIndex) {
+                                 int luaIndex) {
     const ComponentInfo *info = component_registry_lookup(componentName);
     if (!info || info->index == COMPONENT_INDEX_UNDEFINED) return luaIndex;
 
@@ -3425,7 +3422,7 @@ static int entity_collect_around(lua_State *L, const char *componentName,
         EntityUserdata *ud =
             (EntityUserdata *)lua_newuserdata(L, sizeof(EntityUserdata));
         ud->handle = handles[i];
-        ud->lifetime = lifetime;
+        ud->lifetime = LIFETIME_INFINITE_HANDLE;  // entities never expire (upstream parity)
         luaL_getmetatable(L, "BG3Entity");
         lua_setmetatable(L, -2);
         lua_rawseti(L, -2, luaIndex++);
@@ -3454,13 +3451,12 @@ static int lua_entity_get_entities_around_position(lua_State *L) {
         return 1;
     }
 
-    LifetimeHandle lifetime = lifetime_lua_get_current(L);
     float radiusSq = radius * radius;
     int luaIndex = 1;
 
     if (includeCharacters) {
         luaIndex = entity_collect_around(L, "eoc::character::CharacterComponent",
-                                         pos[0], pos[2], radiusSq, lifetime,
+                                         pos[0], pos[2], radiusSq,
                                          luaIndex);
     }
     if (includeItems) {
@@ -3474,7 +3470,7 @@ static int lua_entity_get_entities_around_position(lua_State *L) {
                 ? "eoc::item::ItemComponent"
                 : "eoc::ItemComponent";
         luaIndex = entity_collect_around(L, itemComponent, pos[0], pos[2],
-                                         radiusSq, lifetime, luaIndex);
+                                         radiusSq, luaIndex);
     }
 
     return 1;

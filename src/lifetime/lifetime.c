@@ -78,6 +78,9 @@ void lifetime_pool_release(LifetimePool *pool, LifetimeHandle handle) {
 }
 
 bool lifetime_pool_is_valid(LifetimePool *pool, LifetimeHandle handle) {
+    if (handle == LIFETIME_INFINITE_HANDLE) {
+        return true;
+    }
     if (LIFETIME_IS_NULL(handle)) {
         return false;
     }

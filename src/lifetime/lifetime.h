@@ -31,6 +31,15 @@
 // Special handle value
 #define LIFETIME_NULL_HANDLE 0ULL
 
+// Always-valid sentinel for references that never expire. Upstream BG3SE
+// entity proxies are permanent (a bare EntityHandle re-resolved through the
+// ECS on every access, no lifetime check in EntityProxyMetatable::Index) —
+// only component references are scope-bound. Entity userdata uses this so
+// mods can store an entity in one event and use it in a later one
+// (TransmogEnhanced holds the replaced item's entity from RequestCanCombine
+// until TemplateAddedTo).
+#define LIFETIME_INFINITE_HANDLE (~0ULL)
+
 // ============================================================================
 // Types
 // ============================================================================
