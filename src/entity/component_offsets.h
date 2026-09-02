@@ -519,25 +519,35 @@ static const ComponentLayoutDef g_TurnBasedComponent_Layout = {
 // Note: Has LegacyRefMap at start, so floats are after those
 // ============================================================================
 
+// Upstream (Components/Stats.h:156-171):
+//   LegacyRefMap<DamageType, Array<RollDefinition>> Rolls;          @0x00
+//   LegacyRefMap<DamageType, Array<RollDefinition>> VersatileRolls; @0x10
+//   float WeaponRange; float DamageRange;                           @0x20/0x24
+//   stats::Functors* WeaponFunctors;                                @0x28
+//   uint32_t WeaponProperties; uint8_t WeaponGroup;                 @0x30/0x34
+//   DamageType DamageType (legacy name: Ability);                   @0x35
+//   Array<StatsExpressionWithMetadata> AttackRollBonus;             @0x38
+//   DiceSizeId DamageDice; DiceSizeId VersatileDamageDice;          @0x48/0x49
+// LegacyRefMap (RefMapInternals) is 0x10: {u32 ItemCount; u32 HashSize; MapNode**}.
 static const ComponentPropertyDef g_WeaponComponent_Properties[] = {
-    // LegacyRefMap<AbilityId, Array<RollDefinition>> Rolls at 0x00 (complex, skip)
-    // LegacyRefMap<AbilityId, Array<RollDefinition>> Rolls2 at 0x?? (complex, skip)
-    // Estimate: 2 RefMaps ~= 0x30 each = 0x60, then floats
-    { "WeaponRange",      0x60, FIELD_TYPE_FLOAT,  0, false },
-    { "DamageRange",      0x64, FIELD_TYPE_FLOAT,  0, false },
-    // WeaponFunctors* at 0x68 (pointer, skip)
-    { "WeaponProperties", 0x70, FIELD_TYPE_UINT32, 0, false },  // Flags
-    { "WeaponGroup",      0x74, FIELD_TYPE_UINT8,  0, false },
-    { "Ability",          0x75, FIELD_TYPE_UINT8,  0, false },  // AbilityId enum
-    // Array<StatsExpressionWithMetadata> DamageValues after
-    // DiceSizeId at end
+    // Rolls / VersatileRolls maps at 0x00/0x10: nested containers, not exposed
+    { "WeaponRange",         0x20, FIELD_TYPE_FLOAT,  0, false },
+    { "DamageRange",         0x24, FIELD_TYPE_FLOAT,  0, false },
+    // WeaponFunctors* at 0x28 (pointer, skip)
+    { "WeaponProperties",    0x30, FIELD_TYPE_UINT32, 0, false },  // WeaponFlags
+    { "WeaponGroup",         0x34, FIELD_TYPE_UINT8,  0, false },
+    { "DamageType",          0x35, FIELD_TYPE_UINT8,  0, false, .enumDef = &g_enum_DamageType },
+    { "Ability",             0x35, FIELD_TYPE_UINT8,  0, false, .enumDef = &g_enum_DamageType },  // legacy alias
+    // Array<StatsExpressionWithMetadata> AttackRollBonus at 0x38 (skip)
+    { "DamageDice",          0x48, FIELD_TYPE_UINT8,  0, false, .enumDef = &g_enum_DiceSizeId },
+    { "VersatileDamageDice", 0x49, FIELD_TYPE_UINT8,  0, false, .enumDef = &g_enum_DiceSizeId },
 };
 
 static const ComponentLayoutDef g_WeaponComponent_Layout = {
     .componentName = "eoc::WeaponComponent",
     .shortName = "Weapon",
     .componentTypeIndex = 0,
-    .componentSize = 0x90,  // Estimate
+    .componentSize = 0x50,  // C++ sizeof per upstream shape (see field comment)
     .properties = g_WeaponComponent_Properties,
     .propertyCount = sizeof(g_WeaponComponent_Properties) / sizeof(g_WeaponComponent_Properties[0]),
 };

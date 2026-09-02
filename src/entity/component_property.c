@@ -23,6 +23,7 @@
 #include "../core/safe_memory.h"
 #include "../core/logging.h"
 #include "../lifetime/lifetime.h"
+#include "../strings/fixed_string.h"
 
 #include <limits.h>
 #include <math.h>
@@ -482,13 +483,23 @@ int component_property_read_def(lua_State *L, void *componentPtr,
         }
 
         case FIELD_TYPE_FIXEDSTRING: {
-            // FixedString is a uint32_t index into GlobalStringTable
-            // For now, return the raw index - full resolution requires GST access
+            // FixedString is a uint32_t index into the GlobalStringTable.
+            // Resolve to the string itself — upstream returns the string, and
+            // mods (and the Serialize/Unserialize round trip) depend on it.
             uint32_t val = 0;
-            if (safe_memory_read_u32((mach_vm_address_t)addr, &val)) {
-                lua_pushinteger(L, val);
-            } else {
+            if (!safe_memory_read_u32((mach_vm_address_t)addr, &val)) {
                 lua_pushnil(L);
+                return 1;
+            }
+            if (val == FS_NULL_INDEX) {
+                lua_pushstring(L, "");
+                return 1;
+            }
+            const char *resolved = fixed_string_resolve(val);
+            if (resolved) {
+                lua_pushstring(L, resolved);
+            } else {
+                lua_pushinteger(L, val);  // unresolvable: surface the index
             }
             return 1;
         }
@@ -649,16 +660,15 @@ bool component_property_write(lua_State *L, void *componentPtr,
         return false;
     }
 
-    // Interning itself works (fixed_string_intern); the unresolved piece is
-    // ownership transfer — swapping an index in place without DecRef'ing the
-    // old entry leaks it, and DecRef's macOS entry point is not yet recovered.
-    if (prop->type == FIELD_TYPE_FIXEDSTRING) {
-        LOG_ENTITY_DEBUG(
-            "Refusing component write: %s.%s is FixedString (old-value DecRef/"
-            "ownership transfer unverified; interning itself is available)",
-            layout->componentName, propertyName);
-        return false;
-    }
+    // FixedString writes intern via the engine's ls::FixedString::Create
+    // (find-or-add + IncRef), so the slot takes correct ownership of the new
+    // value. The old value's DecRef entry point is not yet recovered on
+    // macOS, so the previous entry leaks one refcount per write — bounded by
+    // how often mods assign FS fields, the same accepted tradeoff as the
+    // loca overwrite buffers. Upstream unserializes FS fields (assignment
+    // IncRefs new / DecRefs old); refusing here silently broke stat cloning
+    // (TransmogEnhanced Data.StatsId).
+    // The write itself happens in the switch below.
 
     if (component_property_is_pointer_typed(prop)) {
         LOG_ENTITY_DEBUG("Refusing component write: %s.%s is pointer-typed",
@@ -719,6 +729,28 @@ bool component_property_write(lua_State *L, void *componentPtr,
     }
 
     switch (prop->type) {
+        case FIELD_TYPE_FIXEDSTRING: {
+            uint32_t fs = FS_NULL_INDEX;
+            if (lua_type(L, valueIndex) == LUA_TNUMBER) {
+                // Raw index passthrough (e.g. round-tripping an unresolvable
+                // value that serialize surfaced as an integer).
+                fs = (uint32_t)lua_tointeger(L, valueIndex);
+            } else {
+                size_t slen = 0;
+                const char *s = luaL_checklstring(L, valueIndex, &slen);
+                if (slen > 0) {
+                    fs = fixed_string_intern(s, (int)slen);
+                    if (fs == FS_NULL_INDEX) {
+                        luaL_error(L, "Could not intern FixedString for %s.%s",
+                                   layout->componentName, propertyName);
+                        return false;
+                    }
+                }
+            }
+            wrote = safe_memory_write(address, &fs, sizeof(fs));
+            break;
+        }
+
         case FIELD_TYPE_INT32: {
             lua_Integer raw = luaL_checkinteger(L, valueIndex);
             if (raw < INT32_MIN || raw > INT32_MAX) {
@@ -1498,8 +1530,7 @@ static bool property_can_unserialize(const ComponentLayoutDef *layout,
         || strstr(layout->componentName, "Request") != NULL) {
         return false;
     }
-    if (prop->type == FIELD_TYPE_FIXEDSTRING
-        || component_property_is_pointer_typed(prop)) {
+    if (component_property_is_pointer_typed(prop)) {
         return false;
     }
     return component_property_field_size(prop) > 0;
