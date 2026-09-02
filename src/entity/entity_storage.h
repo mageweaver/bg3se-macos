@@ -38,6 +38,14 @@ extern "C" {
 #define STORAGE_CONTAINER_ENTITIES_OFFSET   0x00   // Array<EntityStorageData*>
 
 // EntityStorageData offsets (from Windows reference + Ghidra decompilation)
+//
+// The prefix before Components is ComponentsInClass (BitSet, 0x110 bytes),
+// then GroupMask(8), ComponentSizes*(8), ComponentDtors*(8), StorageIndex(2),
+// TotalSize(2), ComponentIndexListSize(2), four bools -> Components at 0x138.
+// Verified live 2026-09-02 on a 3-item storage class: ComponentSizes[] listed
+// 0x10/0x18/0x08/0x0C for the Armor/Equipable/Value/Data slots.
+#define STORAGE_DATA_COMPONENT_SIZES            0x118  // uint16_t* ComponentSizes (per-slot stride, engine-owned)
+#define STORAGE_DATA_COMPONENT_INDEX_LIST_SIZE  0x12C  // uint16_t ComponentIndexListSize (entries in ComponentSizes)
 #define STORAGE_DATA_COMPONENTS_OFFSET          0x138  // Array<EntityStorageComponentPage*>
 #define STORAGE_DATA_COMPONENT_TYPE_TO_INDEX    0x180  // HashMap<ComponentTypeIndex, uint8_t>
 #define STORAGE_DATA_INSTANCE_TO_PAGE_MAP       0x1c0  // HashMap<EntityHandle, EntityStorageIndex>

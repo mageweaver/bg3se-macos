@@ -185,7 +185,10 @@ static const ComponentLayoutDef g_DataComponent_Layout = {
     .componentName = "eoc::DataComponent",
     .shortName = "Data",
     .componentTypeIndex = 0,
-    .componentSize = 0x0c,    // ARM64 verified via Ghidra
+    // 0x0C is what the engine packs this slot at (EntityStorageData::ComponentSizes,
+    // read live 2026-09-02). The lookup path addresses entries with the engine's
+    // stride and warns if this value disagrees with it.
+    .componentSize = 0x0C,
     .properties = g_DataComponent_Properties,
     .propertyCount = sizeof(g_DataComponent_Properties) / sizeof(g_DataComponent_Properties[0]),
 };

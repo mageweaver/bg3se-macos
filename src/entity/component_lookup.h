@@ -103,13 +103,23 @@ bool storage_data_get_component_slot(void *storageData, uint16_t typeIndex,
  * @param storageData Pointer to EntityStorageData
  * @param storageIndex Location from InstanceToPageMap
  * @param componentSlot Slot from ComponentTypeToIndex
- * @param componentSize Size of component (for buffer offset calculation)
+ * @param componentSize Our expected size; cross-checked against the engine's
+ *                      per-slot stride, which is what addresses the entry
  * @param isProxy Whether this is a proxy component
  * @return Pointer to component data, or NULL
  */
 void *storage_data_get_component(void *storageData, EntityStorageIndex storageIndex,
                                   uint8_t componentSlot, size_t componentSize,
                                   bool isProxy);
+
+/**
+ * Read the engine's stride for a component slot from
+ * EntityStorageData::ComponentSizes. This is the authoritative size the ECS
+ * itself packs the slot's page buffer with.
+ *
+ * @return Stride in bytes, or 0 if the table is missing or the slot is out of range
+ */
+uint16_t storage_data_engine_component_size(void *storageData, uint8_t componentSlot);
 
 // ============================================================================
 // Debug Functions

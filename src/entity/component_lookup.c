@@ -309,13 +309,47 @@ void *storage_data_get_component(void *storageData, EntityStorageIndex storageIn
         LOG_ENTITY_DEBUG("Proxy component: buffer=%p, entry=%u -> %p",
                    buffer, storageIndex.EntryIndex, result);
     } else {
-        // Direct: buffer contains array of component data
-        result = (char *)buffer + (componentSize * storageIndex.EntryIndex);
+        // Direct: buffer contains array of component data.
+        //
+        // The stride is the engine's, not ours. Upstream passes sizeof(T) and
+        // validates it against the ECS registry at startup (ValidateMappedComponentSizes);
+        // we have no C++ sizeof to trust, so address with the per-slot size the
+        // engine keeps in EntityStorageData::ComponentSizes and only use the
+        // caller's size as a cross-check. A wrong stride reads the neighbour's
+        // bytes for every entity past EntryIndex 0 -- eoc::DataComponent was
+        // being addressed at 0x10 while the engine packs it at 0x0C.
+        size_t stride = componentSize;
+        uint16_t engineSize = storage_data_engine_component_size(storageData, componentSlot);
+        if (engineSize != 0) {
+            if (engineSize != componentSize) {
+                // Per-slot memo so a mismatched layout warns once, not per access.
+                static uint32_t warnedPair[COMPONENT_PAGE_SLOTS];
+                uint32_t pair = ((uint32_t)componentSize << 16) | engineSize;
+                if (warnedPair[componentSlot] != pair) {
+                    warnedPair[componentSlot] = pair;
+                    LOG_ENTITY_WARN("Component stride mismatch in slot %u: layout says %zu, engine says %u -- using engine",
+                                    componentSlot, componentSize, engineSize);
+                }
+            }
+            stride = engineSize;
+        }
+        result = (char *)buffer + (stride * storageIndex.EntryIndex);
         LOG_ENTITY_DEBUG("Direct component: buffer=%p + (%zu * %u) -> %p",
-                   buffer, componentSize, storageIndex.EntryIndex, result);
+                   buffer, stride, storageIndex.EntryIndex, result);
     }
 
     return result;
+}
+
+uint16_t storage_data_engine_component_size(void *storageData, uint8_t componentSlot) {
+    if (!storageData) return 0;
+
+    uint16_t count = *(uint16_t *)((char *)storageData + STORAGE_DATA_COMPONENT_INDEX_LIST_SIZE);
+    const uint16_t *sizes = *(const uint16_t **)((char *)storageData + STORAGE_DATA_COMPONENT_SIZES);
+    if (!sizes || componentSlot >= count) {
+        return 0;
+    }
+    return sizes[componentSlot];
 }
 
 // ============================================================================

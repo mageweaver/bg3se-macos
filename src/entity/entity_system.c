@@ -231,7 +231,7 @@ static size_t get_component_size_for_type(ComponentType type) {
         case COMPONENT_STATS:      return 0xA0;
         case COMPONENT_TRANSFORM:  return 0x28;  // From component_offsets.h
         case COMPONENT_LEVEL:      return 0x10;  // From component_offsets.h
-        case COMPONENT_DATA:       return 0x10;  // From component_offsets.h
+        case COMPONENT_DATA:       return 0x0C;  // From component_offsets.h (engine stride, verified live)
         case COMPONENT_BASE_STATS: return 0x1C;  // From component_offsets.h
         case COMPONENT_PHYSICS:    return 0x30;  // Estimated
         case COMPONENT_VISUAL:     return 0x20;  // Estimated
