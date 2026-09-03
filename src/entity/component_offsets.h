@@ -798,6 +798,29 @@ static const ComponentLayoutDef g_BoostsContainerComponent_Layout = {
 };
 
 // ============================================================================
+// ItemBoostsComponent (eoc::ItemBoostsComponent)
+// From: BG3Extender/GameDefinitions/Components/Data.h:486-491
+// Array<EntityHandle> Boosts — the boost entities an item carries
+// (DefaultBoosts/Boosts from its stats). Replicated to the client, which is
+// where the tooltip's damage lines come from; TransmogEnhanced clones it.
+// Size 0x10 checked live against EntityStorageData::ComponentSizes.
+// ============================================================================
+
+static const ComponentPropertyDef g_ItemBoostsComponent_Properties[] = {
+    { "Boosts",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_ENTITY_HANDLE, 8 },
+    { "BoostCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
+};
+
+static const ComponentLayoutDef g_ItemBoostsComponent_Layout = {
+    .componentName = "eoc::ItemBoostsComponent",
+    .shortName = "ItemBoosts",
+    .componentTypeIndex = 0,
+    .componentSize = 0x10,
+    .properties = g_ItemBoostsComponent_Properties,
+    .propertyCount = sizeof(g_ItemBoostsComponent_Properties) / sizeof(g_ItemBoostsComponent_Properties[0]),
+};
+
+// ============================================================================
 // Boost Type Components (Ghidra-verified sizes, Dec 2025)
 // ARM64 sizes extracted from AddComponent<T> decompilations
 // ============================================================================
@@ -7867,6 +7890,7 @@ static const ComponentLayoutDef* g_AllComponentLayouts[] = {
     &g_SpellContainerComponent_Layout,
     &g_ConcentrationComponent_Layout,
     &g_BoostsContainerComponent_Layout,
+    &g_ItemBoostsComponent_Layout,
     // Ghidra-verified boost type components (Dec 2025)
     &g_AbilityBoostComponent_Layout,
     &g_ArmorClassBoostComponent_Layout,

@@ -632,6 +632,152 @@ static bool roll_map_write(lua_State *L, mach_vm_address_t addr, int tableIndex,
     return ok;
 }
 
+// ============================================================================
+// Array<T> of plain values (upstream CoreLib/Base/BaseArray.h)
+//
+// Unserialize for Array<T> upstream is clear() + push_back() per element,
+// with the buffer owned by GameAllocRaw/GameFree — the same
+// ls::MemoryManager pair game_memory wraps. We rebuild the buffer in one
+// allocation and swap the header {buf_, capacity_, size_}.
+// ============================================================================
+
+#define PLAIN_ARRAY_HEADER_SIZE 0x10
+#define PLAIN_ARRAY_MAX_ELEMENTS 4096
+
+static bool plain_array_elem_writable(const ComponentPropertyDef *prop) {
+    if (!prop || prop->elemSize == 0) return false;
+    switch (prop->elemType) {
+        case ELEM_TYPE_GUID:          return prop->elemSize == sizeof(Guid);
+        case ELEM_TYPE_ENTITY_HANDLE: return prop->elemSize == sizeof(uint64_t);
+        case ELEM_TYPE_FIXED_STRING:  return prop->elemSize == sizeof(uint32_t);
+        default:                      return false;
+    }
+}
+
+// Convert the Lua value at valueIndex into one element at dst. Raises a Lua
+// error on malformed input; the caller must not hold heap memory across it.
+static void plain_array_stage_element(lua_State *L, int valueIndex,
+                                      const ComponentPropertyDef *prop,
+                                      uint8_t *dst, const char *what,
+                                      lua_Integer position) {
+    switch (prop->elemType) {
+        case ELEM_TYPE_GUID: {
+            // Same tolerance as FIELD_TYPE_GUID: canonical form or a
+            // "Name_<uuid>" tail; empty string is the null guid.
+            size_t slen = 0;
+            const char *s = luaL_checklstring(L, valueIndex, &slen);
+            Guid value = {0, 0};
+            if (slen > 0) {
+                const char *tail = slen > 36 ? s + slen - 36 : s;
+                if (!guid_parse(tail, &value)) {
+                    luaL_error(L, "'%s' is not a valid GUID for %s[%lld]", s, what,
+                               (long long)position);
+                }
+            }
+            memcpy(dst, &value, sizeof(value));
+            return;
+        }
+        case ELEM_TYPE_ENTITY_HANDLE: {
+            uint64_t value = 0;
+            if (lua_type(L, valueIndex) == LUA_TSTRING) {
+                const char *s = lua_tostring(L, valueIndex);
+                char *end = NULL;
+                value = strtoull(s, &end, 0);
+                if (end == s || *end != '\0') {
+                    luaL_error(L, "'%s' is not a valid entity handle for %s[%lld]", s,
+                               what, (long long)position);
+                }
+            } else {
+                value = (uint64_t)luaL_checkinteger(L, valueIndex);
+            }
+            memcpy(dst, &value, sizeof(value));
+            return;
+        }
+        case ELEM_TYPE_FIXED_STRING: {
+            uint32_t fs = FS_NULL_INDEX;
+            if (lua_type(L, valueIndex) == LUA_TNUMBER) {
+                fs = (uint32_t)lua_tointeger(L, valueIndex);
+            } else {
+                size_t slen = 0;
+                const char *s = luaL_checklstring(L, valueIndex, &slen);
+                if (slen > 0) {
+                    fs = fixed_string_intern(s, (int)slen);
+                    if (fs == FS_NULL_INDEX) {
+                        luaL_error(L, "Could not intern FixedString for %s[%lld]", what,
+                                   (long long)position);
+                    }
+                }
+            }
+            memcpy(dst, &fs, sizeof(fs));
+            return;
+        }
+        default:
+            luaL_error(L, "%s: unsupported array element type", what);
+    }
+}
+
+// Replace the Array<T> at addr with the sequence in the Lua table at
+// tableIndex. Elements are staged onto the Lua stack as a userdata scratch
+// buffer so a luaL_error mid-stage cannot leak heap memory.
+static bool plain_array_write(lua_State *L, mach_vm_address_t addr, int tableIndex,
+                              const ComponentPropertyDef *prop, const char *what) {
+    int absTable = lua_absindex(L, tableIndex);
+    luaL_checktype(L, absTable, LUA_TTABLE);
+    if (!game_memory_available()) {
+        LOG_ENTITY_DEBUG("%s: game allocator unavailable; refusing array write", what);
+        return false;
+    }
+
+    size_t count = lua_rawlen(L, absTable);
+    if (count > PLAIN_ARRAY_MAX_ELEMENTS) {
+        luaL_error(L, "%s: %zu elements exceeds the %d element limit", what, count,
+                   PLAIN_ARRAY_MAX_ELEMENTS);
+        return false;
+    }
+
+    size_t bytes = count * prop->elemSize;
+    uint8_t *staged = (uint8_t *)lua_newuserdatauv(L, bytes ? bytes : 1, 0);
+    int stagedIdx = lua_gettop(L);
+    memset(staged, 0, bytes ? bytes : 1);
+    for (size_t i = 0; i < count; i++) {
+        lua_rawgeti(L, absTable, (lua_Integer)i + 1);
+        plain_array_stage_element(L, -1, prop, staged + i * prop->elemSize, what,
+                                  (lua_Integer)i + 1);
+        lua_pop(L, 1);
+    }
+
+    uint64_t oldBuf = 0;
+    if (!safe_memory_read(addr + ARRAY_BUF_OFFSET, &oldBuf, sizeof(oldBuf))) {
+        lua_remove(L, stagedIdx);
+        return false;
+    }
+
+    uint8_t *buf = NULL;
+    if (count > 0) {
+        buf = (uint8_t *)game_memory_alloc(bytes);
+        if (!buf) {
+            lua_remove(L, stagedIdx);
+            return false;
+        }
+        memcpy(buf, staged, bytes);
+    }
+    lua_remove(L, stagedIdx);
+
+    uint32_t count32 = (uint32_t)count;
+    uint8_t header[PLAIN_ARRAY_HEADER_SIZE] = {0};
+    uint64_t bufAddr = (uint64_t)(uintptr_t)buf;
+    memcpy(header + ARRAY_BUF_OFFSET, &bufAddr, sizeof(bufAddr));
+    memcpy(header + ARRAY_CAP_OFFSET, &count32, sizeof(count32));
+    memcpy(header + ARRAY_SIZE_OFFSET, &count32, sizeof(count32));
+    if (!safe_memory_write(addr, header, sizeof(header))) {
+        game_memory_free(buf);
+        return false;
+    }
+    game_memory_free((void *)(uintptr_t)oldBuf);
+    LOG_ENTITY_DEBUG("%s: rebuilt array with %zu element(s)", what, count);
+    return true;
+}
+
 int component_property_read_def(lua_State *L, void *componentPtr,
                                 const ComponentPropertyDef *prop) {
     if (!L || !componentPtr || !prop) {
@@ -985,6 +1131,11 @@ static size_t component_property_field_size(const ComponentPropertyDef *prop) {
             // RefMapInternals header; the nodes hang off HashTable.
             return ROLLMAP_SIZE;
 
+        case FIELD_TYPE_DYNAMIC_ARRAY:
+            // Array<T> header {buf_, capacity_, size_}; the buffer is
+            // rebuilt through the game allocator (plain_array_write).
+            return plain_array_elem_writable(prop) ? PLAIN_ARRAY_HEADER_SIZE : 0;
+
         case FIELD_TYPE_INT32_ARRAY:
             if (prop->arraySize == 0) return 0;
             return (size_t)prop->arraySize * sizeof(int32_t);
@@ -1000,11 +1151,14 @@ static size_t component_property_field_size(const ComponentPropertyDef *prop) {
 
 static bool component_property_is_pointer_typed(const ComponentPropertyDef *prop) {
     /*
-     * Dynamic Array<T> embeds a game-owned buffer pointer.  Replacing any part
-     * of that header would be a pointer write and arrays of structs additionally
-     * require ownership/lifetime operations that this layer cannot provide.
+     * Dynamic Array<T> embeds a game-owned buffer pointer. Arrays of plain
+     * values (Guid / EntityHandle / FixedString) are rebuilt through the game
+     * allocator the way upstream Unserialize does (clear + push_back); arrays
+     * of structs additionally require ownership/lifetime operations that this
+     * layer cannot provide, so those stay refused.
      */
-    return prop && prop->type == FIELD_TYPE_DYNAMIC_ARRAY;
+    return prop && prop->type == FIELD_TYPE_DYNAMIC_ARRAY
+        && !plain_array_elem_writable(prop);
 }
 
 static bool component_property_bounds_valid(const ComponentLayoutDef *layout,
@@ -1284,6 +1438,13 @@ bool component_property_write(lua_State *L, void *componentPtr,
             char what[160];
             snprintf(what, sizeof(what), "%s.%s", layout->componentName, propertyName);
             wrote = roll_map_write(L, address, valueIndex, what);
+            break;
+        }
+
+        case FIELD_TYPE_DYNAMIC_ARRAY: {
+            char what[160];
+            snprintf(what, sizeof(what), "%s.%s", layout->componentName, propertyName);
+            wrote = plain_array_write(L, address, valueIndex, prop, what);
             break;
         }
 
@@ -1772,6 +1933,26 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
             if (safe_memory_read_u32((mach_vm_address_t)(elemAddr + 20), &boostCount)) {
                 lua_pushinteger(L, boostCount);
                 lua_setfield(L, -2, "BoostCount");
+            }
+
+            // Boosts: the boost entity handles (upstream BoostEntry.Boosts),
+            // surfaced as "0x..." strings like ELEM_TYPE_ENTITY_HANDLE.
+            uint64_t boostBuf = 0;
+            if (safe_memory_read((mach_vm_address_t)(elemAddr + 8), &boostBuf, sizeof(boostBuf))
+                && boostBuf != 0 && boostCount <= 256) {
+                lua_createtable(L, (int)boostCount, 0);
+                for (uint32_t i = 0; i < boostCount; i++) {
+                    uint64_t handle = 0;
+                    if (!safe_memory_read((mach_vm_address_t)(boostBuf + (uint64_t)i * 8),
+                                          &handle, sizeof(handle))) {
+                        break;
+                    }
+                    char handleBuf[32];
+                    snprintf(handleBuf, sizeof(handleBuf), "0x%llx", (unsigned long long)handle);
+                    lua_pushstring(L, handleBuf);
+                    lua_rawseti(L, -2, (lua_Integer)i + 1);
+                }
+                lua_setfield(L, -2, "Boosts");
             }
 
             // Debug info
