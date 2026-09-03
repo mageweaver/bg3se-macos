@@ -2360,12 +2360,65 @@ static void osi_push_db_accessor(lua_State *L, const char *db_name) {
 // Dynamic Osi.* Metatable Implementation
 // ============================================================================
 
+// Osiris alias types. Story-header types above GUIDSTRING (5) are aliases
+// that ultimately resolve to one of the five base types: CHARACTER, ITEM,
+// TRIGGER, ... → GUIDSTRING, but also enum types such as CRITICALITYTYPE
+// (RollResult's 6th arg) → INTEGER. Upstream resolves these with
+// Types->ResolveAlias() before converting to Lua (Lua/Libs/Debug.inl
+// GetBaseType); libOsiris.dylib exports the engine's own walker,
+// COsiDIVObjectTypesMan::GetRootType(TOsiValueType) const, and the manager
+// instance through the _OsiDIVObjectTypesMan global (a COsiDIVObjectTypesMan*).
+// Reading an INTEGER-aliased value as a char* was a jump-to-small-int crash
+// (strcmp on 0x1 inside luaS_new).
+typedef uint16_t (*OsiGetRootTypeFn)(const void *typesMan, uint16_t typeId);
+static OsiGetRootTypeFn s_osi_get_root_type = NULL;
+static void **s_osi_types_man = NULL;  // &_OsiDIVObjectTypesMan
+#define OSI_TYPE_UNDEFINED 0x7f
+
+static bool osi_types_resolve_symbols(void) {
+    static bool attempted = false;
+    if (s_osi_get_root_type && s_osi_types_man) return true;
+    if (attempted) return false;
+    attempted = true;
+
+    void *h = dlopen("@rpath/libOsiris.dylib", RTLD_NOLOAD);
+    if (!h) h = dlopen("@executable_path/../Frameworks/libOsiris.dylib", RTLD_NOW);
+    if (!h) {
+        LOG_OSIRIS_WARN("Osi types: libOsiris.dylib not resolvable via dlopen");
+        return false;
+    }
+    s_osi_get_root_type = (OsiGetRootTypeFn)dlsym(h,
+        "_ZNK21COsiDIVObjectTypesMan11GetRootTypeE13TOsiValueType");
+    s_osi_types_man = (void **)dlsym(h, "_OsiDIVObjectTypesMan");
+    if (!s_osi_get_root_type || !s_osi_types_man) {
+        LOG_OSIRIS_WARN("Osi types: missing libOsiris exports (GetRootType=%p TypesMan=%p)",
+                        (void *)s_osi_get_root_type, (void *)s_osi_types_man);
+        s_osi_get_root_type = NULL;
+        s_osi_types_man = NULL;
+        return false;
+    }
+    return true;
+}
+
+/* Base (root) type of an Osiris type id: identity for the five base types
+ * and UNDEFINED, otherwise the engine's alias walk. Returns the input
+ * unchanged if the type manager isn't available yet (callers then treat it
+ * as unknown rather than guessing). */
+static uint16_t osi_resolve_base_type(uint16_t typeId) {
+    if (typeId <= OSI_TYPE_GUIDSTRING || typeId == OSI_TYPE_UNDEFINED) return typeId;
+    if (!osi_types_resolve_symbols() || !*s_osi_types_man) return typeId;
+    return s_osi_get_root_type(*s_osi_types_man, typeId);
+}
+
 /**
  * Convert an Osiris argument value to a Lua value and push onto stack.
- * Returns 1 if value was pushed, 0 if type unknown.
+ * Always pushes exactly one value; unresolvable types push nil (warned once
+ * per type id) instead of guessing at the union's contents.
+ * Returns 1.
  */
 static int osi_value_to_lua(lua_State *L, OsiArgumentValue *val) {
-    switch (val->typeId) {
+    uint16_t baseType = osi_resolve_base_type(val->typeId);
+    switch (baseType) {
         case OSI_TYPE_NONE:
             lua_pushnil(L);
             return 1;
@@ -2379,13 +2432,11 @@ static int osi_value_to_lua(lua_State *L, OsiArgumentValue *val) {
             lua_pushnumber(L, val->floatVal);
             return 1;
         case OSI_TYPE_STRING:
-        case OSI_TYPE_GUIDSTRING:
-        default: {
-            // STRING/GUIDSTRING and all custom GUID subtypes (CHARACTERGUID,
-            // ITEMGUID, ... typeId > 5) carry a char* value from the engine.
-            // Copy through safe_memory so a garbage pointer (type-guess
-            // mismatch, engine layout drift) yields "" instead of a SIGSEGV
-            // inside lua_pushstring's strlen.
+        case OSI_TYPE_GUIDSTRING: {
+            // STRING/GUIDSTRING and their aliases (CHARACTER, ITEM, ...)
+            // carry a char* value from the engine. Copy through safe_memory
+            // so a garbage pointer (engine layout drift) yields "" instead
+            // of a SIGSEGV inside lua_pushstring's strlen.
             char buf[512];
             if (val->stringVal &&
                 safe_memory_read_string((mach_vm_address_t)(uintptr_t)val->stringVal,
@@ -2394,6 +2445,19 @@ static int osi_value_to_lua(lua_State *L, OsiArgumentValue *val) {
             } else {
                 lua_pushstring(L, "");
             }
+            return 1;
+        }
+        default: {
+            static uint16_t warned[16];
+            static int warnedCount = 0;
+            bool seen = false;
+            for (int i = 0; i < warnedCount; i++) if (warned[i] == val->typeId) seen = true;
+            if (!seen) {
+                if (warnedCount < 16) warned[warnedCount++] = val->typeId;
+                LOG_OSIRIS_WARN("Unhandled Osi argument type %u (base %u) — pushing nil",
+                                val->typeId, baseType);
+            }
+            lua_pushnil(L);
             return 1;
         }
     }
@@ -4428,28 +4492,9 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
             int pushed = 0;
             OsiArgumentDesc *arg = args;
             while (arg && pushed < argsToPass) {
-                // For now, push as strings - will refine based on type
-                if (arg->value.typeId == OSI_TYPE_STRING ||
-                    arg->value.typeId == OSI_TYPE_GUIDSTRING) {
-                    if (arg->value.stringVal) {
-                        lua_pushstring(L, arg->value.stringVal);
-                    } else {
-                        lua_pushnil(L);
-                    }
-                } else if (arg->value.typeId == OSI_TYPE_INTEGER) {
-                    lua_pushinteger(L, arg->value.int32Val);
-                } else if (arg->value.typeId == OSI_TYPE_INTEGER64) {
-                    lua_pushinteger(L, (lua_Integer)arg->value.int64Val);
-                } else if (arg->value.typeId == OSI_TYPE_REAL) {
-                    lua_pushnumber(L, arg->value.floatVal);
-                } else {
-                    // Unknown type - try string
-                    if (arg->value.stringVal) {
-                        lua_pushstring(L, arg->value.stringVal);
-                    } else {
-                        lua_pushnil(L);
-                    }
-                }
+                // Alias-aware conversion (enum types such as CRITICALITYTYPE
+                // resolve to INTEGER; CHARACTER/ITEM/... to GUIDSTRING).
+                osi_value_to_lua(L, &arg->value);
                 pushed++;
                 arg = arg->nextParam;
             }
