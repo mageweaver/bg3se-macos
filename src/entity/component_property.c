@@ -1037,6 +1037,19 @@ int component_property_read_def(lua_State *L, void *componentPtr,
             return 1;
         }
 
+        case FIELD_TYPE_STRUCT_PTR: {
+            // T* member: proxy the pointee with its own layout (nil when NULL)
+            void *target = NULL;
+            if (!prop->structLayout
+                || !safe_memory_read((mach_vm_address_t)addr, &target, sizeof(target))
+                || !target) {
+                lua_pushnil(L);
+                return 1;
+            }
+            component_property_push_proxy(L, target, prop->structLayout);
+            return 1;
+        }
+
         default:
             LOG_ENTITY_DEBUG("Unsupported field type: %d", prop->type);
             lua_pushnil(L);
@@ -1157,6 +1170,7 @@ static bool component_property_is_pointer_typed(const ComponentPropertyDef *prop
      * of structs additionally require ownership/lifetime operations that this
      * layer cannot provide, so those stay refused.
      */
+    if (prop && prop->type == FIELD_TYPE_STRUCT_PTR) return true;
     return prop && prop->type == FIELD_TYPE_DYNAMIC_ARRAY
         && !plain_array_elem_writable(prop);
 }
@@ -1800,6 +1814,7 @@ typedef struct {
     void *arrayPtr;             // Pointer to Array<T> struct (buf_/capacity_/size_)
     ArrayElementType elemType;  // Element type for formatting
     uint16_t elemSize;          // Element size in bytes
+    const ComponentLayoutDef *structLayout;  // Pointee layout for ELEM_TYPE_STRUCT_PTR
     LifetimeHandle lifetime;    // For validity checking
 } ArrayProxy;
 
@@ -1967,6 +1982,19 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
             return 1;
         }
 
+        case ELEM_TYPE_STRUCT_PTR: {
+            // Array<T*>: proxy the pointee (e.g. esv::StatusMachine::Statuses)
+            void *target = NULL;
+            if (!proxy->structLayout || proxy->elemSize != sizeof(void *)
+                || !safe_memory_read((mach_vm_address_t)elemAddr, &target, sizeof(target))
+                || !target) {
+                lua_pushnil(L);
+                return 1;
+            }
+            component_property_push_proxy(L, target, proxy->structLayout);
+            return 1;
+        }
+
         case ELEM_TYPE_SPELL_DATA:
         case ELEM_TYPE_SPELL_META:
         case ELEM_TYPE_STATUS_INFO:
@@ -2126,6 +2154,7 @@ void component_property_push_array_proxy(lua_State *L, void *arrayPtr,
     proxy->arrayPtr = arrayPtr;
     proxy->elemType = prop->elemType;
     proxy->elemSize = prop->elemSize;
+    proxy->structLayout = prop->structLayout;
     proxy->lifetime = lifetime_lua_get_current(L);
 
     luaL_getmetatable(L, ARRAY_PROXY_METATABLE);
@@ -2154,6 +2183,12 @@ static void serialize_array_proxy(lua_State *L, ArrayProxy *proxy) {
     lua_createtable(L, (int)size, 0);
     for (uint32_t i = 0; i < size; i++) {
         array_proxy_push_element(L, proxy, buf, i);
+        // Struct-pointer elements come back as proxies; flatten them so the
+        // serialized table holds no game references.
+        if (proxy->elemType == ELEM_TYPE_STRUCT_PTR && lua_isuserdata(L, -1)
+            && component_property_serialize_proxy(L, -1)) {
+            lua_remove(L, -2);
+        }
         lua_rawseti(L, -2, (lua_Integer)i + 1);
     }
 }
@@ -2176,12 +2211,17 @@ bool component_property_serialize_proxy(lua_State *L, int index) {
                     .arrayPtr = (char *)component->componentPtr + prop->offset,
                     .elemType = prop->elemType,
                     .elemSize = prop->elemSize,
+                    .structLayout = prop->structLayout,
                     .lifetime = component->lifetime
                 };
                 serialize_array_proxy(L, &array);
             } else {
                 component_property_read_def(
                     L, component->componentPtr, prop);
+                if (prop->type == FIELD_TYPE_STRUCT_PTR && lua_isuserdata(L, -1)
+                    && component_property_serialize_proxy(L, -1)) {
+                    lua_remove(L, -2);
+                }
             }
 
             if (lua_isnil(L, -1)) {

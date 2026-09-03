@@ -358,16 +358,33 @@ uint16_t storage_data_engine_component_size(void *storageData, uint8_t component
 
 void *component_lookup_by_index(uint64_t entityHandle, uint16_t typeIndex,
                                  size_t componentSize, bool isProxy) {
-    if (!component_lookup_ready()) {
+    return component_lookup_by_index_in_world(g_EntityWorld, entityHandle, typeIndex,
+                                              componentSize, isProxy);
+}
+
+void *component_lookup_by_index_in_world(void *entityWorld, uint64_t entityHandle,
+                                         uint16_t typeIndex, size_t componentSize,
+                                         bool isProxy) {
+    if (!component_lookup_ready() || !entityWorld) {
         LOG_ENTITY_DEBUG("ERROR: Not initialized");
         return NULL;
     }
 
-    LOG_ENTITY_DEBUG("Looking up component: handle=0x%llx, type=%u, size=%zu, proxy=%d",
-               (unsigned long long)entityHandle, typeIndex, componentSize, isProxy);
+    // Component type indices are global (ecs::ComponentTypeIdContext), so the
+    // same TypeId resolves in any world; only the storage container differs.
+    void *storageContainer = (entityWorld == g_EntityWorld)
+        ? g_StorageContainer
+        : *(void **)((char *)entityWorld + ENTITYWORLD_STORAGE_OFFSET);
+    if (!storageContainer) {
+        LOG_ENTITY_DEBUG("ERROR: StorageContainer is NULL for world %p", entityWorld);
+        return NULL;
+    }
+
+    LOG_ENTITY_DEBUG("Looking up component: world=%p handle=0x%llx, type=%u, size=%zu, proxy=%d",
+               entityWorld, (unsigned long long)entityHandle, typeIndex, componentSize, isProxy);
 
     // Step 1: Get EntityStorageData
-    void *storageData = component_lookup_get_storage_data(entityHandle);
+    void *storageData = call_try_get(g_TryGetFnAddr, storageContainer, entityHandle);
     if (!storageData) {
         LOG_ENTITY_DEBUG("  Failed: TryGet returned NULL");
         return NULL;

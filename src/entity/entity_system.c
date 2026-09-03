@@ -815,6 +815,43 @@ EntityWorldPtr entity_get_world(void) {
     return g_EntityWorld;
 }
 
+/**
+ * Walk a UuidToHandleMappingComponent's HashMap<Guid, EntityHandle> for one
+ * GUID. hash = lo ^ hi, bucket = hash % HashKeys.size, chain via NextIds.
+ */
+static EntityHandle uuid_mapping_find(void *mappingComponent, const Guid *guid) {
+    if (!mappingComponent || !guid) return ENTITY_HANDLE_INVALID;
+    UuidToHandleMappingComponent *mapping = (UuidToHandleMappingComponent*)mappingComponent;
+    HashMapGuidEntityHandle *hashmap = &mapping->Mappings;
+
+    if (!hashmap->HashKeys.buf || hashmap->HashKeys.size == 0) {
+        LOG_ENTITY_DEBUG("HashMap not initialized");
+        return ENTITY_HANDLE_INVALID;
+    }
+
+    uint64_t hash = guid->lo ^ guid->hi;
+    uint32_t bucket = (uint32_t)(hash % hashmap->HashKeys.size);
+    int32_t keyIndex = hashmap->HashKeys.buf[bucket];
+
+    while (keyIndex >= 0) {
+        if ((uint32_t)keyIndex >= hashmap->Keys.size) {
+            LOG_ENTITY_DEBUG("HashMap corruption: keyIndex %d >= Keys.size %u",
+                       keyIndex, hashmap->Keys.size);
+            break;
+        }
+        Guid *key = &hashmap->Keys.buf[keyIndex];
+        if (key->lo == guid->lo && key->hi == guid->hi) {
+            return hashmap->Values.buf[keyIndex];
+        }
+        if ((uint32_t)keyIndex >= hashmap->NextIds.size) {
+            LOG_ENTITY_DEBUG("HashMap corruption: NextIds index out of bounds");
+            break;
+        }
+        keyIndex = hashmap->NextIds.buf[keyIndex];
+    }
+    return ENTITY_HANDLE_INVALID;
+}
+
 EntityHandle entity_get_by_guid(const char *guid_str) {
     if (!guid_str || !g_EntityWorld) {
         return ENTITY_HANDLE_INVALID;
@@ -853,69 +890,17 @@ EntityHandle entity_get_by_guid(const char *guid_str) {
             return ENTITY_HANDLE_INVALID;
         }
 
-        // Debug: Log what we're searching for
-        LOG_ENTITY_INFO("Searching for: %s -> hi=0x%llx lo=0x%llx",
-                   uuid_str, (unsigned long long)guid.hi, (unsigned long long)guid.lo);
-
-        // Cast to our structure
-        UuidToHandleMappingComponent *mapping = (UuidToHandleMappingComponent*)g_UuidMappingComponent;
-        HashMapGuidEntityHandle *hashmap = &mapping->Mappings;
-
-        // Debug: dump HashMap stats on first lookup (DEBUG level - enable with LOG_LEVEL_DEBUG)
-        static bool dumped = false;
-        if (!dumped) {
-            dumped = true;
-            LOG_ENTITY_DEBUG("UuidToHandleMappingComponent: ptr=%p, Keys.size=%u",
-                       g_UuidMappingComponent, hashmap->Keys.size);
-        }
-
-        // Validate HashMap structure
-        if (!hashmap->HashKeys.buf || hashmap->HashKeys.size == 0) {
-            LOG_ENTITY_DEBUG("HashMap not initialized");
-            return ENTITY_HANDLE_INVALID;
-        }
-
-        // Hash the GUID: hash = lo ^ hi
-        uint64_t hash = guid.lo ^ guid.hi;
-        uint32_t bucket = (uint32_t)(hash % hashmap->HashKeys.size);
-
-        // Look up in hash table
-        int32_t keyIndex = hashmap->HashKeys.buf[bucket];
-
-        while (keyIndex >= 0) {
-            // Bounds check
-            if ((uint32_t)keyIndex >= hashmap->Keys.size) {
-                LOG_ENTITY_DEBUG("HashMap corruption: keyIndex %d >= Keys.size %u",
-                           keyIndex, hashmap->Keys.size);
-                break;
+        EntityHandle handle = uuid_mapping_find(g_UuidMappingComponent, &guid);
+        if (handle != ENTITY_HANDLE_INVALID) {
+            // Cache for future lookups
+            if (g_GuidCacheCount < GUID_CACHE_SIZE) {
+                strncpy(g_GuidCache[g_GuidCacheCount].guid, guid_str, 63);
+                g_GuidCache[g_GuidCacheCount].guid[63] = '\0';
+                g_GuidCache[g_GuidCacheCount].handle = handle;
+                g_GuidCacheCount++;
             }
-
-            // Compare GUID
-            Guid *key = &hashmap->Keys.buf[keyIndex];
-            LOG_ENTITY_INFO("Comparing with key[%d]: hi=0x%llx lo=0x%llx",
-                       keyIndex, (unsigned long long)key->hi, (unsigned long long)key->lo);
-            if (key->lo == guid.lo && key->hi == guid.hi) {
-                // Found it!
-                EntityHandle handle = hashmap->Values.buf[keyIndex];
-
-                // Cache for future lookups
-                if (g_GuidCacheCount < GUID_CACHE_SIZE) {
-                    strncpy(g_GuidCache[g_GuidCacheCount].guid, guid_str, 63);
-                    g_GuidCache[g_GuidCacheCount].guid[63] = '\0';
-                    g_GuidCache[g_GuidCacheCount].handle = handle;
-                    g_GuidCacheCount++;
-                }
-
-                LOG_ENTITY_DEBUG("GUID lookup SUCCESS: %s -> handle=0x%llx", guid_str, (unsigned long long)handle);
-                return handle;
-            }
-
-            // Follow collision chain
-            if ((uint32_t)keyIndex >= hashmap->NextIds.size) {
-                LOG_ENTITY_DEBUG("HashMap corruption: NextIds index out of bounds");
-                break;
-            }
-            keyIndex = hashmap->NextIds.buf[keyIndex];
+            LOG_ENTITY_DEBUG("GUID lookup SUCCESS: %s -> handle=0x%llx", guid_str, (unsigned long long)handle);
+            return handle;
         }
 
         LOG_ENTITY_DEBUG("GUID not found in mapping: %s", guid_str);
@@ -2645,12 +2630,15 @@ static int lua_entity_index(lua_State *L) {
     // This allows new components to be accessed by short name without hardcoding
     const ComponentLayoutDef *layout = component_property_get_layout_by_short_name(key);
     if (layout && layout->componentTypeIndex > 0) {
-        // Look up component by TypeIndex
+        // Look up component by TypeIndex. Proxy components (esv::Item,
+        // ecl::Item...) keep a pointer in the ECS slot; the registry knows
+        // which ones, and the layout describes the pointee, not the slot.
+        const ComponentInfo *info = component_registry_lookup(layout->componentName);
         void *component = component_lookup_by_index(
             handle,
             layout->componentTypeIndex,
             layout->componentSize,
-            false  // not proxy
+            info ? info->is_proxy : false
         );
         if (component) {
             component_property_push_proxy(L, component, layout);
@@ -3515,6 +3503,72 @@ static int lua_entity_get_client_world(lua_State *L) {
     return 1;
 }
 
+// Ext.Entity.GetClientComponent(guid, componentName) -> proxy|nil, err
+// Reads a component from the CLIENT EntityWorld (the state the tooltip/UI
+// sees) for the entity the client maps this GUID to. Debug aid for checking
+// server->client replication; the proxy is read-only in practice.
+static void *g_ClientUuidMappingComponent = NULL;
+
+static int lua_entity_get_client_component(lua_State *L) {
+    const char *guid_str = luaL_checkstring(L, 1);
+    const char *name = luaL_checkstring(L, 2);
+
+    if (!g_ClientEntityWorld) {
+        lua_pushnil(L);
+        lua_pushstring(L, "client EntityWorld not discovered");
+        return 2;
+    }
+    if (!g_ClientUuidMappingComponent && g_TryGetUuidMappingSingleton) {
+        g_ClientUuidMappingComponent = call_try_get_singleton_with_x8(
+            g_TryGetUuidMappingSingleton, g_ClientEntityWorld);
+        LOG_ENTITY_INFO("Client UuidToHandleMappingComponent: %p", g_ClientUuidMappingComponent);
+    }
+    if (!g_ClientUuidMappingComponent) {
+        lua_pushnil(L);
+        lua_pushstring(L, "client UuidToHandleMapping singleton unavailable");
+        return 2;
+    }
+
+    Guid guid;
+    if (!guid_parse(extract_uuid_from_guid(guid_str), &guid)) {
+        lua_pushnil(L);
+        lua_pushfstring(L, "bad GUID: %s", guid_str);
+        return 2;
+    }
+    EntityHandle handle = uuid_mapping_find(g_ClientUuidMappingComponent, &guid);
+    if (handle == ENTITY_HANDLE_INVALID) {
+        lua_pushnil(L);
+        lua_pushstring(L, "GUID not mapped in client world");
+        return 2;
+    }
+
+    const ComponentLayoutDef *layout = component_property_get_layout(name);
+    if (!layout) layout = component_property_get_layout_by_short_name(name);
+    if (!layout) {
+        lua_pushnil(L);
+        lua_pushfstring(L, "no layout for component %s", name);
+        return 2;
+    }
+    const ComponentInfo *info = component_registry_lookup(layout->componentName);
+    if (!info || !info->discovered || info->index == COMPONENT_INDEX_UNDEFINED) {
+        lua_pushnil(L);
+        lua_pushfstring(L, "component %s has no discovered TypeId", layout->componentName);
+        return 2;
+    }
+
+    void *component = component_lookup_by_index_in_world(g_ClientEntityWorld, handle,
+                                                         info->index, info->size,
+                                                         info->is_proxy);
+    if (!component) {
+        lua_pushnil(L);
+        lua_pushfstring(L, "client entity 0x%llx has no %s",
+                        (unsigned long long)handle, layout->componentName);
+        return 2;
+    }
+    component_property_push_proxy(L, component, layout);
+    return 1;
+}
+
 // Ext.Entity.DiscoverClientWorld() -> boolean
 // Attempts to discover client EntityWorld using current settings
 static int lua_entity_discover_client_world(lua_State *L) {
@@ -3786,6 +3840,8 @@ void entity_register_lua(lua_State *L) {
 
     lua_pushcfunction(L, lua_entity_get_client_world);
     lua_setfield(L, -2, "GetClientWorld");
+    lua_pushcfunction(L, lua_entity_get_client_component);
+    lua_setfield(L, -2, "GetClientComponent");
 
     lua_pushcfunction(L, lua_entity_discover_client_world);
     lua_setfield(L, -2, "DiscoverClientWorld");

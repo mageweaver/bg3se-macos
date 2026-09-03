@@ -5116,15 +5116,62 @@ static const ComponentLayoutDef g_esv_IsGlobalComponent_Layout = {
     .propertyCount = sizeof(g_esv_IsGlobalComponent_Properties) / sizeof(g_esv_IsGlobalComponent_Properties[0]),
 };
 
-// esv::Item - 8 bytes (0x08)
+// esv::Status - nested struct reached through esv::StatusMachine::Statuses.
+// Not an ECS component (never registered); upstream GameDefinitions/Status.h.
+// StatusId@0x50 verified live on ARM64 (XEN_ACTUALLY_INFERNAL_RAPIER_* on the
+// Infernal Rapier); LifeTime/CurrentLifeTime read -1.0 on permanent statuses.
+static const ComponentPropertyDef g_esv_Status_Properties[] = {
+    { "StatusId", 0x50, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "LifeTime", 0x58, FIELD_TYPE_FLOAT, 0, true },
+    { "CurrentLifeTime", 0x5c, FIELD_TYPE_FLOAT, 0, true },
+};
+static const ComponentLayoutDef g_esv_Status_Layout = {
+    .componentName = "esv::Status",
+    .shortName = "EsvStatus",
+    .componentTypeIndex = 0,
+    .componentSize = 0,
+    .properties = g_esv_Status_Properties,
+    .propertyCount = sizeof(g_esv_Status_Properties) / sizeof(g_esv_Status_Properties[0]),
+};
+
+// esv::StatusMachine - nested struct reached through esv::Item::StatusManager.
+// Owner EntityHandle@0, Statuses Array<Status*>@0x20 (verified live).
+static const ComponentPropertyDef g_esv_StatusMachine_Properties[] = {
+    { "Owner", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Statuses", 0x20, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_STRUCT_PTR, 8,
+      .structLayout = &g_esv_Status_Layout },
+};
+static const ComponentLayoutDef g_esv_StatusMachine_Layout = {
+    .componentName = "esv::StatusMachine",
+    .shortName = "EsvStatusMachine",
+    .componentTypeIndex = 0,
+    .componentSize = 0,
+    .properties = g_esv_StatusMachine_Properties,
+    .propertyCount = sizeof(g_esv_StatusMachine_Properties) / sizeof(g_esv_StatusMachine_Properties[0]),
+};
+
+// esv::Item - proxy component: the ECS slot holds an esv::Item* and the
+// object itself is 0xb0 bytes (upstream GameDefinitions/Item.h). Offsets
+// verified live on ARM64 (Stats@0x9c reads the item's stats entry name).
+// Exposed as ServerItem for Windows parity (TransmogEnhanced reads
+// ServerItem.StatusManager.Statuses[k].StatusId to transfer statuses).
 static const ComponentPropertyDef g_esv_Item_Properties[] = {
-    { "ItemPtr", 0x00, FIELD_TYPE_UINT64, 0, false },  // Ptr to 0xb0 (176b) malloc
+    { "Flags", 0x18, FIELD_TYPE_UINT64, 0, true },
+    { "MyHandle", 0x20, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "Level", 0x30, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "ItemType", 0x34, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "StatusManager", 0x70, FIELD_TYPE_STRUCT_PTR, 0, true,
+      .structLayout = &g_esv_StatusMachine_Layout },
+    { "Stats", 0x9c, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "PreviousLevel", 0xa0, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "TreasureLevel", 0xa4, FIELD_TYPE_INT32, 0, true },
+    { "Amount", 0xa8, FIELD_TYPE_INT32, 0, true },
 };
 static const ComponentLayoutDef g_esv_Item_Layout = {
     .componentName = "esv::Item",
-    .shortName = "Item",
+    .shortName = "ServerItem",
     .componentTypeIndex = 0,
-    .componentSize = 0x08,
+    .componentSize = 0xb0,
     .properties = g_esv_Item_Properties,
     .propertyCount = sizeof(g_esv_Item_Properties) / sizeof(g_esv_Item_Properties[0]),
 };

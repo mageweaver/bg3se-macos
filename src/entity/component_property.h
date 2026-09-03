@@ -47,6 +47,10 @@ typedef enum {
     // RollDefinition). Reads as { [DamageTypeLabel] = { roll, ... } };
     // writes rebuild the map through the game allocator.
     FIELD_TYPE_ROLL_MAP,
+    // Pointer to a game-owned struct described by ComponentPropertyDef::
+    // structLayout (e.g. esv::Item::StatusManager -> esv::StatusMachine).
+    // Reads push a proxy over the pointee (nil when NULL); never writable.
+    FIELD_TYPE_STRUCT_PTR,
 } FieldType;
 
 // ============================================================================
@@ -63,6 +67,7 @@ typedef enum {
     ELEM_TYPE_ENTITY_HANDLE,    // Array of EntityHandles
     ELEM_TYPE_CLASS_INFO,       // ClassInfo (40 bytes: ClassUUID + SubClassUUID + Level)
     ELEM_TYPE_BOOST_ENTRY,      // BoostEntry (24 bytes: BoostType + Array<EntityHandle>)
+    ELEM_TYPE_STRUCT_PTR,       // Array<T*>: each element proxied via structLayout
 } ArrayElementType;
 
 // ============================================================================
@@ -73,6 +78,7 @@ typedef enum {
 // reads push the upstream label string (Windows SE parity for mods that
 // compare e.g. Slot == "Boots") and writes accept a label or an integer.
 struct ComponentEnumDef;
+struct ComponentLayoutDef;
 
 typedef struct {
     const char *name;       // Property name (e.g., "Hp", "MaxHp")
@@ -85,13 +91,15 @@ typedef struct {
     uint16_t elemSize;          // Element size in bytes
     // Optional enum label table for integer fields (NULL = plain integer).
     const struct ComponentEnumDef *enumDef;
+    // Pointee layout for FIELD_TYPE_STRUCT_PTR / ELEM_TYPE_STRUCT_PTR.
+    const struct ComponentLayoutDef *structLayout;
 } ComponentPropertyDef;
 
 // ============================================================================
 // Component Layout Definition
 // ============================================================================
 
-typedef struct {
+typedef struct ComponentLayoutDef {
     const char *componentName;              // Full name (e.g., "eoc::HealthComponent")
     const char *shortName;                  // Short name for Lua access (e.g., "Health")
     uint16_t componentTypeIndex;            // From TypeId discovery (0 = not set)

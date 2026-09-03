@@ -71,6 +71,14 @@ void *component_lookup_by_index(uint64_t entityHandle, uint16_t typeIndex,
  */
 void *component_lookup_get_storage_data(uint64_t entityHandle);
 
+/**
+ * Same as component_lookup_by_index but against another EntityWorld's
+ * storage container (e.g. the client world). TypeIds are global.
+ */
+void *component_lookup_by_index_in_world(void *entityWorld, uint64_t entityHandle,
+                                         uint16_t typeIndex, size_t componentSize,
+                                         bool isProxy);
+
 // ============================================================================
 // Low-Level HashMap Traversal (for debugging/testing)
 // ============================================================================
