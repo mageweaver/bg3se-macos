@@ -2,6 +2,66 @@
 
 All notable changes to BG3SE-macOS are documented here.
 
+## v0.47.2 (2026-09-05)
+
+- **Crash fix — mod timers racing the server.** The console/timer poll thread
+  ran `Ext.Timer` callbacks (and with them Osiris calls such as
+  `Osi.SetHitpointsPercentage`) whenever the server had not ticked for 500 ms —
+  which is every long server frame (a LevelGameplayStarted dispatch across 700+
+  mods, or LoadSession itself). That put mod Lua on a thread of its own while
+  the ServerWorker was inside `EntityWorld::FlushECBs` (SIGSEGV, 2026-09-05).
+  Ownership of console and timers is now decided by engine state: once the
+  server has ticked and is in any session state, only the server frame runs
+  them; the poll thread services the main menu. No time heuristic remains. A
+  rate-limited warning names a state the server stopped ticking in.
+- **Server frame hook + engine-driven game state.** `esv::GameStateMachine::Update`
+  is hooked (pre-hook, as upstream's `PreUpdate`) so timers, Tick, net messages
+  and the console run on the ServerWorker once per frame, and an
+  `esv::GameStateEventManager` listener reports every real transition —
+  `GameStateChanged` now fires for `Sync` (mods such as AppearanceEditEnhanced
+  key their restore on `FromState == "Sync"`); the inferred transitions no
+  longer fire Lua once the engine reports.
+- **Story functions callable.** Databases, PROCs and events have no
+  `OsiFunctionId`; `Osi.DB_*()` inserts and `Osi.PROC_*()` calls now push a
+  tuple into the RETE node (`CReteStartNode::Add` replicated; engine allocator,
+  `CTuple::Copy` by value for the x8 sret). Types come only from the function's
+  signature, read with the verified Mac `COsiValueTypeList` layout, and a
+  one-time check of declared vs stored root types disables story inserts for
+  the session on any mismatch — a wrong type is a fatal engine assert in
+  `CReteDBase::find`, not a silent miss. CustomCompanions' recruit now moves the
+  companion to the party instead of leaving it off-map.
+- **PersistentVars actually save.** The dirty flag nothing set is gone; the
+  server tick saves on its interval with per-mod content dedup, flushes before
+  the engine writes a savegame and at session teardown, and resets at session
+  end. Fixes transmog re-granting its appearance item on every load.
+- **Net messages filtered by context.** Legacy `NetMessage` handlers only see
+  messages addressed to their own context (upstream's two VMs never let a
+  client handler see a server message). A mod answering its own message
+  ping-ponged the single VM into a freeze (CustomCompanions); the bus also caps
+  dispatch at 256 per pass. `BG3SE_NO_NET_CONTEXT_FILTER=1` restores the old
+  delivery.
+- **GUID byte order.** `ls::Guid` swaps every byte pair; static-data GUIDs were
+  printed with the naive order and could not match anything mods hardcode
+  (Tav's origin printed `…-458e-37549dcdf3a7` instead of `…-8e45-5437cd9da7f3`).
+  One helper (`src/core/guid_format.h`) now formats and parses raw engine
+  bytes; covered by tier-0 tests.
+- **Enum comparisons.** `e.ToState == "Running"` and `flags == 16` were always
+  false because stock Lua never calls `__eq` across types; the VM now routes a
+  full userdata against a string/number through `__eq` (as Windows BG3SE's
+  patched Lua does), including the `EQK`/`EQI` fast paths.
+- **Ext.UI on Noesis.** `Ext.UI.GetRoot()` hands out live elements;
+  `RegisterType`/`Instantiate`/`DataContext` are emulated and a
+  `BaseButton::OnClick` hook queues clicks for the Lua handlers (the path
+  MCM's ESC-menu button uses). Root templates get explicit layouts
+  (`src/template/template_layouts.c`) and components resolve by their upstream
+  Lua names (`generated_component_names.h`).
+- **Diagnostics.** `bg3se_init` bails out in the game's `-crash` reporter
+  relaunch (it inherited `DYLD_INSERT_LIBRARIES`, stole `latest.log` and ate
+  console commands); Input Monitoring is checked at startup and its absence is
+  logged with the fix (keyboard events silently go modifier-only without it);
+  `deploy.sh` stages, signs and atomically swaps the dylib (an unsigned copy is
+  SIGKILLed in dyld with no log at all).
+
 ## v0.44.1 (2026-08-29)
 
 - **Engine bugfix — VT null-tileset crash.** `ls::VirtualTextureManager::Unload`
