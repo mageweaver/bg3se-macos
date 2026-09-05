@@ -4,6 +4,7 @@
 
 #include "test_harness.h"
 #include "guid_lookup.h"
+#include "../../src/core/guid_format.h"
 
 typedef struct {
     const char *input;
@@ -107,9 +108,53 @@ TEST(parse_format_parse_preserves_all_16_bytes) {
     }
 }
 
+/*
+ * guid_format.h holds the same byte order as guid_to_string(), but works on
+ * raw engine bytes -- that is what the static-data banks hand us. Tav's origin
+ * is the live regression: the byte-order-naive formatter the static-data paths
+ * used printed a4b56492-d5ac-4a84-458e-37549dcdf3a7 where the game, and every
+ * mod that hardcodes it, says ...-8e45-5437cd9da7f3.
+ */
+TEST(guid_bytes_match_engine_byte_order) {
+    /* Tav's Origin as it sits in the bank's key array. */
+    static const uint8_t tav[16] = {
+        0x92, 0x64, 0xb5, 0xa4, 0xac, 0xd5, 0x84, 0x4a,
+        0x45, 0x8e, 0x37, 0x54, 0x9d, 0xcd, 0xf3, 0xa7,
+    };
+    char out[GUID_STRING_SIZE];
+
+    guid_bytes_to_string(tav, out, sizeof(out));
+    ASSERT_STR_EQ(out, "a4b56492-d5ac-4a84-8e45-5437cd9da7f3");
+
+    uint8_t back[16];
+    ASSERT_TRUE(guid_string_to_bytes(out, back));
+    ASSERT_EQ(memcmp(tav, back, sizeof(tav)), 0);
+}
+
+/* The two formatters describe the same 16 bytes and must never disagree. */
+TEST(guid_bytes_helper_agrees_with_guid_to_string) {
+    for (size_t i = 0; i < guid_format_case_count(); i++) {
+        Guid guid;
+        char from_struct[37];
+        char from_bytes[GUID_STRING_SIZE];
+        uint8_t bytes[16];
+
+        ASSERT_TRUE(guid_parse(GUID_FORMAT_CASES[i].input, &guid));
+        guid_to_string(&guid, from_struct);
+
+        ASSERT_TRUE(guid_string_to_bytes(GUID_FORMAT_CASES[i].input, bytes));
+        guid_bytes_to_string(bytes, from_bytes, sizeof(from_bytes));
+
+        ASSERT_STR_EQ(from_bytes, from_struct);
+        ASSERT_STR_EQ(from_bytes, GUID_FORMAT_CASES[i].canonical);
+    }
+}
+
 void register_guid_lookup_tests(void) {
     printf("[guid_lookup]\n");
     RUN_TEST(format_parse_table_canonicalizes);
     RUN_TEST(live_host_pre_fix_output_regression);
     RUN_TEST(parse_format_parse_preserves_all_16_bytes);
+    RUN_TEST(guid_bytes_match_engine_byte_order);
+    RUN_TEST(guid_bytes_helper_agrees_with_guid_to_string);
 }

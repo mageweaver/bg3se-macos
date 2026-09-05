@@ -32,5 +32,30 @@ if [[ -f "$DEPLOYED_DYLIB" ]]; then
     fi
 fi
 
-cp "$BUILD_DYLIB" "$DEPLOYED_DYLIB"
-echo "Deployed: $(ls -lh "$DEPLOYED_DYLIB" | awk '{print $5, $6, $7, $8}')"
+# Stage next to the destination, sign, then atomically swap it in.
+#
+# Two reasons this is not a plain cp:
+#  1. macOS kills the game at launch with SIGKILL "Code Signature Invalid"
+#     (CODESIGNING / Invalid Page in dyld) unless the dylib carries a real
+#     signature. The linker's own ad-hoc signature does not always survive the
+#     copy, and `codesign -v` then reports "code object is not signed at all".
+#  2. cp rewrites the destination IN PLACE. Doing that while the game has the
+#     dylib mapped corrupts the running image's pages; mv gives the new file a
+#     new inode and leaves the running process's mapping alone.
+STAGE="$DEPLOYED_DYLIB.new.$$"
+cp "$BUILD_DYLIB" "$STAGE" || { echo "Error: copy to $STAGE failed"; exit 1; }
+
+if ! codesign -f -s - "$STAGE" 2>/dev/null; then
+    rm -f "$STAGE"
+    echo "Error: codesign failed — NOT deploying (the game would be killed at"
+    echo "       launch with 'Code Signature Invalid')."
+    exit 1
+fi
+if ! codesign -v "$STAGE" 2>/dev/null; then
+    rm -f "$STAGE"
+    echo "Error: signature did not verify — NOT deploying."
+    exit 1
+fi
+
+mv -f "$STAGE" "$DEPLOYED_DYLIB" || { rm -f "$STAGE"; echo "Error: install failed"; exit 1; }
+echo "Deployed: $(ls -lh "$DEPLOYED_DYLIB" | awk '{print $5, $6, $7, $8}') (signed)"

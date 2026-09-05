@@ -60,20 +60,23 @@ static int enum_index(lua_State *L) {
 
 // __eq: Compare enum == string/int/enum
 static int enum_eq(lua_State *L) {
+    // The VM (lvm.c, BG3SE cross-type '__eq') always passes the userdata
+    // first, so arg 1 is the enum whichever side of `==` it was written on.
     EnumUserdata *ud = check_enum(L, 1);
 
-    // Compare with string (label)
-    if (lua_isstring(L, 2)) {
-        const char *other_label = lua_tostring(L, 2);
-        int64_t other_value = enum_find_value(ud->type_index, other_label);
-        lua_pushboolean(L, other_value >= 0 && (uint64_t)other_value == ud->value);
-        return 1;
-    }
-
-    // Compare with integer (value)
+    // Compare with integer (value). Checked BEFORE the string branch:
+    // lua_isstring() is true for numbers too and would turn 13 into "13".
     if (lua_isinteger(L, 2)) {
         lua_Integer other_value = lua_tointeger(L, 2);
         lua_pushboolean(L, (uint64_t)other_value == ud->value);
+        return 1;
+    }
+
+    // Compare with string (label)
+    if (lua_type(L, 2) == LUA_TSTRING) {
+        const char *other_label = lua_tostring(L, 2);
+        int64_t other_value = enum_find_value(ud->type_index, other_label);
+        lua_pushboolean(L, other_value >= 0 && (uint64_t)other_value == ud->value);
         return 1;
     }
 

@@ -7,7 +7,10 @@
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
 #include "../resource/resource_manager.h"
+#include "../hooks/arm64_hook.h"
+#include "../core/version_detect.h"
 
+#include <dobby.h>
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
@@ -237,6 +240,109 @@ bool noesis_ready(void) {
     return s_find_name != NULL && noesis_get_root() != NULL;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Button clicks                                                             */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * How MCM's ESC-menu button reaches Lua.
+ *
+ * Upstream wires the button by replacing its DataContext with a Lua-registered
+ * type whose CustomEvent command runs a Lua handler. That needs Noesis type
+ * registration from Lua, which we do not have. What we do have is the exported
+ * Noesis::BaseButton::OnClick(): every button the game builds -- LSButton
+ * included -- funnels through it on the main thread, and its prologue is four
+ * plain frame-setup instructions (sub/stp/stp/add; the first ADRP is at +0x14),
+ * so Dobby's 16-byte patch relocates nothing PC-relative. The replacement
+ * records the button and its XAML Name, then calls the original, so the sound
+ * and the game's own command still run. The game's command for MCM's button is
+ * a CustomEvent named "OpenModMenuConfig" that its state machine does not know,
+ * so it is dropped there -- harmless. Lua sees the click on the next tick, when
+ * lua_ui drains the queue under the gate.
+ *
+ * GetName is called here, on the main thread inside Noesis' own input
+ * dispatch, which is where noesis.h says it is safe.
+ */
+#define SYM_BUTTON_ONCLICK "_ZN6Noesis10BaseButton7OnClickEv"
+#define NOESIS_CLICK_QUEUE_MAX 32
+
+typedef void (*ButtonOnClickFn)(void *button);
+
+static ButtonOnClickFn s_orig_button_onclick = NULL;
+static pthread_mutex_t s_click_mutex = PTHREAD_MUTEX_INITIALIZER;
+static NoesisClick s_click_queue[NOESIS_CLICK_QUEUE_MAX];
+static int s_click_head = 0, s_click_count = 0;
+static bool s_click_hook_installed = false;
+
+static void hooked_button_onclick(void *button) {
+    NoesisClick click;
+    click.element = button;
+    click.name[0] = '\0';
+    if (button && s_get_name) {
+        const char *nm = s_get_name(button);
+        if (nm && nm[0]) {
+            strncpy(click.name, nm, sizeof click.name - 1);
+            click.name[sizeof click.name - 1] = '\0';
+        }
+    }
+
+    pthread_mutex_lock(&s_click_mutex);
+    if (s_click_count < NOESIS_CLICK_QUEUE_MAX) {
+        s_click_queue[(s_click_head + s_click_count) % NOESIS_CLICK_QUEUE_MAX] = click;
+        s_click_count++;
+    }
+    pthread_mutex_unlock(&s_click_mutex);
+
+    if (s_orig_button_onclick) s_orig_button_onclick(button);
+}
+
+bool noesis_install_click_hook(void) {
+    if (s_click_hook_installed) return true;
+
+    void *self = dlopen(NULL, RTLD_NOW);
+    void *target = self ? dlsym(self, SYM_BUTTON_ONCLICK) : NULL;
+    if (!target) {
+        LOG_IMGUI_WARN("Noesis: %s not exported — UI button clicks will not reach Lua",
+                       SYM_BUTTON_ONCLICK);
+        return false;
+    }
+    if (!s_get_name) {
+        void *nm = dlsym(self, SYM_GET_NAME);
+        s_get_name = (GetNameFn)nm;
+    }
+    if (arm64_has_prologue_adrp(target)) {
+        /* Not expected on this build (see the comment above); refuse rather
+         * than relocate a PC-relative instruction, which is exactly what
+         * corrupted the OnPostInit attempt. */
+        LOG_IMGUI_WARN("Noesis: BaseButton::OnClick prologue has an ADRP on this build — "
+                       "click hook skipped");
+        return false;
+    }
+
+    void *orig = NULL;
+    int r = DobbyHook(target, (void *)hooked_button_onclick, &orig);
+    if (r != 0 || !orig) {
+        LOG_IMGUI_WARN("Noesis: DobbyHook(BaseButton::OnClick) failed (%d)", r);
+        return false;
+    }
+    s_orig_button_onclick = (ButtonOnClickFn)orig;
+    s_click_hook_installed = true;
+    LOG_IMGUI_INFO("Noesis: BaseButton::OnClick hooked at %p (UI button clicks -> Lua)", target);
+    return true;
+}
+
+int noesis_drain_clicks(NoesisClick *out, int max) {
+    int n = 0;
+    pthread_mutex_lock(&s_click_mutex);
+    while (n < max && s_click_count > 0) {
+        out[n++] = s_click_queue[s_click_head];
+        s_click_head = (s_click_head + 1) % NOESIS_CLICK_QUEUE_MAX;
+        s_click_count--;
+    }
+    pthread_mutex_unlock(&s_click_mutex);
+    return n;
+}
+
 int noesis_root_count(void) { return s_root_count; }
 
 void *noesis_root_at(int index) {
@@ -332,7 +438,12 @@ void *noesis_get_root(void) {
  */
 static void image_bounds(void) {
     if (s_image_hi) return;
-    const struct mach_header_64 *hdr = (const struct mach_header_64 *)_dyld_get_image_header(0);
+    /* NOT _dyld_get_image_header(0): since 2026-08-29 Steam's overlay loads
+     * ahead of the executable, which sits at index 1, and every vtable RVA
+     * computed against index 0 came out negative. version_detect holds the
+     * header main.c found by name. */
+    const struct mach_header_64 *hdr =
+        (const struct mach_header_64 *)version_detect_get_binary_base();
     if (!hdr) return;
     unsigned long size = 0;
     uint8_t *text = getsegmentdata((void *)hdr, "__TEXT", &size);

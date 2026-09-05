@@ -507,6 +507,13 @@ void* template_get_manager_ptr(TemplateManagerType mgr_type) {
     if (mgr_type < 0 || mgr_type >= TEMPLATE_MANAGER_COUNT) {
         return NULL;
     }
+    // The singletons are NULL at init and only filled in later; until
+    // 2026-09-04 the retry lived solely in template_is_ready(), so a mod that
+    // went straight to GetRootTemplate (CustomCompanions) got nil for the
+    // whole session unless something else had called Ext.Template.IsReady().
+    if (!g_template.managers[mgr_type] && g_template.main_binary_base) {
+        template_read_global_pointers(g_template.main_binary_base);
+    }
     return g_template.managers[mgr_type];
 }
 
@@ -543,17 +550,189 @@ static GameObjectTemplate* find_in_captured(const TemplateGuid* guid) {
     return NULL;
 }
 
+// ============================================================================
+// GlobalTemplateManager / GlobalTemplateBank
+// ============================================================================
+//
+// Upstream RootTemplates.h:
+//   GlobalTemplateManager { VMT; LegacyMap<FixedString, GameObjectTemplate*> Templates;
+//                           std::array<GlobalTemplateBank*, 2> Banks; }
+//   GlobalTemplateBank    { VMT; LegacyMap<FixedString, GameObjectTemplate*> Templates; ... }
+//   LegacyMap = MapInternals { uint32 HashSize; MapNode** HashTable; uint32 ItemCount }
+//   MapNode   { MapNode* Next; FixedString Key; GameObjectTemplate* Value }
+//   Hash(FixedString) = Index (CoreLib/Base/BaseString.h)
+//
+// Verified against ls::GlobalTemplateManager::GetTemplateRaw (7398727, 0x105f9cda4):
+//   bank = this->Banks[slot]        ; [this + 0x20 + slot*8]
+//   node = bank->HashTable[fs % bank->HashSize]   ; +0x10, +0x8
+//   while (node && node->Key != fs) node = node->Next
+//   return node ? node->Value : NULL
+// The manager's own +0x08 map is a per-type registry (RegisterTemplate keys it
+// by GetTypeId), not the root templates -- those live in the bank.
+//
+// The slot is upstream's GetGlobalTemplateBank TLS byte: on Mac that is the
+// g_GlobalTemplateBankType global unless it holds 2, in which case the
+// per-thread tls_CurrentBankType byte decides (client thread 0, server 1).
+
+#define GTM_BANKS_OFFSET        0x20
+#define GTB_TEMPLATES_OFFSET    0x08
+#define LEGACYMAP_HASHSIZE      0x00
+#define LEGACYMAP_HASHTABLE     0x08
+#define LEGACYMAP_ITEMCOUNT     0x10
+#define MAPNODE_NEXT            0x00
+#define MAPNODE_KEY             0x08
+#define MAPNODE_VALUE           0x10
+
+/** The bank slot the engine would use on this thread, or -1 if unknown. */
+static int global_bank_slot(void) {
+    const VersionOffsets *off = offset_table_get();
+    if (!off || !off->global_template_bank_type_ptr) return -1;
+
+    uint8_t type = 0;
+    void *type_addr = offset_table_resolve(off->global_template_bank_type_ptr);
+    if (!type_addr || !safe_memory_read_u8((mach_vm_address_t)type_addr, &type)) return -1;
+    if (type != 2) return (type <= 1) ? (int)type : -1;
+
+    // Mach-O TLV descriptor: the first word is the thunk; calling it with the
+    // descriptor's address returns the thread's copy of the variable.
+    void *desc = offset_table_resolve(off->tls_current_bank_type_ptr);
+    if (!desc) return -1;
+    typedef void *(*TlvThunk)(void *descriptor);
+    TlvThunk thunk = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)desc, (void **)&thunk) || !thunk) return -1;
+    uint8_t *slot = (uint8_t *)thunk(desc);
+    if (!slot) return -1;
+    return (*slot <= 1) ? (int)*slot : -1;
+}
+
+/** Banks[slot] of the captured GlobalTemplateManager, or NULL. */
+static void *global_bank_at(int slot) {
+    void *mgr = g_template.managers[TEMPLATE_MANAGER_GLOBAL_BANK];
+    if (!mgr || slot < 0 || slot > 1) return NULL;
+    void *bank = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)mgr + GTM_BANKS_OFFSET + slot * sizeof(void *),
+                                  &bank)) {
+        return NULL;
+    }
+    return bank;
+}
+
+/** The bank for this thread, falling back to whichever bank exists. */
+static void *global_bank_current(void) {
+    int slot = global_bank_slot();
+    void *bank = global_bank_at(slot);
+    if (bank) return bank;
+    bank = global_bank_at(0);
+    return bank ? bank : global_bank_at(1);
+}
+
+static GameObjectTemplate *legacymap_find_fs(void *map, uint32_t fs) {
+    if (!map || fs == FS_NULL_INDEX) return NULL;
+    uint32_t hash_size = 0;
+    void *table = NULL;
+    if (!safe_memory_read_u32((mach_vm_address_t)map + LEGACYMAP_HASHSIZE, &hash_size) ||
+        !safe_memory_read_pointer((mach_vm_address_t)map + LEGACYMAP_HASHTABLE, &table) ||
+        hash_size == 0 || !table) {
+        return NULL;
+    }
+
+    void *node = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)table + (fs % hash_size) * sizeof(void *),
+                                  &node)) {
+        return NULL;
+    }
+    for (int guard = 0; node && guard < 100000; guard++) {
+        uint32_t key = 0;
+        if (!safe_memory_read_u32((mach_vm_address_t)node + MAPNODE_KEY, &key)) return NULL;
+        if (key == fs) {
+            void *value = NULL;
+            safe_memory_read_pointer((mach_vm_address_t)node + MAPNODE_VALUE, &value);
+            return (GameObjectTemplate *)value;
+        }
+        if (!safe_memory_read_pointer((mach_vm_address_t)node + MAPNODE_NEXT, &node)) return NULL;
+    }
+    return NULL;
+}
+
+static int legacymap_iterate(void *map, TemplateIterCallback callback, void *userdata) {
+    if (!map) return 0;
+    uint32_t hash_size = 0;
+    void *table = NULL;
+    if (!safe_memory_read_u32((mach_vm_address_t)map + LEGACYMAP_HASHSIZE, &hash_size) ||
+        !safe_memory_read_pointer((mach_vm_address_t)map + LEGACYMAP_HASHTABLE, &table) ||
+        hash_size == 0 || !table) {
+        return 0;
+    }
+
+    int visited = 0;
+    for (uint32_t i = 0; i < hash_size; i++) {
+        void *node = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)table + i * sizeof(void *), &node)) break;
+        for (int guard = 0; node && guard < 100000; guard++) {
+            void *value = NULL;
+            if (safe_memory_read_pointer((mach_vm_address_t)node + MAPNODE_VALUE, &value) && value) {
+                visited++;
+                if (!callback((GameObjectTemplate *)value, userdata)) return visited;
+            }
+            if (!safe_memory_read_pointer((mach_vm_address_t)node + MAPNODE_NEXT, &node)) break;
+        }
+    }
+    return visited;
+}
+
+static int global_bank_count(void) {
+    void *bank = global_bank_current();
+    uint32_t count = 0;
+    if (!bank || !safe_memory_read_u32((mach_vm_address_t)bank + GTB_TEMPLATES_OFFSET +
+                                       LEGACYMAP_ITEMCOUNT, &count)) {
+        return -1;
+    }
+    return (int)count;
+}
+
 /**
- * Search a template manager's HashMap for a template.
- * Requires knowing the HashMap layout (buckets, keys, values).
+ * Root template by Id, the way upstream's GetRootTemplate does it:
+ * GetGlobalTemplateBank()->Templates.get_or_default(templateId).
+ *
+ * Prefers the engine's own GetTemplateRaw so bank selection is exactly the
+ * game's; walks the map ourselves when that function has no address.
  */
-static GameObjectTemplate* find_in_manager(void* manager, const TemplateGuid* guid) {
-    if (!manager || !guid) return NULL;
+static GameObjectTemplate *global_bank_find_fs(uint32_t fs) {
+    void *mgr = g_template.managers[TEMPLATE_MANAGER_GLOBAL_BANK];
+    if (!mgr || fs == FS_NULL_INDEX) return NULL;
 
-    // TODO: Implement HashMap traversal once we understand the structure
-    // For now, use captured templates only
+    const VersionOffsets *off = offset_table_get();
+    if (off && off->fn_get_template_raw) {
+        GetTemplateRaw_t fn = (GetTemplateRaw_t)offset_table_resolve(off->fn_get_template_raw);
+        if (fn) return (GameObjectTemplate *)fn(mgr, fs);
+    }
 
-    log_message("[Template] Manager HashMap lookup not yet implemented");
+    void *bank = global_bank_current();
+    if (!bank) return NULL;
+    return legacymap_find_fs((uint8_t *)bank + GTB_TEMPLATES_OFFSET, fs);
+}
+
+/**
+ * Search a template manager for a template by GUID.
+ * Only the GlobalTemplateBank is modelled; the cache managers are searched by
+ * template_get_by_index's linear scan.
+ */
+static GameObjectTemplate* find_in_manager(TemplateManagerType mgr_type, void* manager,
+                                           const char* guid_str) {
+    if (!manager || !guid_str) return NULL;
+
+    if (mgr_type == TEMPLATE_MANAGER_GLOBAL_BANK) {
+        // The bank is keyed by the Id FixedString, which is the GUID text as
+        // the .lsf spells it: lowercase. Interning an unknown key just adds a
+        // string the game never looks at.
+        char key[40];
+        size_t n = 0;
+        for (; guid_str[n] && n < sizeof(key) - 1; n++) key[n] = (char)tolower((unsigned char)guid_str[n]);
+        key[n] = '\0';
+        uint32_t fs = fixed_string_intern(key, -1);
+        return global_bank_find_fs(fs);
+    }
+
     return NULL;
 }
 
@@ -562,28 +741,27 @@ GameObjectTemplate* template_get_by_guid(TemplateManagerType mgr_type, const cha
     if (!parse_guid(guid_str, &guid)) {
         return NULL;
     }
-    return template_get_by_guid_struct(mgr_type, &guid);
+
+    void* manager = template_get_manager_ptr(mgr_type);
+    if (manager) {
+        GameObjectTemplate* tmpl = find_in_manager(mgr_type, manager, guid_str);
+        if (tmpl) return tmpl;
+    }
+
+    return find_in_captured(&guid);
 }
 
 GameObjectTemplate* template_get_by_guid_struct(TemplateManagerType mgr_type, const TemplateGuid* guid) {
     if (!guid) return NULL;
-
-    // If we have a manager pointer, search it
-    void* manager = template_get_manager_ptr(mgr_type);
-    if (manager) {
-        GameObjectTemplate* tmpl = find_in_manager(manager, guid);
-        if (tmpl) return tmpl;
-    }
-
-    // Fall back to captured templates
-    return find_in_captured(guid);
+    char guid_str[40];
+    format_guid(guid, guid_str, sizeof(guid_str));
+    return template_get_by_guid(mgr_type, guid_str);
 }
 
 GameObjectTemplate* template_get_by_fixedstring(TemplateManagerType mgr_type, uint32_t fs_id) {
-    // TODO: Implement FixedString-based lookup
-    // This requires finding the manager's name->template mapping
-    (void)mgr_type;
-    (void)fs_id;
+    if (mgr_type == TEMPLATE_MANAGER_GLOBAL_BANK) {
+        return global_bank_find_fs(fs_id);
+    }
     return NULL;
 }
 
@@ -639,7 +817,11 @@ int template_get_count(TemplateManagerType mgr_type) {
         }
     }
 
-    // GlobalTemplateBank uses different layout - use stored count for now
+    if (mgr_type == TEMPLATE_MANAGER_GLOBAL_BANK) {
+        int count = global_bank_count();
+        if (count >= 0) return count;
+    }
+
     return g_template.template_counts[mgr_type];
 }
 
@@ -690,12 +872,19 @@ GameObjectTemplate* template_get_by_index(TemplateManagerType mgr_type, int inde
         return tmpl;
     }
 
-    // GlobalTemplateBank uses different layout - not implemented yet
+    // GlobalTemplateBank is a hash map; use template_iterate() for it.
     return NULL;
 }
 
 int template_iterate(TemplateManagerType mgr_type, TemplateIterCallback callback, void* userdata) {
     if (!callback) return 0;
+
+    if (mgr_type == TEMPLATE_MANAGER_GLOBAL_BANK && g_template.managers[mgr_type]) {
+        void *bank = global_bank_current();
+        if (bank) {
+            return legacymap_iterate((uint8_t *)bank + GTB_TEMPLATES_OFFSET, callback, userdata);
+        }
+    }
 
     int count = template_get_count(mgr_type);
     if (count <= 0) return 0;
@@ -742,9 +931,14 @@ bool template_get_guid_string(GameObjectTemplate* tmpl, char* out_buf, size_t bu
 }
 
 /**
- * Call the virtual GetType() function on a template.
- * On ARM64, this is at VMT offset 3 (destructor=0, GetName=1, DebugDump=2, GetType=3).
- * Returns a FixedString* that we can resolve.
+ * Call the virtual GetTypeId() function on a template (upstream's GetType).
+ *
+ * The Itanium ABI puts both destructor variants in the vtable, so the object's
+ * vptr sees [0]=D1, [1]=D0, [2]=GetLogInfo, [3]=ToLogString, [4]=GetTypeId,
+ * [5]=GetSaveTypeId (eoc::CharacterTemplate vtable, 7398727). Slot 4 is a
+ * three-instruction `adrp/add/ret` returning a static FixedString* such as
+ * EoCFS::strCharacter. Slot 3 -- what this used to call -- builds a log
+ * string through a hidden sret and only looked like it worked.
  */
 static uint32_t template_call_get_type_vfunc(GameObjectTemplate* tmpl) {
     if (!tmpl) return 0;
@@ -756,10 +950,9 @@ static uint32_t template_call_get_type_vfunc(GameObjectTemplate* tmpl) {
     }
     if (!vmt) return 0;
 
-    // Read GetType function pointer from VMT[3]
-    // VMT layout: [0]=destructor, [1]=GetName, [2]=DebugDump, [3]=GetType
+    // Read GetTypeId function pointer from VMT[4] (see above)
     void* get_type_fn = NULL;
-    if (!safe_memory_read((mach_vm_address_t)vmt + 3 * sizeof(void*), &get_type_fn, sizeof(void*))) {
+    if (!safe_memory_read((mach_vm_address_t)vmt + 4 * sizeof(void*), &get_type_fn, sizeof(void*))) {
         return 0;
     }
     if (!get_type_fn) return 0;

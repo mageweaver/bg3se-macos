@@ -1,16 +1,11 @@
 /**
- * lua_ui.h - Lua Bindings for Ext.UI (Noesis Stub API)
+ * lua_ui.h - Lua Bindings for Ext.UI (Noesis)
  *
- * MCM (Mod Configuration Menu) uses Ext.UI for ESC menu button injection.
- * These stubs allow MCM to gracefully degrade without crashing.
- * MCM checks for nil returns and falls back to IMGUI-only mode.
- *
- * Stubs:
- *   Ext.UI.GetRoot() -> nil
- *   Ext.UI.RegisterType(name) -> nil (no-op)
- *   Ext.UI.Instantiate(name) -> nil
- *   Ext.UI.IsReady() -> false
- *   Ext.UI.SetValue(path, value) -> nil (no-op)
+ * Ext.UI.GetRoot() hands out live Noesis elements (see src/ui/noesis.c).
+ * Ext.UI.RegisterType / Instantiate and element.DataContext are emulated on
+ * the Lua side: the DataContext is remembered per element, and a click on
+ * that element -- observed by noesis.c's BaseButton::OnClick hook -- runs the
+ * ctx's command handlers. That is how MCM's ESC-menu button opens MCM here.
  */
 
 #ifndef LUA_UI_H
@@ -24,5 +19,11 @@
  * @param ext_table_idx Index of the Ext table on the stack
  */
 void lua_ext_register_ui(lua_State *L, int ext_table_idx);
+
+/**
+ * Deliver queued Noesis button clicks to the DataContext handlers Lua
+ * installed. Call once per tick with the Lua gate held.
+ */
+void lua_ui_process_clicks(lua_State *L);
 
 #endif // LUA_UI_H

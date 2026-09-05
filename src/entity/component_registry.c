@@ -9,10 +9,43 @@
 #include "component_lookup.h"
 #include "arm64_call.h"
 #include "entity_system.h"
+#include "generated_component_names.h"
 #include "../core/logging.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+// ============================================================================
+// Upstream Name Translation
+// ============================================================================
+//
+// Mods address components by the names upstream BG3SE exposes to Lua
+// ("TadpoleTreeState", "CCState", "ServerCharacter"), which upstream declares
+// alongside the engine class in DEFINE_COMPONENT. Most of them cannot be
+// derived from the class name, so the registry (keyed on class names) consults
+// the generated table before giving up on a name.
+
+static int upstream_name_cmp(const void *key, const void *elem) {
+    return strcmp((const char *)key, ((const UpstreamComponentName *)elem)->luaName);
+}
+
+const char *component_upstream_name_to_class(const char *luaName) {
+    if (!luaName) return NULL;
+    const UpstreamComponentName *row = bsearch(
+        luaName, g_UpstreamComponentNames, UPSTREAM_COMPONENT_NAME_COUNT,
+        sizeof(g_UpstreamComponentNames[0]), upstream_name_cmp);
+    return row ? row->className : NULL;
+}
+
+const char *component_class_to_upstream_name(const char *className) {
+    if (!className) return NULL;
+    for (size_t i = 0; i < UPSTREAM_COMPONENT_NAME_COUNT; i++) {
+        if (strcmp(g_UpstreamComponentNames[i].className, className) == 0) {
+            return g_UpstreamComponentNames[i].luaName;
+        }
+    }
+    return NULL;
+}
 
 // ============================================================================
 // Global State
@@ -58,6 +91,7 @@ static int hash_bucket(const char *name) {
 // ============================================================================
 
 static void component_registry_register_known_components(void);
+static const ComponentInfo *component_registry_lookup_exact(const char *name);
 
 // ============================================================================
 // Registry Initialization
@@ -116,8 +150,9 @@ bool component_registry_register(const char *name, ComponentTypeIndex index,
                                   uint16_t size, bool is_proxy) {
     if (!name) return false;
 
-    // Check if already registered
-    const ComponentInfo *existing = component_registry_lookup(name);
+    // Check if already registered (registry rows are class names; never
+    // let an upstream alias fold a new class into an existing row)
+    const ComponentInfo *existing = component_registry_lookup_exact(name);
     if (existing) {
         // Update existing entry
         int idx = (int)(existing - g_Components);
@@ -253,9 +288,7 @@ static void component_registry_register_known_components(void) {
 // Lookup Functions
 // ============================================================================
 
-const ComponentInfo *component_registry_lookup(const char *name) {
-    if (!name) return NULL;
-
+static const ComponentInfo *component_registry_lookup_exact(const char *name) {
     int bucket = hash_bucket(name);
     int idx = g_NameHashTable[bucket];
 
@@ -271,6 +304,21 @@ const ComponentInfo *component_registry_lookup(const char *name) {
         if (strcmp(g_Components[i].name, name) == 0) {
             return &g_Components[i];
         }
+    }
+
+    return NULL;
+}
+
+const ComponentInfo *component_registry_lookup(const char *name) {
+    if (!name) return NULL;
+
+    const ComponentInfo *info = component_registry_lookup_exact(name);
+    if (info) return info;
+
+    // Upstream Lua-facing name ("TadpoleTreeState") -> engine class
+    const char *cls = component_upstream_name_to_class(name);
+    if (cls) {
+        return component_registry_lookup_exact(cls);
     }
 
     return NULL;

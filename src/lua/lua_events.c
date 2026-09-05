@@ -13,6 +13,8 @@
 #include "../stats/functor_hooks.h"
 #include "lua_gate.h"
 #include "lua_runtime.h"
+#include "lua_context.h"
+#include "../game/game_state.h"
 #include "../core/logging.h"
 #include "../mod/mod_loader.h"
 #include "../entity/component_registry.h"
@@ -21,6 +23,7 @@
 #include "../timer/timer.h"
 
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 #include <mach/mach_time.h>
 
@@ -47,6 +50,7 @@ typedef struct {
     int once;               // Auto-unsubscribe after first call
     uint64_t handler_id;    // Unique ID for unsubscription
     char mod_name[64];      // Mod that registered this handler (for crash attribution)
+    LuaContext ctx;         // Server/Client context the handler was subscribed in
 } EventHandler;
 
 typedef struct {
@@ -551,6 +555,7 @@ static int server_state_to_ecl(int s) {
         case 8:  return 13;  // UnloadLevel   -> UnloadLevel
         case 9:  return 14;  // UnloadModule  -> UnloadModule
         case 10: return 15;  // UnloadSession -> UnloadSession
+        case 11: return 17;  // Sync          -> PrepareRunning (closest ecl step)
         case 12: return 16;  // Paused        -> Paused
         case 13: return 18;  // Running       -> Running
         case 14: return 21;  // Save          -> Save
@@ -572,6 +577,7 @@ static const char *server_state_to_ecl_label(int s) {
         case 8:  return "UnloadLevel";
         case 9:  return "UnloadModule";
         case 10: return "UnloadSession";
+        case 11: return "PrepareRunning";
         case 12: return "Paused";
         case 13: return "Running";
         case 14: return "Save";
@@ -585,31 +591,46 @@ static const char *server_state_to_ecl_label(int s) {
 // and Lua only invokes __eq between two userdata of the same type — an integer
 // never equals the EnumValue. So we must hand back the same userdata. Falls back
 // to the ecl integer if the enum isn't available.
-void events_push_client_gamestate(lua_State *L, int internal_state) {
+// Push Ext.Enums.<enum_name>.<label>, or nothing (returns false) if the enum
+// or label isn't registered.
+static bool push_enum_by_label(lua_State *L, const char *enum_name, const char *label) {
     // Every lua_getfield target must be type-checked: this runs during event
     // construction BEFORE the handler's lua_pcall, so an "attempt to index
     // nil" here would hit the panic handler and abort the process.
-    const char *label = server_state_to_ecl_label(internal_state);
-    if (label) {
-        int base = lua_gettop(L);
-        lua_getglobal(L, "Ext");                     // Ext
-        if (lua_istable(L, -1)) {
-            lua_getfield(L, -1, "Enums");            // Ext, Enums
+    int base = lua_gettop(L);
+    lua_getglobal(L, "Ext");                     // Ext
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "Enums");            // Ext, Enums
+        if (lua_istable(L, -1) || lua_isuserdata(L, -1)) {
+            lua_getfield(L, -1, enum_name);      // Ext, Enums, E
             if (lua_istable(L, -1) || lua_isuserdata(L, -1)) {
-                lua_getfield(L, -1, "ClientGameState");  // Ext, Enums, CGS
-                if (lua_istable(L, -1) || lua_isuserdata(L, -1)) {
-                    lua_getfield(L, -1, label);      // Ext, Enums, CGS, val
-                    if (!lua_isnil(L, -1)) {
-                        lua_insert(L, base + 1);     // val, Ext, Enums, CGS
-                        lua_settop(L, base + 1);     // val
-                        return;
-                    }
+                lua_getfield(L, -1, label);      // Ext, Enums, E, val
+                if (!lua_isnil(L, -1)) {
+                    lua_insert(L, base + 1);     // val, Ext, Enums, E
+                    lua_settop(L, base + 1);     // val
+                    return true;
                 }
             }
         }
-        lua_settop(L, base);
     }
+    lua_settop(L, base);
+    return false;
+}
+
+void events_push_client_gamestate(lua_State *L, int internal_state) {
+    const char *label = server_state_to_ecl_label(internal_state);
+    if (label && push_enum_by_label(L, "ClientGameState", label)) return;
     lua_pushinteger(L, server_state_to_ecl(internal_state));
+}
+
+// Push the Ext.Enums.ServerGameState EnumValue for an internal (esv) state —
+// the values game_state.c tracks ARE esv::GameState, so no mapping. Server
+// code compares against "Sync"/"Running"/"Save" (AppearanceEditEnhanced,
+// BG3SX, VolitionCabinet...), and Sync has no ecl counterpart.
+void events_push_server_gamestate(lua_State *L, int internal_state) {
+    const char *label = game_state_get_name((ServerGameState)internal_state);
+    if (label && push_enum_by_label(L, "ServerGameState", label)) return;
+    lua_pushinteger(L, internal_state);
 }
 
 void events_fire_game_state_changed(lua_State *L, int fromState, int toState) {
@@ -646,13 +667,23 @@ void events_fire_game_state_changed(lua_State *L, int fromState, int toState) {
             continue;
         }
 
-        // Create event data table with FromState and ToState as ClientGameState
-        // EnumValue userdata (so `e.ToState == Ext.Enums.ClientGameState.X` works).
+        // Event data: FromState/ToState as EnumValue userdata, typed for the
+        // half of the mod that subscribed — ServerGameState for BootstrapServer
+        // code (and the console), ClientGameState for BootstrapClient code, as
+        // Windows BG3SE's two VMs would each see. `==` against the enum value,
+        // its label string, or its integer all work (lvm.c cross-type __eq).
         lua_newtable(L);
-        events_push_client_gamestate(L,fromState);
-        lua_setfield(L, -2, "FromState");
-        events_push_client_gamestate(L,toState);
-        lua_setfield(L, -2, "ToState");
+        if (h->ctx == LUA_CONTEXT_CLIENT) {
+            events_push_client_gamestate(L, fromState);
+            lua_setfield(L, -2, "FromState");
+            events_push_client_gamestate(L, toState);
+            lua_setfield(L, -2, "ToState");
+        } else {
+            events_push_server_gamestate(L, fromState);
+            lua_setfield(L, -2, "FromState");
+            events_push_server_gamestate(L, toState);
+            lua_setfield(L, -2, "ToState");
+        }
 
         // Protected call
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
@@ -1132,6 +1163,10 @@ static int lua_event_subscribe(lua_State *L) {
     g_handlers[event][idx].priority = priority;
     g_handlers[event][idx].once = once;
     g_handlers[event][idx].handler_id = handler_id;
+    // Both bootstraps run in the one VM, so this is the only record of which
+    // half of a mod subscribed. GameStateChanged uses it to hand server code
+    // ServerGameState values and client code ClientGameState values.
+    g_handlers[event][idx].ctx = lua_context_get();
 
     // Capture mod name from Lua callstack for crash attribution
     extract_mod_name_from_lua(L, g_handlers[event][idx].mod_name,
@@ -1852,7 +1887,7 @@ void events_fire_damage(
 
 void events_fire_net_mod_message(lua_State *L, const char *channel, const char *payload,
                                   const char *module, int userId, uint64_t requestId,
-                                  uint64_t replyId, bool binary) {
+                                  uint64_t replyId, bool binary, LuaContext target) {
     if (!L) return;
 
     // Fire per-channel listeners (Ext.RegisterNetListener)
@@ -1861,7 +1896,7 @@ void events_fire_net_mod_message(lua_State *L, const char *channel, const char *
     // Legacy compatibility (Issue #6): If no module and no requestId,
     // fire the legacy NetMessage event. Most existing mods use this.
     if ((!module || module[0] == '\0') && requestId == 0 && replyId == 0) {
-        events_fire_net_message(L, channel, payload, userId);
+        events_fire_net_message(L, channel, payload, userId, target);
     }
 
     int count = g_handler_counts[EVENT_NET_MOD_MESSAGE];
@@ -1947,8 +1982,24 @@ void events_fire_net_mod_message(lua_State *L, const char *channel, const char *
 // instead of Ext.Events.NetModMessage. Most existing mods use this legacy API.
 // ============================================================================
 
+/* Does a handler subscribed in `h->ctx` belong to the half this message was
+ * addressed to? Both mod halves share one Lua VM here, so the subscribe-time
+ * context is the only thing that separates them (same record GameStateChanged
+ * uses to pick Server/ClientGameState). Handlers with no context — subscribed
+ * before either bootstrap ran, e.g. from the console — always match. */
+static bool net_handler_matches(const EventHandler *h, LuaContext target) {
+    static int disabled = -1;
+    if (disabled < 0) {
+        const char *env = getenv("BG3SE_NO_NET_CONTEXT_FILTER");
+        disabled = (env && env[0] == '1') ? 1 : 0;
+    }
+    if (disabled) return true;
+    if (target == LUA_CONTEXT_NONE || h->ctx == LUA_CONTEXT_NONE) return true;
+    return h->ctx == target;
+}
+
 void events_fire_net_message(lua_State *L, const char *channel, const char *payload,
-                              int userId) {
+                              int userId, LuaContext target) {
     if (!L) return;
 
     // Note: per-channel listeners are fired from events_fire_net_mod_message
@@ -1965,6 +2016,16 @@ void events_fire_net_message(lua_State *L, const char *channel, const char *payl
     for (int i = 0; i < g_handler_counts[EVENT_NET_MESSAGE]; i++) {
         EventHandler *h = &g_handlers[EVENT_NET_MESSAGE][i];
         if (h->callback_ref == LUA_NOREF || h->callback_ref == LUA_REFNIL) {
+            continue;
+        }
+
+        if (!net_handler_matches(h, target)) {
+            LOG_EVENTS_DEBUG("NetMessage: skipping %s handler (id=%llu, mod=%s) "
+                             "for a %s-bound message on channel=%s",
+                             h->ctx == LUA_CONTEXT_CLIENT ? "client" : "server",
+                             (unsigned long long)h->handler_id, h->mod_name,
+                             target == LUA_CONTEXT_CLIENT ? "client" : "server",
+                             channel ? channel : "");
             continue;
         }
 

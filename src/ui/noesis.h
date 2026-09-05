@@ -94,4 +94,27 @@ void *noesis_logical_child(void *element, unsigned int index);
 /** Noesis::VisualTreeHelper::GetRoot -- the root above any visual. */
 void *noesis_root_of(void *visual);
 
+/**
+ * A button click observed on the main thread, waiting for Lua.
+ *
+ * `element` is the Noesis::BaseButton (its address as FindName returns it --
+ * BaseButton sits on the primary inheritance chain, so no adjustment) and
+ * `name` its XAML x:Name, empty when unnamed.
+ */
+typedef struct {
+    void *element;
+    char name[48];
+} NoesisClick;
+
+/**
+ * Hook Noesis::BaseButton::OnClick so clicks are queued for Lua. Installs a
+ * Dobby inline hook; call it with the other hooks, once. False when the export
+ * is missing or the hook could not be placed (clicks then never reach Lua and
+ * everything else keeps working).
+ */
+bool noesis_install_click_hook(void);
+
+/** Move queued clicks into `out`; returns how many. Any thread. */
+int noesis_drain_clicks(NoesisClick *out, int max);
+
 #endif // BG3SE_NOESIS_H

@@ -11,6 +11,7 @@
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
 #include "../core/offset_table.h"
+#include "../core/guid_format.h"
 #include "../strings/fixed_string.h"
 #include "../hooks/arm64_hook.h"
 #include <dobby.h>
@@ -1618,25 +1619,11 @@ static bool parse_guid(const char* str, StaticDataGuid* out) {
     if (!str || !out) return false;
 
     // Format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-    unsigned int d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11;
-
-    if (sscanf(str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
-               &d1, &d2, &d3, &d4, &d5, &d6, &d7, &d8, &d9, &d10, &d11) != 11) {
-        return false;
-    }
-
-    out->data1 = d1;
-    out->data2 = (uint16_t)d2;
-    out->data3 = (uint16_t)d3;
-    out->data4[0] = (uint8_t)d4;
-    out->data4[1] = (uint8_t)d5;
-    out->data4[2] = (uint8_t)d6;
-    out->data4[3] = (uint8_t)d7;
-    out->data4[4] = (uint8_t)d8;
-    out->data4[5] = (uint8_t)d9;
-    out->data4[6] = (uint8_t)d10;
-    out->data4[7] = (uint8_t)d11;
-
+    // ls::Guid byte order (see core/guid_format.h). The struct's fields are the
+    // 16 bytes in memory order, so parse into bytes and copy them over.
+    uint8_t g[16];
+    if (!guid_string_to_bytes(str, g)) return false;
+    memcpy(out, g, sizeof(g));
     return true;
 }
 
@@ -1808,10 +1795,9 @@ int staticdata_probe_sources_offset(StaticDataType type, const uint8_t *mod_guid
             uint8_t g[16];
             if (!safe_memory_read((mach_vm_address_t)((uintptr_t)keys + (uintptr_t)i * 16),
                                   g, sizeof(g))) break;
-            uint32_t d1; uint16_t d2, d3;
-            memcpy(&d1, g, 4); memcpy(&d2, g + 4, 2); memcpy(&d3, g + 6, 2);
-            log_message("[StaticData]   key[%d] = %08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        i, d1, d2, d3, g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
+            char guid_str[GUID_STRING_SIZE];
+            guid_bytes_to_string(g, guid_str, sizeof(guid_str));
+            log_message("[StaticData]   key[%d] = %s", i, guid_str);
         }
         return map_off;
     }
@@ -1926,11 +1912,9 @@ bool staticdata_get_guid_string(StaticDataType type, StaticDataPtr entry, char* 
         return false;
     }
 
-    snprintf(out_buf, buf_size, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-             guid.data1, guid.data2, guid.data3,
-             guid.data4[0], guid.data4[1],
-             guid.data4[2], guid.data4[3], guid.data4[4],
-             guid.data4[5], guid.data4[6], guid.data4[7]);
+    uint8_t g[16];
+    memcpy(g, &guid, sizeof(g));
+    guid_bytes_to_string(g, out_buf, buf_size);
 
     return true;
 }

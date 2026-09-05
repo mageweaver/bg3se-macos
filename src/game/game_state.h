@@ -63,6 +63,18 @@ const char *game_state_get_name(ServerGameState state);
  * Notify the state tracker that session is loading.
  * Called when mod scripts start loading.
  */
+/**
+ * Engine-reported transitions (esv::GameStateEventManager listener in main.c).
+ * game_state_set_engine_driven() switches the tracker over: it seeds the
+ * current state from esv::GameStateMachine::State and makes the inferred
+ * game_state_on_*() notifications stop firing Lua (they keep their
+ * bookkeeping). game_state_on_engine_transition() then fires
+ * GameStateChanged for every real transition, Sync included.
+ */
+void game_state_set_engine_driven(ServerGameState current);
+int game_state_is_engine_driven(void);
+void game_state_on_engine_transition(lua_State *L, ServerGameState from, ServerGameState to);
+
 void game_state_on_session_loading(lua_State *L);
 
 /**

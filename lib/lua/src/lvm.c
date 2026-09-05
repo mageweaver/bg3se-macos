@@ -569,8 +569,30 @@ int luaV_lessequal (lua_State *L, const TValue *l, const TValue *r) {
 int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
   const TValue *tm;
   if (ttypetag(t1) != ttypetag(t2)) {  /* not the same variant? */
-    if (ttype(t1) != ttype(t2) || ttype(t1) != LUA_TNUMBER)
+    if (ttype(t1) != ttype(t2) || ttype(t1) != LUA_TNUMBER) {
+      /* BG3SE: a full userdata with '__eq' may compare equal to a string
+         or a number. Windows BG3SE's patched Lua does this for its
+         enum/bitfield values, and mods rely on it everywhere
+         (`e.ToState == "Running"`, `flags == 16`). Stock Lua never calls
+         '__eq' across types, so those tests were always false here. */
+      if (L != NULL) {
+        const TValue *ud = NULL, *other = NULL;
+        if (ttisfulluserdata(t1) && (ttisstring(t2) || ttisnumber(t2))) {
+          ud = t1; other = t2;
+        }
+        else if (ttisfulluserdata(t2) && (ttisstring(t1) || ttisnumber(t1))) {
+          ud = t2; other = t1;
+        }
+        if (ud != NULL) {
+          tm = fasttm(L, uvalue(ud)->metatable, TM_EQ);
+          if (tm != NULL) {
+            luaT_callTMres(L, tm, ud, other, L->top.p);  /* call TM */
+            return !l_isfalse(s2v(L->top.p));
+          }
+        }
+      }
       return 0;  /* only numbers can be equal with different variants */
+    }
     else {  /* two numbers with different variants */
       /* One of them is an integer. If the other does not have an
          integer value, they cannot be equal; otherwise, compare their
@@ -1619,8 +1641,14 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
       vmcase(OP_EQK) {
         StkId ra = RA(i);
         TValue *rb = KB(i);
-        /* basic types do not use '__eq'; we can use raw equality */
-        int cond = luaV_rawequalobj(s2v(ra), rb);
+        int cond;
+        /* basic types do not use '__eq'; we can use raw equality --
+           except a BG3SE enum userdata against a string/number constant,
+           which must go through luaV_equalobj's cross-type '__eq' path. */
+        if (ttisfulluserdata(s2v(ra)))
+          Protect(cond = luaV_equalobj(L, s2v(ra), rb));
+        else
+          cond = luaV_rawequalobj(s2v(ra), rb);
         docondjump();
         vmbreak;
       }
@@ -1632,6 +1660,12 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
           cond = (ivalue(s2v(ra)) == im);
         else if (ttisfloat(s2v(ra)))
           cond = luai_numeq(fltvalue(s2v(ra)), cast_num(im));
+        else if (ttisfulluserdata(s2v(ra))) {
+          /* BG3SE: enum userdata vs small integer constant (`state == 13`) */
+          TValue imv;
+          setivalue(&imv, im);
+          Protect(cond = luaV_equalobj(L, s2v(ra), &imv));
+        }
         else
           cond = 0;  /* other types cannot be equal to a number */
         docondjump();

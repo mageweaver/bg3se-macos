@@ -8,6 +8,7 @@
 #include "lua_context.h"
 #include "lua_ide_helpers.h"
 #include "version.h"
+#include "version_detect.h"
 #include "logging.h"
 #include "../console/console.h"
 #include "../io/path_override.h"
@@ -431,7 +432,9 @@ int lua_ext_memory_search(lua_State *L) {
 
     // If no start address, get main binary base
     if (startAddr == 0) {
-        startAddr = (uintptr_t)_dyld_get_image_header(0);
+        // The executable is not always image 0 (Steam's overlay can load first).
+        startAddr = (uintptr_t)version_detect_get_binary_base();
+        if (!startAddr) startAddr = (uintptr_t)_dyld_get_image_header(0);
     }
 
     LOG_MEMORY_DEBUG("Searching for %d-byte pattern from 0x%llx, size %lld",

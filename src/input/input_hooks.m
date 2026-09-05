@@ -325,6 +325,25 @@ bool input_init(void) {
 
     LOG_INPUT_INFO("Initializing input system (CGEventTap)...");
 
+    // Keyboard events need Input Monitoring. Without it CGEventTapCreate still
+    // succeeds and the tap still delivers mouse and FlagsChanged (modifier)
+    // events, so nothing here fails -- KeyDown/KeyUp are simply withheld and
+    // every mod keybind, including the ESC press MCM watches for, goes dead.
+    // That is exactly what happened on 2026-08-29: the TCC row for
+    // com.valvesoftware.steam flipped to denied and every session after it
+    // logged modifier codes only. The grant is checked against the RESPONSIBLE
+    // process, which for a Steam launch is Steam, not the game.
+    if (!CGPreflightListenEventAccess()) {
+        LOG_INPUT_ERROR("Input Monitoring is NOT granted: keyboard events will not reach mods "
+                        "(KeyInput fires for modifier keys only; MCM keybinds and its ESC-menu "
+                        "hook will not work)");
+        LOG_INPUT_ERROR("Enable it in System Settings > Privacy & Security > Input Monitoring "
+                        "for the app that launched the game (Steam, when launched from Steam)");
+        CGRequestListenEventAccess();   // prompts once if undecided; a no-op once denied
+    } else {
+        LOG_INPUT_INFO("Input Monitoring granted (keyboard events will be delivered)");
+    }
+
     // Create event tap for keyboard and mouse events
     CGEventMask eventMask = (1 << kCGEventKeyDown) |
                             (1 << kCGEventKeyUp) |

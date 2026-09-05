@@ -91,9 +91,31 @@ bool component_registry_ready(void);
  * Look up a component by name.
  *
  * @param name Full qualified component name (e.g., "eoc::HealthComponent")
+ *             or the upstream Lua-facing name (e.g., "Health",
+ *             "TadpoleTreeState"); the latter is resolved through
+ *             component_upstream_name_to_class().
  * @return Pointer to ComponentInfo, or NULL if not found
  */
 const ComponentInfo *component_registry_lookup(const char *name);
+
+/**
+ * Translate an upstream Lua-facing component name to its engine class name
+ * using the table generated from upstream's DEFINE_COMPONENT declarations
+ * (tools/generate_component_names.py).
+ *
+ * @param luaName Name mods use from Lua (e.g., "TadpoleTreeState")
+ * @return Engine class name (e.g., "eoc::tadpole_tree::TreeStateComponent"),
+ *         or NULL when upstream defines no component by that name
+ */
+const char *component_upstream_name_to_class(const char *luaName);
+
+/**
+ * Reverse of component_upstream_name_to_class().
+ *
+ * @param className Engine class name
+ * @return Upstream Lua-facing name, or NULL when upstream does not expose it
+ */
+const char *component_class_to_upstream_name(const char *className);
 
 /**
  * Look up a component by index.

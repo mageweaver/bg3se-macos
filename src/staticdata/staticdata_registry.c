@@ -8,6 +8,7 @@
 #include "../core/logging.h"
 #include "../core/offset_table.h"
 #include "../core/safe_memory.h"
+#include "../core/guid_format.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -158,23 +159,9 @@ void *staticdata_registry_get_object(const StaticDataTypeEntry *entry, const voi
 bool staticdata_registry_parse_guid(const char *guid_str, void *out_guid16) {
     if (!guid_str || !out_guid16) return false;
 
-    // Same field order the existing lookups compare against game memory, so the
-    // 16 bytes land in the layout ls::Guid uses.
-    unsigned int d[11];
-    if (sscanf(guid_str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
-               &d[0], &d[1], &d[2], &d[3], &d[4], &d[5],
-               &d[6], &d[7], &d[8], &d[9], &d[10]) != 11) {
-        return false;
-    }
-
-    uint8_t *guid = (uint8_t *)out_guid16;
-    uint32_t p1 = (uint32_t)d[0];
-    uint16_t p2 = (uint16_t)d[1], p3 = (uint16_t)d[2];
-    memcpy(guid + 0, &p1, 4);
-    memcpy(guid + 4, &p2, 2);
-    memcpy(guid + 6, &p3, 2);
-    for (int i = 0; i < 8; i++) guid[8 + i] = (uint8_t)d[3 + i];
-    return true;
+    // ls::Guid byte order (see core/guid_format.h): every adjacent byte pair is
+    // swapped, so the text maps to one LE uint32 + six LE uint16s.
+    return guid_string_to_bytes(guid_str, (uint8_t *)out_guid16);
 }
 
 void *staticdata_registry_get_object_by_guid_string(const StaticDataTypeEntry *entry,
@@ -236,13 +223,7 @@ bool staticdata_registry_format_key(void *keys_buf, uint32_t index, char *out, s
         }
     }
 
-    uint32_t d1;
-    uint16_t d2, d3;
-    memcpy(&d1, g + 0, 4);
-    memcpy(&d2, g + 4, 2);
-    memcpy(&d3, g + 6, 2);
-    snprintf(out, out_size, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-             d1, d2, d3, g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15]);
+    guid_bytes_to_string(g, out, out_size);
     return true;
 }
 
@@ -325,18 +306,7 @@ void *staticdata_registry_create(const StaticDataTypeEntry *entry,
 
     uint8_t guid[16];
     if (guid_str && guid_str[0]) {
-        unsigned int d[11];
-        if (sscanf(guid_str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
-                   &d[0], &d[1], &d[2], &d[3], &d[4], &d[5],
-                   &d[6], &d[7], &d[8], &d[9], &d[10]) != 11) {
-            return NULL;
-        }
-        uint32_t p1 = (uint32_t)d[0];
-        uint16_t p2 = (uint16_t)d[1], p3 = (uint16_t)d[2];
-        memcpy(guid + 0, &p1, 4);
-        memcpy(guid + 4, &p2, 2);
-        memcpy(guid + 6, &p3, 2);
-        for (int i = 0; i < 8; i++) guid[8 + i] = (uint8_t)d[3 + i];
+        if (!guid_string_to_bytes(guid_str, guid)) return NULL;
     } else {
         arc4random_buf(guid, sizeof(guid));
         guid[6] = (uint8_t)((guid[6] & 0x0F) | 0x40);   // version 4
@@ -366,14 +336,7 @@ void *staticdata_registry_create(const StaticDataTypeEntry *entry,
     void *stored = ((AddLoadedObjectFunc)fn)(mgr, obj);
 
     if (out_guid && out_guid_size >= 40) {
-        uint32_t d1; uint16_t d2, d3;
-        memcpy(&d1, guid + 0, 4);
-        memcpy(&d2, guid + 4, 2);
-        memcpy(&d3, guid + 6, 2);
-        snprintf(out_guid, out_guid_size,
-                 "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                 d1, d2, d3, guid[8], guid[9], guid[10], guid[11],
-                 guid[12], guid[13], guid[14], guid[15]);
+        guid_bytes_to_string(guid, out_guid, out_guid_size);
     }
 
     return stored;

@@ -13,6 +13,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "lua_context.h"
+
 // ============================================================================
 // Event Types
 // ============================================================================
@@ -121,6 +123,10 @@ void events_fire_game_state_changed(lua_State *L, int fromState, int toState);
 // Push the Ext.Enums.ClientGameState EnumValue userdata for an internal
 // ServerGameState (used by Ext.Utils.GetGameState so mods can compare it with ==).
 void events_push_client_gamestate(lua_State *L, int internal_state);
+
+// Push the Ext.Enums.ServerGameState EnumValue userdata for an internal
+// ServerGameState (what server-context GameStateChanged handlers receive).
+void events_push_server_gamestate(lua_State *L, int internal_state);
 
 /**
  * Fire the KeyInput event with key data.
@@ -296,10 +302,14 @@ void events_fire_turn_ended_from_osiris(lua_State *L, const char *characterGuid)
  * @param requestId Request ID (for request/reply correlation)
  * @param replyId   Reply ID (if this is a reply)
  * @param binary    Whether payload is binary
+ * @param target    Context the message is addressed to (SERVER for a message
+ *                  sent to the server, CLIENT for one sent to a client).
+ *                  Legacy NetMessage handlers are filtered on it; see
+ *                  events_fire_net_message().
  */
 void events_fire_net_mod_message(lua_State *L, const char *channel, const char *payload,
                                   const char *module, int userId, uint64_t requestId,
-                                  uint64_t replyId, bool binary);
+                                  uint64_t replyId, bool binary, LuaContext target);
 
 /**
  * Register a per-channel net listener (for Ext.RegisterNetListener compatibility).
@@ -327,9 +337,17 @@ void events_fire_net_listeners(lua_State *L, const char *channel, const char *pa
  * In Windows BG3SE, messages without a module fire NetMessage instead of NetModMessage.
  * Most existing mods still use this legacy event.
  * Handlers receive {Channel, Payload, UserID} table.
+ *
+ * Only handlers subscribed in `target`'s context are called. Windows BG3SE runs
+ * two Lua VMs, so a mod's BootstrapClient handler simply cannot see a message
+ * sent to the server; here both halves live in one VM, and without this filter
+ * a mod that answers its own message (client posts to server, server posts back)
+ * ping-pongs forever — CustomCompanions froze the game that way.
+ * Set BG3SE_NO_NET_CONTEXT_FILTER=1 to restore the old deliver-to-everyone
+ * behaviour.
  */
 void events_fire_net_message(lua_State *L, const char *channel, const char *payload,
-                              int userId);
+                              int userId, LuaContext target);
 
 /**
  * Fire the Log event with log message data.

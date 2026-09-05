@@ -146,7 +146,8 @@ bool message_bus_queue_from_peer(int32_t peer_user_id, const NetMessage *msg) {
  * Fire NetModMessage event to a Lua state.
  * Uses the events_fire_net_mod_message C API function.
  */
-static void fire_net_mod_message(lua_State *L, const NetMessage *msg) {
+static void fire_net_mod_message(lua_State *L, const NetMessage *msg,
+                                 LuaContext target) {
     if (!L) return;
 
     events_fire_net_mod_message(
@@ -157,9 +158,18 @@ static void fire_net_mod_message(lua_State *L, const NetMessage *msg) {
         msg->user_id,
         msg->request_id,
         msg->reply_to_id,
-        msg->binary
+        msg->binary,
+        target
     );
 }
+
+/* A handler may post while it is being dispatched, which appends to this very
+ * queue — so a pair of mod halves that answer each other never lets this loop
+ * end and the frame never returns (CustomCompanions froze the game exactly
+ * that way). Cap the work per pass: anything still queued is dispatched on the
+ * next tick, so a feedback loop degrades to a slow, loud game instead of a
+ * hang. */
+#define MESSAGE_BUS_MAX_PER_PASS 256
 
 int message_bus_process(lua_State *server_L, lua_State *client_L) {
     if (!s_initialized || queue_is_empty()) {
@@ -169,6 +179,14 @@ int message_bus_process(lua_State *server_L, lua_State *client_L) {
     int processed = 0;
 
     while (!queue_is_empty()) {
+        if (processed >= MESSAGE_BUS_MAX_PER_PASS) {
+            LOG_NET_WARN("Message flood: %d messages dispatched in one tick and "
+                         "%d still queued — deferring the rest (a mod may be "
+                         "answering its own messages)",
+                         processed, message_bus_pending_count());
+            break;
+        }
+
         NetMessage *msg = &s_message_queue[s_queue_head];
 
         if (!msg->active) {
@@ -217,7 +235,7 @@ int message_bus_process(lua_State *server_L, lua_State *client_L) {
             case MSG_DEST_SERVER:
                 // Client -> Server: deliver to server context
                 LOG_NET_DEBUG("Delivering message to server: channel=%s", msg->channel);
-                fire_net_mod_message(server_L, msg);
+                fire_net_mod_message(server_L, msg, LUA_CONTEXT_SERVER);
                 break;
 
             case MSG_DEST_USER:
@@ -225,13 +243,13 @@ int message_bus_process(lua_State *server_L, lua_State *client_L) {
                 // Server -> Specific client: deliver to client context
                 // In local mode, we only have one client
                 LOG_NET_DEBUG("Delivering message to client: channel=%s", msg->channel);
-                fire_net_mod_message(client_L, msg);
+                fire_net_mod_message(client_L, msg, LUA_CONTEXT_CLIENT);
                 break;
 
             case MSG_DEST_BROADCAST:
                 // Server -> All clients: deliver to client context
                 LOG_NET_DEBUG("Broadcasting message: channel=%s", msg->channel);
-                fire_net_mod_message(client_L, msg);
+                fire_net_mod_message(client_L, msg, LUA_CONTEXT_CLIENT);
                 break;
         }
 

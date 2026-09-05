@@ -15,6 +15,8 @@
 
 #include "lua_template.h"
 #include "../template/template_manager.h"
+#include "../template/template_layouts.h"
+#include "lua_resource_object.h"
 #include "../core/logging.h"
 #include <lauxlib.h>
 #include <string.h>
@@ -25,91 +27,31 @@
 // ============================================================================
 
 /**
- * Push a template object to Lua as a table with properties.
+ * Push a template as a live field proxy (see template_layouts.c), so
+ * `tmpl.CharacterVisualResourceID = x` writes into the game's template the way
+ * it does upstream. Unmodelled fields read as nil.
  */
 static int push_template_to_lua(lua_State* L, GameObjectTemplate* tmpl) {
     if (!tmpl) {
         lua_pushnil(L);
         return 1;
     }
-
-    lua_newtable(L);
-
-    // Add pointer address (for debugging)
-    lua_pushlightuserdata(L, tmpl);
-    lua_setfield(L, -2, "_ptr");
-
-    // Add GUID - using safe memory read
-    char guid_str[40];
-    if (template_get_guid_string(tmpl, guid_str, sizeof(guid_str))) {
-        lua_pushstring(L, guid_str);
-        lua_setfield(L, -2, "Guid");
-    }
-
-    // Skip other properties for now - they may cause crashes
-    // TODO: Re-enable after verifying safe access patterns
-    #if 0
-    // Add FixedString IDs (raw values)
-    uint32_t id_fs = template_get_id_fs(tmpl);
-    if (id_fs) {
-        lua_pushinteger(L, id_fs);
-        lua_setfield(L, -2, "TemplateIdFs");
-    }
-
-    uint32_t name_fs = template_get_name_fs(tmpl);
-    if (name_fs) {
-        lua_pushinteger(L, name_fs);
-        lua_setfield(L, -2, "TemplateNameFs");
-    }
-
-    uint32_t parent_fs = template_get_parent_template_id_fs(tmpl);
-    if (parent_fs) {
-        lua_pushinteger(L, parent_fs);
-        lua_setfield(L, -2, "ParentTemplateIdFs");
-    }
-
-    // Add template handle
-    uint32_t handle = template_get_handle(tmpl);
-    if (handle) {
-        lua_pushinteger(L, handle);
-        lua_setfield(L, -2, "Handle");
-    }
-
-    // Add resolved string properties
-    char buf[256];
-
-    // TemplateId as string (resolved from FixedString)
-    if (template_get_id_string(tmpl, buf, sizeof(buf))) {
-        lua_pushstring(L, buf);
-        lua_setfield(L, -2, "TemplateId");
-    }
-
-    // TemplateName as string (resolved from FixedString)
-    if (template_get_template_name_string(tmpl, buf, sizeof(buf))) {
-        lua_pushstring(L, buf);
-        lua_setfield(L, -2, "TemplateName");
-    }
-
-    // ParentTemplateId as string (resolved from FixedString)
-    if (template_get_parent_template_string(tmpl, buf, sizeof(buf))) {
-        lua_pushstring(L, buf);
-        lua_setfield(L, -2, "ParentTemplateId");
-    }
-
-    // Add type (enum-based)
-    TemplateType type = template_get_type(tmpl);
-    lua_pushstring(L, template_type_to_string(type));
-    lua_setfield(L, -2, "Type");
-
-    // Add raw type string (from virtual function)
-    char type_buf[64];
-    if (template_get_type_string(tmpl, type_buf, sizeof(type_buf))) {
-        lua_pushstring(L, type_buf);
-        lua_setfield(L, -2, "RawType");
-    }
-    #endif
-
+    lua_resource_object_push_layout(L, tmpl, template_layout_for(tmpl));
     return 1;
+}
+
+/**
+ * template_iterate callback: t[Id] = proxy, matching upstream's
+ * GetAllRootTemplates, which hands back the bank's FixedString -> template map.
+ */
+static bool collect_template_by_id(GameObjectTemplate* tmpl, void* userdata) {
+    lua_State* L = (lua_State*)userdata;
+    char id[40];
+    if (!template_get_guid_string(tmpl, id, sizeof(id))) return true;
+    lua_pushstring(L, id);
+    push_template_to_lua(L, tmpl);
+    lua_rawset(L, -3);
+    return true;
 }
 
 // ============================================================================
@@ -181,21 +123,8 @@ static int lua_template_get_local_cache(lua_State* L) {
  */
 static int lua_template_get_all_root(lua_State* L) {
     int count = template_get_count(TEMPLATE_MANAGER_GLOBAL_BANK);
-    if (count < 0) {
-        lua_newtable(L);  // Return empty table if not available
-        return 1;
-    }
-
-    lua_createtable(L, count, 0);
-
-    for (int i = 0; i < count; i++) {
-        GameObjectTemplate* tmpl = template_get_by_index(TEMPLATE_MANAGER_GLOBAL_BANK, i);
-        if (tmpl) {
-            push_template_to_lua(L, tmpl);
-            lua_rawseti(L, -2, i + 1);
-        }
-    }
-
+    lua_createtable(L, 0, count > 0 ? count : 0);
+    template_iterate(TEMPLATE_MANAGER_GLOBAL_BANK, collect_template_by_id, L);
     return 1;
 }
 

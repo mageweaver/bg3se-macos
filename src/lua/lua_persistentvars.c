@@ -8,6 +8,7 @@
 #include "lua_persistentvars.h"
 #include "lua_json.h"
 #include "logging.h"
+#include "../game/game_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,86 @@ static int s_initialized = 0;
 static int s_loaded = 0;
 static int s_dirty = 0;
 static uint64_t s_lastSaveTime = 0;
+
+/* Last JSON written per mod.
+ *
+ * Mods mutate Mods[ModTable].PersistentVars — a plain Lua table — directly, so
+ * there is no write we can observe: nothing ever called persist_mark_dirty(),
+ * the dirty gate in persist_tick() never opened, and in practice the store was
+ * never written at all (TransmogEnhanced re-granted its control items on every
+ * load because its ControlItems list came back empty). So the tick now saves on
+ * its interval unconditionally and this cache does the deduplication instead:
+ * a mod whose serialized vars are byte-identical to what is already on disk is
+ * not rewritten. */
+#define PERSIST_MAX_MODS 256
+
+typedef struct {
+    char modtable[128];
+    char *json;
+} PersistCacheEntry;
+
+static PersistCacheEntry s_cache[PERSIST_MAX_MODS];
+static int s_cacheCount = 0;
+
+/* Returns 1 if json differs from the last write for this mod (and records it). */
+static int persist_cache_update(const char *modtable, const char *json, size_t len) {
+    for (int i = 0; i < s_cacheCount; i++) {
+        if (strcmp(s_cache[i].modtable, modtable) != 0) continue;
+        if (s_cache[i].json && strcmp(s_cache[i].json, json) == 0) return 0;
+        char *copy = malloc(len + 1);
+        if (!copy) return 1;                 /* cache miss: write anyway */
+        memcpy(copy, json, len + 1);
+        free(s_cache[i].json);
+        s_cache[i].json = copy;
+        return 1;
+    }
+
+    if (s_cacheCount < PERSIST_MAX_MODS) {
+        char *copy = malloc(len + 1);
+        if (copy) {
+            memcpy(copy, json, len + 1);
+            snprintf(s_cache[s_cacheCount].modtable,
+                     sizeof(s_cache[0].modtable), "%s", modtable);
+            s_cache[s_cacheCount].json = copy;
+            s_cacheCount++;
+        }
+    }
+    return 1;
+}
+
+static void persist_cache_clear(void) {
+    for (int i = 0; i < s_cacheCount; i++) {
+        free(s_cache[i].json);
+        s_cache[i].json = NULL;
+        s_cache[i].modtable[0] = '\0';
+    }
+    s_cacheCount = 0;
+}
+
+/* Saving is only meaningful while a session is up. Outside one the Mods tables
+ * are being rebuilt (or hold nothing but the mods' empty templates), and
+ * writing then would overwrite a good file with an empty object. */
+static int persist_session_live(void) {
+    ServerGameState s = game_state_get_current();
+    return s == SERVER_STATE_RUNNING || s == SERVER_STATE_PAUSED ||
+           s == SERVER_STATE_SAVE || s == SERVER_STATE_SYNC;
+}
+
+/* "{}" (and whitespace variants) — an empty table serialized. */
+static int persist_json_is_empty(const char *json) {
+    if (!json) return 1;
+    while (*json == ' ' || *json == '\n' || *json == '\t' || *json == '\r') json++;
+    if (*json != '{' && *json != '[') return 0;
+    char close = (*json == '{') ? '}' : ']';
+    json++;
+    while (*json == ' ' || *json == '\n' || *json == '\t' || *json == '\r') json++;
+    return *json == close;
+}
+
+static int persist_file_exists_nonempty(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 4;
+}
 
 // ============================================================================
 // Helper: Get monotonic time in milliseconds
@@ -372,6 +453,22 @@ void persist_save_all(lua_State *L) {
         char filepath[PATH_MAX];
         snprintf(filepath, sizeof(filepath), "%s/%s.json", s_persistDir, safe_name);
 
+        // Unchanged since the last write? Nothing to do.
+        if (!persist_cache_update(modtable, json, json_len)) {
+            lua_pop(L, 3);  // Pop json string, PersistentVars, mod table
+            continue;
+        }
+
+        // Never let an empty table overwrite stored data: mods reset
+        // PersistentVars to their empty template at bootstrap, and a save that
+        // raced that would erase the player's state.
+        if (persist_json_is_empty(json) && persist_file_exists_nonempty(filepath)) {
+            LOG_PERSIST_DEBUG("Skipped %s: empty vars would overwrite stored data",
+                              safe_name);
+            lua_pop(L, 3);
+            continue;
+        }
+
         // Write atomically
         if (atomic_write_file(filepath, json, json_len) == 0) {
             LOG_PERSIST_INFO("Saved: %s (%zu bytes)", safe_name, json_len);
@@ -393,12 +490,27 @@ void persist_save_all(lua_State *L) {
     }
 }
 
+void persist_flush(lua_State *L) {
+    if (!s_initialized || !L) return;
+    persist_save_all(L);
+}
+
+void persist_session_reset(void) {
+    // Files on disk stay authoritative; drop the in-memory dedup cache so the
+    // next session's first save is always written.
+    persist_cache_clear();
+    s_loaded = 0;
+}
+
 // ============================================================================
 // Periodic save check
 // ============================================================================
 
 void persist_tick(lua_State *L) {
-    if (!s_initialized || !s_dirty) return;
+    if (!s_initialized) return;
+    // No dirty flag to consult: mods write their PersistentVars table directly,
+    // so the save itself decides what changed (persist_cache_update).
+    if (!persist_session_live()) return;
 
     uint64_t now = get_monotonic_ms();
     if (now - s_lastSaveTime >= PERSIST_SAVE_INTERVAL_MS) {

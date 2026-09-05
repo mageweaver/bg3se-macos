@@ -287,6 +287,16 @@ static const VersionOffsets g_offset_table[] = {
         .interrupt_proto_mgr_ptr = 0x089eaf90,  // eoc::InterruptPrototypeManager::m_ptr
         .boost_proto_mgr_ptr     = 0x089c9bc8,  // eoc::BoostPrototypeManager::m_ptr
         .baseapp_instance_ptr    = 0x08af1288,  // BaseApp::s_AppInstance
+        /* Read from the ADRP+LDR pair in esv::GameStateMachine::Update
+         * (0x104a20ce4) / its ecl twin; the loop there walks Callbacks
+         * {buf@+8, cap@+0x10, size@+0x14} calling vtable slot 2. */
+        .esv_gamestate_evtmgr_ptr = 0x08a71280, // esv::GameStateEventManager::m_ptr
+        .ecl_gamestate_evtmgr_ptr = 0x08a241e0, // ecl::GameStateEventManager::m_ptr
+        /* Both read straight out of ls::GlobalTemplateManager::GetTemplateRaw
+         * (0x105f9cda4): ldrb g_GlobalTemplateBankType; if 2, blr through the
+         * tls_CurrentBankType descriptor; then Banks[byte] at this+0x20. */
+        .global_template_bank_type_ptr = 0x08972f90, // (anon)::g_GlobalTemplateBankType
+        .tls_current_bank_type_ptr     = 0x08986b60, // (anon)::tls_CurrentBankType
 
         .fn_feat_getfeats        = 0x01b56f08,
         .fn_getallfeats          = 0x011ed03c,
@@ -334,6 +344,8 @@ static const VersionOffsets g_offset_table[] = {
             [GAME_FN_VALUELIST_INSERT] = 0x01c42014,
             [GAME_FN_MEMORY_ALLOCATE] = 0x0650cf2c,
             [GAME_FN_MEMORY_DEALLOCATE] = 0x0650d1dc,
+            // nm: __ZN3esv16GameStateMachine6UpdateERKN2ls8GameTimeE @ 0x104a20ad4
+            [GAME_FN_ESV_GAMESTATEMACHINE_UPDATE] = 0x04a20ad4,
         },
     },
 

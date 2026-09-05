@@ -26,6 +26,8 @@
 #include "../lifetime/lifetime.h"
 #include "../strings/fixed_string.h"
 #include "guid_lookup.h"
+#include "../core/guid_format.h"
+#include "component_registry.h"
 
 #include <limits.h>
 #include <math.h>
@@ -149,6 +151,17 @@ const ComponentLayoutDef *component_property_get_layout(const char *componentNam
 
 const ComponentLayoutDef *component_property_get_layout_by_short_name(const char *shortName) {
     if (!shortName) return NULL;
+
+    // Upstream's Lua-facing name wins: layout shortNames were derived
+    // mechanically from the class name ("TreeState"), while mods use the
+    // DEFINE_COMPONENT name ("TadpoleTreeState"). This also makes ambiguous
+    // short names deterministic ("Data" is eoc::DataComponent upstream, but
+    // interrupt/sight/spatial_grid all have a DataComponent too).
+    const char *cls = component_upstream_name_to_class(shortName);
+    if (cls) {
+        const ComponentLayoutDef *layout = component_property_get_layout(cls);
+        if (layout) return layout;
+    }
 
     for (int i = 0; i < g_LayoutCount; i++) {
         if (g_Layouts[i].shortName &&
@@ -1893,13 +1906,8 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
             // ClassUUID at offset 0
             uint8_t classGuid[16] = {0};
             if (safe_memory_read((mach_vm_address_t)elemAddr, classGuid, 16)) {
-                char guidBuf[64];
-                snprintf(guidBuf, sizeof(guidBuf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        classGuid[0], classGuid[1], classGuid[2], classGuid[3],
-                        classGuid[4], classGuid[5], classGuid[6], classGuid[7],
-                        classGuid[8], classGuid[9], classGuid[10], classGuid[11],
-                        classGuid[12], classGuid[13], classGuid[14], classGuid[15]);
+                char guidBuf[GUID_STRING_SIZE];
+                guid_bytes_to_string(classGuid, guidBuf, sizeof(guidBuf));
                 lua_pushstring(L, guidBuf);
                 lua_setfield(L, -2, "ClassUUID");
             }
@@ -1907,13 +1915,8 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
             // SubClassUUID at offset 16
             uint8_t subclassGuid[16] = {0};
             if (safe_memory_read((mach_vm_address_t)(elemAddr + 16), subclassGuid, 16)) {
-                char guidBuf[64];
-                snprintf(guidBuf, sizeof(guidBuf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        subclassGuid[0], subclassGuid[1], subclassGuid[2], subclassGuid[3],
-                        subclassGuid[4], subclassGuid[5], subclassGuid[6], subclassGuid[7],
-                        subclassGuid[8], subclassGuid[9], subclassGuid[10], subclassGuid[11],
-                        subclassGuid[12], subclassGuid[13], subclassGuid[14], subclassGuid[15]);
+                char guidBuf[GUID_STRING_SIZE];
+                guid_bytes_to_string(subclassGuid, guidBuf, sizeof(guidBuf));
                 lua_pushstring(L, guidBuf);
                 lua_setfield(L, -2, "SubClassUUID");
             }

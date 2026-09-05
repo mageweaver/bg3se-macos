@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
+#include <crt_externs.h>   // _NSGetArgv: detect the game's "-crash" reporter relaunch
 #include <dirent.h>
 #include <sys/stat.h>
 #include <zlib.h>
@@ -108,6 +109,7 @@ extern "C" {
 
 // Game state tracking
 #include "game_state.h"
+#include "game_memory.h"
 #include "global_switches.h"
 #include "video_skip.h"
 #include "vt_unload_guard.h"
@@ -145,6 +147,7 @@ extern "C" {
 
 // UI stubs (Noesis - MCM compatibility)
 #include "lua_ui.h"
+#include "../ui/noesis.h"   // Noesis click hook install
 
 // StaticData system
 #include "staticdata_manager.h"
@@ -934,6 +937,25 @@ static int lua_require(lua_State *L) {
 
 // Track last tick time for delta calculation
 static uint64_t g_last_tick_time_ms = 0;
+
+// Server frame hook (esv::GameStateMachine::Update) — defined with fake_Event.
+static bool server_owns_lua_service(void);
+
+/*
+ * Run pending console commands. Caller holds the Lua gate. Commands can be
+ * aimed at the client state, where mods put their UI (see
+ * console_set_context); resolve the target here so both callers -- the
+ * server frame tick and the GCD fallback -- honour it. Leaves the context
+ * at SERVER, which is what everything after a console drain expects.
+ */
+static void lua_service_console(lua_State *server_L) {
+    LuaContext target = console_get_context() ? LUA_CONTEXT_CLIENT
+                                              : LUA_CONTEXT_SERVER;
+    lua_State *target_L = lua_runtime_state_for(target);
+    lua_context_set(target_L ? target : LUA_CONTEXT_SERVER);
+    console_poll(target_L ? target_L : server_L);
+    lua_context_set(LUA_CONTEXT_SERVER);
+}
 
 // ============================================================================
 // Ext.RegisterNetListener (per-channel callback, Issue #68)
@@ -1836,17 +1858,29 @@ static bool osi_db_resolve(void *def, void **outNode, void **outDb,
  * heap pointer. Returns 0 on read failure. */
 static mach_vm_address_t osi_db_tuple_values(mach_vm_address_t listNode,
                                              uint32_t *outSize) {
+    /* CTuple is { COsiTypedValue *values; uint64 size; uint32 cap; } -- the
+     * values live BEHIND a pointer, they are not inline. CReteDBase::_insert
+     * proves it by storing straight into the new list node:
+     *     str x8,[x0,#0x10]   ; node->tuple.values
+     *     str x8,[x0,#0x18]   ; node->tuple.size
+     * so the tuple sits at listNode+0x10 with values at +0x00, size at +0x08.
+     *
+     * This used to assume Windows' COsiSOOList shape (8 inline slots, size at
+     * +0x80) and so returned the tuple HEADER as the value array: every row
+     * Osi.DB_*:Get() ever returned was the header reinterpreted as values --
+     * column 0 came back as the values pointer typed by the row's arity (1 ->
+     * INTEGER, 2 -> INTEGER64, 4 -> STRING), and the rest as empty strings.
+     * Row counts were right, which is why it went unnoticed. */
     mach_vm_address_t tuple = listNode + 0x10;
-    uint32_t tsize = 0, tcap = 0;
-    safe_memory_read_u32(tuple + 0x80, &tsize);
-    safe_memory_read_u32(tuple + 0x84, &tcap);
-    *outSize = tsize;
-    if (tcap >= 9) {
-        void *heap = NULL;
-        safe_memory_read_pointer(tuple, &heap);
-        return (mach_vm_address_t)heap;
+    void *values = NULL;
+    uint64_t tsize = 0;
+    if (!safe_memory_read_pointer(tuple, &values) || !values) {
+        *outSize = 0;
+        return 0;
     }
-    return tuple;
+    safe_memory_read_u64(tuple + 0x08, &tsize);
+    *outSize = (tsize <= 32) ? (uint32_t)tsize : 0;
+    return (mach_vm_address_t)values;
 }
 
 /* Compare Lua stack slots 2..(1+nfilter) against a stored value array.
@@ -1971,6 +2005,76 @@ static void osi_report_node_classes(void) {
 }
 
 
+/*
+ * Database discovery. Osiris databases (DB_Players, DB_PartyMembers, ...) live
+ * only in COsiFunctionMan's name index, so Osi.DB_*:Get() can resolve them
+ * only after that index has been walked. Upstream resolves DB names on demand
+ * against the live function manager; we walk once per story load instead.
+ *
+ * The walk used to run only from the SavegameLoaded / LevelGameplayStarted
+ * event hooks. That is milliseconds too late: the engine goes
+ * LoadSession->LoadLevel->Sync->Running and fires SavegameLoaded *after*
+ * Sync->Running, while mods restore their state on exactly that transition.
+ * AppearanceEditEnhanced walks DB_Players there to re-grant its hotbar spell,
+ * got an empty table, and its icon never came back.
+ *
+ * So the walk now runs on the Sync transition (story built, still loading),
+ * and lazily from a Get()/Delete() miss while the registry is empty. The
+ * registry is wiped when a session starts loading or the story is rebuilt,
+ * since its COsiFunctionData* go stale.
+ */
+static int g_dbWalkDone = 0;
+static int g_dbWalkAttempts = 0;
+#define OSI_DB_MAX_WALK_ATTEMPTS 3
+
+/* The story exists from the point the session starts loading; before that
+ * there is nothing in the name index to find. */
+static int osi_db_story_ready(void) {
+    ServerGameState s = game_state_get_current();
+    return s == SERVER_STATE_LOAD_SESSION || s == SERVER_STATE_LOAD_LEVEL ||
+           s == SERVER_STATE_SYNC || s == SERVER_STATE_RUNNING ||
+           s == SERVER_STATE_PAUSED || s == SERVER_STATE_SAVE;
+}
+
+static void osi_db_discover(const char *why) {
+    if (!g_pOsiFunctionMan) return;
+    g_dbWalkAttempts++;
+    LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
+                    "discover databases", why);
+    osi_func_enumerate_by_name();
+    /* An empty registry means the story wasn't built yet — leave the door open
+     * for a later attempt instead of latching a useless result. */
+    g_dbWalkDone = (osi_db_count() > 0);
+    if (!g_dbWalkDone) {
+        LOG_OSIRIS_DEBUG("Name-index walk found no databases (%s); will retry", why);
+        return;
+    }
+    osi_string_selftest();
+    osi_report_node_classes();
+}
+
+static void osi_db_invalidate(const char *why) {
+    if (!g_dbWalkDone && osi_db_count() == 0 && g_dbWalkAttempts == 0) return;
+    LOG_OSIRIS_DEBUG("Database registry invalidated (%s)", why);
+    osi_db_clear();
+    g_dbWalkDone = 0;
+    g_dbWalkAttempts = 0;
+}
+
+/* Registry lookup, walking the name index on miss while it is still empty.
+ * A miss against a populated registry means the name is not a database, so it
+ * never triggers another (~0.5s) walk. */
+static void *osi_db_lookup_or_discover(const char *name) {
+    void *def = osi_db_lookup(name);
+    if (!def && !g_dbWalkDone && osi_db_count() == 0 &&
+        g_dbWalkAttempts < OSI_DB_MAX_WALK_ATTEMPTS && osi_db_story_ready()) {
+        osi_db_discover(name);
+        def = osi_db_lookup(name);
+    }
+    return def;
+}
+
+
 static int osi_db_read_facts(lua_State *L, void *def) {
     int nfilter = lua_gettop(L) - 1;      /* filter args at stack 2..top */
     if (nfilter < 0) nfilter = 0;
@@ -2091,7 +2195,7 @@ static int lua_osi_db_delete(lua_State *L) {
         return 0;
     }
 
-    void *def = osi_db_lookup(db_name);
+    void *def = osi_db_lookup_or_discover(db_name);
     if (!def) {
         LOG_OSIRIS_WARN("Osi.%s:Delete() — not a discovered Osiris database", db_name);
         return 0;
@@ -2181,6 +2285,592 @@ static int lua_osi_db_delete(lua_State *L) {
     return 0;
 }
 
+// ============================================================================
+// Osi.DB_<name>(...) — engine-native tuple insert
+// ============================================================================
+//
+// Calling a database is how Osiris adds a fact: CustomCompanions' recruit path
+// runs Osi.DB_Players(character) and five siblings, and every one of them
+// raised "not resolvable" here — story databases carry OsiFunctionId 0, so the
+// DIV dispatch route this port uses for native functions can never reach them.
+// The error aborted the rest of the mod's handler, which is why a recruited
+// companion was created but never teleported to the party.
+//
+// Upstream does node->InsertTuple(TuplePtrLL*) (Lua/Osiris/Function.inl,
+// OsiInsert). This is the same construction the delete path above already
+// proved out, one layer lower: build the compact CTuple, hand it to the
+// engine, then propagate the RETE token so rules fire.
+
+/* Read a database's declared column types from a stored row -- the engine's
+ * own record of what it put there, so no layout guess is involved. Returns
+ * false for an empty database. */
+static bool osi_db_types_from_rows(void *db, uint8_t colCount, uint16_t *out) {
+    mach_vm_address_t sentinel = (mach_vm_address_t)db + 0x10;
+    void *cur = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)db + 0x18, &cur)) return false;
+
+    int guard = 0;
+    while (cur && (mach_vm_address_t)cur != sentinel && guard++ < 100000) {
+        uint32_t tsize = 0;
+        mach_vm_address_t values = osi_db_tuple_values((mach_vm_address_t)cur, &tsize);
+        if (values != 0 && tsize >= colCount) {
+            bool ok = true;
+            for (uint32_t i = 0; i < colCount && ok; i++) {
+                uint16_t t = 0;
+                if (!safe_memory_read(values + (mach_vm_address_t)i * 0x10 + 0x08,
+                                      &t, sizeof(t)) || t == OSI_TYPE_NONE) {
+                    ok = false;
+                }
+                out[i] = t;
+            }
+            if (ok) return true;
+        }
+        void *nxt = NULL;
+        if (!safe_memory_read_pointer((mach_vm_address_t)cur + 0x08, &nxt)) break;
+        cur = nxt;
+    }
+    return false;
+}
+
+/* Alias -> base type; defined with the rest of the type machinery below. */
+static uint16_t osi_resolve_base_type(uint16_t typeId);
+static bool osi_resolve_root_type_strict(uint16_t typeId, uint16_t *root);
+
+/* Story-function signature, read with the engine's own layout.
+ *
+ * The "def" the function index hands out is a COsiFunctionData, and its
+ * deserializer (COsiFunctionData(COsiSmartBuf*), libOsiris arm64 0x273ac)
+ * ends with `bl COsiFunctionDef(COsiSmartBuf*)` / `str x0, [x19, #0x18]`:
+ * the signature pointer lives at +0x18 (node id +0x20, type +0x24). That
+ * signature (COsiFunctionDef(COsiSmartBuf*), 0x26ed0) is
+ *
+ *   +0x00 vptr = &__ZTV15COsiFunctionDef + 0x10
+ *   +0x08 char *name
+ *   +0x10 COsiValueTypeList *params
+ *   +0x18 out-parameter bit vector, +0x20 its length
+ *
+ * and COsiValueTypeList (Read 0x40618 / Write 0x40524) is an intrusive
+ * doubly linked list with an EMBEDDED sentinel, size at the end:
+ *
+ *   +0x00 vptr = &__ZTV17COsiValueTypeList + 0x10
+ *   +0x08 sentinel.prev  (last node;  == list+8 when empty)
+ *   +0x10 sentinel.next  (first node; == list+8 when empty)
+ *   +0x18 size
+ *   node (0x18 bytes): +0x00 prev, +0x08 next, +0x10 uint16 type
+ *
+ * Write walks first -> last as `node = [list+0x10]; ...; node = [node+8]`
+ * until node == list+8, and Read appends each type as a fresh 0x18-byte node
+ * with the type stored at +0x10. Both vtables are exported, so every pointer
+ * is checked against dlsym before anything behind it is trusted.
+ *
+ * The previous reader assumed the Windows List<T> shape -- a separately
+ * allocated head node at [list+8] -- so it read the sentinel's size field as
+ * a type and its layout search matched nothing. The caller then guessed types
+ * from the Lua arguments, guessed STRING for a GUID, and the engine
+ * terminated on it: CReteDBase::find orders index keys with
+ * COsiTypedValueBase::operator<, which reports differing root types as
+ * "invalid comparison" and returns false both ways, so every key compared
+ * equal and find hit its fatal "invalid number of results" assert. Types
+ * come only from the signature now; nothing here infers. */
+static void *s_osi_vt_function_def = NULL;      /* expected vptr of a COsiFunctionDef */
+static void *s_osi_vt_value_type_list = NULL;   /* expected vptr of a COsiValueTypeList */
+
+static bool osi_sig_resolve_symbols(void) {
+    static bool attempted = false;
+    if (s_osi_vt_function_def && s_osi_vt_value_type_list) return true;
+    if (attempted) return false;
+    attempted = true;
+
+    void *h = dlopen("@rpath/libOsiris.dylib", RTLD_NOLOAD);
+    if (!h) h = dlopen("@executable_path/../Frameworks/libOsiris.dylib", RTLD_NOW);
+    if (!h) {
+        LOG_OSIRIS_WARN("Osi signature: libOsiris.dylib not resolvable via dlopen");
+        return false;
+    }
+    void *vtDef = dlsym(h, "_ZTV15COsiFunctionDef");
+    void *vtList = dlsym(h, "_ZTV17COsiValueTypeList");
+    if (!vtDef || !vtList) {
+        LOG_OSIRIS_WARN("Osi signature: missing libOsiris vtable exports "
+                        "(COsiFunctionDef=%p COsiValueTypeList=%p)", vtDef, vtList);
+        return false;
+    }
+    s_osi_vt_function_def = (uint8_t *)vtDef + 0x10;
+    s_osi_vt_value_type_list = (uint8_t *)vtList + 0x10;
+    return true;
+}
+
+/* A def's parameter list, with both vptrs verified. NULL (and a reason) if
+ * anything on the way does not look like what the engine builds. */
+static void *osi_sig_param_list(void *def, const char **why) {
+    void *sig = NULL, *plist = NULL, *vptr = NULL;
+    if (!osi_sig_resolve_symbols()) { *why = "vtable exports unavailable"; return NULL; }
+    if (!safe_memory_read_pointer((mach_vm_address_t)def + 0x18, &sig) || !sig) {
+        *why = "no signature";
+        return NULL;
+    }
+    if (!safe_memory_read_pointer((mach_vm_address_t)sig, &vptr) || vptr != s_osi_vt_function_def) {
+        *why = "signature vtable mismatch";
+        return NULL;
+    }
+    if (!safe_memory_read_pointer((mach_vm_address_t)sig + 0x10, &plist) || !plist) {
+        *why = "no parameter list";
+        return NULL;
+    }
+    if (!safe_memory_read_pointer((mach_vm_address_t)plist, &vptr) || vptr != s_osi_vt_value_type_list) {
+        *why = "parameter list vtable mismatch";
+        return NULL;
+    }
+    return plist;
+}
+
+#define OSI_SIG_MAX_PARAMS 32
+
+/* Parameter count and declared types (the story header's ids -- CHARACTER,
+ * ITEM, ... -- exactly what upstream's OsiInsert passes on) of a story
+ * function. Walks first -> last and requires the walk to close on the
+ * sentinel after exactly `size` nodes. `out` may be NULL to count only.
+ * Returns the count, or -1 with a reason. */
+static int osi_sig_params(void *def, uint16_t *out, int max, const char **why) {
+    void *plist = osi_sig_param_list(def, why);
+    if (!plist) return -1;
+
+    mach_vm_address_t sentinel = (mach_vm_address_t)plist + 0x08;
+    uint64_t size = 0;
+    if (!safe_memory_read((mach_vm_address_t)plist + 0x18, &size, sizeof(size)) ||
+        size > OSI_SIG_MAX_PARAMS) {
+        *why = "implausible parameter count";
+        return -1;
+    }
+    if (out && (int)size > max) { *why = "too many parameters"; return -1; }
+
+    void *node = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)plist + 0x10, &node)) {
+        *why = "unreadable parameter list";
+        return -1;
+    }
+    int n = 0;
+    while ((mach_vm_address_t)node != sentinel) {
+        uint16_t t = 0;
+        if (!node || n >= (int)size) {
+            *why = "parameter list does not close on its sentinel";
+            return -1;
+        }
+        if (!safe_memory_read((mach_vm_address_t)node + 0x10, &t, sizeof(t))) {
+            *why = "unreadable parameter node";
+            return -1;
+        }
+        if (t == OSI_TYPE_NONE) { *why = "parameter without a type"; return -1; }
+        if (out) out[n] = t;
+        n++;
+        if (!safe_memory_read_pointer((mach_vm_address_t)node + 0x08, &node)) {
+            *why = "unreadable parameter node";
+            return -1;
+        }
+    }
+    if (n != (int)size) { *why = "parameter walk disagrees with the list size"; return -1; }
+    return n;
+}
+
+/* One-time check of the signature reader against the engine's own data. A
+ * populated database's stored rows carry the column types the engine put
+ * there, and its signature declares those same columns, so the two must agree
+ * on every sampled database -- by root type, since a rule may store a
+ * CHARACTER in a GUIDSTRING column. If they do not, story inserts stay
+ * disabled for the session: a mistyped tuple is not a soft failure, the
+ * engine terminates on it (see above). 0 = not run, 1 = passed, -1 = failed. */
+static int g_sigVerified = 0;
+
+static bool osi_sig_verified(void) {
+    if (g_sigVerified) return g_sigVerified > 0;
+
+    int samples = 0, bad = 0;
+    for (int i = 0; i < osi_db_count() && samples < 32; i++) {
+        const char *nm = NULL; void *def = NULL;
+        if (!osi_db_entry(i, &nm, &def) || !def) continue;
+
+        void *node = NULL, *db = NULL;
+        uint8_t colCount = 0;
+        if (!osi_db_resolve(def, &node, &db, &colCount)) continue;
+
+        uint16_t stored[OSI_SIG_MAX_PARAMS];
+        if (colCount > OSI_SIG_MAX_PARAMS || !osi_db_types_from_rows(db, colCount, stored)) continue;
+        samples++;
+
+        uint16_t declared[OSI_SIG_MAX_PARAMS];
+        const char *why = NULL;
+        int n = osi_sig_params(def, declared, OSI_SIG_MAX_PARAMS, &why);
+        if (n < 0) {
+            bad++;
+            LOG_OSIRIS_WARN("Signature check: %s: %s", nm ? nm : "?", why);
+            continue;
+        }
+        if (n != (int)colCount) {
+            bad++;
+            LOG_OSIRIS_WARN("Signature check: %s declares %d parameters but its database "
+                            "has %u columns", nm ? nm : "?", n, colCount);
+            continue;
+        }
+        for (uint32_t c = 0; c < colCount; c++) {
+            uint16_t dr = osi_resolve_base_type(declared[c]);
+            uint16_t sr = osi_resolve_base_type(stored[c]);
+            if (dr != sr) {
+                bad++;
+                LOG_OSIRIS_WARN("Signature check: %s column %u: signature type %u (root %u) "
+                                "but stored rows hold type %u (root %u)",
+                                nm ? nm : "?", c + 1, declared[c], dr, stored[c], sr);
+                break;
+            }
+        }
+    }
+
+    if (samples == 0) {
+        /* Nothing to compare against yet; the vtable checks still stand, and
+         * the next call verifies again. */
+        LOG_OSIRIS_INFO("Signature reader: no populated database to verify against yet");
+        return true;
+    }
+    if (bad) {
+        g_sigVerified = -1;
+        LOG_OSIRIS_ERROR("Signature reader: %d of %d sampled databases disagree with their "
+                         "stored rows; story inserts (DB_*/PROC_*/events from Lua) are "
+                         "DISABLED for this session", bad, samples);
+        return false;
+    }
+    g_sigVerified = 1;
+    LOG_OSIRIS_INFO("Signature reader: declared parameter types match the stored column "
+                    "types of all %d sampled databases", samples);
+    return true;
+}
+
+/* Engine entry points for building and inserting a tuple, all exported by
+ * libOsiris.dylib and resolved on first use.
+ *
+ * COsiTypedValue is 16 bytes: value at +0x00, type id (u16) at +0x08, column
+ * index (u8, default 0xff) at +0x0a, flags (u8) at +0x0b -- bits 0..2 are the
+ * specialization tag (1 = COsiTypedValue) and bit 3 means "a value is set".
+ * The 0x01ff0000 word Add and Del write into +0x08 is that default state,
+ * inlined from COsiTypedValue's constructor.
+ *
+ * The engine's own setters are used rather than hand-written payloads: a
+ * string value is a refcounted string-table handle, and SetValue(char const*)
+ * is what interns it and takes the reference the destructor later releases. */
+/* CTuple: { COsiTypedValue *values; uint64 size; uint32 cap; } */
+typedef struct {
+    void *values;
+    uint64_t size;
+    uint32_t cap;
+    uint32_t pad;
+} OsiCTuple;
+
+typedef void *(*OsiAllocFn)(void *self, size_t size, uint32_t flags);
+typedef void (*OsiFreeFn)(void *self, void *ptr, uint32_t flags);
+/* CTuple::Copy() const returns a 24-byte struct, so AAPCS64 returns it
+ * INDIRECTLY: the caller passes the destination in x8, not as an argument.
+ * Declaring it as returning OsiCTuple by value is what makes the compiler do
+ * that. Declaring it as `void f(void *out, const void *self)` instead passes
+ * the destination in x0 and leaves x8 holding junk, and Copy's third
+ * instruction (`str x23, [x19, #8]`, x19 = x8) then writes through that junk —
+ * an immediate SIGBUS. */
+typedef OsiCTuple (*OsiTupleCopyFn)(const void *self);
+typedef uint64_t (*OsiDBaseInsertFn)(void *db, void *tuple);   /* CTuple&& */
+typedef void (*OsiTVSetTypeFn)(void *tv, uint16_t type);
+typedef void (*OsiTVSetStrFn)(void *tv, const char *s);
+
+static void **s_osi_allocator = NULL;         /* &COsiris::s_Allocator (a pointer) */
+static OsiTupleCopyFn s_osi_tuple_copy = NULL;
+static OsiDBaseInsertFn s_osi_dbase_insert = NULL;
+static OsiTVSetTypeFn s_osi_tv_set_type = NULL;
+static OsiTVSetStrFn s_osi_tv_set_str = NULL;
+
+static bool osi_insert_resolve_symbols(void) {
+    static bool attempted = false;
+    if (s_osi_allocator && s_osi_tuple_copy && s_osi_dbase_insert &&
+        s_osi_tv_set_type && s_osi_tv_set_str) {
+        return true;
+    }
+    if (attempted) return false;
+    attempted = true;
+
+    void *h = dlopen("@rpath/libOsiris.dylib", RTLD_NOLOAD);
+    if (!h) h = dlopen("@executable_path/../Frameworks/libOsiris.dylib", RTLD_NOW);
+    if (!h) {
+        LOG_OSIRIS_WARN("Osi insert: libOsiris.dylib not resolvable via dlopen");
+        return false;
+    }
+    s_osi_allocator = (void **)dlsym(h, "_ZN7COsiris11s_AllocatorE");
+    s_osi_tuple_copy = (OsiTupleCopyFn)dlsym(h, "_ZNK6CTuple4CopyEv");
+    s_osi_dbase_insert = (OsiDBaseInsertFn)dlsym(h, "_ZN10CReteDBase6insertEO6CTuple");
+    s_osi_tv_set_type = (OsiTVSetTypeFn)dlsym(h,
+        "_ZN18COsiTypedValueBase12SetValueTypeE13TOsiValueType");
+    s_osi_tv_set_str = (OsiTVSetStrFn)dlsym(h, "_ZN18COsiTypedValueBase8SetValueEPKc");
+    if (!s_osi_allocator || !s_osi_tuple_copy || !s_osi_dbase_insert ||
+        !s_osi_tv_set_type || !s_osi_tv_set_str || !osi_db_delete_resolve_symbols()) {
+        LOG_OSIRIS_WARN("Osi insert: missing libOsiris exports (alloc=%p copy=%p "
+                        "insert=%p setType=%p setStr=%p)",
+                        (void *)s_osi_allocator, (void *)s_osi_tuple_copy,
+                        (void *)s_osi_dbase_insert, (void *)s_osi_tv_set_type,
+                        (void *)s_osi_tv_set_str);
+        s_osi_allocator = NULL;
+        return false;
+    }
+    return true;
+}
+
+/* The engine's allocator: the tuple buffer an insert keeps is freed by engine
+ * code, so it must come from here (COsiris::s_Allocator vtable[0]/[1], as
+ * Add's own prologue and ~CTuple do). */
+static void *osi_engine_alloc(size_t size) {
+    void *self = s_osi_allocator ? *s_osi_allocator : NULL;
+    void **vt = NULL;
+    if (!self || !safe_memory_read_pointer((mach_vm_address_t)self, (void **)&vt) || !vt) return NULL;
+    OsiAllocFn fn = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)vt, (void **)&fn) || !fn) return NULL;
+    return fn(self, size, 0);
+}
+
+static void osi_engine_free(void *ptr) {
+    void *self = s_osi_allocator ? *s_osi_allocator : NULL;
+    void **vt = NULL;
+    if (!ptr || !self) return;
+    if (!safe_memory_read_pointer((mach_vm_address_t)self, (void **)&vt) || !vt) return;
+    OsiFreeFn fn = NULL;
+    if (!safe_memory_read_pointer((mach_vm_address_t)vt + 0x08, (void **)&fn) || !fn) return;
+    fn(self, ptr, 0);
+}
+
+/* ~CTuple: destroy each value (releasing string handles), then free the
+ * buffer the engine way. Safe on a tuple an insert has already moved out of,
+ * whose values pointer it nulled. */
+static void osi_tuple_destroy(OsiCTuple *t) {
+    if (!t || !t->values) return;
+    for (uint64_t i = t->size; i > 0; i--) {
+        s_osi_tv_dtor((uint8_t *)t->values + (i - 1) * 0x10);
+    }
+    osi_engine_free(t->values);
+    t->values = NULL;
+    t->size = 0;
+}
+
+/* Reject argument kinds the engine setters cannot take, BEFORE anything is
+ * allocated (a Lua error raised later would leak the tuple). Same rules as
+ * upstream's LuaToOsi: a number for INTEGER/INTEGER64/REAL, a string for
+ * STRING/GUIDSTRING. Handing a string to a non-string root is not a soft
+ * failure: SetValue(char const*) is a fatal engine assert ("Trying to set a
+ * string on a non string type."). Raises; returns only when every argument
+ * is acceptable. */
+static void osi_check_arg_kinds(lua_State *L, const char *name, int firstArg,
+                                uint8_t count, const uint16_t *types) {
+    for (uint32_t i = 0; i < count; i++) {
+        int idx = firstArg + (int)i;
+        uint16_t root = 0;
+        if (!osi_resolve_root_type_strict(types[i], &root)) {
+            luaL_error(L, "Osi.%s: cannot resolve Osiris type %d of argument %d; the "
+                          "call did not reach Osiris", name, (int)types[i], (int)i + 1);
+        }
+        switch (root) {
+            case OSI_TYPE_INTEGER:
+            case OSI_TYPE_INTEGER64:
+            case OSI_TYPE_REAL:
+                if (lua_type(L, idx) != LUA_TNUMBER) {
+                    luaL_error(L, "Number expected for argument %d of '%s', got %s",
+                               (int)i + 1, name, luaL_typename(L, idx));
+                }
+                break;
+            case OSI_TYPE_STRING:
+            case OSI_TYPE_GUIDSTRING:
+                if (lua_type(L, idx) != LUA_TSTRING) {
+                    luaL_error(L, "String expected for argument %d of '%s', got %s",
+                               (int)i + 1, name, luaL_typename(L, idx));
+                }
+                break;
+            default:
+                luaL_error(L, "Osi.%s: unhandled Osiris type %d for argument %d",
+                           name, (int)types[i], (int)i + 1);
+        }
+    }
+}
+
+/* Fill one default-constructed slot from a Lua value. The declared type may be
+ * an alias (CHARACTER, ITEM, ...); its ROOT type decides the payload shape,
+ * while the slot keeps the declared id so rules matching that column see their
+ * own type. osi_check_arg_kinds has already vetted the argument. */
+static bool osi_tv_set(lua_State *L, int idx, uint16_t declaredType, uint8_t *slot) {
+    uint16_t root = 0;
+    if (!osi_resolve_root_type_strict(declaredType, &root)) return false;
+    s_osi_tv_set_type(slot, declaredType);
+
+    /* Non-integral floats truncate, as upstream's LuaToInt does
+     * (lua_tointeger alone would turn 2.5 into 0). */
+    int64_t iv = lua_isinteger(L, idx) ? (int64_t)lua_tointeger(L, idx)
+                                       : (int64_t)lua_tonumber(L, idx);
+    switch (root) {
+        case OSI_TYPE_INTEGER:
+            *(int32_t *)slot = (int32_t)iv;
+            slot[0x0b] |= 0x08;                 /* value is set */
+            return true;
+        case OSI_TYPE_INTEGER64:
+            *(int64_t *)slot = iv;
+            slot[0x0b] |= 0x08;
+            return true;
+        case OSI_TYPE_REAL: {
+            float f = (float)lua_tonumber(L, idx);
+            memcpy(slot, &f, sizeof(f));
+            slot[0x0b] |= 0x08;
+            return true;
+        }
+        case OSI_TYPE_STRING:
+        case OSI_TYPE_GUIDSTRING: {
+            const char *s = lua_type(L, idx) == LUA_TSTRING ? lua_tostring(L, idx) : NULL;
+            if (!s) return false;
+            s_osi_tv_set_str(slot, s);          /* interns + takes the reference */
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+/**
+ * Push a tuple into a story function's RETE node — CReteStartNode::Add's own
+ * sequence (libOsiris arm64 0x5f07c), which both CReteFact (databases) and
+ * CReteEvent (procs/events) inherit:
+ *
+ *   1. build the CTuple: values from the engine allocator, each slot default
+ *      constructed (0x01ff0000 at +0x08) and then given its value;
+ *   2. if the node has a database (id at node+0x18, resolved through the
+ *      CReteDBase factory), deep-copy the tuple and hand the COPY to
+ *      CReteDBase::insert -- it moves the buffer out on success and declines a
+ *      duplicate, which is why the original is kept for step 3;
+ *   3. on success, ForwardAddToken (node vtable +0x78) propagates the RETE
+ *      token so rules fire. A node with no database -- every proc and event --
+ *      skips straight here, which is how calling a proc runs it;
+ *   4. destroy both tuples.
+ */
+static int osi_node_insert_tuple(lua_State *L, const char *name, void *node, void *db,
+                                 uint8_t count, const uint16_t *types, int firstArg) {
+    if (!osi_insert_resolve_symbols()) {
+        return luaL_error(L, "Osi.%s: Osiris tuple-insert entry points unavailable; "
+                             "the call did not reach Osiris", name);
+    }
+
+    OsiCTuple tuple = { NULL, count, 0, 0 };
+    if (count > 0) {
+        tuple.values = osi_engine_alloc((size_t)count * 0x10);
+        if (!tuple.values) {
+            return luaL_error(L, "Osi.%s: could not allocate the argument tuple", name);
+        }
+        for (uint32_t i = 0; i < count; i++) {
+            uint8_t *slot = (uint8_t *)tuple.values + (size_t)i * 0x10;
+            memset(slot, 0, 0x10);
+            *(uint32_t *)(slot + 0x08) = 0x01ff0000u;   /* COsiTypedValue() */
+        }
+        for (uint32_t i = 0; i < count; i++) {
+            uint8_t *slot = (uint8_t *)tuple.values + (size_t)i * 0x10;
+            if (!osi_tv_set(L, firstArg + (int)i, types[i], slot)) {
+                osi_tuple_destroy(&tuple);
+                return luaL_error(L, "Osi.%s: argument %d could not be converted",
+                                  name, (int)i + 1);
+            }
+        }
+    }
+
+    bool inserted = true;
+    if (db) {
+        OsiCTuple copy = s_osi_tuple_copy(&tuple);   /* deep copy, values and all */
+        inserted = s_osi_dbase_insert(db, &copy) != 0;
+        osi_tuple_destroy(&copy);   /* no-op when insert moved the buffer out */
+    }
+
+    if (inserted) {
+        void *vptr = NULL, *fwd = NULL;
+        safe_memory_read_pointer((mach_vm_address_t)node, &vptr);
+        if (vptr) safe_memory_read_pointer((mach_vm_address_t)vptr + 0x78, &fwd);
+        if (fwd) {
+            ((void (*)(void *, const void *))fwd)(node, &tuple);
+        } else {
+            osi_tuple_destroy(&tuple);
+            return luaL_error(L, "Osi.%s: ForwardAddToken unreadable; the tuple was "
+                                 "stored but no rule was notified", name);
+        }
+        LOG_OSIRIS_DEBUG("Osi.%s: tuple inserted (%u args%s)", name, count,
+                         db ? "" : ", no database — proc/event");
+    } else {
+        LOG_OSIRIS_DEBUG("Osi.%s: row already present (no-op)", name);
+    }
+
+    osi_tuple_destroy(&tuple);
+    return 0;
+}
+
+/**
+ * Osi.<story function>(...) — insert a tuple into the function's RETE node.
+ *
+ * This is how Osiris runs a database insert (DB_Foo(a, b) adds a fact) and how
+ * it fires a story proc or event; upstream routes Database/Proc/Event through
+ * one OsiInsert for exactly that reason (Lua/Osiris/Function.inl). None of
+ * them carry an OsiFunctionId, so the DIV dispatch this port uses for native
+ * functions cannot reach them — before this, every such call raised.
+ *
+ * Arity and argument types both come from the function's signature, which is
+ * where upstream's OsiInsert reads them (Signature->Params->Params) -- for
+ * databases too, since a database's first insert finds it empty. The
+ * CReteDBase column count is kept only as a cross-check.
+ *
+ * `firstArg` is the stack index of the first argument.
+ * Returns 0 (no results) on success, or raises a Lua error.
+ */
+static int osi_story_insert(lua_State *L, const char *name, void *def, int firstArg) {
+    void *node = NULL, *db = NULL;
+    uint8_t colCount = 0;
+    bool isDb = osi_db_resolve(def, &node, &db, &colCount);
+    if (!isDb) {
+        db = NULL;
+        if (!osi_node_resolve(def, &node) || !node) {
+            return luaL_error(L, "Osi.%s: story function has no node; the call did "
+                                 "not reach Osiris", name);
+        }
+        /* A user query is declared as a database but its node is not a data
+         * node (upstream splits on exactly this). Inserting a tuple into one
+         * would not run the query, so say so rather than doing something
+         * plausible-looking. */
+        uint8_t ftype = 0;
+        safe_memory_read_u8((mach_vm_address_t)def + 0x24, &ftype);
+        if (ftype == OSI_FUNC_DATABASE && !osi_node_is_data_node(node)) {
+            return luaL_error(L, "Osi.%s: user queries are not supported yet on this "
+                                 "port; the call did not reach Osiris", name);
+        }
+    }
+
+    if (!osi_sig_verified()) {
+        return luaL_error(L, "Osi.%s: story-function signatures do not match the engine's "
+                             "own databases on this build; inserts are disabled (see the "
+                             "BG3SE log). The call did not reach Osiris", name);
+    }
+
+    uint16_t types[OSI_SIG_MAX_PARAMS];
+    const char *why = NULL;
+    int pc = osi_sig_params(def, types, OSI_SIG_MAX_PARAMS, &why);
+    if (pc < 0) {
+        return luaL_error(L, "Osi.%s: cannot read the function's signature (%s); the "
+                             "call did not reach Osiris", name, why);
+    }
+    if (isDb && pc != (int)colCount) {
+        return luaL_error(L, "Osi.%s: signature declares %d parameters but the database "
+                             "has %d columns; the call did not reach Osiris",
+                          name, pc, (int)colCount);
+    }
+    colCount = (uint8_t)pc;
+
+    int nargs = lua_gettop(L) - (firstArg - 1);
+    if (nargs != (int)colCount) {
+        return luaL_error(L, "Incorrect number of arguments for '%s'; expected %d, got %d",
+                          name, (int)colCount, nargs);
+    }
+    osi_check_arg_kinds(L, name, firstArg, colCount, types);
+
+    return osi_node_insert_tuple(L, name, node, db, colCount, types, firstArg);
+}
+
 /**
  * Generic Osi.DB_<name>:Get([filter...]) read-only accessor.
  *
@@ -2207,7 +2897,7 @@ static int lua_osi_db_get(lua_State *L) {
 
     /* Real Osiris databases (registered by the name-index walk) have no dispatch
      * id — read their Facts list directly (Windows-parity). */
-    void *dbDef = osi_db_lookup(db_name);
+    void *dbDef = osi_db_lookup_or_discover(db_name);
     if (dbDef) {
         return osi_db_read_facts(L, dbDef);
     }
@@ -2389,7 +3079,9 @@ static bool osi_types_resolve_symbols(void) {
     }
     s_osi_get_root_type = (OsiGetRootTypeFn)dlsym(h,
         "_ZNK21COsiDIVObjectTypesMan11GetRootTypeE13TOsiValueType");
-    s_osi_types_man = (void **)dlsym(h, "_OsiDIVObjectTypesMan");
+    // nm shows "_OsiDIVObjectTypesMan"; dlsym takes the name without the
+    // C-symbol underscore (same convention as _OsiFunctionMan).
+    s_osi_types_man = (void **)dlsym(h, "OsiDIVObjectTypesMan");
     if (!s_osi_get_root_type || !s_osi_types_man) {
         LOG_OSIRIS_WARN("Osi types: missing libOsiris exports (GetRootType=%p TypesMan=%p)",
                         (void *)s_osi_get_root_type, (void *)s_osi_types_man);
@@ -2406,8 +3098,35 @@ static bool osi_types_resolve_symbols(void) {
  * as unknown rather than guessing). */
 static uint16_t osi_resolve_base_type(uint16_t typeId) {
     if (typeId <= OSI_TYPE_GUIDSTRING || typeId == OSI_TYPE_UNDEFINED) return typeId;
-    if (!osi_types_resolve_symbols() || !*s_osi_types_man) return typeId;
+    if (!osi_types_resolve_symbols() || !*s_osi_types_man) {
+        // No type manager (symbol drift, or called before Osiris registered
+        // its types): fall back to the historical assumption that every
+        // alias is GUID-based. Wrong for enum aliases, but the string path
+        // reads through safe_memory so it degrades to "" instead of a crash.
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            LOG_OSIRIS_WARN("Osi types: alias resolution unavailable — treating type %u as GUIDSTRING",
+                            typeId);
+        }
+        return OSI_TYPE_GUIDSTRING;
+    }
     return s_osi_get_root_type(*s_osi_types_man, typeId);
+}
+
+/* The same walk with no fallback: false if the type manager is not there to
+ * ask, or if the answer is not one of the five base types. For the insert
+ * path a guess is worse than a refusal -- the engine's string setter is a
+ * fatal assert on a non-string root. */
+static bool osi_resolve_root_type_strict(uint16_t typeId, uint16_t *root) {
+    uint16_t r = typeId;
+    if (typeId > OSI_TYPE_GUIDSTRING) {
+        if (!osi_types_resolve_symbols() || !*s_osi_types_man) return false;
+        r = s_osi_get_root_type(*s_osi_types_man, typeId);
+    }
+    if (r < OSI_TYPE_INTEGER || r > OSI_TYPE_GUIDSTRING) return false;
+    *root = r;
+    return true;
 }
 
 /**
@@ -2557,6 +3276,15 @@ static int osi_dynamic_call(lua_State *L) {
         }
     }
     if (funcId == INVALID_FUNCTION_ID) {
+        /* Story functions — databases, procs and events defined in the story
+         * rather than by the engine — have no OsiFunctionId and never will.
+         * They are invoked by pushing a tuple into their RETE node, which is
+         * what upstream's OsiInsert does for Database/Proc/Event alike. */
+        void *def = osi_db_lookup_or_discover(funcName);
+        if (def) {
+            return osi_story_insert(L, funcName, def, 1);
+        }
+
         /* Do NOT return nil here. Silently yielding nil makes a call that never
          * reached Osiris indistinguishable from one that succeeded: a mod team
          * spent days reading "PROC_GLO_PartyMembers_Add returns ok, but engine
@@ -3674,26 +4402,29 @@ static void init_lua(void) {
             poll_misses = 0;
             lua_State *poll_L = lua_runtime_state_for(LUA_CONTEXT_SERVER);
             if (poll_L) {
-                // Run console commands in SERVER context so Osiris queries/DB
-                // reads match server-side game state (matches how mods run).
                 LuaContext prev = lua_context_get();
-                // Console commands can be aimed at the client state, where mods
-                // put their UI; see console_set_context.
-                LuaContext target = console_get_context() ? LUA_CONTEXT_CLIENT
-                                                          : LUA_CONTEXT_SERVER;
-                lua_State *target_L = lua_runtime_state_for(target);
-                lua_context_set(target);
-                console_poll(target_L ? target_L : poll_L);
-                lua_context_set(LUA_CONTEXT_SERVER);
                 /*
-                 * Timers run here too. They are also processed from fake_Event,
-                 * but that fires on Osiris activity, so in a menu it can be
-                 * seconds between ticks -- and a mod animating through
-                 * Ext.Timer has no way to know its "next tick" is not coming.
-                 * Both paths hold the gate, so running them from either is safe.
+                 * Console and timers run here only while the server does not
+                 * own them (main menu: hook not installed, or the engine's
+                 * server state is Uninitialized/Idle), so a mod animating
+                 * through Ext.Timer still gets its callbacks there. Once a
+                 * session state is entered they belong to the ServerWorker
+                 * thread (server_frame_tick): holding the gate serialises
+                 * Lua, not the engine, and a callback reaching into the ECS
+                 * from this GCD thread races the server's own writes. This
+                 * used to be a 500ms "has the server ticked lately" check,
+                 * and a LevelGameplayStarted dispatch that held one server
+                 * Update for ~6s flipped it: a mod timer ran
+                 * Osi.SetHitpointsPercentage here while the ServerWorker was
+                 * inside EntityWorld::FlushECBs freeing entity storage
+                 * (SIGSEGV 2026-09-05). The decision is read under the gate,
+                 * which is where the state listener publishes transitions.
                  */
-                timer_update(poll_L);
-                timer_update_persistent(poll_L);
+                if (!server_owns_lua_service()) {
+                    lua_service_console(poll_L);
+                    timer_update(poll_L);
+                    timer_update_persistent(poll_L);
+                }
 
                 /*
                  * Main-menu client bootstrap. Windows SE initializes client
@@ -4540,67 +5271,291 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
  * Mangled name: _ZN7COsiris5EventEjP16COsiArgumentDesc
  * Signature: void COsiris::Event(unsigned int funcId, COsiArgumentDesc* args)
  */
+/*
+ * Server-thread frame tick: timers, Ext.Events.Tick, deferred entity events,
+ * net messages, IMGUI callbacks and the deferred session/net init.
+ *
+ * Runs on the ServerWorker thread, matching upstream's ScriptExtender::PreUpdate
+ * (a pre-hook on esv::GameStateMachine::Update → ExtensionState::OnUpdate →
+ * timer/tick processing). Thread affinity matters: mod callbacks reach into
+ * the ECS through Osi.* and Ext.Entity, and the Lua gate only serialises
+ * *our* Lua entry points — it does nothing to stop the server thread from
+ * rewriting the entity world underneath a callback running on some other
+ * thread. NameYourSummons calling Osi.CharacterGetOwner from an Ext.Timer
+ * callback on the GCD poll thread, while the server was mid-StatusRemoved
+ * burst on that very summon, hit GetComponent<esv::Character, Throw=true>
+ * → ls::Result::Raise → std::terminate (the Mac build has no exception
+ * unwinding: RaiseError<ls::Error> calls terminate directly).
+ *
+ * Driven from fake_EsvGameStateMachineUpdate once per server frame when
+ * that hook is installed, otherwise from fake_Event (per Osiris event —
+ * the historical behaviour). Caller holds the Lua gate.
+ */
+static _Atomic bool g_server_frame_hook_active = false;
+static _Atomic uint64_t g_last_server_frame_ms = 0;
+
+static void server_frame_tick(lua_State *L) {
+    lua_service_console(L);
+    input_poll(L);
+    timer_update(L);  // Process timer callbacks
+    timer_update_persistent(L);  // Process persistent timer callbacks
+    persist_tick(L);  // Check for dirty PersistentVars to auto-save
+
+    // Fire Tick event with delta time
+    double now = timer_get_monotonic_ms();
+    if (g_last_tick_time_ms == 0) {
+        g_last_tick_time_ms = (uint64_t)now;
+    }
+    double delta_ms = now - g_last_tick_time_ms;
+    float delta_seconds = (float)delta_ms / 1000.0f;
+    g_last_tick_time_ms = (uint64_t)now;
+
+    // Update game time tracking (for Ext.Timer.GameTime/DeltaTime)
+    timer_tick(delta_ms);
+
+    events_fire_tick(L, delta_seconds);
+
+    // Fire deferred entity component events (Issue #69)
+    entity_events_fire_deferred(L);
+
+    // Poll for one-frame event components (Issue #51)
+    events_poll_oneframe_components(L);
+
+    // Process pending network messages (Issue #6: NetChannel API)
+    // Note: In full implementation, client_L would be the client Lua state
+    lua_net_process_messages(L, L);  // Both server and client in same process for now
+
+    // Drain IMGUI event callbacks (OnClick/OnChange/OnClose) on the main
+    // thread — they are queued from the render thread to avoid racing the
+    // game renderer (running MCM's OnClose on the render thread crashed
+    // ls::Scene::Cull). We hold the Lua gate here (lock order: gate ->
+    // imgui event queue mutex; see lua_imgui_process_events).
+    lua_imgui_process_events(L);
+
+    // Noesis button clicks (queued on the main thread by the
+    // BaseButton::OnClick hook) -> the DataContext handlers mods installed
+    // via Ext.UI. Same gate, same ordering rule as the IMGUI queue.
+    lua_ui_process_clicks(L);
+
+    // Deferred session initialization (Issue #65)
+    // Performs entity/stats/staticdata init + fires SessionLoaded here
+    // instead of during fake_Load. This prevents ~2,800 kernel calls
+    // from blocking the timing-sensitive COsiris::Load window.
+    deferred_session_init_tick();
+
+    // Deferred network initialization (Issue #65)
+    // Performs net capture/hook/insert here; depends on Running state
+    // which is set by deferred_session_init_tick above.
+    if (net_hooks_deferred_tick()) {
+        LOG_NET_INFO("Network hooks initialized via deferred tick");
+    }
+}
+
+/*
+ * True while console commands and Lua timers belong to the ServerWorker
+ * thread (server_frame_tick), i.e. the frame hook is installed and the
+ * engine's server state machine is somewhere a session exists or is being
+ * built/torn down. The GCD poll thread services them only outside that:
+ * before the hook ticks, and at the main menu (Uninitialized/Idle), so
+ * menu-time Ext.Timer users still get their callbacks.
+ *
+ * Deliberately not time-based. "Has the server ticked in the last 500ms"
+ * is false during any long Update -- LoadSession, or a LevelGameplayStarted
+ * dispatch with 700 mods' handlers -- and those are exactly the moments the
+ * engine is busiest and the GCD thread must stay out. If a state is entered
+ * that the server then stops ticking in, the timers stall rather than race;
+ * the diagnostic below makes that visible instead of silent. Caller holds
+ * the Lua gate, which is where the state listener publishes transitions.
+ */
+static bool server_owns_lua_service(void) {
+    if (!atomic_load_explicit(&g_server_frame_hook_active, memory_order_acquire)) return false;
+    uint64_t last = atomic_load_explicit(&g_last_server_frame_ms, memory_order_acquire);
+    if (last == 0) return false;  // hook installed, server never ticked yet
+
+    ServerGameState st = game_state_get_current();
+    bool owned;
+    if (game_state_is_engine_driven()) {
+        owned = st != SERVER_STATE_UNKNOWN && st != SERVER_STATE_UNINITIALIZED &&
+                st != SERVER_STATE_IDLE;
+    } else {
+        // Listener registration failed; the tracker infers from Load/Save
+        // hooks and only these mean a live session.
+        owned = st == SERVER_STATE_LOAD_SESSION || st == SERVER_STATE_RUNNING ||
+                st == SERVER_STATE_PAUSED || st == SERVER_STATE_SAVE;
+    }
+    if (owned) {
+        // The server has the service but is not running it: expected inside
+        // one long Update (session load), a bug if it persists in a state the
+        // ServerWorker has left for good. Rate-limited so a stall logs once
+        // per 30s, not 60 times a second.
+        static uint64_t last_warned_ms = 0;
+        double now = timer_get_monotonic_ms();
+        if (now - (double)last > 5000.0 && now - (double)last_warned_ms > 30000.0) {
+            last_warned_ms = (uint64_t)now;
+            LOG_CORE_WARN("Server owns the Lua service (state=%s) but has not ticked "
+                          "for %.1fs -- console and mod timers are waiting on it",
+                          game_state_get_name(st), (now - (double)last) / 1000.0);
+        }
+    }
+    return owned;
+}
+
+/**
+ * Hooked esv::GameStateMachine::Update(ls::GameTime const&) — once per
+ * server frame on the ServerWorker thread. Pre-hook (upstream PreUpdate
+ * ordering), then the original.
+ */
+static void *orig_EsvGameStateMachineUpdate = NULL;
+
+/*
+ * esv::GameStateEventManager listener — how upstream learns about state
+ * changes (ScriptExtender.cpp HookStateMachineUpdates pushes a
+ * ServerEventManagerHook into GameStateEventManager::Callbacks). The Mac
+ * dispatch is inlined in esv::GameStateMachine::Update (0x104a20ce4): for each
+ * cb in Callbacks{buf@+8, cap@+0x10, size@+0x14} it calls vtable slot 2 as
+ * `bool (*)(void *self, const struct {uint32 From, To;} *ev)`, return ignored.
+ * Several transitions can happen inside one Update (LoadSession->Sync->Running
+ * on the same frame is common), which is why polling State around the call
+ * would lose the intermediate ones that mods key on.
+ */
+typedef struct { uint32_t from; uint32_t to; } GameStateChangedEvent;
+typedef struct { void **vtable; } GsListener;
+
+static void gs_listener_noop(void *self) { (void)self; }
+
+static bool gs_listener_on_changed(void *self, const GameStateChangedEvent *ev) {
+    (void)self;
+    if (!ev) return true;
+    lua_gate_lock();
+    lua_State *L = lua_runtime_server()->L;
+    if (L) {
+        // Upstream fires SessionLoaded when leaving LoadSession, before the
+        // Sync->Running transition mods restore state on. Our session init is
+        // deferred to the frame tick, so complete it now if it's still armed.
+        if (ev->from == SERVER_STATE_LOAD_SESSION) deferred_session_init_tick();
+        // The story is (re)built while a session loads: drop stale database
+        // defs on the way in, and discover the new ones on the Sync
+        // transition -- before Sync->Running, where mods start reading
+        // DB_Players & co.
+        if (ev->to == SERVER_STATE_LOAD_SESSION ||
+            ev->to == SERVER_STATE_BUILD_STORY ||
+            ev->to == SERVER_STATE_RELOAD_STORY) {
+            osi_db_invalidate(game_state_get_name((ServerGameState)ev->to));
+        } else if (ev->to == SERVER_STATE_SYNC) {
+            // Always re-walk here: the story is definitely built by Sync, so
+            // this refreshes anything an earlier (lazy) walk caught mid-build.
+            osi_db_discover("Sync");
+        }
+        // PersistentVars: write before the engine serializes a savegame and
+        // before a session is torn down (upstream stores them *in* the save;
+        // this port keeps a file store, so these are its commit points).
+        if (ev->from == SERVER_STATE_RUNNING &&
+            (ev->to == SERVER_STATE_SAVE || ev->to == SERVER_STATE_UNLOAD_LEVEL ||
+             ev->to == SERVER_STATE_UNLOAD_SESSION)) {
+            persist_flush(L);
+        }
+        if (ev->to == SERVER_STATE_UNLOAD_SESSION) persist_session_reset();
+        game_state_on_engine_transition(L, (ServerGameState)ev->from,
+                                        (ServerGameState)ev->to);
+    }
+    lua_gate_unlock();
+    return true;
+}
+
+static void *g_gs_listener_vtable[] = {
+    (void *)gs_listener_noop,        // complete object dtor
+    (void *)gs_listener_noop,        // deleting dtor
+    (void *)gs_listener_on_changed,  // OnGameStateChanged(const GameStateChangedEvent&)
+};
+static GsListener g_gs_listener = { g_gs_listener_vtable };
+static bool g_gs_listener_registered = false;
+
+/* Register once, from the first hooked Update (the manager exists by then). */
+static void gs_listener_register(void *gsm) {
+    if (g_gs_listener_registered) return;
+    g_gs_listener_registered = true;  // one attempt; failure falls back to inference
+
+    const VersionOffsets *off = offset_table_get();
+    if (!off || !off->esv_gamestate_evtmgr_ptr) {
+        LOG_GAME_WARN("esv::GameStateEventManager offset unknown for this build; "
+                      "GameStateChanged stays inferred (no Sync state)");
+        return;
+    }
+    if (!game_memory_available()) {
+        LOG_GAME_WARN("Game allocator unavailable; cannot register game-state listener");
+        return;
+    }
+    void **mgr_slot = (void **)offset_table_resolve(off->esv_gamestate_evtmgr_ptr);
+    uint8_t *mgr = mgr_slot ? (uint8_t *)*mgr_slot : NULL;
+    if (!mgr) {
+        LOG_GAME_WARN("esv::GameStateEventManager::m_ptr is NULL; listener not registered");
+        return;
+    }
+
+    void ***buf = (void ***)(mgr + 0x08);
+    uint32_t *cap = (uint32_t *)(mgr + 0x10);
+    uint32_t *size = (uint32_t *)(mgr + 0x14);
+    if (*size > 64 || *cap > 64 || *size > *cap) {
+        LOG_GAME_WARN("esv::GameStateEventManager::Callbacks looks wrong (size=%u cap=%u); "
+                      "listener not registered", *size, *cap);
+        return;
+    }
+    if (*size == *cap) {
+        uint32_t new_cap = *cap ? *cap * 2 : 4;
+        void **nb = (void **)game_memory_alloc(new_cap * sizeof(void *));
+        if (!nb) {
+            LOG_GAME_WARN("Callbacks grow failed; listener not registered");
+            return;
+        }
+        if (*size) memcpy(nb, *buf, *size * sizeof(void *));
+        void **old = *buf;
+        *buf = nb;
+        *cap = new_cap;
+        if (old) game_memory_free(old);
+    }
+    (*buf)[(*size)++] = &g_gs_listener;
+
+    // esv::GameStateMachine::State — seed the tracker with the real state so
+    // the first reported transition's `from` matches what we hold.
+    uint32_t cur = gsm ? *(uint32_t *)((uint8_t *)gsm + 0x10) : 0;
+    game_state_set_engine_driven((ServerGameState)cur);
+    LOG_GAME_INFO("Registered esv::GameStateEventManager listener (%u callbacks, state=%s)",
+                  *size, game_state_get_name((ServerGameState)cur));
+}
+
+static void fake_EsvGameStateMachineUpdate(void *self, const void *gameTime) {
+    atomic_store_explicit(&g_last_server_frame_ms, (uint64_t)timer_get_monotonic_ms(),
+                          memory_order_release);
+    lua_State *L = lua_runtime_server()->L;
+    if (L) {
+        lua_gate_lock();
+        L = lua_runtime_server()->L;  // re-check under the gate (shutdown)
+        if (L) {
+            gs_listener_register(self);
+            server_frame_tick(L);
+        }
+        lua_gate_unlock();
+    }
+    if (orig_EsvGameStateMachineUpdate) {
+        ((void (*)(void *, const void *))orig_EsvGameStateMachineUpdate)(self, gameTime);
+    }
+}
+
 static bool fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
     event_call_count++;
 
-    // Poll for console commands and run tick systems
+    // Poll for console commands and run tick systems. With the server frame
+    // hook installed this happens once per frame there instead of once per
+    // Osiris event here.
     lua_State *L = lua_runtime_server()->L;
-    if (L) {
+    if (L && !atomic_load_explicit(&g_server_frame_hook_active, memory_order_acquire)) {
         lua_gate_lock();
         L = lua_runtime_server()->L;
         if (!L) {  // re-check: shutdown may have closed the state while we blocked
             lua_gate_unlock();
             goto after_tick;
         }
-        console_poll(L);
-        input_poll(L);
-        timer_update(L);  // Process timer callbacks
-        timer_update_persistent(L);  // Process persistent timer callbacks
-        persist_tick(L);  // Check for dirty PersistentVars to auto-save
-
-        // Fire Tick event with delta time
-        double now = timer_get_monotonic_ms();
-        if (g_last_tick_time_ms == 0) {
-            g_last_tick_time_ms = (uint64_t)now;
-        }
-        double delta_ms = now - g_last_tick_time_ms;
-        float delta_seconds = (float)delta_ms / 1000.0f;
-        g_last_tick_time_ms = (uint64_t)now;
-
-        // Update game time tracking (for Ext.Timer.GameTime/DeltaTime)
-        timer_tick(delta_ms);
-
-        events_fire_tick(L, delta_seconds);
-
-        // Fire deferred entity component events (Issue #69)
-        entity_events_fire_deferred(L);
-
-        // Poll for one-frame event components (Issue #51)
-        events_poll_oneframe_components(L);
-
-        // Process pending network messages (Issue #6: NetChannel API)
-        // Note: In full implementation, client_L would be the client Lua state
-        lua_net_process_messages(L, L);  // Both server and client in same process for now
-
-        // Drain IMGUI event callbacks (OnClick/OnChange/OnClose) on the main
-        // thread — they are queued from the render thread to avoid racing the
-        // game renderer (running MCM's OnClose on the render thread crashed
-        // ls::Scene::Cull). We hold the Lua gate here (lock order: gate ->
-        // imgui event queue mutex; see lua_imgui_process_events).
-        lua_imgui_process_events(L);
-
-        // Deferred session initialization (Issue #65)
-        // Performs entity/stats/staticdata init + fires SessionLoaded here
-        // instead of during fake_Load. This prevents ~2,800 kernel calls
-        // from blocking the timing-sensitive COsiris::Load window.
-        deferred_session_init_tick();
-
-        // Deferred network initialization (Issue #65)
-        // Performs net capture/hook/insert here; depends on Running state
-        // which is set by deferred_session_init_tick above.
-        if (net_hooks_deferred_tick()) {
-            LOG_NET_INFO("Network hooks initialized via deferred tick");
-        }
+        server_frame_tick(L);
         lua_gate_unlock();
     }
 after_tick:
@@ -4737,30 +5692,14 @@ after_tick:
     // DB_PartyMembers, DB_Avatars, ...) live ONLY in the name index, not the
     // numeric id-index the early enumeration probes — so Osi.DB_*:Get() can
     // never resolve them and returns empty (breaking mods like Sit This One Out
-    // whose grant loops iterate DB_PartyMembers). SavegameLoaded and
-    // LevelGameplayStarted fire after story load, so walk the name index here
-    // BEFORE dispatching to Lua callbacks. SavegameLoaded always re-walks
-    // (loading another save rebuilds the story, leaving the registry's
-    // COsiFunctionData* pointers stale); LevelGameplayStarted only fills the
-    // registry the first time. The walk is idempotent and read-only.
-    static int g_dbNamesEnumerated = 0;
-    if (funcName && strcmp(funcName, "SavegameLoaded") == 0) {
-        osi_db_clear();
-        g_dbNamesEnumerated = 1;
-        LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
-                        "discover databases", funcName);
-        osi_func_enumerate_by_name();
-        osi_string_selftest();
-        osi_probe_signature_layout();
-        osi_report_node_classes();
-    } else if (!g_dbNamesEnumerated && funcName &&
-               strcmp(funcName, "LevelGameplayStarted") == 0) {
-        g_dbNamesEnumerated = 1;
-        LOG_OSIRIS_INFO("Story loaded (%s) — walking Osiris name index to "
-                        "discover databases", funcName);
-        osi_func_enumerate_by_name();
-        osi_string_selftest();
-        osi_report_node_classes();
+    // whose grant loops iterate DB_PartyMembers). The Sync transition normally
+    // walks the index first; these two events are the backstop for a story
+    // that wasn't ready then. Both run BEFORE dispatching to Lua callbacks.
+    if (funcName && !g_dbWalkDone &&
+        (strcmp(funcName, "SavegameLoaded") == 0 ||
+         strcmp(funcName, "LevelGameplayStarted") == 0)) {
+        osi_db_discover(funcName);
+        if (strcmp(funcName, "SavegameLoaded") == 0) osi_probe_signature_layout();
     }
 
     // Osiris events are server-side. After bootstrap, the context is left at
@@ -5142,6 +6081,35 @@ init_subsystems:
                         LOG_CORE_INFO("StaticData manager SKIPPED (BG3SE_NO_HOOKS: installs code patches)");
                     }
 
+                    // Server frame hook: esv::GameStateMachine::Update. Moves
+                    // timers/Tick onto the ServerWorker thread (upstream
+                    // PreUpdate). Offset 0 for a version = not verified there;
+                    // fake_Event and the GCD poll keep the old behaviour.
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_HOOK_SERVER_FRAME")) {
+                        void *gsmUpdate = offset_table_game_fn(GAME_FN_ESV_GAMESTATEMACHINE_UPDATE);
+                        if (gsmUpdate) {
+                            int r = DobbyHook(gsmUpdate, (void *)fake_EsvGameStateMachineUpdate,
+                                              &orig_EsvGameStateMachineUpdate);
+                            if (r == 0) {
+                                atomic_store_explicit(&g_server_frame_hook_active, true,
+                                                      memory_order_release);
+                                LOG_HOOKS_INFO("  esv::GameStateMachine::Update hooked (server frame tick, orig: %p)",
+                                               orig_EsvGameStateMachineUpdate);
+                            } else {
+                                LOG_HOOKS_ERROR(" Failed to hook esv::GameStateMachine::Update (error: %d)", r);
+                            }
+                        } else {
+                            LOG_HOOKS_WARN(" esv::GameStateMachine::Update offset unknown for this version — "
+                                           "timers stay on the Osiris-event/GCD paths");
+                        }
+                    }
+
+                    // Noesis button clicks -> Lua (MCM's ESC-menu / main-menu
+                    // buttons). Exported symbol, so no per-version offset.
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_HOOK_UI_CLICK")) {
+                        noesis_install_click_hook();
+                    }
+
                     // Initialize template manager (for Ext.Template)
                     template_manager_init(binary_base);
                     LOG_CORE_INFO("Template manager initialized (capture via Frida)");
@@ -5401,6 +6369,27 @@ static void bg3se_init(void) {
     // Useful for diagnosing whether the crash is from our init or mere dylib presence.
     // Truthy check: "1", "true", "yes" disable. "0" or "" do NOT disable.
     { const char *d = getenv("BG3SE_DISABLE"); if (d && d[0] && d[0] != '0') return; }
+
+    // After a crash the game re-executes its own binary as the crash-report
+    // UI ("Baldur's Gate 3 -crash", PLCrashReporter). It inherits
+    // DYLD_INSERT_LIBRARIES, so this dylib lands in that process too, and a
+    // full init there is worse than useless: log_init() takes over the
+    // latest.log symlink and crashlog_init() truncates crash.log -- exactly
+    // the two files that describe the crash being reported. Stay out.
+    {
+        char ***argvp = _NSGetArgv();
+        int *argcp = _NSGetArgc();
+        if (argvp && *argvp && argcp) {
+            for (int i = 1; i < *argcp; i++) {
+                const char *a = (*argvp)[i];
+                if (a && strcmp(a, "-crash") == 0) {
+                    fprintf(stderr, "[BG3SE] crash-reporter relaunch (argv has -crash) "
+                                    "-- extender not initialized in this process\n");
+                    return;
+                }
+            }
+        }
+    }
 
     // Duplicate-image guard: the insert_dylib patch and DYLD_INSERT_LIBRARIES
     // can BOTH load a physical copy of this dylib (observed 2026-07-28,

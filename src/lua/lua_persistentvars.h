@@ -56,13 +56,29 @@ void persist_restore_all(lua_State *L);
 void persist_save_all(lua_State *L);
 
 /**
- * Check for dirty vars and save periodically.
- * Should be called from tick/event hook.
- * Only saves if interval has elapsed and vars are dirty.
+ * Save periodically. Should be called from the tick/event hook.
+ * Saves once the interval has elapsed and a session is live; mods write their
+ * PersistentVars table directly, so there is no dirty flag to consult and
+ * persist_save_all() skips mods whose serialized vars are unchanged.
  *
  * @param L Lua state
  */
 void persist_tick(lua_State *L);
+
+/**
+ * Save now, ignoring the interval. Call before the engine writes a savegame
+ * and before a session is torn down, so the last few seconds of mod state are
+ * not lost.
+ *
+ * @param L Lua state
+ */
+void persist_flush(lua_State *L);
+
+/**
+ * Forget what was last written (not what is on disk). Call when a session ends
+ * so the next one's first save is always emitted.
+ */
+void persist_session_reset(void);
 
 // ============================================================================
 // Lua API Registration

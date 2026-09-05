@@ -51,6 +51,11 @@ typedef enum GameFunctionId {
     // Allocate; on this build both bottom out in libc malloc/free, but the
     // game's entry points are still the contract.
     GAME_FN_MEMORY_DEALLOCATE,
+    // esv::GameStateMachine::Update(ls::GameTime const&). Hooked (pre-hook)
+    // to run Ext.Timer / Tick on the ServerWorker thread once per frame,
+    // as upstream's ScriptExtender::PreUpdate does. Local symbol (nm 't'),
+    // so it must be per-version.
+    GAME_FN_ESV_GAMESTATEMACHINE_UPDATE,
     GAME_FN_COUNT
 } GameFunctionId;
 
@@ -91,6 +96,21 @@ typedef struct {
                                         // reads the instance pointer here, then
                                         // writes the +0x142 focus flag — MUST be
                                         // per-version or the write lands wild)
+    uintptr_t esv_gamestate_evtmgr_ptr; // esv::GameStateEventManager::m_ptr — the
+                                        // listener registry esv::GameStateMachine::
+                                        // Update dispatches to. 0 = unknown for this
+                                        // build (game_state falls back to inference).
+    uintptr_t ecl_gamestate_evtmgr_ptr; // ecl::GameStateEventManager::m_ptr (not yet
+                                        // hooked; recorded for the client follow-up).
+    uintptr_t global_template_bank_type_ptr; // (anon)::g_GlobalTemplateBankType — a
+                                        // byte: 0/1 pick GlobalTemplateManager::Banks[n]
+                                        // outright, 2 means "ask the thread" via
+                                        // tls_current_bank_type_ptr. This is the Mac
+                                        // form of upstream's GetGlobalTemplateBank TLS
+                                        // slot (GameHelpers.cpp). 0 = unknown.
+    uintptr_t tls_current_bank_type_ptr; // (anon)::tls_CurrentBankType — a Mach-O TLV
+                                        // descriptor {thunk, key, offset}; calling
+                                        // thunk(descriptor) yields the thread's byte.
 
     /* ------------------------------------------------------------------ */
     /* Function offsets                                                    */

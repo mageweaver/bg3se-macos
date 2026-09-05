@@ -45,6 +45,19 @@ static ServerGameState g_current_state = SERVER_STATE_UNKNOWN;
 static ServerGameState g_previous_state = SERVER_STATE_UNKNOWN;
 static int g_initialized = 0;
 
+/*
+ * Set once the injector has registered a listener in
+ * esv::GameStateEventManager::Callbacks (main.c, gs_listener_*). From then on
+ * the engine reports every real transition through
+ * game_state_on_engine_transition(), and the inferred game_state_on_*()
+ * notifications only keep their side bookkeeping (pause detection) — firing
+ * Lua from both would deliver each transition twice, and the inferred
+ * LoadSession->Running one is a fiction anyway: the engine goes
+ * LoadSession->Sync->Running, and mods (AppearanceEditEnhanced among others)
+ * key their session restore on `FromState == "Sync"`.
+ */
+static int g_engine_driven = 0;
+
 // Tick timing for pause detection
 static clock_t g_last_tick_time = 0;
 static float g_accumulated_pause_time = 0.0f;
@@ -60,6 +73,13 @@ static int g_pause_detection_enabled = 0;
 static void fire_state_change(lua_State *L, ServerGameState from, ServerGameState to) {
     if (from == to) return;  // No change
 
+    if (g_engine_driven) {
+        // The engine listener owns the state and the Lua event now.
+        LOG_GAME_DEBUG("Inferred transition %s -> %s ignored (engine-driven)",
+                       game_state_get_name(from), game_state_get_name(to));
+        return;
+    }
+
     g_previous_state = from;
     g_current_state = to;
 
@@ -68,6 +88,43 @@ static void fire_state_change(lua_State *L, ServerGameState from, ServerGameStat
                 game_state_get_name(to), to);
 
     // Fire the Lua event
+    events_fire_game_state_changed(L, (int)from, (int)to);
+}
+
+// ============================================================================
+// Public API: Engine-reported transitions
+// ============================================================================
+
+void game_state_set_engine_driven(ServerGameState current) {
+    if (!g_engine_driven) {
+        LOG_GAME_INFO("Game state now engine-driven (current=%s (%d))",
+                      game_state_get_name(current), current);
+    }
+    g_engine_driven = 1;
+    if (current > SERVER_STATE_UNKNOWN && current < SERVER_STATE_MAX) {
+        g_current_state = current;
+    }
+}
+
+int game_state_is_engine_driven(void) {
+    return g_engine_driven;
+}
+
+void game_state_on_engine_transition(lua_State *L, ServerGameState from, ServerGameState to) {
+    g_previous_state = from;
+    g_current_state = to;
+
+    LOG_GAME_INFO("State transition: %s (%d) -> %s (%d)",
+                  game_state_get_name(from), from,
+                  game_state_get_name(to), to);
+
+    if (to == SERVER_STATE_RUNNING) {
+        g_pause_detection_enabled = 1;
+        g_last_tick_time = clock();
+    } else if (to != SERVER_STATE_PAUSED && to != SERVER_STATE_SAVE) {
+        g_pause_detection_enabled = 0;
+    }
+
     events_fire_game_state_changed(L, (int)from, (int)to);
 }
 
