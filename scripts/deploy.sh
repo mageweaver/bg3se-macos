@@ -37,15 +37,20 @@ fi
 # Two reasons this is not a plain cp:
 #  1. macOS kills the game at launch with SIGKILL "Code Signature Invalid"
 #     (CODESIGNING / Invalid Page in dyld) unless the dylib carries a real
-#     signature. The linker's own ad-hoc signature does not always survive the
-#     copy, and `codesign -v` then reports "code object is not signed at all".
+#     signature. The linker only ad-hoc signs the arm64 slice of the universal
+#     build; the x86_64 slice comes out unsigned, so `codesign -v` on the fat
+#     file reports "code object is not signed at all". Signing here covers both.
 #  2. cp rewrites the destination IN PLACE. Doing that while the game has the
 #     dylib mapped corrupts the running image's pages; mv gives the new file a
 #     new inode and leaves the running process's mapping alone.
+#
+# The identifier is passed explicitly: codesign would otherwise derive it from
+# the staged filename ("libbg3se.dylib.new.<pid>"). Release zips are signed the
+# same way, so a deployed build is byte-identical to its published asset.
 STAGE="$DEPLOYED_DYLIB.new.$$"
 cp "$BUILD_DYLIB" "$STAGE" || { echo "Error: copy to $STAGE failed"; exit 1; }
 
-if ! codesign -f -s - "$STAGE" 2>/dev/null; then
+if ! codesign -f -s - -i libbg3se.dylib "$STAGE" 2>/dev/null; then
     rm -f "$STAGE"
     echo "Error: codesign failed — NOT deploying (the game would be killed at"
     echo "       launch with 'Code Signature Invalid')."

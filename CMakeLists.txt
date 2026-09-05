@@ -300,11 +300,22 @@ target_link_libraries(bg3se PRIVATE
 )
 
 # Set dylib properties
+#
+# BG3SE_VERSION (src/core/version.h) is also stamped into LC_ID_DYLIB as the
+# current version, so tools can read the installed build's version straight
+# from the file (`otool -L libbg3se.dylib`) without launching the game -- the
+# BG3 Mod Manager for macOS shows it in its Script Extender tab.
+file(STRINGS src/core/version.h BG3SE_VERSION_LINE REGEX "#define BG3SE_VERSION ")
+string(REGEX REPLACE ".*\"([0-9]+\\.[0-9]+\\.[0-9]+)\".*" "\\1" BG3SE_VERSION "${BG3SE_VERSION_LINE}")
+if(NOT BG3SE_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "Could not read BG3SE_VERSION from src/core/version.h (got '${BG3SE_VERSION_LINE}')")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS src/core/version.h)
 set_target_properties(bg3se PROPERTIES
     OUTPUT_NAME "bg3se"
     SUFFIX ".dylib"
     # Allow undefined symbols (we'll resolve them at runtime)
-    LINK_FLAGS "-undefined dynamic_lookup"
+    LINK_FLAGS "-undefined dynamic_lookup -Wl,-current_version,${BG3SE_VERSION}"
 )
 
 # ============================================
