@@ -129,6 +129,15 @@ int   osi_db_register_arity(const char *name, unsigned arity, unsigned inArgs, v
 int   osi_db_register(const char *name, void *def);
 void *osi_db_lookup(const char *name);
 void *osi_db_lookup_arity(const char *name, unsigned arity);
+
+/* The database registered under `name` when exactly ONE is, with its arity in
+ * *out_arity. NULL when the name is unknown or carries several overloads.
+ *
+ * Callers need to tell "this name does not exist" apart from "it exists but not
+ * at the arity you asked for" -- the two demand different answers, and both
+ * were reporting the missing-database error. Restricting this to an
+ * unambiguous name keeps it from silently choosing between overloads. */
+void *osi_db_lookup_sole(const char *name, unsigned *out_arity);
 void *osi_db_lookup_args(const char *name, unsigned nargs);
 bool  osi_def_read_arity(void *def, unsigned *outArity, unsigned *outOutParams);
 int   osi_db_count(void);

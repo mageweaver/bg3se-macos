@@ -6,10 +6,10 @@
  */
 
 #include "component_typeid.h"
+#include "build_identity.h"
 #include "component_registry.h"
 #include "component_property.h"  // For property system linkage
 #include "entity_storage.h"  // For GHIDRA_BASE_ADDRESS
-#include "generated_typeids.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
@@ -36,7 +36,7 @@ static const TypeIdEntry g_KnownTypeIds[] = {
     // =====================================================================
     // ecl:: namespace (client components)
     // Layout metadata remains curated; addresses resolve by exact generated
-    // symbol for GENERATED_TYPEIDS_BUILD_ID.
+    // symbol for BG3SE_TARGET_VERSION.
     // =====================================================================
     { "ecl::Character", 0, false, "ecs::ComponentTypeIdContext", false },
     { "ecl::Item", 0, false, "ecs::ComponentTypeIdContext", false },
@@ -309,9 +309,16 @@ bool component_typeid_ready(void) {
 // ============================================================================
 
 static bool component_typeid_runtime_build_matches(void) {
-    const char *detected_build = version_detect_get_version();
-    return detected_build != NULL && version_detect_matches() &&
-           strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) == 0;
+    /*
+     * Compare the game version only. Which store's table is in use is settled
+     * by the dispatcher in src/gen/generated_registry.c, and the store's binary
+     * UUID is checked by the identity gate in version_detect. Reading a single
+     * store's BG3SE_TARGET_VERSION here would be misleading in a dylib
+     * that carries several: build_id_matches trims the "-<store>" suffix, so it
+     * never compared the store in the first place.
+     */
+    return version_detect_matches() &&
+           version_detect_build_id_matches(BG3SE_TARGET_VERSION);
 }
 
 static bool component_typeid_runtime_address(uint64_t preferred_va,
@@ -395,9 +402,10 @@ int component_typeid_discover(void) {
     }
     if (!component_typeid_runtime_build_matches()) {
         const char *detected_build = version_detect_get_version();
-        LOG_ENTITY_DEBUG("TypeId build gate closed: generated=%s detected=%s",
-                         GENERATED_TYPEIDS_BUILD_ID,
-                         detected_build ? detected_build : "unknown");
+        LOG_ENTITY_DEBUG("TypeId build gate closed: expected=%s detected=%s store=%s",
+                         BG3SE_TARGET_VERSION,
+                         detected_build ? detected_build : "unknown",
+                         version_detect_get_store());
         return 0;
     }
 
@@ -480,9 +488,10 @@ void component_typeid_dump_to_console(void) {
     }
     if (!component_typeid_runtime_build_matches()) {
         const char *detected_build = version_detect_get_version();
-        console_printf("TypeId build gate closed (generated=%s, detected=%s)",
-                       GENERATED_TYPEIDS_BUILD_ID,
-                       detected_build ? detected_build : "unknown");
+        console_printf("TypeId build gate closed (expected=%s, detected=%s, store=%s)",
+                       BG3SE_TARGET_VERSION,
+                       detected_build ? detected_build : "unknown",
+                       version_detect_get_store());
         return;
     }
 
@@ -524,8 +533,8 @@ void component_typeid_dump(void) {
     }
     if (!component_typeid_runtime_build_matches()) {
         const char *detected_build = version_detect_get_version();
-        LOG_ENTITY_DEBUG("TypeId build gate closed (generated=%s, detected=%s)",
-                         GENERATED_TYPEIDS_BUILD_ID,
+        LOG_ENTITY_DEBUG("TypeId build gate closed (expected=%s, detected=%s)",
+                         BG3SE_TARGET_VERSION,
                          detected_build ? detected_build : "unknown");
         return;
     }

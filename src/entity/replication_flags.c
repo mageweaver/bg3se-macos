@@ -8,7 +8,7 @@
  */
 
 #include "replication_flags.h"
-#include "generated_typeids.h"
+#include "generated_tables.h"
 
 #include "../core/safe_memory.h"
 #include "../core/logging.h"
@@ -45,24 +45,7 @@
 #define MAX_REPLICATION_POOLS (1U << 20)
 #define MAX_MAP_ENTRIES (1U << 24)
 
-typedef struct {
-    const char *name;
-    const char *component_name;
-    const char *mangled_symbol;
-    const char *context;
-    const char *build_id;
-    uintptr_t replicated_type_va;
-} ReplicatedTypeGlobal;
-
-#define REPLICATED_TYPE_ENTRY(api_name, component_name, mangled_symbol, context, \
-                              build_id, preferred_va)                          \
-    { api_name, component_name, mangled_symbol, context, build_id, preferred_va },
-
-static const ReplicatedTypeGlobal k_replicated_type_globals[] = {
-    GENERATED_REPLICATED_TYPE_CONTEXT_ENTRIES(REPLICATED_TYPE_ENTRY)
-};
-
-#undef REPLICATED_TYPE_ENTRY
+/* Supplied per store by src/gen/generated_tables.c; see generated_tables.h. */
 
 static bool checked_add(uintptr_t base, uintptr_t offset, uintptr_t *out) {
     if (!out || UINTPTR_MAX - base < offset) {
@@ -103,19 +86,20 @@ static const ReplicatedTypeGlobal *find_replicated_type(
         return NULL;
     }
 
-    for (size_t i = 0;
-         i < sizeof(k_replicated_type_globals) /
-                 sizeof(k_replicated_type_globals[0]);
-         i++) {
+    size_t count = 0;
+    const ReplicatedTypeGlobal *table = generated_replicated_types(&count);
+    if (!table) return NULL;   /* no table for this store */
+
+    for (size_t i = 0; i < count; i++) {
         /* Accept either spelling. The table is keyed by the short API name
          * ("Stats"), but every other Ext.Entity entry point also takes the
          * fully-qualified engine name ("eoc::StatsComponent"), and callers
          * reasonably pass whichever they already have. */
-        if (strcmp(component_name, k_replicated_type_globals[i].name) == 0 ||
-            (k_replicated_type_globals[i].component_name &&
+        if (strcmp(component_name, table[i].name) == 0 ||
+            (table[i].component_name &&
              strcmp(component_name,
-                    k_replicated_type_globals[i].component_name) == 0)) {
-            return &k_replicated_type_globals[i];
+                    table[i].component_name) == 0)) {
+            return &table[i];
         }
     }
 
@@ -154,10 +138,16 @@ static ReplLocateResult replication_locate(void *entity_world,
         return REPL_LOCATE_ERROR;
     }
 
+    /*
+     * Check the entry's own build id, not a compile-time one. The table is
+     * chosen at runtime, so the compile-time store's id would disagree with a
+     * correctly dispatched entry on the other store and kill the feature there.
+     * build_id_matches trims the "-<store>" suffix and compares the version;
+     * the store itself was already settled by the dispatcher picking this table.
+     */
     const char *detected_build = version_detect_get_version();
     if (!detected_build ||
-        strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) != 0 ||
-        strcmp(replicated_type->build_id, GENERATED_TYPEIDS_BUILD_ID) != 0) {
+        !version_detect_build_id_matches(replicated_type->build_id)) {
         return REPL_LOCATE_ERROR;
     }
 

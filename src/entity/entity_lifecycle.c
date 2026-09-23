@@ -62,7 +62,7 @@ static void *lifecycle_resolve(uint64_t va) {
     if (!base || !version_detect_matches()) return NULL;
     const VersionOffsets *offsets = offset_table_get();
     if (!offsets ||
-        strcmp(offsets->version, ENTITY_LIFECYCLE_VERIFIED_BUILD) != 0) {
+        strcmp(offset_table_game_version() ?: "", ENTITY_LIFECYCLE_VERIFIED_BUILD) != 0) {
         return NULL;
     }
     uintptr_t slide = (uintptr_t)base - 0x100000000ull;

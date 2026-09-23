@@ -3,8 +3,9 @@
 The Script Extender for Baldur's Gate 3 on **native macOS** — the runtime that
 mods like Mod Configuration Menu, 5eSpells, and Compatibility Framework need.
 
-> **Version check first.** This build targets game build **4.1.1.7398727**
-> (Steam). The version is printed in the bottom-right of the game's main menu
+> **Version check first.** This build targets game build **4.1.1.7398727**,
+> Steam or GOG — one dylib serves both and picks the right addresses from the
+> game it loads into. The version is printed in the bottom-right of the main menu
 > (`v4.1.1.7398727`). On any other build the extender loads, logs the mismatch,
 > and deliberately does nothing — it fails closed rather than guessing at
 > memory layouts.
@@ -25,6 +26,8 @@ Fully quit Baldur's Gate 3 (⌘Q, not just the window).
 
 ## 3. Copy the dylib into the game bundle
 
+Steam:
+
 ```bash
 cp libbg3se.dylib \
   "$HOME/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/"
@@ -33,12 +36,19 @@ cp libbg3se.dylib \
 If Steam lives in a non-default library, adjust the path accordingly
 (Steam → Settings → Storage shows your library folders).
 
+GOG (Galaxy installs to `/Applications` or `~/Applications`):
+
+```bash
+cp libbg3se.dylib "$HOME/Applications/Baldur's Gate 3.app/Contents/MacOS/"
+```
+
 ## 4. Clear Gatekeeper quarantine
 
 The dylib is **unsigned**. macOS quarantines downloaded files and will refuse
 to load it until you clear the flag:
 
 ```bash
+# ...adjusting the path to wherever you just copied it
 xattr -d com.apple.quarantine \
   "$HOME/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib"
 ```
@@ -56,12 +66,16 @@ PYTHONPATH=tools python3 -m bg3se_harness patch
 ```
 
 The patch is idempotent and reversible (`unpatch` restores the original;
-a backup is kept automatically). Steam's "verify integrity" will undo it, and
-game updates replace the binary — just re-run `patch` afterwards.
+a backup is kept automatically). Steam's "verify integrity" and Galaxy's
+"verify / repair" both undo it, and game updates replace the binary — just
+re-run `patch` afterwards.
 
 ## 6. Launch and verify
 
-Start the game normally through Steam. Then check for the session log:
+Start the game normally through Steam. On GOG, launch through
+`scripts/bg3g.sh` instead — see the GOG section of the
+[README](../README.md#launching-the-gog-version). Then check for the session
+log:
 
 ```bash
 ls -t "$HOME/Library/Application Support/BG3SE/logs/" | head -1

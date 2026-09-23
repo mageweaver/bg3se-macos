@@ -89,7 +89,7 @@ def test_create_component_guards_precede_native_dispatch():
 
 def test_remove_component_dispatches_only_exact_specializations():
     """RemoveComponent was undeferred on 2026-08-20 via a generated per-build
-    dispatch table (src/entity/generated_remove_component.h).
+    dispatch table (src/gen/<store>/generated_remove_component.h).
 
     The original hazard was that macOS emits 734 type-specialized removers with
     no generic runtime-TypeId entry point, so "calling a specialization for a

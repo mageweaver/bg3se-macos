@@ -9,7 +9,7 @@
 
 #include "entity_events.h"
 #include "entity_system.h"
-#include "generated_typeids.h"
+#include "generated_tables.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
@@ -48,24 +48,7 @@
 typedef void (*EcsUpdateProc)(void *system, void *entity_world,
                               const void *game_time);
 
-typedef struct {
-    const char *public_name;
-    const char *engine_class;
-    uintptr_t type_id_ghidra_address;
-} EcsSystemName;
-
-#define SYSTEM_ENTRY(public, engine, va) { public, engine, va },
-static const EcsSystemName g_system_names[] = {
-    GENERATED_SYSTEM_TYPEID_ENTRIES(SYSTEM_ENTRY)
-};
-#undef SYSTEM_ENTRY
-
-_Static_assert(
-    sizeof(g_system_names) / sizeof(g_system_names[0]) == GENERATED_SYSTEM_TYPEID_COUNT,
-    "g_system_names size does not match GENERATED_SYSTEM_TYPEID_COUNT"
-);
-
-#define ECS_SYSTEM_NAME_COUNT (sizeof(g_system_names) / sizeof(g_system_names[0]))
+/* Supplied per store by src/gen/generated_tables.c; see generated_tables.h. */
 
 typedef struct {
     bool allocated;
@@ -140,7 +123,11 @@ static bool build_is_supported(void) {
 static const EcsSystemName *find_system_name(const char *name, size_t *index_out) {
     if (!name) return NULL;
 
-    for (size_t i = 0; i < ECS_SYSTEM_NAME_COUNT; i++) {
+    size_t system_name_count = 0;
+    const EcsSystemName *g_system_names = generated_system_names(&system_name_count);
+    if (!g_system_names) return NULL;   /* no table for this store */
+
+    for (size_t i = 0; i < system_name_count; i++) {
         if (strcmp(name, g_system_names[i].public_name) == 0
             || strcmp(name, g_system_names[i].engine_class) == 0) {
             if (index_out) *index_out = i;
@@ -248,11 +235,16 @@ static bool atomic_restore_update_proc(EcsSystemHook *hook) {
 static EcsAttachStatus resolve_system_entry(void *world, size_t name_index,
                                             EcsResolveResult *result) {
     memset(result, 0, sizeof(*result));
-    if (!world || name_index >= ECS_SYSTEM_NAME_COUNT) return ECS_ATTACH_NO_WORLD;
+
+    size_t system_name_count = 0;
+    const EcsSystemName *system_names = generated_system_names(&system_name_count);
+    if (!world || !system_names || name_index >= system_name_count) {
+        return ECS_ATTACH_NO_WORLD;
+    }
 
     void *base = version_detect_get_binary_base();
     uintptr_t type_id_address = (uintptr_t)base
-        + g_system_names[name_index].type_id_ghidra_address - ECS_GHIDRA_BASE;
+        + system_names[name_index].type_id_ghidra_address - ECS_GHIDRA_BASE;
     int32_t system_index = -1;
     if (!safe_memory_read_i32((mach_vm_address_t)type_id_address, &system_index)
         || system_index < 0) {

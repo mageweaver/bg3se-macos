@@ -2578,6 +2578,20 @@ static int lua_osi_db_delete(lua_State *L) {
         def = osi_db_lookup_args(db_name, (unsigned)nargs);
         if (!def) def = osi_db_lookup_arity(db_name, 0);
     }
+    /* Unlike Get, Delete has no wildcard form: every column must be supplied.
+     * When the name exists at a single, different arity, the honest answer is
+     * the arity error upstream raises, not "no such database" -- which reads as
+     * a typo and sends people looking in the wrong place. */
+    if (!def) {
+        unsigned sole_arity = 0;
+        if (osi_db_lookup_sole(db_name, &sole_arity) && sole_arity != (unsigned)nargs) {
+            /* %d, not %u: luaL_error formats through lua_pushfstring, which
+             * supports only a small subset and rejects %u at runtime. */
+            return luaL_error(L,
+                "Incorrect number of arguments for '%s'; expected %d, got %d",
+                db_name, (int)sole_arity, nargs);
+        }
+    }
     if (!def) {
         /* Same rule as Get: once the story is walked, a miss is a real miss
          * and upstream raises (FunctionProxy.inl LuaDelete). */
@@ -3388,6 +3402,15 @@ static int lua_osi_db_get(lua_State *L) {
          * back to the arity-0 entry we file when a signature is unreadable. */
         dbDef = osi_db_lookup_args(db_name, (unsigned)argc);
         if (!dbDef) dbDef = osi_db_lookup_arity(db_name, 0);
+    }
+    /* Get() with no arguments asks for every row, not for a zero-column
+     * database. Upstream reads the database itself; we were looking up arity 0
+     * and reporting the name as missing when the signature was readable and no
+     * arity-0 placeholder had been filed -- so Osi.DB_Players:Get() failed
+     * while :Get(nil) returned all six rows. Only an unambiguous name resolves
+     * this way; a name with several overloads still needs an explicit arity. */
+    if (!dbDef && argc == 0) {
+        dbDef = osi_db_lookup_sole(db_name, NULL);
     }
     if (dbDef) {
         return osi_db_read_facts(L, dbDef);
@@ -6882,10 +6905,10 @@ init_subsystems:
                 LOG_CORE_INFO("Found BG3 executable (index %u): %s", i, name);
                 LOG_CORE_DEBUG("  Base: %p, Slide: 0x%lx", binary_base, (long)slide);
 
-                // Provide binary base for sentinel probing (Issue #78).
-                // This enables version_detect_addresses_safe() to validate
-                // addresses via vm_read even on version mismatches.
-                version_detect_set_binary_base(binary_base);
+                // Provide binary base for sentinel probing (Issue #78) and
+                // the image path, which is what identifies the store variant --
+                // Steam and GOG share a version string but not addresses.
+                version_detect_set_binary_image(binary_base, name);
 
                 // Gate all address-dependent init behind version check.
                 // Now uses sentinel probes: if addresses are readable,
@@ -7239,6 +7262,28 @@ static void bg3se_init(void) {
         }
     }
 
+    // Launcher-stub guard. The GOG bundle's CFBundleExecutable is a ~200KB
+    // arch-selector that hands off to the real 501MB game via posix_spawn with
+    // POSIX_SPAWN_SETEXEC -- exec WITHOUT fork, so PID and environment both
+    // survive into the game. That is the limitation the duplicate-image
+    // election below documents: without this guard the constructor runs in the
+    // stub, writes BG3SE_LOADED_PID, and the second run in the real game sees
+    // its own marker and suppresses the extender's only image.
+    //
+    // Bail before the election so the environment is left clean. Size is the
+    // discriminator rather than the filename, so this also covers any future
+    // launcher shim whatever its store or naming.
+    {
+        const void *main_exe = version_detect_main_executable();
+        if (version_detect_is_launcher_stub(main_exe)) {
+            fprintf(stderr, "[BG3SE] launcher stub (__TEXT %llu bytes) — extender not "
+                            "initialized here; it will load into the real game after "
+                            "the stub hands off\n",
+                    (unsigned long long)version_detect_text_vmsize(main_exe));
+            return;
+        }
+    }
+
     // Duplicate-image guard: the insert_dylib patch and DYLD_INSERT_LIBRARIES
     // can BOTH load a physical copy of this dylib (observed 2026-07-28,
     // PID 2556: build-tree + app-bundle images, two Lua states, two exception
@@ -7289,7 +7334,13 @@ static void bg3se_init(void) {
     // Initialize crash-resilient logging (mmap ring buffer + signal handler)
     crashlog_init();
 
-    LOG_CORE_INFO("=== %s v%s initialized ===", BG3SE_NAME, BG3SE_VERSION);
+    /* Name the store and the target build here. Both stores build to the same
+     * filename, so a user cannot tell from the artifact which one they have,
+     * and "the extender does nothing" is the same symptom as a mismatched
+     * build. This line answers that from the log alone. */
+    LOG_CORE_INFO("=== %s v%s (%s build, targets %s) initialized ===",
+                  BG3SE_NAME, BG3SE_VERSION, BG3SE_SUPPORTED_STORES,
+                  BG3SE_TARGET_VERSION);
     LOG_CORE_INFO("Running in process: %s (PID: %d)", getprogname(), getpid());
 
     // Get architecture

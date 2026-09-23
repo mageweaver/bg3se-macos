@@ -7,7 +7,7 @@
 
 #include "entity_system.h"
 #include "entity_events.h"
-#include "generated_remove_component.h"
+#include "generated_tables.h"
 #include "entity_lifecycle.h"
 #include "component_registry.h"
 #include "component_lookup.h"
@@ -1777,7 +1777,7 @@ static int lua_entity_create_component(lua_State *L) {
     const char *component = luaL_checkstring(L, 2);
     const VersionOffsets *offsets = offset_table_get();
     if (!version_detect_addresses_safe() || !offsets ||
-        strcmp(offsets->version, COMPONENT_OPS_VERIFIED_BUILD) != 0) {
+        strcmp(offset_table_game_version() ?: "", COMPONENT_OPS_VERIFIED_BUILD) != 0) {
         return create_component_fail(
             L, component,
             "ComponentOps dispatch is verified only for game build "
@@ -1898,13 +1898,8 @@ static void *remove_component_fn_for(const char *component_name) {
     }
 
     for (int i = 0; i < candidateCount; i++) {
-        const char *lookup = candidates[i];
-#define REMOVE_COMPONENT_ENTRY(name, va) \
-        if (strcmp(lookup, (name)) == 0) { \
-            return (void *)((uintptr_t)(va) + slide); \
-        }
-        GENERATED_REMOVE_COMPONENT_ENTRIES(REMOVE_COMPONENT_ENTRY)
-#undef REMOVE_COMPONENT_ENTRY
+        uintptr_t va = generated_remove_component_va(candidates[i]);
+        if (va) return (void *)(va + slide);
     }
 
     return NULL;

@@ -103,6 +103,82 @@ class TestResolveBg3AppBundle:
         )
 
 
+class TestNonSteamInstalls:
+    """GOG installs live outside every Steam library, so the vdf scan cannot
+    reach them. Covers /Applications and ~/Applications."""
+
+    def _empty_home(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.delenv("BG3SE_GAME_PATH", raising=False)
+        monkeypatch.setattr(config.Path, "home", staticmethod(lambda: home))
+        return home
+
+    def test_user_applications_found(self, monkeypatch, tmp_path):
+        home = self._empty_home(monkeypatch, tmp_path)
+        bundle = home / "Applications/Baldur's Gate 3.app"
+        bundle.mkdir(parents=True)
+        assert config.resolve_bg3_app_bundle() == bundle
+
+    def test_steam_library_wins_over_applications(self, monkeypatch, tmp_path):
+        """A Steam install must keep resolving first, even with a second
+        bundle in ~/Applications."""
+        home = self._empty_home(monkeypatch, tmp_path)
+        steam_bundle = (home / "Library/Application Support/Steam" /
+                        "steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app")
+        steam_bundle.mkdir(parents=True)
+        (home / "Applications/Baldur's Gate 3.app").mkdir(parents=True)
+        assert config.resolve_bg3_app_bundle() == steam_bundle
+
+
+class TestResolveBg3Executable:
+    """GOG's CFBundleExecutable is an arch-selector stub; the game is the
+    suffixed binary beside it, so this must prefer the suffix."""
+
+    def _bundle(self, tmp_path, exec_name="Baldur's Gate 3", extra=None):
+        bundle = tmp_path / "Baldur's Gate 3.app"
+        macos = bundle / "Contents/MacOS"
+        macos.mkdir(parents=True)
+        (bundle / "Contents/Info.plist").write_bytes(
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            b'"http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+            b'<plist version="1.0"><dict><key>CFBundleExecutable</key>'
+            + b"<string>" + exec_name.encode() + b"</string></dict></plist>"
+        )
+        (macos / exec_name).write_bytes(b"stub")
+        if extra:
+            (macos / extra).write_bytes(b"game")
+        return bundle, macos
+
+    def test_prefers_gog_suffixed_binary(self, tmp_path):
+        bundle, macos = self._bundle(tmp_path, extra="Baldur's Gate 3 GOG")
+        assert config.resolve_bg3_executable(bundle) == macos / "Baldur's Gate 3 GOG"
+
+    def test_steam_layout_uses_bundle_executable(self, tmp_path):
+        bundle, macos = self._bundle(tmp_path)
+        assert config.resolve_bg3_executable(bundle) == macos / "Baldur's Gate 3"
+
+    def test_honours_cfbundleexecutable_name(self, tmp_path):
+        bundle, macos = self._bundle(tmp_path, exec_name="BG3", extra="BG3 GOG")
+        assert config.resolve_bg3_executable(bundle) == macos / "BG3 GOG"
+
+    def test_missing_plist_falls_back_to_bundle_stem(self, tmp_path):
+        """Game not installed: return a usable path rather than raising."""
+        bundle = tmp_path / "Baldur's Gate 3.app"
+        bundle.mkdir()
+        assert config.resolve_bg3_executable(bundle) == (
+            bundle / "Contents/MacOS/Baldur's Gate 3"
+        )
+
+    def test_directory_named_like_the_suffix_is_ignored(self, tmp_path):
+        """Only a regular file counts; a stray directory must not be picked."""
+        bundle, macos = self._bundle(tmp_path)
+        (macos / "Baldur's Gate 3 GOG").mkdir()
+        assert config.resolve_bg3_executable(bundle) == macos / "Baldur's Gate 3"
+
+
 def test_module_constants_derive_from_bundle():
-    assert config.BG3_EXEC == config.BG3_APP_BUNDLE / "Contents/MacOS/Baldur's Gate 3"
+    assert config.BG3_EXEC == config.resolve_bg3_executable(config.BG3_APP_BUNDLE)
+    assert config.BG3_EXEC.parent == config.BG3_APP_BUNDLE / "Contents/MacOS"
     assert config.DEPLOYED_DYLIB == config.BG3_APP_BUNDLE / "Contents/MacOS/libbg3se.dylib"
