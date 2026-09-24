@@ -3334,6 +3334,34 @@ static int osi_story_insert(lua_State *L, const char *name, void *def, int first
                           name);
     }
 
+    /* Queries are CALLED, never inserted into. Insertion reads the node's
+     * NODEVMT_INSERT_TUPLE vtable slot, and on a query node that slot is not an
+     * insert entry point at all -- calling it runs whatever happens to live
+     * there. Osiris then throws ls::khonsu::Exception from a context the
+     * exception barrier in osi_node_insert_tuple cannot catch, and the process
+     * aborts (SIGABRT via std::terminate).
+     *
+     * Reproduced on a long rest: a story rule fired
+     * COsiFunctionParseData::Fire, our node hook ran a Lua listener, and the
+     * listener called Osi.QRY_Camp_IsPlayerBlockedFromTeleportToCamp, which
+     * landed here. This is the crash 6131d06 added the breadcrumb log for
+     * without being able to name the function.
+     *
+     * The type check below has to come before the database resolve, and cannot
+     * be folded into the OSI_FUNC_DATABASE case underneath it: a QRY_ function
+     * reports a query type, so that case never sees it. */
+    {
+        uint8_t ftype = 0;
+        safe_memory_read_u8((mach_vm_address_t)def + 0x24, &ftype);
+        if (ftype == OSI_FUNC_QUERY || ftype == OSI_FUNC_SYSQUERY ||
+            ftype == OSI_FUNC_USERQUERY) {
+            return luaL_error(L, "Osi.%s: queries cannot be inserted into; this port "
+                                 "cannot call user queries yet, and inserting would "
+                                 "abort the session. The call did not reach Osiris",
+                              name);
+        }
+    }
+
     void *node = NULL, *db = NULL;
     uint8_t colCount = 0;
     bool isDb = osi_db_resolve(def, &node, &db, &colCount);
@@ -3352,6 +3380,16 @@ static int osi_story_insert(lua_State *L, const char *name, void *def, int first
         if (ftype == OSI_FUNC_DATABASE && !osi_node_is_data_node(node)) {
             return luaL_error(L, "Osi.%s: user queries are not supported yet on this "
                                  "port; the call did not reach Osiris", name);
+        }
+        /* Anything else whose node cannot take a tuple: only PROC and EVENT
+         * are inserted through a non-data node. An unknown type here means we
+         * could not establish that the slot is an insert entry point, and
+         * guessing is what aborts the session. */
+        if (ftype != OSI_FUNC_PROC && ftype != OSI_FUNC_EVENT &&
+            !osi_node_is_data_node(node)) {
+            return luaL_error(L, "Osi.%s: story function type %u has no insertable "
+                                 "node; the call did not reach Osiris",
+                              name, (unsigned)ftype);
         }
     }
 
