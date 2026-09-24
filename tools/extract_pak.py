@@ -30,6 +30,13 @@ except ImportError:
 
 import zlib
 
+# Savegames compress with zstd. Optional so that reading .pak files -- which use
+# LZ4 -- still works without it; extract_file raises if an entry actually needs it.
+try:
+    import zstandard as zstd
+except ImportError:
+    zstd = None
+
 
 def read_header(f):
     """Read LSPK header (40 bytes)"""
@@ -115,7 +122,7 @@ def extract_file(f, entry, output_dir):
     f.seek(entry['offset'])
     data = f.read(entry['disk_size'])
 
-    compression_names = {0: 'none', 1: 'zlib', 2: 'LZ4'}
+    compression_names = {0: 'none', 1: 'zlib', 2: 'LZ4', 3: 'zstd'}
 
     if entry['compression'] == 0:
         # Uncompressed
@@ -132,9 +139,25 @@ def extract_file(f, entry, output_dir):
             content = lz4.block.decompress(data, uncompressed_size=entry['uncompressed_size'])
         except Exception as e:
             raise ValueError(f"LZ4 decompression failed: {e}")
+    elif entry['compression'] == 3:
+        # zstd -- what savegames (.lsv) use for StorySave.bin and Globals.lsf.
+        # Before this was handled, the "save raw" fallback below wrote still
+        # compressed bytes to a file named like the real thing, so any scan of an
+        # extracted save reported finding nothing. That is worse than failing:
+        # every save looked clean.
+        if zstd is None:
+            raise ValueError("zstd-compressed entry needs the `zstandard` module "
+                             "(pip install zstandard)")
+        try:
+            content = zstd.ZstdDecompressor().decompress(
+                data, max_output_size=entry['uncompressed_size'] or 0)
+        except Exception as e:
+            raise ValueError(f"zstd decompression failed: {e}")
     else:
-        print(f"  WARNING: Unknown compression type {entry['compression']} for {entry['name']}, saving raw")
-        content = data
+        # Raise rather than write raw bytes under the real name: a silently
+        # undecoded file reads as valid-but-empty to everything downstream.
+        raise ValueError(f"unsupported compression type {entry['compression']} "
+                         f"for {entry['name']}")
 
     # Create output path
     output_path = os.path.join(output_dir, entry['name'])

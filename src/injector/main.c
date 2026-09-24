@@ -61,6 +61,7 @@ extern "C" {
 // Osiris modules
 #include "osiris_types.h"
 #include "../osiris/osi_call_guard.h"
+#include "../osiris/osi_save_guard.h"
 #include "osiris_functions.h"
 #include "custom_functions.h"
 #include "pattern_scan.h"
@@ -2545,6 +2546,36 @@ static bool osi_db_delete_resolve_symbols(void) {
     return true;
 }
 
+/* Forward declarations */
+static int osi_dynamic_call(lua_State *L);
+static int osi_db_call_handler(lua_State *L);
+
+static const char *osi_proxy_get_name(lua_State *L, int idx) {
+    if (lua_istable(L, idx)) {
+        int abs_idx = lua_absindex(L, idx);
+        lua_pushliteral(L, "DBName");
+        lua_rawget(L, abs_idx);
+        if (lua_isstring(L, -1)) {
+            const char *name = lua_tostring(L, -1);
+            lua_pop(L, 1);
+            return name;
+        }
+        lua_pop(L, 1);
+    } else if (lua_iscfunction(L, idx)) {
+        lua_CFunction cfn = lua_tocfunction(L, idx);
+        if (cfn == osi_dynamic_call || cfn == osi_db_call_handler) {
+            const char *upname = lua_getupvalue(L, idx, 1);
+            if (upname && lua_isstring(L, -1)) {
+                const char *name = lua_tostring(L, -1);
+                lua_pop(L, 1);
+                return name;
+            }
+            if (upname) lua_pop(L, 1);
+        }
+    }
+    return NULL;
+}
+
 /**
  * Osi.DB_<name>:Delete(v1, v2, ...) — delete every matching row.
  *
@@ -2558,9 +2589,7 @@ static bool osi_db_delete_resolve_symbols(void) {
  * ForwardDelToken propagates the RETE delete so NOT-condition rules fire.
  */
 static int lua_osi_db_delete(lua_State *L) {
-    lua_getfield(L, 1, "DBName");
-    const char *db_name = lua_tostring(L, -1);
-    lua_pop(L, 1);
+    const char *db_name = osi_proxy_get_name(L, 1);
     if (!db_name || !*db_name) {
         LOG_OSIRIS_WARN("Osi.DB_<?>:Delete() called but DBName is missing");
         return 0;
@@ -3072,10 +3101,28 @@ static void osi_check_arg_kinds(lua_State *L, const char *name, int firstArg,
                 }
                 break;
             case OSI_TYPE_STRING:
+                if (lua_type(L, idx) != LUA_TSTRING) {
+                    luaL_error(L, "String expected for argument %d of '%s', got %s",
+                               (int)i + 1, name, luaL_typename(L, idx));
+                }
+                break;
             case OSI_TYPE_GUIDSTRING:
                 if (lua_type(L, idx) != LUA_TSTRING) {
                     luaL_error(L, "String expected for argument %d of '%s', got %s",
                                (int)i + 1, name, luaL_typename(L, idx));
+                }
+                /* A GUIDSTRING that is not a GUID is accepted here and by
+                 * upstream, then aborts the next save from deep inside the
+                 * engine's serialiser with nothing left to blame (see
+                 * osi_save_guard.h). Warn while the culprit is still on the
+                 * stack -- this is the only point where it can be named. Not an
+                 * error: refusing the call would change behaviour for mods this
+                 * has never broken, and the save guard keeps it non-fatal. */
+                if (!osi_guid_string_valid(lua_tostring(L, idx))) {
+                    LOG_OSIRIS_WARN("Osi.%s: argument %d is typed GUIDSTRING but is not "
+                                    "a GUID (\"%s\"). If this lands in a database the "
+                                    "engine will refuse to serialise it on save.",
+                                    name, (int)i + 1, lua_tostring(L, idx));
                 }
                 break;
             default:
@@ -3362,9 +3409,7 @@ static int osi_story_insert(lua_State *L, const char *name, void *def, int first
  * Returns empty table if DB not found or query returns nothing.
  */
 static int lua_osi_db_get(lua_State *L) {
-    lua_getfield(L, 1, "DBName");
-    const char *db_name = lua_tostring(L, -1);
-    lua_pop(L, 1);
+    const char *db_name = osi_proxy_get_name(L, 1);
 
     if (!db_name || !*db_name) {
         LOG_OSIRIS_WARN("Osi.DB_<?>:Get() called but DBName is missing");
@@ -3526,6 +3571,327 @@ static int osi_db_call_handler(lua_State *L) {
     return osi_dynamic_call(L);
 }
 
+// ============================================================================
+// Osi Proxy Reflection (Exists, Type, Arities, InputArities, __tostring, __index)
+// ============================================================================
+
+typedef struct {
+    int total_arity;
+    int input_arity;
+    const char *type_str;
+} OsiOverloadInfo;
+
+static int osi_proxy_collect_overloads(const char *name, OsiOverloadInfo *out, int max_out) {
+    if (!name || !*name || !out || max_out <= 0) return 0;
+    int count = 0;
+
+    // Trigger database discovery if registry is empty and name looks like a database
+    if (osi_db_count() == 0 && strncmp(name, "DB_", 3) == 0) {
+        osi_db_lookup_or_discover(name);
+    }
+
+    // 1. Engine functions in g_funcCache
+    const CachedFunction *ov[OSI_MAX_OVERLOADS];
+    int n = osi_func_lookup_overloads(name, ov, OSI_MAX_OVERLOADS);
+    for (int i = 0; i < n && count < max_out; i++) {
+        int total = ov[i]->arity;
+        int input = total;
+        const char *t = "Call";
+        switch (ov[i]->type) {
+            case OSI_FUNC_EVENT: t = "Event"; break;
+            case OSI_FUNC_QUERY:
+            case OSI_FUNC_SYSQUERY:
+            case OSI_FUNC_USERQUERY: t = "Query"; break;
+            case OSI_FUNC_CALL:
+            case OSI_FUNC_SYSCALL: t = "Call"; break;
+            case OSI_FUNC_DATABASE: t = "DB"; break;
+            case OSI_FUNC_PROC: t = "Proc"; break;
+            default:
+                if (strncmp(name, "DB_", 3) == 0) t = "DB";
+                else if (strncmp(name, "PROC_", 5) == 0) t = "Proc";
+                else if (strncmp(name, "QRY_", 4) == 0) t = "Query";
+                break;
+        }
+        OsiParamDef tmp[20];
+        int pc = osi_read_param_defs(ov[i]->id, tmp, 20);
+        if (pc >= 0) {
+            int inCount = 0;
+            for (int p = 0; p < pc; p++) {
+                if (tmp[p].direction == 1) inCount++;
+            }
+            input = inCount;
+        } else if (strcmp(t, "Query") == 0) {
+            if (strcmp(name, "GetHostCharacter") == 0 || strcmp(name, "CharacterGetHostCharacter") == 0) {
+                input = 0;
+            } else if (total > 0) {
+                input = total - 1;
+            }
+        }
+        int dup = 0;
+        for (int c = 0; c < count; c++) {
+            if (out[c].total_arity == total && out[c].input_arity == input) {
+                dup = 1;
+                break;
+            }
+        }
+        if (!dup && count < max_out) {
+            out[count].total_arity = total;
+            out[count].input_arity = input;
+            out[count].type_str = t;
+            count++;
+        }
+    }
+
+    // 2. Story registry (g_dbReg)
+    int dbCount = osi_db_count();
+    for (int i = 0; i < dbCount && count < max_out; i++) {
+        const char *eName = NULL;
+        uint8_t dArity = 0, dInArgs = 0;
+        void *dDef = NULL;
+        if (osi_db_entry_info(i, &eName, &dArity, &dInArgs, &dDef) && eName && strcmp(eName, name) == 0) {
+            int dup = 0;
+            for (int c = 0; c < count; c++) {
+                if (out[c].total_arity == dArity && out[c].input_arity == dInArgs) {
+                    dup = 1;
+                    break;
+                }
+            }
+            if (!dup) {
+                const char *t = "DB";
+                if (strncmp(name, "DB_", 3) == 0) t = "DB";
+                else if (strncmp(name, "PROC_", 5) == 0) t = "Proc";
+                else if (strncmp(name, "QRY_", 4) == 0) t = "Query";
+                else if (dInArgs < dArity) t = "Query";
+                else t = "Proc";
+
+                out[count].total_arity = dArity;
+                out[count].input_arity = dInArgs;
+                out[count].type_str = t;
+                count++;
+            }
+        }
+    }
+
+    // 3. Custom functions
+    CustomFunction *cf = custom_func_get_by_name(name);
+    if (cf && count < max_out) {
+        int total = (int)cf->arity;
+        int input = (int)cf->num_in_params;
+        const char *t = "Call";
+        if (cf->type == CUSTOM_FUNC_QUERY) t = "Query";
+        else if (cf->type == CUSTOM_FUNC_EVENT) t = "Event";
+
+        int dup = 0;
+        for (int c = 0; c < count; c++) {
+            if (out[c].total_arity == total && out[c].input_arity == input) {
+                dup = 1;
+                break;
+            }
+        }
+        if (!dup) {
+            out[count].total_arity = total;
+            out[count].input_arity = input;
+            out[count].type_str = t;
+            count++;
+        }
+    }
+
+    // 4. Known functions fallback
+    if (count == 0) {
+        for (int k = 0; g_knownFunctions[k].name != NULL; k++) {
+            if (strcmp(g_knownFunctions[k].name, name) == 0) {
+                int total = g_knownFunctions[k].expectedArity;
+                int input = total;
+                const char *t = "Call";
+                switch (g_knownFunctions[k].funcType) {
+                    case OSI_FUNC_DATABASE: t = "DB"; break;
+                    case OSI_FUNC_QUERY:
+                        t = "Query";
+                        if (strcmp(name, "GetHostCharacter") == 0 || strcmp(name, "CharacterGetHostCharacter") == 0) {
+                            input = 0;
+                        } else if (total > 0) {
+                            input = total - 1;
+                        }
+                        break;
+                    case OSI_FUNC_CALL: t = "Call"; break;
+                    case OSI_FUNC_PROC: t = "Proc"; break;
+                    case OSI_FUNC_EVENT: t = "Event"; break;
+                }
+                out[count].total_arity = total;
+                out[count].input_arity = input;
+                out[count].type_str = t;
+                count++;
+                break;
+            }
+        }
+    }
+
+    // 5. Fallback for DB_* if not discovered yet
+    if (count == 0 && strncmp(name, "DB_", 3) == 0) {
+        out[count].total_arity = 1;
+        out[count].input_arity = 1;
+        out[count].type_str = "DB";
+        count++;
+    }
+
+    return count;
+}
+
+static void push_sorted_unique_ints(lua_State *L, int *arr, int count) {
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = i + 1; j < count; j++) {
+            if (arr[j] < arr[i]) {
+                int tmp = arr[i];
+                arr[i] = arr[j];
+                arr[j] = tmp;
+            }
+        }
+    }
+    lua_newtable(L);
+    int tblIdx = 1;
+    for (int i = 0; i < count; i++) {
+        if (i > 0 && arr[i] == arr[i - 1]) continue;
+        lua_pushinteger(L, arr[i]);
+        lua_rawseti(L, -2, tblIdx++);
+    }
+}
+
+static int lua_osi_proxy_exists(lua_State *L) {
+    const char *name = lua_tostring(L, lua_upvalueindex(1));
+    if (!name || !*name) name = osi_proxy_get_name(L, 1);
+    if (!name || !*name) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    int arity = 0;
+    if (lua_isinteger(L, 2)) arity = (int)lua_tointeger(L, 2);
+    else if (lua_isinteger(L, 1)) arity = (int)lua_tointeger(L, 1);
+    else arity = (int)luaL_optinteger(L, 2, 0);
+
+    OsiOverloadInfo ov[16];
+    int n = osi_proxy_collect_overloads(name, ov, 16);
+    int found = 0;
+    for (int i = 0; i < n; i++) {
+        if (ov[i].total_arity == arity || ov[i].input_arity == arity) {
+            found = 1;
+            break;
+        }
+    }
+    lua_pushboolean(L, found);
+    return 1;
+}
+
+static int lua_osi_proxy_type(lua_State *L) {
+    const char *name = lua_tostring(L, lua_upvalueindex(1));
+    if (!name || !*name) name = osi_proxy_get_name(L, 1);
+    if (!name || !*name) {
+        lua_pushnil(L);
+        return 1;
+    }
+    int arity = 0;
+    if (lua_isinteger(L, 2)) arity = (int)lua_tointeger(L, 2);
+    else if (lua_isinteger(L, 1)) arity = (int)lua_tointeger(L, 1);
+    else arity = (int)luaL_optinteger(L, 2, 0);
+
+    OsiOverloadInfo ov[16];
+    int n = osi_proxy_collect_overloads(name, ov, 16);
+    for (int i = 0; i < n; i++) {
+        if (ov[i].input_arity == arity || ov[i].total_arity == arity) {
+            lua_pushstring(L, ov[i].type_str);
+            return 1;
+        }
+    }
+    lua_pushnil(L);
+    return 1;
+}
+
+static int lua_osi_proxy_arities(lua_State *L, const char *name) {
+    OsiOverloadInfo ov[16];
+    int n = osi_proxy_collect_overloads(name, ov, 16);
+    int arities[16];
+    for (int i = 0; i < n; i++) {
+        arities[i] = ov[i].total_arity;
+    }
+    push_sorted_unique_ints(L, arities, n);
+    return 1;
+}
+
+static int lua_osi_proxy_input_arities(lua_State *L, const char *name) {
+    OsiOverloadInfo ov[16];
+    int n = osi_proxy_collect_overloads(name, ov, 16);
+    int arities[16];
+    for (int i = 0; i < n; i++) {
+        arities[i] = ov[i].input_arity;
+    }
+    push_sorted_unique_ints(L, arities, n);
+    return 1;
+}
+
+static int lua_osi_proxy_tostring(lua_State *L) {
+    const char *name = osi_proxy_get_name(L, 1);
+    if (name && *name) {
+        lua_pushfstring(L, "OsiFunction(%s)", name);
+        return 1;
+    }
+    if (lua_isfunction(L, 1)) {
+        lua_pushfstring(L, "function: %p", lua_topointer(L, 1));
+        return 1;
+    }
+    if (lua_istable(L, 1)) {
+        lua_pushfstring(L, "table: %p", lua_topointer(L, 1));
+        return 1;
+    }
+    lua_pushstring(L, "OsiFunction");
+    return 1;
+}
+
+static int lua_osi_proxy_index(lua_State *L) {
+    const char *name = osi_proxy_get_name(L, 1);
+
+    // If self is a function but NOT an Osiris closure, preserve standard Lua error
+    if (lua_isfunction(L, 1) && (!name || lua_tocfunction(L, 1) != osi_dynamic_call)) {
+        return luaL_error(L, "attempt to index a function value");
+    }
+
+    if (!lua_isstring(L, 2)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const char *key = lua_tostring(L, 2);
+
+    if (strcmp(key, "Get") == 0) {
+        lua_pushcfunction(L, lua_osi_db_get);
+        return 1;
+    }
+    if (strcmp(key, "Delete") == 0) {
+        lua_pushcfunction(L, lua_osi_db_delete);
+        return 1;
+    }
+    if (strcmp(key, "Exists") == 0) {
+        lua_pushstring(L, name ? name : "");
+        lua_pushcclosure(L, lua_osi_proxy_exists, 1);
+        return 1;
+    }
+    if (strcmp(key, "Type") == 0) {
+        lua_pushstring(L, name ? name : "");
+        lua_pushcclosure(L, lua_osi_proxy_type, 1);
+        return 1;
+    }
+    if (strcmp(key, "InputArities") == 0) {
+        return lua_osi_proxy_input_arities(L, name ? name : "");
+    }
+    if (strcmp(key, "Arities") == 0) {
+        return lua_osi_proxy_arities(L, name ? name : "");
+    }
+    if (strcmp(key, "DBName") == 0) {
+        if (name) lua_pushstring(L, name);
+        else lua_pushnil(L);
+        return 1;
+    }
+
+    return luaL_error(L, "Not a valid OsiFunction method or property: %s", key);
+}
+
 static void osi_push_db_accessor(lua_State *L, const char *db_name) {
     lua_newtable(L);
     lua_pushstring(L, db_name);
@@ -3540,6 +3906,10 @@ static void osi_push_db_accessor(lua_State *L, const char *db_name) {
     lua_pushstring(L, db_name);                       /* upvalue: db name */
     lua_pushcclosure(L, osi_db_call_handler, 1);
     lua_setfield(L, -2, "__call");
+    lua_pushcfunction(L, lua_osi_proxy_index);
+    lua_setfield(L, -2, "__index");
+    lua_pushcfunction(L, lua_osi_proxy_tostring);
+    lua_setfield(L, -2, "__tostring");
     lua_setmetatable(L, -2);
 }
 
@@ -4480,6 +4850,17 @@ static void register_osi_namespace(lua_State *L) {
     // Set Osi as global
     lua_setglobal(L, "Osi");
 
+    // Install function metatable so Osiris closures (and function proxies)
+    // support :Exists(), :Type(), .Arities, .InputArities, __tostring, and unknown property error
+    lua_pushcfunction(L, osi_dynamic_call);
+    lua_newtable(L);
+    lua_pushcfunction(L, lua_osi_proxy_index);
+    lua_setfield(L, -2, "__index");
+    lua_pushcfunction(L, lua_osi_proxy_tostring);
+    lua_setfield(L, -2, "__tostring");
+    lua_setmetatable(L, -2);
+    lua_pop(L, 1);
+
     // GetHostCharacter is NOT bound as a global: the engine has a real
     // GetHostCharacter query, and a global C function shadowed it for every
     // bare-global caller with a "first GUID that doesn't start with S_Player_"
@@ -5411,6 +5792,11 @@ static bool deferred_session_init_tick(void) {
     if (s_session_init_state != SESSION_INIT_PENDING) return false;
     if (!L) return false;
 
+    /* Backstop only -- fake_Load installs this, and has to, because the load
+     * path asserts before session init runs. Kept so the save direction is still
+     * covered if the COsiris::Load hook itself failed to install. Idempotent. */
+    osi_save_guard_install();
+
     // BG3SE_MINIMAL: skip all subsystem initialization (Issue #65 debugging)
     // Only Osiris hooks + basic Lua API remain active
     static int minimal_mode = -1;
@@ -5640,9 +6026,149 @@ static uint64_t fake_InitGame(void *thisPtr) {
  * Signature: bool COsiris::Load(COsiSmartBuf&)
  * This is a member function with a reference parameter, returns bool
  */
+/* ---------------------------------------------------------------------------
+ * Refuse a database row whose GUIDSTRING column is not a GUID.
+ *
+ * This is the door, and it is the only guard here that prevents corruption
+ * rather than surviving it. Everything else (osi_save_guard.c) exists because a
+ * bad row had already been stored: it kills the save, then the load, then the
+ * story merge, each from a different assert, and none of them can name what put
+ * it there. CReteDBase::insert is the single chokepoint every row passes
+ * through -- story rules, engine-raised events and our own Lua bridge alike --
+ * so a bad value stopped here never reaches a save at all.
+ *
+ * Refusing is expressed in the engine's own vocabulary. insert() returns 1 when
+ * it stored the tuple and 0 when it declined a duplicate (libOsiris arm64
+ * 0x6b4b4: `eor w0, w21, #1` on find()'s result), and on the declining path
+ * _insert is never called, so the tuple's buffer is not moved out and the caller
+ * still owns and destroys it. Returning 0 without calling through is therefore
+ * exactly the duplicate contract -- no leak, no double free, and callers already
+ * handle it (CReteStartNode::Add skips ForwardAddToken, so no rule fires on a
+ * row that was not stored).
+ *
+ * What this does NOT do: rescue a save that is already poisoned. The merge
+ * aborts in CReteStartNode::Add -> find -> _TupleRefs, and Add calls find
+ * itself before ever reaching insert. Recovering an existing save is the story
+ * patch sanitiser's job.
+ *
+ * Cost matters here -- this runs for every column of every row, tens of
+ * thousands of times during a load. So no mach_vm_read: the tuple is live
+ * memory the engine is about to read anyway, the string comes from the engine's
+ * own exported getter, and alias resolution is memoised because
+ * osi_resolve_base_type walks the type table and CHARACTER is an alias.
+ * ------------------------------------------------------------------------- */
+
+typedef const char *(*OsiGetStrFn)(void *stringTable, uint64_t handle);
+
+static OsiGetStrFn s_osi_getstr = NULL;
+static void *s_osi_stringtable = NULL;
+static OsiDBaseInsertFn s_orig_insert = NULL;
+static unsigned s_insert_refusals = 0;
+
+/* 0 = not yet resolved, else root type + 1. */
+static uint8_t s_root_type_cache[4096];
+
+static uint16_t osi_root_type_cached(uint16_t typeId) {
+    if (typeId <= OSI_TYPE_GUIDSTRING) return typeId;
+    if (typeId < 4096) {
+        uint8_t c = s_root_type_cache[typeId];
+        if (c) return (uint16_t)(c - 1);
+        uint16_t r = (uint16_t)osi_resolve_base_type(typeId);
+        s_root_type_cache[typeId] = (uint8_t)(r + 1);
+        return r;
+    }
+    return (uint16_t)osi_resolve_base_type(typeId);
+}
+
+static uint64_t hooked_dbase_insert(void *db, void *tuplePtr) {
+    OsiCTuple *t = (OsiCTuple *)tuplePtr;
+    /* Arity is small for every real database; an implausible size means this is
+     * not the shape assumed here, so leave the row alone rather than walk it. */
+    if (t && t->values && t->size > 0 && t->size <= 64 && s_osi_getstr && s_osi_stringtable) {
+        for (uint64_t i = 0; i < t->size; i++) {
+            const uint8_t *slot = (const uint8_t *)t->values + (size_t)i * 0x10;
+            uint16_t typeId;
+            memcpy(&typeId, slot + 0x08, sizeof(typeId));
+            if (osi_root_type_cached(typeId) != OSI_TYPE_GUIDSTRING) continue;
+
+            uint64_t handle;
+            memcpy(&handle, slot, sizeof(handle));
+            const char *s = s_osi_getstr(s_osi_stringtable, handle);
+            /* An unset column reads as "" and is not this bug; only a value the
+             * engine would later refuse to serialise is rejected. */
+            if (!s || !*s || osi_guid_string_valid(s)) continue;
+
+            s_insert_refusals++;
+            if (s_insert_refusals <= 8) {
+                LOG_OSIRIS_ERROR("Osiris insert refused: column %llu is typed "
+                                 "GUIDSTRING (%u) but holds \"%s\", which is not a "
+                                 "GUID. Storing it would abort the next save, the "
+                                 "load after it, and every story merge. Row dropped.",
+                                 (unsigned long long)i, (unsigned)typeId, s);
+            }
+            return 0;   /* the engine's own "declined" -- caller keeps the tuple */
+        }
+    }
+    return s_orig_insert(db, tuplePtr);
+}
+
+/* Idempotent; sticky on failure. Off when BG3SE_NO_GUID_INSERT_GUARD is set, so
+ * the guard can be taken out of the picture without a rebuild if it ever proves
+ * to be the thing causing trouble. */
+static void osi_insert_guard_install(void) {
+    static bool attempted = false;
+    if (attempted) return;
+    attempted = true;
+
+    if (getenv("BG3SE_NO_GUID_INSERT_GUARD")) {
+        LOG_OSIRIS_WARN("Osiris insert guard disabled by BG3SE_NO_GUID_INSERT_GUARD");
+        return;
+    }
+    if (!g_pOsiFunctionMan) return;
+
+    void *h = dlopen("@rpath/libOsiris.dylib", RTLD_NOLOAD);
+    if (!h) h = dlopen("@executable_path/../Frameworks/libOsiris.dylib", RTLD_NOW);
+    if (!h) return;
+
+    void *insertFn = dlsym(h, "_ZN10CReteDBase6insertEO6CTuple");
+    s_osi_getstr = (OsiGetStrFn)dlsym(h, "_ZN15COsiStringTable6GetStrE16COsiStringHandle");
+
+    /* Same global osi_resolve_string_handle reads the table from. Resolved once:
+     * calling GetStr needs the table as `this`. */
+    uintptr_t base = (uintptr_t)g_pOsiFunctionMan - 0x9f348;
+    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x96cb8), &s_osi_stringtable)) {
+        s_osi_stringtable = NULL;
+    }
+
+    if (!insertFn || !s_osi_getstr || !s_osi_stringtable) {
+        LOG_OSIRIS_WARN("Osiris insert guard unavailable (insert=%p GetStr=%p table=%p); "
+                        "a non-GUID GUIDSTRING can still be stored",
+                        insertFn, (void *)s_osi_getstr, s_osi_stringtable);
+        return;
+    }
+    if (DobbyHook(insertFn, (void *)hooked_dbase_insert, (void **)&s_orig_insert) != 0) {
+        LOG_OSIRIS_WARN("Osiris insert guard: DobbyHook(CReteDBase::insert) failed");
+        s_orig_insert = NULL;
+        return;
+    }
+    /* WARN, not INFO -- same reason as the GUIDSTRING guard's install line: these
+     * are read from logs captured at WARN, where a missing line would otherwise
+     * be indistinguishable from a guard that never installed. */
+    LOG_OSIRIS_WARN("Osiris insert guard installed (CReteDBase::insert @ %p)", insertFn);
+}
+
 static int fake_Load(void *thisPtr, void *smartBuf) {
     load_call_count++;
     LOG_OSIRIS_DEBUG(">>> COsiris::Load called! (count: %d, this: %p, buf: %p)", load_call_count, thisPtr, smartBuf);
+
+    /* The one point early enough to matter. orig_Load below is COsiris::Load
+     * itself, which reads every database and asserts fatally on a GUIDSTRING
+     * that is not a GUID -- so the guard has to be in place before it, not at
+     * session init, which only runs once loading has finished. This also covers
+     * the save direction, since a save is always preceded by a load of the
+     * compiled story. Idempotent; libOsiris is necessarily loaded by now. */
+    osi_save_guard_install();
+    osi_insert_guard_install();
 
     // Call original and preserve return value.
     // The gate is deliberately NOT held across orig_Load — only the Lua

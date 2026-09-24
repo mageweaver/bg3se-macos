@@ -63,6 +63,12 @@ int lua_ext_io_loadfile(lua_State *L);
 int lua_ext_io_savefile(lua_State *L);
 
 /**
+ * Ext.IO.AppendFile(path, content) - Append string to file
+ * @return true on success, false on failure
+ */
+int lua_ext_io_appendfile(lua_State *L);
+
+/**
  * Ext.IO.AddPathOverride(original, override) - Add a path redirect
  * When the game loads 'original', it will load 'override' instead.
  */

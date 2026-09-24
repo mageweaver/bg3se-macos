@@ -209,6 +209,7 @@ static void emit_ext_namespace(luaL_Buffer *buf) {
     luaL_addstring(buf, "---@class Ext_IO\n");
     luaL_addstring(buf, "---@field LoadFile fun(path: string): string?, string? Load file contents\n");
     luaL_addstring(buf, "---@field SaveFile fun(path: string, content: string): boolean Save file\n");
+    luaL_addstring(buf, "---@field AppendFile fun(path: string, content: string): boolean Append to file\n");
     luaL_addstring(buf, "\n");
 
     luaL_addstring(buf, "---@class Ext_Vars\n");
@@ -244,8 +245,15 @@ static void emit_ext_namespace(luaL_Buffer *buf) {
     luaL_addstring(buf, "Ext = {}\n\n");
 
     // Osi namespace stub
+    luaL_addstring(buf, "---@class OsiFunction\n");
+    luaL_addstring(buf, "---@field Exists fun(self: OsiFunction, arity: integer): boolean Check if overload exists\n");
+    luaL_addstring(buf, "---@field Type fun(self: OsiFunction, arity: integer): string|nil Get overload function type\n");
+    luaL_addstring(buf, "---@field Arities integer[] All valid total arities\n");
+    luaL_addstring(buf, "---@field InputArities integer[] All valid input arities\n");
+    luaL_addstring(buf, "---@field Get fun(self: OsiFunction, ...): table Query database rows\n");
+    luaL_addstring(buf, "---@field Delete fun(self: OsiFunction, ...) Delete database rows\n\n");
     luaL_addstring(buf, "---@class Osi\n");
-    luaL_addstring(buf, "---@field [string] fun(...): any Osiris function call\n");
+    luaL_addstring(buf, "---@field [string] (fun(...): any)|OsiFunction Osiris function call\n");
     luaL_addstring(buf, "Osi = {}\n\n");
 
     // Mods global

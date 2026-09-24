@@ -238,7 +238,8 @@ int lua_ext_io_loadfile(lua_State *L) {
 
 int lua_ext_io_savefile(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
-    const char *content = luaL_checkstring(L, 2);
+    size_t len = 0;
+    const char *content = luaL_checklstring(L, 2, &len);
     LOG_LUA_INFO("Ext.IO.SaveFile('%s')", path);
 
     // Windows BG3SE writes to <UserProfile>/Script Extender/<path> (PathRootType
@@ -260,7 +261,36 @@ int lua_ext_io_savefile(lua_State *L) {
         return 1;
     }
 
-    fwrite(content, 1, strlen(content), f);
+    fwrite(content, 1, len, f);
+    fclose(f);
+
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int lua_ext_io_appendfile(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    size_t len = 0;
+    const char *content = luaL_checklstring(L, 2, &len);
+    LOG_LUA_INFO("Ext.IO.AppendFile('%s')", path);
+
+    if (!io_path_is_contained(path)) {
+        LOG_LUA_INFO("Ext.IO.AppendFile: rejecting path outside SE data dir: '%s'", path);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    char full[MAX_PATH_LEN];
+    snprintf(full, sizeof(full), "%s/%s", io_se_data_base(), path);
+    io_mkdir_parents(full);
+
+    FILE *f = fopen(full, "a");
+    if (!f) {
+        LOG_LUA_INFO("Ext.IO.AppendFile: could not open '%s' for appending", full);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    fwrite(content, 1, len, f);
     fclose(f);
 
     lua_pushboolean(L, 1);
@@ -546,6 +576,8 @@ void lua_ext_register_io(lua_State *L, int ext_table_index) {
     lua_setfield(L, -2, "LoadFile");
     lua_pushcfunction(L, lua_ext_io_savefile);
     lua_setfield(L, -2, "SaveFile");
+    lua_pushcfunction(L, lua_ext_io_appendfile);
+    lua_setfield(L, -2, "AppendFile");
     lua_pushcfunction(L, lua_ext_io_addpathoverride);
     lua_setfield(L, -2, "AddPathOverride");
     lua_pushcfunction(L, lua_ext_io_getpathoverride);
@@ -2010,6 +2042,9 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(1, 'IO.SaveFile', function()\n"
         "  AssertType(Ext.IO.SaveFile, 'function', 'IO.SaveFile')\n"
         "end)\n"
+        "BG3SE_AddTest(1, 'IO.AppendFile', function()\n"
+        "  AssertType(Ext.IO.AppendFile, 'function', 'IO.AppendFile')\n"
+        "end)\n"
         "BG3SE_AddTest(1, 'IO.AddPathOverride', function()\n"
         "  AssertType(Ext.IO.AddPathOverride, 'function', 'IO.AddPathOverride')\n"
         "end)\n"
@@ -2062,6 +2097,54 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(1, 'Osi.IndexReturnsFunction', function()\n"
         "  local fn = Osi.GetHostCharacter\n"
         "  AssertType(fn, 'function', 'Osi.__index result')\n"
+        "end)\n";
+
+    // Tier 1: Osiris Proxy Reflection (Exists, Type, Arities, InputArities, __tostring, property error)
+    static const char *console_cmd_test_osireflect =
+        "BG3SE_AddTest(1, 'Osi.FunctionProxy.Reflection', function()\n"
+        "  local fn = Osi.GetHostCharacter\n"
+        "  AssertType(fn.Exists, 'function', 'GetHostCharacter.Exists')\n"
+        "  AssertType(fn.Type, 'function', 'GetHostCharacter.Type')\n"
+        "  AssertType(fn.Arities, 'table', 'GetHostCharacter.Arities')\n"
+        "  AssertType(fn.InputArities, 'table', 'GetHostCharacter.InputArities')\n"
+        "  AssertEquals(tostring(fn), 'OsiFunction(GetHostCharacter)', 'tostring Osi function')\n"
+        "  assert(fn:Exists(0), 'GetHostCharacter:Exists(0)')\n"
+        "  AssertEquals(fn:Type(0), 'Query', 'GetHostCharacter:Type(0)')\n"
+        "  AssertEquals(fn.Arities[1], 1, 'GetHostCharacter total arity')\n"
+        "  AssertEquals(fn.InputArities[1], 0, 'GetHostCharacter input arity')\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Osi.FunctionProxy.InvalidProperty', function()\n"
+        "  local fn = Osi.GetHostCharacter\n"
+        "  local ok, err = pcall(function() return fn.NonExistentProperty end)\n"
+        "  assert(not ok, 'Accessing invalid property on Osi function should error')\n"
+        "  assert(string.find(tostring(err), 'Not a valid OsiFunction method or property: NonExistentProperty') ~= nil, 'Error message match: ' .. tostring(err))\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Osi.DBProxy.Reflection', function()\n"
+        "  local db = Osi.DB_Players\n"
+        "  AssertType(db, 'table', 'Osi.DB_Players')\n"
+        "  AssertType(db.Exists, 'function', 'DB_Players.Exists')\n"
+        "  AssertType(db.Type, 'function', 'DB_Players.Type')\n"
+        "  AssertType(db.Arities, 'table', 'DB_Players.Arities')\n"
+        "  AssertType(db.InputArities, 'table', 'DB_Players.InputArities')\n"
+        "  AssertEquals(tostring(db), 'OsiFunction(DB_Players)', 'tostring Osi DB')\n"
+        "  assert(db:Exists(1), 'DB_Players:Exists(1)')\n"
+        "  AssertEquals(db:Type(1), 'DB', 'DB_Players:Type(1)')\n"
+        "  AssertEquals(db.Arities[1], 1, 'DB_Players arity')\n"
+        "  AssertEquals(db.InputArities[1], 1, 'DB_Players input arity')\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Osi.DBProxy.InvalidProperty', function()\n"
+        "  local db = Osi.DB_Players\n"
+        "  local ok, err = pcall(function() return db.NonExistentProperty end)\n"
+        "  assert(not ok, 'Accessing invalid property on Osi DB should error')\n"
+        "  assert(string.find(tostring(err), 'Not a valid OsiFunction method or property: NonExistentProperty') ~= nil, 'Error message match: ' .. tostring(err))\n"
+        "end)\n"
+        "BG3SE_AddTest(1, 'Osi.RegularFunction.Preserved', function()\n"
+        "  local plainFn = function() return 42 end\n"
+        "  AssertType(plainFn, 'function', 'plain function type')\n"
+        "  local ok, err = pcall(function() return plainFn.Exists end)\n"
+        "  assert(not ok, 'plain function index should error')\n"
+        "  assert(string.find(tostring(err), 'attempt to index a function value') ~= nil, 'error match: ' .. tostring(err))\n"
+        "  assert(string.find(tostring(plainFn), '^function: 0x') ~= nil, 'plain function tostring preserved')\n"
         "end)\n";
 
     // Tier 1: MCM Compatibility (10 tests — targets Issue #68)
@@ -3436,7 +3519,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         console_cmd_test_wave3_stats,
         console_cmd_test_timer,
         console_cmd_test_events, console_cmd_test_debug, console_cmd_test_types,
-        console_cmd_test_misc, console_cmd_test_mcm, console_cmd_test_register,
+        console_cmd_test_misc, console_cmd_test_osireflect, console_cmd_test_mcm, console_cmd_test_register,
         // In-game tests
         console_cmd_test_ingame, console_cmd_test_ingame2,
         console_cmd_test_osiris, console_cmd_test_osiris_edge,

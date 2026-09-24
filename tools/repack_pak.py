@@ -43,16 +43,19 @@ def repack(src, dst, drop_predicate):
             out.write(struct.pack('<I', len(new_comp)))
             out.write(new_comp)
             file_list_size = 8 + len(new_comp)
-            # write header
-            out.seek(0)
-            h = bytearray(40)
-            h[0:4]=b'LSPK'
-            struct.pack_into('<I',h,4,18)
+            # Write the header by PATCHING the original, not rebuilding it.
+            #
+            # This used to synthesise a fresh header with flags/priority/md5
+            # zeroed. Pak priority drives load-order precedence: a mod built
+            # with priority 25 silently became priority 0, which reorders how it
+            # layers against every other installed pak. That produced a
+            # "Something went wrong!" dialog on startup with nothing in any log,
+            # and cost an evening. Only the fields that genuinely changed --
+            # file-list offset and size -- may be touched.
+            h = bytearray(hdr)
             struct.pack_into('<Q',h,8,new_flo)
             struct.pack_into('<I',h,16,file_list_size)
-            h[20]=0; h[21]=0  # flags, priority
-            # md5 stays zero (22:38)
-            struct.pack_into('<H',h,38,1)  # num_parts
+            out.seek(0)
             out.write(h)
     return len(kept), dropped
 

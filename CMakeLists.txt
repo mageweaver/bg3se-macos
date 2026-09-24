@@ -170,6 +170,7 @@ add_library(bg3se SHARED
     src/osiris/pattern_scan.c
     src/osiris/osiris_functions.c
     src/osiris/custom_functions.c
+    src/osiris/osi_save_guard.c
     src/pak/pak_reader.c
     src/entity/entity_system.c
     src/entity/entity_lifecycle.c

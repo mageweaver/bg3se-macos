@@ -4,6 +4,84 @@ All notable changes to BG3SE-macOS are documented here.
 
 ## Unreleased
 
+## v0.48.0 - 2026-09-24
+
+- **`ServerItem.Template` and `ServerItem.OriginalTemplate` were missing entirely,
+  so `Template` read nil for every item.** Armory's `LevelGameplayStarted` handler
+  indexes `item.ServerItem.Template.Id`, so it failed **92,152 times in one
+  11-hour session** -- bursts of ~400/s, 32,103 in a single minute -- each paying
+  for a Lua call, an error, and a full stack traceback. That was **79% of all log
+  volume** (351,708 lines / 37 MB); every other mod combined contributed 27
+  failures. The mod's feature had also silently never worked.
+
+  `Template` @ 0x48, `OriginalTemplate` @ 0x50. Derived from upstream's `Item.h`
+  field order and bracketed by offsets already verified live on this build:
+  `ItemType`@0x34, then `Array<UserId>` (16 bytes on ARM64) lands Template at
+  0x48 and walks on to `StatusManager`@0x70, `Stats`@0x9c, `Amount`@0xa8 and size
+  0xb0 -- all of which already matched.
+
+  Worth repeating the method: census the log's repeated message shapes before
+  theorising about mod count. Normalising timestamps, GUIDs and numbers and then
+  `sort | uniq -c | sort -rn` named the culprit in one command.
+
+- **An invalid GUIDSTRING in an Osiris database no longer takes the session
+  down.** A non-GUID in a GUID column is fatal three times over, each from a
+  different assert and none able to name what stored it: `writeGuidString`
+  aborts the save ("Attempting to write an invalid GUIDSTRING"),
+  `readGuidString` aborts the next load ("Reading invalid GUIDString"), and the
+  story merge aborts in `CReteDBase::find` -> `_TupleRefs` ("Value is not
+  valid!"). Diagnosed on a 729-mod order where four rows held `S_Player_Jin` --
+  a companion's template name with its UUID missing.
+
+  `src/osiris/osi_save_guard.c` NOPs the assert *call* in each of
+  `writeGuidString` and `readGuidString` -- one instruction each, nothing
+  reimplemented. That is faithful, not a workaround: the validation result
+  reaches the reporter only as its condition, the block holding the call is
+  entered by the valid path too (past the `mov w8, #0` only the short-string
+  fall-through uses), and everything after it still runs, including the result
+  each function had already committed to. The offending value is logged instead,
+  with the database that holds it.
+
+  The story-patch path is repaired rather than silenced: `_RunPatchFile` drops
+  statements the parser cannot type, driven by the values the engine itself
+  rejected during the preceding load, so enum constants -- also bare identifiers
+  in that file -- are never touched.
+
+  Install timing is the trap: this must go in `fake_Load` before `orig_Load`,
+  because `COsiris::Load` reads every database long before session init runs.
+
+- **New: `CReteDBase::insert` refuses a row whose GUIDSTRING column is not a
+  GUID.** The single chokepoint every row passes through -- story rules,
+  engine-raised events and the Lua bridge alike -- so a bad value stopped here
+  never reaches a save. Refusal is expressed in the engine's own vocabulary:
+  `insert` returns 1 when it stored the tuple and 0 when it declined a
+  duplicate, and on the declining path `_insert` is never called, so the tuple is
+  still owned by the caller. Returning 0 is exactly that contract -- no leak, no
+  double free, and `CReteStartNode::Add` already skips `ForwardAddToken`.
+  `BG3SE_NO_GUID_INSERT_GUARD=1` disables it.
+
+  Neither this port nor upstream validated GUIDSTRING input before now
+  (upstream's `TypedValue::SetValue` just interns the string), so this is a
+  shared gap rather than a macOS divergence.
+
+- **New: `Ext.IO.AppendFile(path, content)`**, plus Osi function overload
+  introspection -- `Exists(arity)`, `Type(arity)`, `Arities`, `InputArities` --
+  and IDE helper entries for all of them.
+
+- **`tools/extract_pak.py` now decompresses zstd (compression type 3)**, which is
+  what savegames use for `StorySave.bin` and `Globals.lsf`. Its old fallback
+  wrote the still-compressed bytes to a file named like the real thing, so a scan
+  of an extracted save silently found nothing -- 63 saves all reported clean.
+  Unsupported methods now raise instead of writing undecoded bytes under the real
+  name.
+
+- **`scripts/bg3w.sh` sets extender variables itself.** macOS Steam runs the
+  first token of the launch options as the executable, so a `VAR=value
+  %command%` prefix fails with "Failed to start process for this game" (os error
+  260) and the wrapper is never invoked. Launch options must be exactly
+  `/path/to/scripts/bg3w.sh %command%`. The guard install lines moved from INFO
+  to WARN so a WARN-level log still shows whether they installed.
+
 - **Raised the per-event handler cap from 256 to 2048.** An 828-mod load order
   overflowed `Tick` **438 times in one session** -- MCM and DivineCurse each hit
   it repeatedly -- and every overflow is a handler that silently never runs.

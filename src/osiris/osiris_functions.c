@@ -1045,6 +1045,15 @@ int osi_db_entry(int i, const char **outName, void **outDef) {
     return 1;
 }
 
+int osi_db_entry_info(int i, const char **outName, uint8_t *outArity, uint8_t *outInArgs, void **outDef) {
+    if (i < 0 || i >= g_dbRegCount) return 0;
+    if (outName) *outName = g_dbReg[i].name;
+    if (outArity) *outArity = g_dbReg[i].arity;
+    if (outInArgs) *outInArgs = g_dbReg[i].inArgs;
+    if (outDef) *outDef = g_dbReg[i].def;
+    return 1;
+}
+
 /* Walk the Osiris name index (CSearchIndex<COsiFunctionData*, COsiString, 1023>)
  * that lives at the start of COsiFunctionMan and cache every function BY NAME.
  *

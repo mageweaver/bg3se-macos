@@ -111,6 +111,7 @@ const char *osi_db_lookup_name_ci(const char *name);
 
 /** Iterate the name -> def registry. Returns 0 past the end. */
 int osi_db_entry(int i, const char **outName, void **outDef);
+int osi_db_entry_info(int i, const char **outName, uint8_t *outArity, uint8_t *outInArgs, void **outDef);
 
 /**
  * Database registry (databases have OsiFunctionId==0 and cannot be id-cached).

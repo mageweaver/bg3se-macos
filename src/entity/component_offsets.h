@@ -5782,6 +5782,21 @@ static const ComponentPropertyDef g_esv_Item_Properties[] = {
     { "MyHandle", 0x20, FIELD_TYPE_ENTITY_HANDLE, 0, true },
     { "Level", 0x30, FIELD_TYPE_FIXEDSTRING, 0, true },
     { "ItemType", 0x34, FIELD_TYPE_FIXEDSTRING, 0, true },
+    /* Template/OriginalTemplate were simply absent, so ServerItem.Template read
+     * nil for every item -- Armory's LevelGameplayStarted handler indexes
+     * item.ServerItem.Template.Id and died on it 92,152 times in one 11-hour
+     * session, ~400/s in bursts, each failure paying for a Lua call, an error and
+     * a full stack traceback. A missing property, not a wrong offset.
+     *
+     * 0x48 comes from upstream's field order (Item.h) and is bracketed by
+     * offsets verified live on this build: ItemType@0x34, then Array<UserId>
+     * (16 bytes on ARM64) lands Template at 0x48 and walks on to
+     * StatusManager@0x70, Stats@0x9c, Amount@0xa8 and size 0xb0 -- all of which
+     * already matched. Still worth confirming live that Template.Id equals
+     * GameObjectVisual.RootTemplateId, the same check that pinned
+     * esv::Character.Template@0xc8. */
+    { "Template", 0x48, FIELD_TYPE_TEMPLATE_PTR, 0, true },
+    { "OriginalTemplate", 0x50, FIELD_TYPE_TEMPLATE_PTR, 0, true },
     { "StatusManager", 0x70, FIELD_TYPE_STRUCT_PTR, 0, true,
       .structLayout = &g_esv_StatusMachine_Layout },
     { "Stats", 0x9c, FIELD_TYPE_FIXEDSTRING, 0, true },
