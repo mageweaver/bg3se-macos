@@ -118,6 +118,7 @@ extern "C" {
 #include "global_switches.h"
 #include "video_skip.h"
 #include "vt_unload_guard.h"
+#include "subclass_guard.h"
 #include "../render/shader_clone_shim.h"
 #include "../render/pipeline_probe.h"
 #include "../render/pipeline_wait_guard.h"
@@ -7527,6 +7528,16 @@ init_subsystems:
                         vt_unload_guard_init(binary_base);
                     } else {
                         LOG_CORE_INFO("VtUnloadGuard SKIPPED (BG3SE_NO_HOOKS: installs code patch)");
+                    }
+
+                    // Engine bugfix: null-ClassDescription deref at +320/+460 in
+                    // eoc::character_creation::GetAvailableSubClassesForLevelUp
+                    // (crashes when recruiting origins like Lae'zel on the Nautiloid
+                    // or when mods introduce dynamic/orphan subclasses).
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_SUBCLASS_GUARD")) {
+                        subclass_guard_init(binary_base);
+                    } else {
+                        LOG_CORE_INFO("SubclassGuard SKIPPED (BG3SE_NO_HOOKS / BG3SE_NO_SUBCLASS_GUARD)");
                     }
 
                     // Clone-named shader lookups (modded hair/head packs)
