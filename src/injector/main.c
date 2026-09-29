@@ -3361,8 +3361,8 @@ static int osi_story_insert(lua_State *L, const char *name, void *def, int first
                              "port; the call did not reach Osiris", name);
     }
     if (defType != OSI_FUNC_DATABASE && defType != OSI_FUNC_PROC) {
-        return luaL_error(L, "Osi.%s: story function type %u takes no tuple insert; "
-                             "the call did not reach Osiris", name, (unsigned)defType);
+        return luaL_error(L, "Osi.%s: story function type %d takes no tuple insert; "
+                             "the call did not reach Osiris", name, (int)defType);
     }
 
     void *node = NULL, *db = NULL;
@@ -4169,6 +4169,30 @@ static int osi_dynamic_call(lua_State *L) {
                              "loading", funcName);
     }
 
+    /* SysCount(db, arity) is an Osiris built-in system query: it has no
+     * OsiFunctionId, and its story def carries no dispatch handle
+     * (!osi_info: "/3 handle=0x00000000 type=SysQuery"), so there is nothing to
+     * call. It only counts a database's rows, which DB_<name>:Get answers.
+     * Who Runs the World gates its pod on SysCount("DB_Players", 1). */
+    if (strcmp(funcName, "SysCount") == 0 && lua_gettop(L) == 2 &&
+        lua_type(L, 1) == LUA_TSTRING && lua_isinteger(L, 2)) {
+        static const char *kSysCount =
+            "local name, arity = ...\n"
+            "local db = Osi[name]\n"
+            "if db == nil then return 0 end\n"
+            "local ok, rows = pcall(function()\n"
+            "  local a = {}\n"
+            "  return db:Get(table.unpack(a, 1, arity))\n"
+            "end)\n"
+            "if not ok or type(rows) ~= 'table' then return 0 end\n"
+            "return #rows\n";
+        if (luaL_loadstring(L, kSysCount) != LUA_OK) return lua_error(L);
+        lua_pushvalue(L, 1);
+        lua_pushvalue(L, 2);
+        lua_call(L, 2, 1);
+        return 1;
+    }
+
     // Check for custom function first
     CustomFunction *customFunc = custom_func_get_by_name(funcName);
     if (customFunc) {
@@ -4282,9 +4306,39 @@ static int osi_dynamic_call(lua_State *L) {
          * what upstream's OsiInsert does for Database/Proc/Event alike. The
          * overload is the one taking exactly this many arguments. */
         void *def = osi_db_lookup_args_or_discover(funcName, lua_gettop(L));
+        uint8_t defType = 0;
+        uint32_t defHandle = 0;
         if (def) {
+            safe_memory_read_u8((mach_vm_address_t)def + 0x24, &defType);
+            defHandle = osi_func_handle_from_def(def);
+        }
+        /* An engine query or call the id cache never enumerated (SysCount is
+         * one: "Cache refresh ... 1301 -> 1301" and still a miss) resolves here
+         * to its story def, which carries the engine handle. Dispatch it as the
+         * query/call it is. Inserting a tuple into its node is what upstream
+         * never does and what the engine rejects (2026-09-29: Who Runs the
+         * World's Osi.SysCount("DB_Players", 1) failed on every pod use). */
+        if (def && defHandle != 0 &&
+            (defType == OSI_FUNC_QUERY || defType == OSI_FUNC_SYSQUERY ||
+             defType == OSI_FUNC_CALL || defType == OSI_FUNC_SYSCALL)) {
+            funcId = defHandle;
+            funcType = defType;
+            numOverloads = 1;
+            pcount = osi_read_param_defs(funcId, pdefs, 20);
+            if (pcount >= 0) {
+                int inputs = 0;
+                for (int i = 0; i < pcount; i++) {
+                    if (pdefs[i].direction == 1) inputs++;
+                }
+                exact = (inputs == numArgs);
+            }
+            LOG_OSIRIS_DEBUG("Osi.%s: resolved via story def to engine handle 0x%08x (%s)",
+                             funcName, funcId, osi_func_type_str(funcType));
+        } else if (def) {
             return osi_story_insert(L, funcName, def, 1);
         }
+    }
+    if (funcId == INVALID_FUNCTION_ID) {
 
         /* Do NOT return nil here. Silently yielding nil makes a call that never
          * reached Osiris indistinguishable from one that succeeded: a mod team

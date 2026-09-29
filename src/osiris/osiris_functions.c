@@ -706,7 +706,7 @@ void osi_func_enumerate(void) {
 static int g_handleVerified = 0;   /* round-tripped through the manager */
 static int g_handleRejected = 0;   /* computed but did not round-trip   */
 
-static uint32_t osi_func_handle_from_def(void *funcDef) {
+uint32_t osi_func_handle_from_def(void *funcDef) {
     uint8_t type = 0;
     if (!safe_memory_read_u8((mach_vm_address_t)funcDef + 0x24, &type)) return 0;
     if (type < OSI_FUNC_EVENT || type > OSI_FUNC_USERQUERY) return 0;

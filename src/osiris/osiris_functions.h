@@ -249,4 +249,8 @@ int osi_func_get_seen_count(void);
 }
 #endif
 
+
+/** Engine dispatch handle stored in an Osiris function def (0 if none). */
+uint32_t osi_func_handle_from_def(void *funcDef);
+
 #endif // BG3SE_OSIRIS_FUNCTIONS_H
