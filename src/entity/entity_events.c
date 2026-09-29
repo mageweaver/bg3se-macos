@@ -672,9 +672,12 @@ static void call_lua_handler(lua_State *L, ComponentHook *hook,
     // (CombatExtender, Undead Thralls Fix).
     lua_entity_push_handle(L, (EntityHandle)entity_handle);
 
+    // Upstream's ExtComponentType is the short Lua name ("CCState"), not the
+    // C++ class; GetComponent below still takes the class name.
     const ComponentInfo *info = component_registry_lookup_by_index(type_index);
     if (info) {
-        lua_pushstring(L, info->name);
+        const char *lua_name = component_class_to_upstream_name(info->name);
+        lua_pushstring(L, lua_name ? lua_name : info->name);
     } else {
         lua_pushinteger(L, type_index);
     }
@@ -687,8 +690,8 @@ static void call_lua_handler(lua_State *L, ComponentHook *hook,
         lua_getfield(L, -2, "GetComponent");
         if (lua_isfunction(L, -1)) {
             lua_pushvalue(L, -3);  // entity
-            lua_pushvalue(L, -3);  // component type name
-            if (lua_pcall(L, 2, 1, 0) == LUA_OK) {
+            lua_pushstring(L, info->name);  // class name GetComponent resolves
+            if (lua_pcall(L, 2, 1, 0) == LUA_OK && !lua_isnil(L, -1)) {
                 pushed_component = true;
             } else {
                 lua_pop(L, 1);
@@ -697,7 +700,20 @@ static void call_lua_handler(lua_State *L, ComponentHook *hook,
             lua_pop(L, 1);
         }
     }
-    if (!pushed_component) lua_pushnil(L);
+    if (!pushed_component) {
+        // Events are deferred to the tick (the signal fires on a worker
+        // thread), but upstream's default Subscribe runs inline while the
+        // component exists. A short-lived entity -- CC dummies, visual copies
+        // -- is gone by the tick, and handlers then indexed a dead entity
+        // ("attempt to index a nil value (field 'Uuid')" from AEE and
+        // CustomCompanions, ~100 per session). Upstream never shows a handler
+        // that state, so a create whose component no longer exists is dropped.
+        if (event & ENTITY_EVENT_CREATE) {
+            lua_pop(L, 3);  // callback, entity, type name
+            return;
+        }
+        lua_pushnil(L);
+    }
 
     // Call with 3 arguments, 0 results
     if (lua_pcall(L, 3, 0, 0) != LUA_OK) {
