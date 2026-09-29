@@ -216,6 +216,7 @@ add_library(bg3se SHARED
     src/game/vt_unload_guard.c
     src/game/subclass_guard.h
     src/game/subclass_guard.c
+    src/game/modsettings_probe.c
     src/render/shader_clone_shim.c
     src/render/pipeline_probe.c
     src/render/pipeline_wait_guard.c
@@ -228,6 +229,7 @@ add_library(bg3se SHARED
     src/overlay/overlay.m
     src/vars/user_variables.c
     src/vars/campaign_key.c
+    src/vars/save_snapshot.c
     src/osiris/osi_call_guard.cpp
     src/lifetime/lifetime.c
     src/localization/localization.c

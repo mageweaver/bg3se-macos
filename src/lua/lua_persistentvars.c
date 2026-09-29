@@ -48,7 +48,7 @@ static uint64_t s_lastSaveTime = 0;
  * its interval unconditionally and this cache does the deduplication instead:
  * a mod whose serialized vars are byte-identical to what is already on disk is
  * not rewritten. */
-#define PERSIST_MAX_MODS 256
+#define PERSIST_MAX_MODS 1024
 
 typedef struct {
     char modtable[128];

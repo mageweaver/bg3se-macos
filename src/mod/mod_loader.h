@@ -25,7 +25,7 @@ extern "C" {
 // mod past the 128th, and any SE mod among them never bootstrapped.
 // The five parallel arrays cost ~0.9 MB at 1024, which is nothing next to
 // what a profile this size loads anyway.
-#define MAX_MODS 1024
+#define MAX_MODS 4096
 #define MAX_MOD_NAME_LEN 256
 #define MAX_PATH_LEN 1024
 

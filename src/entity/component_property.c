@@ -33,6 +33,7 @@
 #include "entity_system.h"  // lua_entity_push_handle / lua_entity_to_handle
 #include "../template/template_layouts.h"
 #include "../lua/lua_resource_object.h"
+#include "../localization/localization.h"
 
 #include <limits.h>
 #include <math.h>
@@ -1884,6 +1885,28 @@ static int component_proxy_custom_newindex(lua_State *L,
     return 1;
 }
 
+/* ts:Get() on a TranslatedString embedded in a component (DisplayName.Name,
+ * ...). Upstream's TranslatedString has this method; the resource-object proxy
+ * here already did (lua_resource_object.c), but entity components go through
+ * this generic proxy, so `character.DisplayName.Name:Get()` raised "attempt to
+ * call a nil value (method 'Get')" -- Armory's Transmogger hit it every few
+ * seconds. The handle's FixedString is the first field. */
+static int component_translated_string_get(lua_State *L) {
+    ComponentProxy *proxy = (ComponentProxy *)luaL_checkudata(L, 1, COMPONENT_PROXY_METATABLE);
+    if (!lifetime_lua_is_valid(L, proxy->lifetime)) {
+        return lifetime_lua_expired_error(L, "Component");
+    }
+    uint32_t index = 0;
+    const char *text = NULL;
+    if (safe_memory_read_u32((mach_vm_address_t)proxy->componentPtr, &index)) {
+        const char *handle = fixed_string_resolve(index);
+        if (handle) text = localization_get(handle, NULL);
+    }
+    if (text) lua_pushstring(L, text);
+    else lua_pushnil(L);
+    return 1;
+}
+
 static int component_proxy_index(lua_State *L) {
     ComponentProxy *proxy = (ComponentProxy *)luaL_checkudata(L, 1, COMPONENT_PROXY_METATABLE);
     if (!lifetime_lua_is_valid(L, proxy->lifetime)) {
@@ -1915,6 +1938,12 @@ static int component_proxy_index(lua_State *L) {
         L, proxy->layout->componentName, key);
     if (result > 0) {
         return result;
+    }
+
+    if (strcmp(key, "Get") == 0 &&
+        strcmp(proxy->layout->componentName, "TranslatedString") == 0) {
+        lua_pushcfunction(L, component_translated_string_get);
+        return 1;
     }
 
     // Property not found

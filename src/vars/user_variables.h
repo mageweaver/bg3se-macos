@@ -29,7 +29,7 @@
 // wave, and uvar_get_or_create then returns NULL to whichever mods come last -
 // their Ext.Vars registration fails and their init aborts. Sized to match
 // MAX_MODS in mod_loader.h; ModVariables is ~96 bytes, so ~0.1 MB.
-#define UVAR_MAX_MODS 1024
+#define UVAR_MAX_MODS 4096
 #define UVAR_GUID_LENGTH 64
 
 // ============================================================================

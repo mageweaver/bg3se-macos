@@ -1293,10 +1293,38 @@ void entity_on_session_loaded(void) {
 // ============================================================================
 
 // Ext.Entity.Get(guid) -> entity userdata or nil
+/* Report a failed Ext.Entity.Get once per distinct identifier.
+ *
+ * Both failure paths below return nil, and from Lua they are indistinguishable:
+ * `Ext.Entity.Get(x).Origin` raises "attempt to index a nil value" either way,
+ * naming neither the identifier nor the reason. CustomCompanions' own
+ * CharacterJoinedParty handler dies on exactly that (AT78_CC_Main.lua:1364,
+ * which already guards `.Origin == nil`, so it expected an entity back), and
+ * because that handler aborts on its first line nothing it would do for the
+ * joining character runs -- the visible symptom being a companion that will not
+ * recruit. Deduplicated because these calls sit in loops.
+ */
+static void entity_get_failed(const char *guid, const char *why) {
+    enum { MAX_REPORTED = 16 };
+    static char reported[MAX_REPORTED][128];
+    static unsigned count = 0;
+    if (!guid) return;
+    for (unsigned i = 0; i < count; i++) {
+        if (strncmp(reported[i], guid, sizeof(reported[0]) - 1) == 0) return;
+    }
+    if (count < MAX_REPORTED) {
+        snprintf(reported[count], sizeof(reported[0]), "%s", guid);
+        count++;
+    }
+    LOG_ENTITY_WARN("Ext.Entity.Get(\"%s\") returned nil: %s. A mod indexing the "
+                    "result will fail with \"attempt to index a nil value\".", guid, why);
+}
+
 static int lua_entity_get(lua_State *L) {
     const char *guid = luaL_checkstring(L, 1);
 
     if (!entity_system_ready()) {
+        entity_get_failed(guid, "the entity system is not ready yet");
         lua_pushnil(L);
         lua_pushstring(L, "Entity system not ready - wait for combat");
         return 2;
@@ -1305,6 +1333,7 @@ static int lua_entity_get(lua_State *L) {
     EntityHandle handle = entity_get_by_guid(guid);
 
     if (!entity_is_valid(handle)) {
+        entity_get_failed(guid, "no live entity has that UUID");
         lua_pushnil(L);
         return 1;
     }
@@ -2027,6 +2056,34 @@ static void push_transform_component(lua_State *L, void *component) {
     lua_pushnumber(L, transform->scale[2]);
     lua_setfield(L, -2, "z");
     lua_setfield(L, -2, "Scale");
+
+    // Upstream's shape: TransformComponent { Transform Transform; } with
+    // Transform { quat RotationQuat; vec3 Translate; vec3 Scale; }, each pushed
+    // as a 1-based array ({x, y, z[, w]}, LuaPush.inl). Mods index
+    // entity.Transform.Transform.Translate[1]; without this CombatExtender's
+    // GetNearbyCharacters died with "attempt to index a nil value (field
+    // 'Transform')". The flat Position/Rotation/Scale above stay for callers
+    // already written against this port.
+    lua_newtable(L);
+    lua_createtable(L, 4, 0);
+    for (int i = 0; i < 4; i++) {
+        lua_pushnumber(L, transform->rotation[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "RotationQuat");
+    lua_createtable(L, 3, 0);
+    for (int i = 0; i < 3; i++) {
+        lua_pushnumber(L, transform->position[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "Translate");
+    lua_createtable(L, 3, 0);
+    for (int i = 0; i < 3; i++) {
+        lua_pushnumber(L, transform->scale[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "Scale");
+    lua_setfield(L, -2, "Transform");
 }
 
 // Entity:GetComponent(name) method

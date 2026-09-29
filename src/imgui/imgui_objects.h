@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 // Configuration
-#define MAX_IMGUI_OBJECTS 4096
+#define MAX_IMGUI_OBJECTS 32768
 #define MAX_IMGUI_CHILDREN 256
 #define IMGUI_LABEL_MAX 256
 #define IMGUI_INVALID_HANDLE 0

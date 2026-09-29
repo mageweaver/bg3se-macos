@@ -394,7 +394,13 @@ ImguiHandle imgui_object_create(ImguiObjectType type, const char* label) {
 
     if (g_pool.free_count == 0) {
         pthread_mutex_unlock(&g_pool_mutex);
-        LOG_IMGUI_ERROR("Object pool exhausted (max %d)", MAX_IMGUI_OBJECTS);
+        static struct timespec last_exhausted_log = {0};
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec - last_exhausted_log.tv_sec >= 5) {
+            last_exhausted_log = now;
+            LOG_IMGUI_ERROR("Object pool exhausted (max %d)", MAX_IMGUI_OBJECTS);
+        }
         return IMGUI_INVALID_HANDLE;
     }
 

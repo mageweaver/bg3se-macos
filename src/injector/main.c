@@ -108,6 +108,7 @@ extern "C" {
 // User Variables (entity.Vars)
 #include "user_variables.h"
 #include "campaign_key.h"
+#include "save_snapshot.h"
 
 // Event system
 #include "lua_events.h"
@@ -119,6 +120,7 @@ extern "C" {
 #include "video_skip.h"
 #include "vt_unload_guard.h"
 #include "subclass_guard.h"
+#include "modsettings_probe.h"
 #include "../render/shader_clone_shim.h"
 #include "../render/pipeline_probe.h"
 #include "../render/pipeline_wait_guard.h"
@@ -2118,8 +2120,20 @@ static void osi_node_hook_common(void *node, void *paramList, bool deleting) {
 
     if (name) osi_node_fire(name, paramList, deleting ? "beforeDelete" : "before");
 
+    /* The original can throw (a tuple the engine rejects). This frame is C and
+     * sits between the engine and whatever C++ handler is above it, so the
+     * exception cannot pass through: it ends in std::terminate (2026-09-28
+     * SIGABRT, osi_node_hook_common -> std::terminate). Catch it here instead;
+     * the tuple is simply not added, as the engine intended. */
     OsiNodeTupleFn orig = osi_node_orig(node, deleting);
-    if (orig) orig(node, paramList);
+    if (orig) {
+        char err[160];
+        if (!osi_guarded_node_call((void (*)(void *, void *))orig, node, paramList,
+                                   err, sizeof(err))) {
+            LOG_OSIRIS_WARN("Osiris node %s for %s threw and was contained: %s",
+                            deleting ? "Del" : "Add", name ? name : "(unhooked node)", err);
+        }
+    }
 
     if (name) osi_node_fire(name, paramList, deleting ? "afterDelete" : "after");
 }
@@ -3333,6 +3347,22 @@ static int osi_story_insert(lua_State *L, const char *name, void *def, int first
         return luaL_error(L, "Osi.%s: story inserts are disabled by "
                              "BG3SE_NO_STORY_INSERT; the call did not reach Osiris",
                           name);
+    }
+
+    /* Only databases and PROCs take tuples. Anything else -- a user query
+     * (QRY_*) above all -- makes the engine throw from the node's Add, and
+     * that is fatal (2026-09-28: Osi.QRY_CrimeItemHasNPCOwner, type 8, went
+     * down this path and aborted the game). The DATABASE-typed user-query
+     * check below never saw it, because the def type is USERQUERY. */
+    uint8_t defType = 0;
+    safe_memory_read_u8((mach_vm_address_t)def + 0x24, &defType);
+    if (defType == OSI_FUNC_USERQUERY) {
+        return luaL_error(L, "Osi.%s: user queries are not supported yet on this "
+                             "port; the call did not reach Osiris", name);
+    }
+    if (defType != OSI_FUNC_DATABASE && defType != OSI_FUNC_PROC) {
+        return luaL_error(L, "Osi.%s: story function type %u takes no tuple insert; "
+                             "the call did not reach Osiris", name, (unsigned)defType);
     }
 
     void *node = NULL, *db = NULL;
@@ -5713,8 +5743,13 @@ static SessionInitState s_session_init_state = SESSION_INIT_IDLE;
  *
  * The outgoing campaign is flushed BEFORE the key changes, so its pending
  * writes land in its own file and not the incoming one. */
-static void vars_update_campaign(lua_State *L) {
-    if (!L) return;
+/* Non-zero while the campaign key could not be resolved at session init and
+ * server_frame_tick is retrying; counts attempts. */
+static int s_campaign_probe_attempts = 0;
+#define CAMPAIGN_PROBE_MAX_ATTEMPTS 90      /* ~3 minutes at one try per 2 s */
+
+static bool vars_update_campaign(lua_State *L) {
+    if (!L) return false;
 
     static const char *kFindAvatar =
         "local ok, rows = pcall(function() return Osi.DB_Avatars:Get(nil) end)\n"
@@ -5732,12 +5767,12 @@ static void vars_update_campaign(lua_State *L) {
     if (luaL_loadstring(L, kFindAvatar) != LUA_OK) {
         LOG_LUA_ERROR("Campaign key probe failed to compile: %s", lua_tostring(L, -1));
         lua_settop(L, top);
-        return;
+        return false;
     }
     if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
         LOG_LUA_DEBUG("Campaign key probe failed: %s", lua_tostring(L, -1));
         lua_settop(L, top);
-        return;
+        return false;
     }
     if (lua_type(L, -1) == LUA_TSTRING) {
         const char *s = lua_tostring(L, -1);
@@ -5748,21 +5783,35 @@ static void vars_update_campaign(lua_State *L) {
     }
     lua_settop(L, top);
 
+    if (candidate[0] == '\0' &&
+        save_snapshot_pending_campaign(candidate, sizeof(candidate))) {
+        LOG_LUA_INFO("Campaign key taken from the loaded save's snapshot "
+                     "(DB_Avatars not readable yet): %s", candidate);
+    }
+
     if (candidate[0] == '\0') {
         // No avatar yet (main menu, or the story has not populated DB_Avatars).
         // Leave whatever campaign is current rather than guessing.
         LOG_LUA_DEBUG("No avatar available; keeping current campaign key");
-        return;
+        return false;
     }
 
     uvar_save_all(L);
     mvar_save_all(L);
     persist_save_all(L);
 
-    if (campaign_key_set(candidate)) {
+    // Loading an earlier save of the same campaign leaves the key unchanged, so
+    // without the snapshot (vars/save_snapshot.h) the stores would carry the
+    // abandoned timeline's state forward.
+    bool changed = campaign_key_set(candidate);
+    // campaign_key_set normalises "Template_<uuid>" to the bare UUID; compare
+    // the snapshot against that, not the raw probe result.
+    bool restored = save_snapshot_apply_pending(campaign_key_get());
+    if (changed || restored) {
         vars_on_campaign_changed(L);
         persist_on_campaign_changed(L);
     }
+    return true;
 }
 
 static void request_deferred_session_init(void) {
@@ -5861,7 +5910,15 @@ static bool deferred_session_init_tick(void) {
         // playthrough's state. Must happen before mod Lua runs in step 5, so
         // handlers see their own campaign's values.
         t0 = t1;
-        vars_update_campaign(L);
+        // DB_Avatars can read empty here -- observed on the second load of a
+        // session (2026-09-28), where the probe found no avatar, no key was
+        // set, and the whole session ran on the legacy store with no save
+        // snapshot applied. server_frame_tick retries until it resolves.
+        s_campaign_probe_attempts = vars_update_campaign(L) ? 0 : 1;
+        if (s_campaign_probe_attempts) {
+            LOG_GAME_INFO("  campaign key not resolvable yet (DB_Avatars empty); "
+                          "retrying from the server tick");
+        }
         t1 = (uint64_t)timer_get_monotonic_ms();
         LOG_GAME_INFO("  vars_update_campaign: %llums", (unsigned long long)(t1 - t0));
     } else {
@@ -6062,7 +6119,11 @@ static uint64_t fake_InitGame(void *thisPtr) {
 typedef const char *(*OsiGetStrFn)(void *stringTable, uint64_t handle);
 
 static OsiGetStrFn s_osi_getstr = NULL;
-static void *s_osi_stringtable = NULL;
+/* Address of libOsiris's _OsiStringTable global, NOT the table it points to:
+ * the engine rebuilds the table when a story is reloaded, and a pointer cached
+ * at install went stale on the second load of a session (2026-09-28 SIGSEGV in
+ * COsiStringTable::GetStr+12 -- [table] was 0x6600033). Read it per call. */
+static void *volatile *s_osi_stringtable_slot = NULL;
 static OsiDBaseInsertFn s_orig_insert = NULL;
 static unsigned s_insert_refusals = 0;
 
@@ -6085,7 +6146,8 @@ static uint64_t hooked_dbase_insert(void *db, void *tuplePtr) {
     OsiCTuple *t = (OsiCTuple *)tuplePtr;
     /* Arity is small for every real database; an implausible size means this is
      * not the shape assumed here, so leave the row alone rather than walk it. */
-    if (t && t->values && t->size > 0 && t->size <= 64 && s_osi_getstr && s_osi_stringtable) {
+    void *stringtable = s_osi_stringtable_slot ? *s_osi_stringtable_slot : NULL;
+    if (t && t->values && t->size > 0 && t->size <= 64 && s_osi_getstr && stringtable) {
         for (uint64_t i = 0; i < t->size; i++) {
             const uint8_t *slot = (const uint8_t *)t->values + (size_t)i * 0x10;
             uint16_t typeId;
@@ -6094,7 +6156,7 @@ static uint64_t hooked_dbase_insert(void *db, void *tuplePtr) {
 
             uint64_t handle;
             memcpy(&handle, slot, sizeof(handle));
-            const char *s = s_osi_getstr(s_osi_stringtable, handle);
+            const char *s = s_osi_getstr(stringtable, handle);
             /* An unset column reads as "" and is not this bug; only a value the
              * engine would later refuse to serialise is rejected. */
             if (!s || !*s || osi_guid_string_valid(s)) continue;
@@ -6134,17 +6196,18 @@ static void osi_insert_guard_install(void) {
     void *insertFn = dlsym(h, "_ZN10CReteDBase6insertEO6CTuple");
     s_osi_getstr = (OsiGetStrFn)dlsym(h, "_ZN15COsiStringTable6GetStrE16COsiStringHandle");
 
-    /* Same global osi_resolve_string_handle reads the table from. Resolved once:
-     * calling GetStr needs the table as `this`. */
+    /* Same global osi_resolve_string_handle reads the table from. Only the
+     * global's address is kept; the table itself is re-read on every insert. */
     uintptr_t base = (uintptr_t)g_pOsiFunctionMan - 0x9f348;
-    if (!safe_memory_read_pointer((mach_vm_address_t)(base + 0x96cb8), &s_osi_stringtable)) {
-        s_osi_stringtable = NULL;
+    void *tableNow = NULL;
+    if (safe_memory_read_pointer((mach_vm_address_t)(base + 0x96cb8), &tableNow) && tableNow) {
+        s_osi_stringtable_slot = (void *volatile *)(base + 0x96cb8);
     }
 
-    if (!insertFn || !s_osi_getstr || !s_osi_stringtable) {
+    if (!insertFn || !s_osi_getstr || !s_osi_stringtable_slot) {
         LOG_OSIRIS_WARN("Osiris insert guard unavailable (insert=%p GetStr=%p table=%p); "
                         "a non-GUID GUIDSTRING can still be stored",
-                        insertFn, (void *)s_osi_getstr, s_osi_stringtable);
+                        insertFn, (void *)s_osi_getstr, tableNow);
         return;
     }
     if (DobbyHook(insertFn, (void *)hooked_dbase_insert, (void **)&s_orig_insert) != 0) {
@@ -6170,13 +6233,16 @@ static int fake_Load(void *thisPtr, void *smartBuf) {
      * compiled story. Idempotent; libOsiris is necessarily loaded by now. */
     osi_save_guard_install();
     osi_insert_guard_install();
+    save_snapshot_install();
 
     // Call original and preserve return value.
     // The gate is deliberately NOT held across orig_Load — only the Lua
     // sections before/after are serialized (see lua_gate.h).
     int result = 0;
     if (orig_Load) {
+        save_snapshot_story_load_begin(smartBuf);
         result = ((int (*)(void*, void*))orig_Load)(thisPtr, smartBuf);
+        save_snapshot_story_load_end(smartBuf, result);
     }
 
     LOG_OSIRIS_DEBUG(">>> COsiris::Load returned: %d", result);
@@ -6667,6 +6733,25 @@ static void server_frame_tick(lua_State *L) {
     timer_update_persistent(L);  // Process persistent timer callbacks
     persist_tick(L);  // Check for dirty PersistentVars to auto-save
 
+    if (s_campaign_probe_attempts > 0) {
+        static uint64_t last_probe_ms = 0;
+        uint64_t now_ms = (uint64_t)timer_get_monotonic_ms();
+        if (now_ms - last_probe_ms >= 2000) {
+            last_probe_ms = now_ms;
+            if (vars_update_campaign(L)) {
+                LOG_GAME_INFO("Campaign key resolved on retry %d: %s",
+                              s_campaign_probe_attempts, campaign_key_get());
+                s_campaign_probe_attempts = 0;
+            } else if (++s_campaign_probe_attempts > CAMPAIGN_PROBE_MAX_ATTEMPTS) {
+                LOG_GAME_WARN("Campaign key still unresolved after %d tries; mod "
+                              "variables stay on the %s store for this session",
+                              CAMPAIGN_PROBE_MAX_ATTEMPTS,
+                              campaign_key_known() ? "previous campaign's" : "legacy");
+                s_campaign_probe_attempts = 0;
+            }
+        }
+    }
+
     // Fire Tick event with delta time
     double now = timer_get_monotonic_ms();
     if (g_last_tick_time_ms == 0) {
@@ -6828,6 +6913,10 @@ static bool gs_listener_on_changed(void *self, const GameStateChangedEvent *ev) 
             (ev->to == SERVER_STATE_SAVE || ev->to == SERVER_STATE_UNLOAD_LEVEL ||
              ev->to == SERVER_STATE_UNLOAD_SESSION)) {
             persist_flush(L);
+            // COsiris::Save snapshots these files for the savegame
+            // (vars/save_snapshot.h), so they must be current too.
+            uvar_save_all(L);
+            mvar_save_all(L);
         }
         if (ev->to == SERVER_STATE_UNLOAD_SESSION) persist_session_reset();
         game_state_on_engine_transition(L, (ServerGameState)ev->from,
@@ -7536,6 +7625,7 @@ init_subsystems:
                     // or when mods introduce dynamic/orphan subclasses).
                     if (!no_hooks && !hook_group_disabled("BG3SE_NO_SUBCLASS_GUARD")) {
                         subclass_guard_init(binary_base);
+                        modsettings_probe_init(binary_base);
                     } else {
                         LOG_CORE_INFO("SubclassGuard SKIPPED (BG3SE_NO_HOOKS / BG3SE_NO_SUBCLASS_GUARD)");
                     }

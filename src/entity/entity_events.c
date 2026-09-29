@@ -664,10 +664,14 @@ static void call_lua_handler(lua_State *L, ComponentHook *hook,
         return;
     }
 
-    // Push arguments: entity (as integer handle), component_type (as string), event_name
-    lua_pushinteger(L, (lua_Integer)entity_handle);
+    // Arguments match upstream's Component event dispatch
+    // (EntityComponentEvents.inl: entity, ExtComponentType, RawComponentRef).
+    // This passed the raw integer handle and an event-name string, so every
+    // handler written against upstream -- `function(entity) entity.Uuid ...` --
+    // died with "attempt to index a number value (local 'entity')"
+    // (CombatExtender, Undead Thralls Fix).
+    lua_entity_push_handle(L, (EntityHandle)entity_handle);
 
-    // Look up component name
     const ComponentInfo *info = component_registry_lookup_by_index(type_index);
     if (info) {
         lua_pushstring(L, info->name);
@@ -675,12 +679,25 @@ static void call_lua_handler(lua_State *L, ComponentHook *hook,
         lua_pushinteger(L, type_index);
     }
 
-    // Push event type string
-    if (event & ENTITY_EVENT_CREATE) {
-        lua_pushstring(L, "Create");
-    } else {
-        lua_pushstring(L, "Destroy");
+    // Component: resolved now through entity:GetComponent, since events are
+    // deferred to the tick and the pointer seen at signal time may be stale.
+    // A destroyed component has nothing to hand over.
+    bool pushed_component = false;
+    if (info && (event & ENTITY_EVENT_CREATE) && lua_isuserdata(L, -2)) {
+        lua_getfield(L, -2, "GetComponent");
+        if (lua_isfunction(L, -1)) {
+            lua_pushvalue(L, -3);  // entity
+            lua_pushvalue(L, -3);  // component type name
+            if (lua_pcall(L, 2, 1, 0) == LUA_OK) {
+                pushed_component = true;
+            } else {
+                lua_pop(L, 1);
+            }
+        } else {
+            lua_pop(L, 1);
+        }
     }
+    if (!pushed_component) lua_pushnil(L);
 
     // Call with 3 arguments, 0 results
     if (lua_pcall(L, 3, 0, 0) != LUA_OK) {

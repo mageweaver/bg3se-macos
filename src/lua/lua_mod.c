@@ -25,7 +25,7 @@
 // setup_mod_namespace publish Mods.<x> with no ModuleUUID field, and MCM's
 // __newindex on the global Mods table reads exactly that. Sized to match
 // MAX_MODS in mod_loader.h; the entry is ~608 bytes, so ~0.6 MB.
-#define MAX_MOD_UUIDS 1024
+#define MAX_MOD_UUIDS 4096
 #define UUID_LEN 64
 
 typedef struct {

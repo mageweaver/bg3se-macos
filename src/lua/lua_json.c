@@ -10,16 +10,72 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 // ============================================================================
 // Internal Helpers
 // ============================================================================
 
+/* Whitespace, plus // line and /* block *\/ comments.
+ *
+ * Upstream parses with rapidjson under
+ *   #define RAPIDJSON_PARSE_DEFAULT_FLAGS kParseCommentsFlag | kParseTrailingCommasFlag | kParseNanAndInfFlag
+ * (CoreLib/JsonLibs.h:3), so every mod config that relies on those parses on
+ * Windows. This parser accepted none of them and returned nil instead: AV Item
+ * Shipment Framework rejected "All Dyes in the Camp Chest" and "Camp Clothes in
+ * the Camp Chest" as "Invalid ISF config JSON" purely over a trailing
+ * `// UUID for the Dye Rack.` comment, so their items never reached the camp
+ * chest (2026-09-27). Comments, trailing commas and NaN/Inf now match upstream. */
 static const char *json_skip_whitespace(const char *json) {
-    while (*json && (*json == ' ' || *json == '\t' || *json == '\n' || *json == '\r')) {
-        json++;
+    for (;;) {
+        while (*json && (*json == ' ' || *json == '\t' || *json == '\n' || *json == '\r')) {
+            json++;
+        }
+        if (json[0] == '/' && json[1] == '/') {
+            json += 2;
+            while (*json && *json != '\n') json++;
+            continue;
+        }
+        if (json[0] == '/' && json[1] == '*') {
+            json += 2;
+            while (*json && !(json[0] == '*' && json[1] == '/')) json++;
+            if (*json) json += 2;
+            continue;
+        }
+        return json;
     }
-    return json;
+}
+
+static int json_hex4(const char *h, unsigned *out) {
+    unsigned v = 0;
+    for (int i = 0; i < 4; i++) {
+        char c = h[i];
+        v <<= 4;
+        if (c >= '0' && c <= '9') v |= (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
+        else return 0;
+    }
+    *out = v;
+    return 1;
+}
+
+static void json_add_utf8(luaL_Buffer *b, unsigned cp) {
+    if (cp < 0x80) {
+        luaL_addchar(b, (char)cp);
+    } else if (cp < 0x800) {
+        luaL_addchar(b, (char)(0xC0 | (cp >> 6)));
+        luaL_addchar(b, (char)(0x80 | (cp & 0x3F)));
+    } else if (cp < 0x10000) {
+        luaL_addchar(b, (char)(0xE0 | (cp >> 12)));
+        luaL_addchar(b, (char)(0x80 | ((cp >> 6) & 0x3F)));
+        luaL_addchar(b, (char)(0x80 | (cp & 0x3F)));
+    } else {
+        luaL_addchar(b, (char)(0xF0 | (cp >> 18)));
+        luaL_addchar(b, (char)(0x80 | ((cp >> 12) & 0x3F)));
+        luaL_addchar(b, (char)(0x80 | ((cp >> 6) & 0x3F)));
+        luaL_addchar(b, (char)(0x80 | (cp & 0x3F)));
+    }
 }
 
 static const char *json_parse_string(lua_State *L, const char *json) {
@@ -41,6 +97,23 @@ static const char *json_parse_string(lua_State *L, const char *json) {
                 case 'n': luaL_addchar(&b, '\n'); break;
                 case 'r': luaL_addchar(&b, '\r'); break;
                 case 't': luaL_addchar(&b, '\t'); break;
+                case 'u': {
+                    /* \uXXXX, including a surrogate pair, decoded to UTF-8 as
+                     * rapidjson does. It used to fall to the default case and
+                     * yield a literal 'u' followed by the hex digits. */
+                    unsigned cp;
+                    if (!json_hex4(json + 1, &cp)) return NULL;
+                    json += 4;
+                    if (cp >= 0xD800 && cp <= 0xDBFF && json[1] == '\\' && json[2] == 'u') {
+                        unsigned lo;
+                        if (json_hex4(json + 3, &lo) && lo >= 0xDC00 && lo <= 0xDFFF) {
+                            cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                            json += 6;
+                        }
+                    }
+                    json_add_utf8(&b, cp);
+                    break;
+                }
                 default: luaL_addchar(&b, *json); break;
             }
         } else {
@@ -68,7 +141,18 @@ static const char *json_parse_number(lua_State *L, const char *json) {
         while (*json >= '0' && *json <= '9') json++;
     }
 
+    /* Integers stay integers, as upstream does (rapidjson IsInt64 -> push
+     * int64). Pushing every number as a double turned `"FileVersion": 1` into
+     * 1.0 -- equal under ==, but different under tostring() and as a table key. */
+    int is_int = 1;
+    for (const char *c = start; c < json; c++) {
+        if (*c == '.' || *c == 'e' || *c == 'E') { is_int = 0; break; }
+    }
     char *endptr;
+    if (is_int) {
+        long long iv = strtoll(start, &endptr, 10);
+        if (endptr == json) { lua_pushinteger(L, (lua_Integer)iv); return json; }
+    }
     double num = strtod(start, &endptr);
     lua_pushnumber(L, num);
     return json;
@@ -104,7 +188,8 @@ static const char *json_parse_object(lua_State *L, const char *json) {
         json = json_skip_whitespace(json);
         if (*json == '}') return json + 1;
         if (*json != ',') return NULL;
-        json++;
+        json = json_skip_whitespace(json + 1);
+        if (*json == '}') return json + 1;   /* trailing comma, as upstream allows */
     }
 }
 
@@ -127,7 +212,8 @@ static const char *json_parse_array(lua_State *L, const char *json) {
         json = json_skip_whitespace(json);
         if (*json == ']') return json + 1;
         if (*json != ',') return NULL;
-        json++;
+        json = json_skip_whitespace(json + 1);
+        if (*json == ']') return json + 1;   /* trailing comma, as upstream allows */
     }
 }
 
@@ -153,6 +239,17 @@ const char *json_parse_value(lua_State *L, const char *json) {
     } else if (*json == 'n' && strncmp(json, "null", 4) == 0) {
         lua_pushnil(L);
         return json + 4;
+    } else if (strncmp(json, "NaN", 3) == 0) {
+        lua_pushnumber(L, (lua_Number)NAN);
+        return json + 3;
+    } else if (strncmp(json, "Infinity", 8) == 0 || strncmp(json, "-Infinity", 9) == 0) {
+        int neg = (*json == '-');
+        lua_pushnumber(L, neg ? -(lua_Number)INFINITY : (lua_Number)INFINITY);
+        return json + (neg ? 9 : 8);
+    } else if (strncmp(json, "Inf", 3) == 0 || strncmp(json, "-Inf", 4) == 0) {
+        int neg = (*json == '-');
+        lua_pushnumber(L, neg ? -(lua_Number)INFINITY : (lua_Number)INFINITY);
+        return json + (neg ? 4 : 3);
     } else if (*json == '-' || (*json >= '0' && *json <= '9')) {
         return json_parse_number(L, json);
     }

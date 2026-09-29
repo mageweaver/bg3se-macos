@@ -27,6 +27,11 @@
 
 #include "subclass_guard.h"
 #include "../core/logging.h"
+/* Log GUIDs in Larian's byte order. Printing the raw words instead gives a
+ * string that matches nothing in any mod's files, which makes the one thing
+ * these warnings exist for -- tracing the bad GUID back to the mod that
+ * references it -- impossible. See guid_format.h. */
+#include "../core/guid_format.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -56,6 +61,12 @@ typedef void (*GetAvailableSubClassesForLevelUpFn)(
     const NativeSpan *levelUps,
     const void *env
 );
+
+/* Ceiling on how many subclasses one progression row can list and still be
+ * pruned-then-restored from a stack copy. Real tables hold a handful; the
+ * largest observed on a 122-mod class load order is 14 (Fighter). 64 leaves
+ * generous headroom at 1 KB of stack. */
+#define K_MAX_SUBCLASSES 64
 
 static GetAvailableSubClassesForLevelUpFn s_orig_GetAvailableSubClasses = NULL;
 static void *s_binary_base = NULL;
@@ -112,9 +123,11 @@ static void hooked_GetAvailableSubClassesForLevelUp(
     // Guard Site 1: Check if classGuid is registered in ClassDescriptions.
     void *classDesc = getObjectByKey(classDescs, classGuid);
     if (!classDesc) {
-        LOG_CORE_WARN("[SubclassGuard] Class GUID %016llx%016llx not found in ClassDescriptions; "
-                      "returning empty subclasses list (prevented engine crash at +320)",
-                      (unsigned long long)classGuid->b, (unsigned long long)classGuid->a);
+        char gs[GUID_STRING_SIZE];
+        guid_bytes_to_string((const uint8_t *)classGuid, gs, sizeof(gs));
+        LOG_CORE_WARN("[SubclassGuard] Class GUID %s not found in ClassDescriptions; "
+                      "returning empty subclasses list (prevented engine crash at +320). "
+                      "Grep the mods for that GUID to find what references it.", gs);
         result->data = NULL;
         result->capacity = 0;
         result->size = 0;
@@ -141,13 +154,31 @@ static void hooked_GetAvailableSubClassesForLevelUp(
             isMulticlass = (memcmp(begin, classGuid, sizeof(NativeGuid)) != 0);
         }
 
+        /* Deliberately unvalidated, unlike the hook target: this address is only
+         * ever reached when the prologue check below matched, so a build that
+         * moved either function installs no hook at all and never gets here. */
         typedef void *(*GetProgressionFn)(void *this_ptr, uint64_t uuid_a, uint64_t uuid_b, int level, bool isMulticlass);
         GetProgressionFn getProg = (GetProgressionFn)((uintptr_t)s_binary_base + 0x1c2b54c);
         void *prog = getProg(progMgr, tableUuid->a, tableUuid->b, targetLevel, isMulticlass);
         if (prog) {
             int32_t count = *(int32_t *)((const char *)prog + 0x44);
             NativeGuid *subclasses = *(NativeGuid **)((const char *)prog + 0x38);
-            if (count > 0 && subclasses) {
+            if (count > 0 && count <= K_MAX_SUBCLASSES && subclasses) {
+                /* The prune below edits the engine's own loaded Progression, which
+                 * is shared: every character and every later level-up sees it. So
+                 * the original contents are saved and put back once the original
+                 * has read them.
+                 *
+                 * Without the restore this is a one-way door. GetObjectByKey only
+                 * has to fail once -- called a moment too early, before the class
+                 * banks are fully populated, which is exactly the timing bug that
+                 * bit the GUIDSTRING guard -- and a legitimate subclass is gone
+                 * from the level-up list for the rest of the session, with the
+                 * player given no reason. Restoring keeps the crash protection and
+                 * leaves data we do not own untouched. */
+                NativeGuid saved[K_MAX_SUBCLASSES];
+                memcpy(saved, subclasses, (size_t)count * sizeof(NativeGuid));
+
                 int32_t valid = 0;
                 for (int32_t i = 0; i < count; i++) {
                     if (getObjectByKey(classDescs, &subclasses[i]) != NULL) {
@@ -156,13 +187,31 @@ static void hooked_GetAvailableSubClassesForLevelUp(
                         }
                         valid++;
                     } else {
-                        LOG_CORE_WARN("[SubclassGuard] Subclass GUID %016llx%016llx not in ClassDescriptions; "
-                                      "pruned from progression table %016llx%016llx (prevented engine crash at +460)",
-                                      (unsigned long long)subclasses[i].b, (unsigned long long)subclasses[i].a,
-                                      (unsigned long long)tableUuid->b, (unsigned long long)tableUuid->a);
+                        char sub[GUID_STRING_SIZE], tab[GUID_STRING_SIZE];
+                        guid_bytes_to_string((const uint8_t *)&subclasses[i], sub, sizeof(sub));
+                        guid_bytes_to_string((const uint8_t *)tableUuid, tab, sizeof(tab));
+                        LOG_CORE_WARN("[SubclassGuard] Subclass GUID %s not in ClassDescriptions; "
+                                      "pruned from progression table %s for this call "
+                                      "(prevented engine crash at +460)", sub, tab);
                     }
                 }
                 *(int32_t *)((char *)prog + 0x44) = valid;
+
+                s_orig_GetAvailableSubClasses(result, classGuid, levelUps, env);
+
+                /* Put the table back exactly as it was, pruned entries included. */
+                memcpy(subclasses, saved, (size_t)count * sizeof(NativeGuid));
+                *(int32_t *)((char *)prog + 0x44) = count;
+                return;
+            }
+            if (count > K_MAX_SUBCLASSES) {
+                /* Too many to save on the stack. Pruning without being able to
+                 * restore is not worth a permanent edit, so leave it alone and let
+                 * the engine decide -- site 1 is still guarded above. */
+                LOG_CORE_WARN("[SubclassGuard] progression table %016llx%016llx lists %d subclasses "
+                              "(> %d); left unpruned so it is not permanently modified",
+                              (unsigned long long)tableUuid->b, (unsigned long long)tableUuid->a,
+                              (int)count, (int)K_MAX_SUBCLASSES);
             }
         }
     }
