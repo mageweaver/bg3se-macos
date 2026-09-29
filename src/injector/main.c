@@ -5805,18 +5805,21 @@ static int s_campaign_probe_attempts = 0;
 static bool vars_update_campaign(lua_State *L) {
     if (!L) return false;
 
+    /* Every avatar, newline-separated, in DB order. A campaign can hold more
+     * than one: Who Runs the World adds each pod-made character to DB_Avatars.
+     * Taking the smallest UUID then switched stores mid-playthrough
+     * (2026-09-29: c208906c -> 1f2d032f after a pod character was made, and
+     * the session came up on an empty store). */
     static const char *kFindAvatar =
         "local ok, rows = pcall(function() return Osi.DB_Avatars:Get(nil) end)\n"
         "if not ok or type(rows) ~= 'table' or #rows == 0 then return nil end\n"
-        "local best\n"
-        "for _, r in ipairs(rows) do\n"
-        "  local u = tostring(r[1])\n"
-        "  if best == nil or u < best then best = u end\n"
-        "end\n"
-        "return best\n";
+        "local out = {}\n"
+        "for _, r in ipairs(rows) do out[#out + 1] = tostring(r[1]) end\n"
+        "return table.concat(out, '\\n')\n";
 
     int top = lua_gettop(L);
     char candidate[CAMPAIGN_KEY_MAX] = {0};
+    char avatars[CAMPAIGN_KEY_MAX * 32] = {0};
 
     if (luaL_loadstring(L, kFindAvatar) != LUA_OK) {
         LOG_LUA_ERROR("Campaign key probe failed to compile: %s", lua_tostring(L, -1));
@@ -5830,17 +5833,44 @@ static bool vars_update_campaign(lua_State *L) {
     }
     if (lua_type(L, -1) == LUA_TSTRING) {
         const char *s = lua_tostring(L, -1);
-        if (s) {
-            strncpy(candidate, s, sizeof(candidate) - 1);
-            candidate[sizeof(candidate) - 1] = '\0';
-        }
+        if (s) strncpy(avatars, s, sizeof(avatars) - 1);
     }
     lua_settop(L, top);
 
-    if (candidate[0] == '\0' &&
-        save_snapshot_pending_campaign(candidate, sizeof(candidate))) {
-        LOG_LUA_INFO("Campaign key taken from the loaded save's snapshot "
-                     "(DB_Avatars not readable yet): %s", candidate);
+    /* Which avatar is the campaign, in order of certainty:
+     *   1. the loaded save's snapshot says so (exact: keyed by its story);
+     *   2. the current key, if it is still one of the avatars;
+     *   3. the first avatar in DB order -- the original character, since
+     *      later ones (pod characters) are appended. */
+    char snapKey[CAMPAIGN_KEY_MAX] = {0};
+    bool haveSnap = save_snapshot_pending_campaign(snapKey, sizeof(snapKey));
+    const char *cur = campaign_key_get();
+    char first[CAMPAIGN_KEY_MAX] = {0};
+    bool snapIsAvatar = false, curIsAvatar = false;
+    for (char *line = avatars; line && *line; ) {
+        char *nl = strchr(line, '\n');
+        size_t len = nl ? (size_t)(nl - line) : strlen(line);
+        if (len > 0 && len < CAMPAIGN_KEY_MAX) {
+            char one[CAMPAIGN_KEY_MAX];
+            memcpy(one, line, len);
+            one[len] = '\0';
+            const char *uuid = len >= 36 ? one + len - 36 : one;  // "Template_<uuid>"
+            if (!first[0]) strncpy(first, one, sizeof(first) - 1);
+            if (haveSnap && strcmp(uuid, snapKey) == 0) snapIsAvatar = true;
+            if (cur && strcmp(uuid, cur) == 0) curIsAvatar = true;
+        }
+        line = nl ? nl + 1 : NULL;
+    }
+    if (haveSnap && (snapIsAvatar || !avatars[0])) {
+        strncpy(candidate, snapKey, sizeof(candidate) - 1);
+        if (!avatars[0]) {
+            LOG_LUA_INFO("Campaign key taken from the loaded save's snapshot "
+                         "(DB_Avatars not readable yet): %s", candidate);
+        }
+    } else if (curIsAvatar) {
+        strncpy(candidate, cur, sizeof(candidate) - 1);
+    } else if (first[0]) {
+        strncpy(candidate, first, sizeof(candidate) - 1);
     }
 
     if (candidate[0] == '\0') {
