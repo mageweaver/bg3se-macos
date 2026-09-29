@@ -4,6 +4,34 @@ All notable changes to BG3SE-macOS are documented here.
 
 ## Unreleased
 
+## v0.49.0 - 2026-09-28
+
+- **Mod state now follows the savegame you load.** ModVars, UserVars and
+  PersistentVars lived outside the save (per campaign), so loading an earlier
+  save kept the abandoned timeline's mod state: AV Item Shipment Framework
+  believed items were already delivered into a mailbox that no longer existed,
+  and TransmogEnhanced re-granted its control items on every load. Each save is
+  now identified by a hash of the Osiris story bytes (identical on save and
+  load), the stores are snapshotted to `savestate/<hash>/` on save and restored
+  before mod handlers run on load. Saves made before this version load as
+  before.
+- **Campaign detection on a second load.** DB_Avatars reads empty on the second
+  load of a session, leaving mod state on the legacy store. The key now comes
+  from the loaded save's snapshot, else is retried from the server tick.
+- **Crash: calling a user query (`Osi.QRY_*`).** It was inserted like a
+  database row; the engine's exception crossed a C hook into std::terminate.
+  Inserts are limited to DATABASE/PROC and node hooks contain engine exceptions.
+- **Crash after reloading in one session.** The GUIDSTRING insert guard cached
+  the Osiris string table, which a reload rebuilds (SIGSEGV in
+  `COsiStringTable::GetStr`). It now reads the table per call.
+- **Upstream parity:** `Ext.Entity.Subscribe` handlers receive
+  `(entity, typeName, component)`; `entity.Transform.Transform.{Translate,
+  RotationQuat, Scale}`; `TranslatedString:Get()` on entity components;
+  `Ext.Json` accepts comments, trailing commas, NaN/Infinity and `\u` escapes
+  and keeps integers integral (ISF configs failed to parse).
+- Load-order reset probe names the entry that makes the engine reset
+  `modsettings.lsx`; capacity limits raised for 1000+ mod profiles.
+
 ## v0.48.0 - 2026-09-24
 
 - **`ServerItem.Template` and `ServerItem.OriginalTemplate` were missing entirely,
