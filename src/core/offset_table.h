@@ -175,6 +175,20 @@ void offset_table_init(void);
 const VersionOffsets *offset_table_get(void);
 
 /**
+ * The game version the active row describes, with any "-<store>" suffix
+ * removed -- "4.1.1.7398727" for both the Steam and GOG rows of that version.
+ *
+ * Subsystem gates ask "were these addresses verified on this game build?", and
+ * the answer is a property of the game version, not the storefront: a GOG row
+ * is generated from the GOG binary by the same tooling that produces the Steam
+ * one. Comparing the raw key instead silently disables every gated subsystem on
+ * any non-Steam build.
+ *
+ * Returns NULL when no row is active.
+ */
+const char *offset_table_game_version(void);
+
+/**
  * Resolve a singleton offset to a runtime address.
  * Returns NULL if binary_base is unknown or the offset is 0.
  *

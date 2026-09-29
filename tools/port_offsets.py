@@ -15,6 +15,7 @@ Usage:
 See docs/PORTING.md.
 """
 import argparse, json, os, re, subprocess, sys, tempfile, plistlib
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -106,6 +107,9 @@ def resolve(manifest, symtab, thin, version):
     out = {
         "fn": {}, "data": {}, "game": {}, "source": {}, "struct": [],
         "data_shift": None, "data_shift_valid": False,
+        # Fields this tool provably cannot derive (anonymous slots with no
+        # symbol). Reported as carried rather than compared.
+        "underived": set(),
     }
 
     # 1. A scalar TypeId migration is valid only when every shared-entry
@@ -185,6 +189,10 @@ def resolve(manifest, symtab, thin, version):
             claimed = e.get("addresses", {}).get(version)
             out["data"][e["field"]] = int(claimed, 16) if claimed else 0
             if not claimed:
+                # Anonymous slot with no symbol: this tool cannot derive it, so
+                # it emits 0. Remember that, or `verify` would read the 0 as a
+                # contradiction of whatever the table legitimately holds.
+                out["underived"].add(e["field"])
                 issues.append(("WARN", f"offset_table.{e['field']}: EXPECTED-MANUAL — anonymous slot, "
                                        f"no {version} derivation. {e.get('note','')}"))
         else:
@@ -298,6 +306,83 @@ def parse_offset_table_c(version):
     }
     return fields, game
 
+# ----------------------------------------------------------------------------
+
+def do_record(manifest, manifest_path, symtab, version, overrides):
+    """Write this build's address claims into the manifest.
+
+    The manifest needs a per-version address for everything the audit checks by
+    name, plus the anonymous slots that have no symbol. Without a row for the
+    build you are on, test_offset_audit.py has nothing to check and errors out.
+
+    Entries with a `symbol` resolve from the binary. The anonymous slots come
+    from --set; derive them with scripts/re/migrate_anonymous_globals.py.
+    """
+    recorded, missing, ambiguous = 0, [], []
+
+    def claim(entry, label):
+        nonlocal recorded
+        symbol = entry.get("symbol")
+        if not symbol:
+            return False
+        addr, note = lookup(symtab, symbol)
+        if addr is None:
+            missing.append(f"{label}: {symbol}")
+            return False
+        if note:
+            ambiguous.append(f"{label}: {note}")
+        entry.setdefault("addresses", {})[version] = hex(addr)
+        recorded += 1
+        return True
+
+    for e in manifest.get("game_functions", []):
+        claim(e, e.get("id", e.get("name", "?")))
+    for e in manifest.get("source_addresses", []):
+        claim(e, e.get("name", "?"))
+    for e in manifest.get("typeid_shift_anchors", []):
+        claim(e, e.get("symbol", "?")[:60])
+
+    # Anonymous slots: no symbol exists, so a value must be handed in.
+    #
+    # These are stored as OFFSETS from the image base, matching every other
+    # data_singletons entry (the symbol and got paths both subtract
+    # GHIDRA_BASE). scripts/re/migrate_anonymous_globals.py, which is where the
+    # value comes from, prints full VAs -- so accept either and normalise.
+    # Anything at or above the image base is a VA; a real offset is far smaller.
+    needs_override = [e for e in manifest.get("data_singletons", [])
+                      if e.get("method") == "disasm"]
+    for e in needs_override:
+        field = e["field"]
+        if field in overrides:
+            value = int(overrides[field], 16)
+            if value >= GHIDRA_BASE:
+                value -= GHIDRA_BASE
+            e.setdefault("addresses", {})[version] = f"0x{value:08x}"
+            recorded += 1
+        else:
+            missing.append(
+                f"{field}: anonymous slot — no symbol. Derive it with "
+                f"scripts/re/migrate_anonymous_globals.py, then re-run with "
+                f"--set {field}=0x...")
+
+    unknown = set(overrides) - {e["field"] for e in needs_override}
+    if unknown:
+        sys.exit(f"error: --set names field(s) that are not anonymous slots: "
+                 f"{', '.join(sorted(unknown))}")
+
+    for label in ambiguous:
+        print(f"[WARN] {label}")
+    for label in missing:
+        print(f"[ERROR] no {version} claim recorded — {label}")
+    if missing:
+        print(f"\nrecorded nothing; fix the {len(missing)} problem(s) above first")
+        return 1
+
+    manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
+    print(f"recorded {recorded} address claims for {version} in {manifest_path}")
+    return 0
+
+
 def do_verify(out, version):
     fields, game = parse_offset_table_c(version)
     if not fields:
@@ -309,8 +394,17 @@ def do_verify(out, version):
         "component_data_shift": out["data_shift"] or 0,
         "component_data_shift_valid": out["data_shift_valid"],
     }
+    underived = out.get("underived", set())
+    carried = []
     for f, v in gen.items():
         cur = fields.get(f)
+        if f in underived:
+            # This tool emits 0 for anonymous slots it cannot derive. Comparing
+            # that 0 against the table would flag every correctly hand-derived
+            # value as a mismatch, and then a real regression would be
+            # indistinguishable from the usual noise. Report and move on.
+            carried.append((f, cur))
+            continue
         if cur is None:
             print(f"  MISSING in offset_table.c: .{f} (generated {hx(v)})"); mism += 1
         elif cur != v:
@@ -321,18 +415,28 @@ def do_verify(out, version):
                   f"table={game.get(function_id) and hex(game[function_id])} "
                   f"generated=0x{offset:x}")
             mism += 1
+    for f, cur in carried:
+        state = "set — derive independently to confirm" if cur else "ZERO — feature disabled"
+        print(f"  CARRIED .{f}: table={hx(cur) if cur else '0x00000000'} "
+              f"(not derivable by this tool; {state})")
     if mism == 0:
-        print(f"  ✓ all {len(gen)} fields + {len(out['game'])} game functions match offset_table.c")
+        checked = len(gen) - len(carried)
+        print(f"  ✓ all {checked} fields + {len(out['game'])} game functions match offset_table.c")
+        if carried:
+            print(f"    ({len(carried)} anonymous slot(s) carried, see above — "
+                  f"scripts/re/migrate_anonymous_globals.py derives those)")
     return mism
 
 # ----------------------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["resolve", "verify"])
+    ap.add_argument("cmd", choices=["resolve", "verify", "record"])
     ap.add_argument("--binary", default=DEFAULT_BINARY, help="path to the BG3 Mach-O binary")
     ap.add_argument("--version", help="override detected version label")
     ap.add_argument("--emit", action="store_true", help="(resolve) print copy-pasteable offset_table.c content")
+    ap.add_argument("--set", action="append", default=[], metavar="FIELD=0xVA",
+                    help="(record) supply an anonymous slot this tool cannot derive")
     args = ap.parse_args()
 
     if not os.path.exists(args.binary):
@@ -346,6 +450,18 @@ def main():
     thin = thin_arm64(args.binary)
     symtab = build_symbol_map(thin)
     print(f"  {len(symtab)} symbols\n")
+
+    if args.cmd == "record":
+        overrides = {}
+        for pair in args.set:
+            if "=" not in pair:
+                sys.exit(f"error: --set expects FIELD=0xVA, got '{pair}'")
+            field, _, va = pair.partition("=")
+            try:
+                overrides[field.strip()] = hex(int(va, 16))
+            except ValueError:
+                sys.exit(f"error: --set value for {field} is not hex: '{va}'")
+        sys.exit(do_record(manifest, Path(MANIFEST), symtab, version, overrides))
 
     out, issues = resolve(manifest, symtab, thin, version)
 

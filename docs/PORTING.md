@@ -1,5 +1,10 @@
 # Porting BG3SE-macOS to a new game version
 
+> Porting to the **GOG** build rather than a new version? See
+> [PORTING-GOG.md](PORTING-GOG.md). The mechanics below all apply, but the GOG
+> bundle hides the real binary behind a launcher stub and shares its version
+> string with Steam, both of which need handling.
+
 When Larian patches Baldur's Gate 3, the macOS Script Extender breaks because the
 game's functions and global variables move to new addresses. This guide + the
 `tools/port_offsets.py` tool turn that re-port from a multi-hour reverse‑engineering
@@ -34,7 +39,9 @@ python3 tools/port_offsets.py resolve --emit
 # 3. Paste the generated VersionOffsets entry into g_offset_table[]. Each row
 #    contains a GameFunctionId-indexed address array, so no schema change is
 #    needed when a fourth or later game version is added. Then:
-cd build && cmake --build .
+cmake -B build && cmake --build build
+#    (One build serves every store. Each store's tables in src/gen/<store>/
+#     are compiled in and selected at runtime from the loaded game.)
 
 # 4. Launch, load a save, and run the regression suite:
 #    !test        (in the SE console)  -> expect 109/109

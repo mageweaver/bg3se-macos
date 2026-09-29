@@ -47,13 +47,18 @@ from pathlib import Path
 
 import pytest
 
-from bg3se_harness.config import BG3_APP_BUNDLE, BG3_EXEC
+from bg3se_harness.config import (
+    BG3_APP_BUNDLE,
+    BG3_EXEC,
+    gen_path,
+    resolve_build_key,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OFFSET_TABLE_C = REPO_ROOT / "src/core/offset_table.c"
 OFFSET_TABLE_H = REPO_ROOT / "src/core/offset_table.h"
 OFFSET_MANIFEST = REPO_ROOT / "tools/offset_manifest.json"
-GENERATED_TYPEIDS_H = REPO_ROOT / "src/entity/generated_typeids.h"
+GENERATED_TYPEIDS_H = gen_path("generated_typeids.h")
 
 BASELINE_DIRECT_CHECKS = [
     ("ADDR_GETMESSAGE", "net::MessageFactory::GetFreeMessage(int)"),
@@ -152,13 +157,18 @@ SYSTEM_TYPEIDS = _parse_system_typeids() if GENERATED_TYPEIDS_H.exists() else []
 
 
 def _installed_version() -> str:
+    """The offset_table.c key for the installed build.
+
+    Not just CFBundleShortVersionString: a non-Steam build's row is keyed
+    "<version>-<store>", and auditing a GOG install against the Steam row would
+    flag every address as wrong.
+    """
     plist = BG3_APP_BUNDLE / "Contents/Info.plist"
     if not plist.exists():
         pytest.skip("BG3 Info.plist not installed")
-    with plist.open("rb") as stream:
-        version = plistlib.load(stream).get("CFBundleShortVersionString")
-    assert version, f"CFBundleShortVersionString missing from {plist}"
-    return version
+    key = resolve_build_key(BG3_APP_BUNDLE)
+    assert key, f"CFBundleShortVersionString missing from {plist}"
+    return key
 
 
 def _extract_table_block(version: str) -> str:

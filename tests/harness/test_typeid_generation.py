@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from bg3se_harness.config import gen_path
+
 from extract_typeids import (
     COMPONENT_CONTEXT,
     ONE_FRAME_CONTEXT,
@@ -172,9 +174,9 @@ def test_typeid_frozen_binary_migration_and_committed_outputs() -> None:
     assert expected_registry == generate_registration_code(
         surface, curated_only, one_frame, report, NEW_BUILD
     )
-    assert (ROOT / "src/entity/generated_typeids.h").read_text() == expected_header
+    assert gen_path("generated_typeids.h").read_text() == expected_header
     assert (
-        ROOT / "src/entity/generated_component_registry.c"
+        gen_path("generated_component_registry.c")
     ).read_text() == expected_registry
 
 
@@ -182,7 +184,7 @@ def test_typeid_owned_runtime_sources_do_not_consume_uniform_shift() -> None:
     sources = [
         ROOT / "src/entity/component_typeid.c",
         ROOT / "src/entity/component_typeid.h",
-        ROOT / "src/entity/generated_component_registry.c",
+        gen_path("generated_component_registry.c"),
         ROOT / "src/entity/replication_flags.c",
         ROOT / "src/entity/replication_flags.h",
     ]

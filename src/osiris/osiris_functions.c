@@ -984,6 +984,21 @@ void *osi_db_lookup_arity(const char *name, unsigned arity) {
     return (at == DBREG_EMPTY) ? NULL : g_dbReg[at].def;
 }
 
+void *osi_db_lookup_sole(const char *name, unsigned *out_arity) {
+    if (!name || !g_dbRegHashReady) return NULL;
+
+    void *sole = NULL;
+    unsigned arity = 0;
+    for (int i = 0; i < g_dbRegCount; i++) {
+        if (strcmp(g_dbReg[i].name, name) != 0) continue;
+        if (sole) return NULL;              /* more than one: ambiguous */
+        sole = g_dbReg[i].def;
+        arity = g_dbReg[i].arity;
+    }
+    if (sole && out_arity) *out_arity = arity;
+    return sole;
+}
+
 /* Overload whose input parameters number `nargs`. Databases and procs have no
  * out params, so the total arity is nargs; a query with k out params is the
  * nargs+k overload. Probe upward and accept the first whose inArgs match, so a

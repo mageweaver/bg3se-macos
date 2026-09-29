@@ -41,7 +41,8 @@
    "baseline": "0x1088ada58",
    "addresses": {
     "4.1.1.7209685": "0x1088ada58",
-    "4.1.1.7398727": "0x1088dd988"
+    "4.1.1.7398727": "0x1088dd988",
+    "4.1.1.7398727-gog": "0x1088d18f0"
    }
   },
   {
@@ -49,7 +50,8 @@
    "baseline": "0x1088a3590",
    "addresses": {
     "4.1.1.7209685": "0x1088a3590",
-    "4.1.1.7398727": "0x1088d3568"
+    "4.1.1.7398727": "0x1088d3568",
+    "4.1.1.7398727-gog": "0x1088c74d0"
    }
   },
   {
@@ -57,7 +59,8 @@
    "baseline": "0x1089450f8",
    "addresses": {
     "4.1.1.7209685": "0x1089450f8",
-    "4.1.1.7398727": "0x108975760"
+    "4.1.1.7398727": "0x108975760",
+    "4.1.1.7398727-gog": "0x1089696c8"
    }
   },
   {
@@ -65,7 +68,8 @@
    "baseline": "0x108943240",
    "addresses": {
     "4.1.1.7209685": "0x108943240",
-    "4.1.1.7398727": "0x1089734b8"
+    "4.1.1.7398727": "0x1089734b8",
+    "4.1.1.7398727-gog": "0x108967420"
    }
   },
   {
@@ -73,7 +77,8 @@
    "baseline": "0x108986c00",
    "addresses": {
     "4.1.1.7209685": "0x108986c00",
-    "4.1.1.7398727": "0x1089b7260"
+    "4.1.1.7398727": "0x1089b7260",
+    "4.1.1.7398727-gog": "0x1089af9e0"
    }
   },
   {
@@ -81,7 +86,8 @@
    "baseline": "0x10888f2e8",
    "addresses": {
     "4.1.1.7209685": "0x10888f2e8",
-    "4.1.1.7398727": "0x1088bf2f8"
+    "4.1.1.7398727": "0x1088bf2f8",
+    "4.1.1.7398727-gog": "0x1088b3260"
    }
   }
  ],
@@ -196,7 +202,8 @@
    "addresses": {
     "4.1.1.6995620": "0x1064b9ebc",
     "4.1.1.7209685": "0x1064a8a74",
-    "4.1.1.7398727": "0x1064d0cb4"
+    "4.1.1.7398727": "0x1064d0cb4",
+    "4.1.1.7398727-gog": "0x1064c7eb0"
    },
    "symbol": "ls::FixedString::Create(char const*, int)"
   },
@@ -206,7 +213,8 @@
    "addresses": {
     "4.1.1.6995620": "0x1060cc608",
     "4.1.1.7209685": "0x1060bc020",
-    "4.1.1.7398727": "0x1060e3cd0"
+    "4.1.1.7398727": "0x1060e3cd0",
+    "4.1.1.7398727-gog": "0x1060db578"
    },
    "symbol": "ls::ResourceContainer::GetResource(ls::EResourceType, ls::FixedString const&) const"
   },
@@ -216,7 +224,8 @@
    "addresses": {
     "4.1.1.6995620": "0x105783a38",
     "4.1.1.7209685": "0x10577399c",
-    "4.1.1.7398727": "0x10577e650"
+    "4.1.1.7398727": "0x10577e650",
+    "4.1.1.7398727-gog": "0x105776570"
    },
    "symbol": "ExecuteStatsFunctor(eoc::StatsFunctorBase const*, unsigned long, esv::functor::AttackTargetContextData&)"
   },
@@ -226,7 +235,8 @@
    "addresses": {
     "4.1.1.6995620": "0x105787918",
     "4.1.1.7209685": "0x10577787c",
-    "4.1.1.7398727": "0x105782530"
+    "4.1.1.7398727": "0x105782530",
+    "4.1.1.7398727-gog": "0x10577a450"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::AttackTargetContextData&)"
   },
@@ -236,7 +246,8 @@
    "addresses": {
     "4.1.1.6995620": "0x105787c6c",
     "4.1.1.7209685": "0x105777bd0",
-    "4.1.1.7398727": "0x105782884"
+    "4.1.1.7398727": "0x105782884",
+    "4.1.1.7398727-gog": "0x10577a7a4"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::AttackPositionContextData&)"
   },
@@ -246,7 +257,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10578975c",
     "4.1.1.7209685": "0x1057796c0",
-    "4.1.1.7398727": "0x105784374"
+    "4.1.1.7398727": "0x105784374",
+    "4.1.1.7398727-gog": "0x10577c294"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::MoveContextData&)"
   },
@@ -256,7 +268,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10578a918",
     "4.1.1.7209685": "0x10577a87c",
-    "4.1.1.7398727": "0x105785530"
+    "4.1.1.7398727": "0x105785530",
+    "4.1.1.7398727-gog": "0x10577d450"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::TargetContextData&)"
   },
@@ -266,7 +279,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10578e4d8",
     "4.1.1.7209685": "0x10577e43c",
-    "4.1.1.7398727": "0x1057890f0"
+    "4.1.1.7398727": "0x1057890f0",
+    "4.1.1.7398727-gog": "0x105781010"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::NearbyAttackedContextData&)"
   },
@@ -276,7 +290,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10578fba8",
     "4.1.1.7209685": "0x10577fb0c",
-    "4.1.1.7398727": "0x10578a7c0"
+    "4.1.1.7398727": "0x10578a7c0",
+    "4.1.1.7398727-gog": "0x1057826e0"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::NearbyAttackingContextData&)"
   },
@@ -286,7 +301,8 @@
    "addresses": {
     "4.1.1.6995620": "0x105790a28",
     "4.1.1.7209685": "0x10578098c",
-    "4.1.1.7398727": "0x10578b640"
+    "4.1.1.7398727": "0x10578b640",
+    "4.1.1.7398727-gog": "0x105783560"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::EquipContextData&)"
   },
@@ -296,7 +312,8 @@
    "addresses": {
     "4.1.1.6995620": "0x105792a90",
     "4.1.1.7209685": "0x1057829f4",
-    "4.1.1.7398727": "0x10578d6a8"
+    "4.1.1.7398727": "0x10578d6a8",
+    "4.1.1.7398727-gog": "0x1057855c8"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(eoc::StatsFunctorList const*, esv::functor::SourceContextData&)"
   },
@@ -306,7 +323,8 @@
    "addresses": {
     "4.1.1.6995620": "0x1057965e4",
     "4.1.1.7209685": "0x105786548",
-    "4.1.1.7398727": "0x1057911fc"
+    "4.1.1.7398727": "0x1057911fc",
+    "4.1.1.7398727-gog": "0x10578911c"
    },
    "symbol": "esv::functor::ExecuteStatsFunctors(ecs::EntityWorld&, eoc::StatsFunctorList const*, esv::functor::InterruptContextData&)",
    "_note": "7209685 has a leading ecs::EntityWorld&; functor_hooks.c has a dedicated three-parameter wrapper. Re-verify ABI before enabling any future version."
@@ -317,7 +335,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10538f374",
     "4.1.1.7209685": "0x10537e8b4",
-    "4.1.1.7398727": "0x105389568"
+    "4.1.1.7398727": "0x105389568",
+    "4.1.1.7398727-gog": "0x105381488"
    },
    "symbol": "(anonymous namespace)::ProcessDealDamageFunctors(ecs::WorldView<eoc::repose::StateComponent const, ls::PhysicsComponent const, ls::TransformComponent const, ls::uuid::Component const>&, eoc::StatsFunctorBase const&, ls::ID<ecs::EntityHandleTraits> const&, ls::Optional<Vector3f> const&, eoc::spell_cast::StateComponent const&, ls::EnumFlags<eoc::EDamageEffectFlag> const&, EAbility const&, ESpellAttackType const&, eoc::interrupt::Dependency const&, eoc::interrupt::Dependency const&, int, ls::DynamicArray<eoc::interrupt::InterruptEvent, ls::TaggedAllocator<int>>&)"
   },
@@ -327,7 +346,8 @@
    "addresses": {
     "4.1.1.6995620": "0x106534d54",
     "4.1.1.7209685": "0x10652390c",
-    "4.1.1.7398727": "0x10654bb4c"
+    "4.1.1.7398727": "0x10654bb4c",
+    "4.1.1.7398727-gog": "0x106540fe4"
    },
    "symbol": "ls::TranslatedStringRepository::TryGet(ls::RuntimeStringHandle const&, ls::identity::EIdentity, ls::identity::EIdentity) const"
   },
@@ -337,7 +357,8 @@
    "addresses": {
     "4.1.1.6995620": "0x106535148",
     "4.1.1.7209685": "0x106523d00",
-    "4.1.1.7398727": "0x10654bf40"
+    "4.1.1.7398727": "0x10654bf40",
+    "4.1.1.7398727-gog": "0x1065413d8"
    },
    "symbol": "ls::TranslatedStringRepository::Get(ls::RuntimeStringHandle const&, ls::identity::EIdentity, ls::identity::EIdentity) const"
   },
@@ -347,7 +368,8 @@
    "addresses": {
     "4.1.1.6995620": "0x106532590",
     "4.1.1.7209685": "0x106521148",
-    "4.1.1.7398727": "0x106549388"
+    "4.1.1.7398727": "0x106549388",
+    "4.1.1.7398727-gog": "0x10653e820"
    },
    "symbol": "ls::TranslatedStringRepository::AddTranslatedString(ls::RuntimeStringHandle, ls::_StringView<char>, ls::TranslatedMapRepo<ls::RuntimeStringNoVersionHashOps>*, ls::EnumFlags<ls::EAddFlags>)"
   },
@@ -357,7 +379,8 @@
    "addresses": {
     "4.1.1.6995620": "0x1063d5998",
     "4.1.1.7209685": "0x1063c4550",
-    "4.1.1.7398727": "0x1063ec790"
+    "4.1.1.7398727": "0x1063ec790",
+    "4.1.1.7398727-gog": "0x1063e39a4"
    },
    "symbol": "net::MessageFactory::GetFreeMessage(int)"
   },
@@ -367,7 +390,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10651fb60",
     "4.1.1.7209685": "0x10650e718",
-    "4.1.1.7398727": "0x106536958"
+    "4.1.1.7398727": "0x106536958",
+    "4.1.1.7398727-gog": "0x10652bdf0"
    },
    "symbol": "ls::STDString::STDString(char const*)"
   },
@@ -377,7 +401,8 @@
    "addresses": {
     "4.1.1.6995620": "0x10390b6cc",
     "4.1.1.7209685": "0x10390b6cc",
-    "4.1.1.7398727": "0x103916380"
+    "4.1.1.7398727": "0x103916380",
+    "4.1.1.7398727-gog": "0x10390e2a0"
    },
    "symbol": "bik::BinkManager::LoadVideo(ls::Path const&)",
    "_note": "Moved in 7398727; it is an ordinary per-version function ID."
@@ -387,9 +412,37 @@
    "name": "CRPGStats_Modifier_ValueList::Insert",
    "addresses": {
     "4.1.1.7209685": "0x101c44920",
-    "4.1.1.7398727": "0x101c42014"
+    "4.1.1.7398727": "0x101c42014",
+    "4.1.1.7398727-gog": "0x101c39fb4"
    },
    "symbol": "CRPGStats_Modifier_ValueList::Insert(ls::FixedString const&, int)"
+  },
+  {
+   "id": "GAME_FN_MEMORY_ALLOCATE",
+   "name": "MemoryManager::Allocate",
+   "addresses": {
+    "4.1.1.7398727": "0x10650cf2c",
+    "4.1.1.7398727-gog": "0x106504124"
+   },
+   "symbol": "ls::MemoryManager::Allocate(unsigned long, ls::AllocType, int, unsigned long)"
+  },
+  {
+   "id": "GAME_FN_MEMORY_DEALLOCATE",
+   "name": "MemoryManager::Deallocate",
+   "addresses": {
+    "4.1.1.7398727": "0x10650d1dc",
+    "4.1.1.7398727-gog": "0x1065043d4"
+   },
+   "symbol": "ls::MemoryManager::Deallocate(void*, ls::AllocType, int)"
+  },
+  {
+   "id": "GAME_FN_ESV_GAMESTATEMACHINE_UPDATE",
+   "name": "esv::GameStateMachine::Update",
+   "addresses": {
+    "4.1.1.7398727": "0x104a20ad4",
+    "4.1.1.7398727-gog": "0x104a189f4"
+   },
+   "symbol": "esv::GameStateMachine::Update(ls::GameTime const&)"
   }
  ],
  "_data_singletons_note": "baseline = offset from binary base for 4.1.1.6995620 (cross-check only). Primary resolution is per-entry `method`; data_shift is never assumed for these (global_switches_ptr proved the shift non-uniform).",
@@ -473,7 +526,8 @@
    "method": "disasm",
    "addresses": {
     "4.1.1.6995620": "0x08b18f30",
-    "4.1.1.7209685": "0x08af4f30"
+    "4.1.1.7209685": "0x08af4f30",
+    "4.1.1.7398727-gog": "0x08b1e690"
    },
    "note": "EoCGlobalSwitches* double-pointer slot; anonymous __common, no symbol. Re-derive via ADRP+LDR scan (hot slot, ~900 refs; written by App::CreateGlobalSwitches). 7209685 = 0x08af4f30 (moved -0x24000, NOT +0x8000). Runtime read-back guard in global_switches.c."
   },
@@ -482,7 +536,8 @@
    "baseline": "0x08a86128",
    "method": "disasm",
    "addresses": {
-    "4.1.1.7209685": "0x08a86128"
+    "4.1.1.7209685": "0x08a86128",
+    "4.1.1.7398727-gog": "0x08aaf078"
    },
    "note": "osi::OsirisInterface global instance slot (used by osi_read_param_defs). No symbol. Authoritative reference: the first adrp+ldr pair in osi::OsirisInterface::OsirisQuery after the stack-guard load (otool -tV -p on the mangled name). 7209685 = 0x08a86128 (adrp 0x108a86000 + ldr #0x128, verified 2026-07-29). Audited every run by test_offset_audit.py::test_osiris_interface_slot_matches_disasm. Baseline here is the 7209685 value; the 6995620 row is 0 (never verified on that vintage)."
   },
@@ -519,7 +574,31 @@
    "baseline": "0x08ac0278",
    "method": "symbol",
    "symbol": "BaseApp::s_AppInstance",
-   "note": "moved from focus_hack.c hardcoded VA 2026-08-04; baseline is the 7209685 value — the 6995620 row is 0 (focus hack postdates that vintage). focus_hack.c WRITES through the pointer read here; unknown builds must stay 0."
+   "note": "moved from focus_hack.c hardcoded VA 2026-08-04; baseline is the 7209685 value \u2014 the 6995620 row is 0 (focus hack postdates that vintage). focus_hack.c WRITES through the pointer read here; unknown builds must stay 0."
+  },
+  {
+   "field": "esv_gamestate_evtmgr_ptr",
+   "baseline": "0x08a71280",
+   "method": "symbol",
+   "symbol": "esv::GameStateEventManager::m_ptr"
+  },
+  {
+   "field": "ecl_gamestate_evtmgr_ptr",
+   "baseline": "0x08a241e0",
+   "method": "symbol",
+   "symbol": "ecl::GameStateEventManager::m_ptr"
+  },
+  {
+   "field": "global_template_bank_type_ptr",
+   "baseline": "0x08972f90",
+   "method": "symbol",
+   "symbol": "(anonymous namespace)::g_GlobalTemplateBankType"
+  },
+  {
+   "field": "tls_current_bank_type_ptr",
+   "baseline": "0x08986b60",
+   "method": "symbol",
+   "symbol": "(anonymous namespace)::tls_CurrentBankType"
   }
  ],
  "source_addresses": [
@@ -529,7 +608,8 @@
    "consumer": "src/entity/entity_system.c OFFSET_LEGACY_IS_IN_COMBAT",
    "addresses": {
     "4.1.1.7209685": "0x101233e8c",
-    "4.1.1.7398727": "0x101231580"
+    "4.1.1.7398727": "0x101231580",
+    "4.1.1.7398727-gog": "0x101229520"
    }
   },
   {
@@ -538,7 +618,8 @@
    "consumer": "src/entity/entity_system.c OFFSET_LEGACY_GET_COMBAT_FROM_GUID",
    "addresses": {
     "4.1.1.7209685": "0x1012345d4",
-    "4.1.1.7398727": "0x101231cc8"
+    "4.1.1.7398727": "0x101231cc8",
+    "4.1.1.7398727-gog": "0x101229c68"
    }
   }
  ],

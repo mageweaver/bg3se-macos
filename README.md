@@ -38,7 +38,8 @@ Prefer to do it by hand? A pre-built binary is on the [releases page](https://gi
 
 - macOS 12+ (tested on macOS 15.6.1 and macOS 26.2 Tahoe)
 - Apple Silicon Mac (recommended) or Intel Mac (limited functionality)
-- Baldur's Gate 3 (Steam)
+- Baldur's Gate 3 (Steam or GOG — see [docs/PORTING-GOG.md](docs/PORTING-GOG.md);
+  one build serves both, and selects the right addresses from the game it loads into)
 - Xcode Command Line Tools: `xcode-select --install`
 - CMake: `brew install cmake`
 
@@ -85,6 +86,22 @@ file build/lib/libbg3se.dylib
    ```bash
    echo "$(cd bg3se-macos && pwd)/scripts/bg3w.sh %command%"
    ```
+
+### Launching the GOG version
+
+Galaxy has no launch-options field, but it can launch a different executable:
+
+> Galaxy → the game → **Manage installation** → **Configure** → tick
+> **Custom executables/arguments** → **Duplicate** → pick `scripts/bg3g.sh`
+
+[BG3 Mod Manager for Mac](https://github.com/mageweaver/BG3ModManagerMac) can
+wire that up for you. You can also just run `./scripts/bg3g.sh` directly.
+
+The wrapper execs the real game binary rather than the bundle's
+`CFBundleExecutable`, which on GOG is a small arch-selector stub. Injecting into
+the stub makes the extender claim the PID and then suppress itself as a
+duplicate image when the game loads. See
+[docs/PORTING-GOG.md](docs/PORTING-GOG.md).
 
 ### Troubleshooting Build Issues
 
@@ -356,6 +373,7 @@ bg3se-macos/
 │   ├── build.sh                # Build script
 │   ├── bg3w.sh                 # Steam launch wrapper (ARM64)
 │   ├── bg3w-intel.sh           # Steam launch wrapper (Intel)
+│   ├── bg3g.sh                 # GOG launch wrapper (ARM64)
 │   └── launch_bg3.sh           # Direct launch for testing
 │
 ├── lib/                        # Third-party libraries

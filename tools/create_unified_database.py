@@ -21,7 +21,11 @@ from typing import Dict, Optional
 # File paths
 WINDOWS_SIZES_JSON = Path("ghidra/offsets/windows_reference_sizes.json")
 GHIDRA_SIZES_DIR = Path("ghidra/offsets/components")
-TYPEIDS_HEADER = Path("src/entity/generated_typeids.h")
+# Generated tables are per store (src/gen/<store>/): one dylib build serves
+# one game build. Defaults to the Steam tables; set BG3SE_GEN_STORE=gog to
+# analyse the GOG set instead.
+_GEN_STORE = os.environ.get("BG3SE_GEN_STORE", "steam")
+TYPEIDS_HEADER = Path(f"src/gen/{_GEN_STORE}/generated_typeids.h")
 OUTPUT_FILE = Path("ghidra/offsets/COMPONENT_DATABASE.md")
 
 

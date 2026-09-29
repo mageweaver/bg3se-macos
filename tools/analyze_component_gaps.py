@@ -7,10 +7,15 @@ Shows which components have sizes and which are missing.
 
 import re
 from collections import defaultdict
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
-TYPEIDS_FILE = BASE_DIR / "src/entity/generated_typeids.h"
+# Generated tables are per store (src/gen/<store>/): one dylib build serves
+# one game build. Defaults to the Steam tables; set BG3SE_GEN_STORE=gog to
+# analyse the GOG set instead.
+_GEN_STORE = os.environ.get("BG3SE_GEN_STORE", "steam")
+TYPEIDS_FILE = BASE_DIR / f"src/gen/{_GEN_STORE}/generated_typeids.h"
 COMPONENTS_DIR = BASE_DIR / "ghidra/offsets/components"
 
 def extract_typeids():

@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mach/mach.h>
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
 
 // ============================================================================
 // Constants
@@ -48,6 +50,8 @@ static char g_detected_version[64] = {0};
 static bool g_initialized = false;
 static bool g_version_matches = true;  // Optimistic default
 static void *g_binary_base = NULL;     // Set by version_detect_set_binary_base()
+static char g_store[16] = {0};         // "steam" / "gog" / "unknown"
+static char g_binary_uuid[40] = {0};   // arm64 LC_UUID of the running binary
 
 // ============================================================================
 // Info.plist Parsing (lightweight, no Foundation dependency)
@@ -136,6 +140,10 @@ static bool try_bundle_in_dir(const char *dir, char *out, size_t out_size) {
  *   1. BG3SE_GAME_PATH env override (the bundle, or a directory containing it)
  *   2. The default Steam library
  *   3. Every additional library in steamapps/libraryfolders.vdf
+ *   4. /Applications and ~/Applications (GOG, or a hand-placed bundle)
+ *
+ * Kept in step with scripts/find_bg3.sh and tools/bg3se_harness/config.py,
+ * which implement the same order.
  */
 static const char *find_bg3_app_path(void) {
     static char path[1024] = {0};
@@ -206,6 +214,12 @@ static const char *find_bg3_app_path(void) {
         }
         fclose(vf);
     }
+
+    // Non-Steam installs. GOG's installer offers both of these, and neither is
+    // under a Steam library, so the scan above can never reach them.
+    if (try_bundle_in_dir("/Applications", path, sizeof(path))) return path;
+    snprintf(dir, sizeof(dir), "%s/Applications", home);
+    if (try_bundle_in_dir(dir, path, sizeof(path))) return path;
 
     path[0] = '\0';
     return NULL;
@@ -306,8 +320,145 @@ static bool probe_sentinel_addresses(void) {
     return pass == (int)NUM_SENTINELS;
 }
 
+/**
+ * Identify the store from the game executable's filename.
+ *
+ * The GOG bundle holds a 200KB arch-selector stub under CFBundleExecutable's
+ * name plus the 501MB game as "<name> GOG". Steam's CFBundleExecutable is the
+ * game, which is the layout these addresses were taken from.
+ *
+ * Matching the suffix rather than the install path keeps this working for a
+ * moved or symlinked install.
+ */
+const char *version_detect_store_for_image_path(const char *image_path) {
+    if (!image_path || !image_path[0]) return "unknown";
+
+    const char *base = strrchr(image_path, '/');
+    base = base ? base + 1 : image_path;
+
+    size_t len = strlen(base);
+    if (len > 4 && strcmp(base + len - 4, " GOG") == 0) return "gog";
+    if (len > 6 && strcmp(base + len - 6, " Steam") == 0) return "steam";
+    if (len == 0) return "unknown";
+
+    // No store suffix: the Steam layout, where CFBundleExecutable is the game.
+    return "steam";
+}
+
+/**
+ * Read LC_UUID from a mapped Mach-O header.
+ *
+ * Walks only the mapped slice, so this yields the arm64 UUID on Apple Silicon
+ * and the x86_64 one under Rosetta. Correct either way: the baked-in addresses
+ * are per-slice too.
+ */
+bool version_detect_uuid_from_image(const void *mach_header, char *out, size_t out_size) {
+    if (!mach_header || !out || out_size < 37) return false;
+
+    const struct mach_header_64 *mh = (const struct mach_header_64 *)mach_header;
+    if (mh->magic != MH_MAGIC_64) return false;
+
+    const struct load_command *lc = (const struct load_command *)(mh + 1);
+    for (uint32_t i = 0; i < mh->ncmds; i++) {
+        if (lc->cmdsize == 0) return false;  // malformed; don't spin
+        if (lc->cmd == LC_UUID) {
+            const uint8_t *u = ((const struct uuid_command *)lc)->uuid;
+            snprintf(out, out_size,
+                     "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
+                     "%02X%02X%02X%02X%02X%02X",
+                     u[0], u[1], u[2],  u[3],  u[4],  u[5],  u[6],  u[7],
+                     u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
+            return true;
+        }
+        lc = (const struct load_command *)((const uint8_t *)lc + lc->cmdsize);
+    }
+    return false;
+}
+
+/**
+ * __TEXT vmsize for a mapped Mach-O header, or 0 if undeterminable.
+ */
+uint64_t version_detect_text_vmsize(const void *mach_header) {
+    if (!mach_header) return 0;
+
+    const struct mach_header_64 *mh = (const struct mach_header_64 *)mach_header;
+    if (mh->magic != MH_MAGIC_64) return 0;
+
+    const struct load_command *lc = (const struct load_command *)(mh + 1);
+    for (uint32_t i = 0; i < mh->ncmds; i++) {
+        if (lc->cmdsize == 0) return 0;
+        if (lc->cmd == LC_SEGMENT_64) {
+            const struct segment_command_64 *seg = (const struct segment_command_64 *)lc;
+            if (strncmp(seg->segname, SEG_TEXT, sizeof(seg->segname)) == 0) {
+                return seg->vmsize;
+            }
+        }
+        lc = (const struct load_command *)((const uint8_t *)lc + lc->cmdsize);
+    }
+    return 0;
+}
+
+bool version_detect_is_launcher_stub(const void *mach_header) {
+    if (!mach_header) return false;
+
+    const struct mach_header_64 *mh = (const struct mach_header_64 *)mach_header;
+    if (mh->magic != MH_MAGIC_64) return false;
+    // Only an executable can be the launcher. Without this, an inserted dylib
+    // (this one included) reads as a stub on size alone.
+    if (mh->filetype != MH_EXECUTE) return false;
+
+    uint64_t text = version_detect_text_vmsize(mach_header);
+    if (text == 0) return false;   // undeterminable: fail open
+
+    // Game __TEXT is ~138MB; observed stubs are under 1MB.
+    return text < (16ULL * 1024 * 1024);
+}
+
+const void *version_detect_main_executable(void) {
+    uint32_t count = _dyld_image_count();
+    for (uint32_t i = 0; i < count; i++) {
+        const struct mach_header_64 *mh =
+            (const struct mach_header_64 *)_dyld_get_image_header(i);
+        if (mh && mh->magic == MH_MAGIC_64 && mh->filetype == MH_EXECUTE) {
+            return mh;
+        }
+    }
+    return NULL;
+}
+
+bool version_detect_build_id_matches(const char *build_id) {
+    if (!build_id || !build_id[0]) return false;
+    if (!g_initialized || g_detected_version[0] == '\0') return false;
+
+    // Compare up to the store suffix, if there is one.
+    const char *dash = strrchr(build_id, '-');
+    size_t len = dash ? (size_t)(dash - build_id) : strlen(build_id);
+
+    return strlen(g_detected_version) == len &&
+           strncmp(g_detected_version, build_id, len) == 0;
+}
+
+const char *version_detect_get_store(void) {
+    return g_store[0] ? g_store : "unknown";
+}
+
+const char *version_detect_get_binary_uuid(void) {
+    return g_binary_uuid[0] ? g_binary_uuid : NULL;
+}
+
+void version_detect_set_binary_image(void *base, const char *image_path) {
+    if (!g_store[0]) {
+        snprintf(g_store, sizeof(g_store), "%s",
+                 version_detect_store_for_image_path(image_path));
+    }
+    version_detect_set_binary_base(base);
+}
+
 void version_detect_set_binary_base(void *base) {
     g_binary_base = base;
+    if (!g_binary_uuid[0]) {
+        version_detect_uuid_from_image(base, g_binary_uuid, sizeof(g_binary_uuid));
+    }
     // Both version string and binary base are now available — initialize offset table.
     offset_table_init();
 }
@@ -320,6 +471,48 @@ bool version_detect_addresses_safe(void) {
     // Manual override for power users
     const char *force = getenv("BG3SE_FORCE_ADDRESSES");
     if (force && force[0] && force[0] != '0') return true;
+
+    // Build-identity gates, checked before the probes because the probes
+    // cannot catch these: a probe proves an address is READABLE, never that it
+    // holds what we think. The Steam artifact passes all three on the GOG build
+    // -- GOG's __DATA spans those addresses -- and then reads wrong objects.
+    {
+        static bool identity_warned = false;
+        const char *store = version_detect_get_store();
+
+        // One dylib carries addresses for several stores, so the question is
+        // whether this game's store is among them, not whether it equals a
+        // single compile-time target.
+        if (strcmp(store, "unknown") != 0 &&
+            !build_identity_supports_store(store)) {
+            if (!identity_warned) {
+                log_message("[WARN] [VersionDetect] The running game is the %s build, and "
+                            "this BG3SE has addresses only for: %s. Addresses differ "
+                            "between stores even at the same game version, so "
+                            "address-dependent features are DISABLED. "
+                            "(BG3SE_FORCE_ADDRESSES=1 overrides, and will likely crash.)",
+                            store, BG3SE_SUPPORTED_STORES);
+                identity_warned = true;
+            }
+            return false;
+        }
+
+        const char *uuid = version_detect_get_binary_uuid();
+        const char *expected_uuid = build_identity_uuid_for_store(store);
+        if (expected_uuid && expected_uuid[0] && uuid &&
+            strcmp(uuid, expected_uuid) != 0) {
+            if (!identity_warned) {
+                log_message("[WARN] [VersionDetect] Game binary UUID %s does not match the "
+                            "%s build these addresses came from (%s). The game was patched "
+                            "or replaced. Address-dependent features DISABLED. "
+                            "Re-port with tools/port_offsets.py, or set "
+                            "BG3SE_FORCE_ADDRESSES=1 to override.",
+                            uuid, store, expected_uuid);
+                identity_warned = true;
+            }
+            return false;
+        }
+    }
 
     // Fail CLOSED if version detection hasn't run
     if (!g_initialized || g_detected_version[0] == '\0') {
