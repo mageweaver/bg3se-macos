@@ -1805,8 +1805,12 @@ static int lua_entity_create_component(lua_State *L) {
 
     const char *component = luaL_checkstring(L, 2);
     const VersionOffsets *offsets = offset_table_get();
+    /* Everything below is data: EntityWorld struct offsets, the ops registry,
+     * and a vtable slot. None of it moves with code, so a build sharing the
+     * verified build's data layout (version_detect.h) is safe. */
     if (!version_detect_addresses_safe() || !offsets ||
-        strcmp(offsets->version, COMPONENT_OPS_VERIFIED_BUILD) != 0) {
+        (strcmp(offsets->version, COMPONENT_OPS_VERIFIED_BUILD) != 0 &&
+         !version_detect_data_layout_matches())) {
         return create_component_fail(
             L, component,
             "ComponentOps dispatch is verified only for game build "
