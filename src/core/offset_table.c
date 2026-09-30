@@ -348,6 +348,93 @@ static const VersionOffsets g_offset_table[] = {
             [GAME_FN_ESV_GAMESTATEMACHINE_UPDATE] = 0x04a20ad4,
         },
     },
+    /*
+     * 4.1.1.7631656 — Steam hotfix of 2026-09-29. Resolved with
+     * tools/port_offsets.py against the installed binary (2026-09-30). The data
+     * segment did not move: every singleton slot and all 2,020 component TypeId
+     * globals referenced in src/ are byte-identical to 7398727. Code shifted by
+     * -0xc/-0x18 in places (32 function entries below differ). The two
+     * anonymous slots were re-derived by disassembly (see inline notes).
+     */
+    {
+        .version                 = "4.1.1.7631656",
+
+        /* Singleton pointer globals (per-entry symbol/got resolution) */
+        .eocserver_ptr            = 0x089c6f58,
+        .eocclient_ptr            = 0x089c4fc0,
+        .spell_proto_mgr_ptr      = 0x089f3320,
+        .rpgstats_ptr             = 0x089fddd0,
+        .resource_mgr_ptr         = 0x08ac8080,
+        .level_mgr_ptr            = 0x08a74610,
+        .global_template_mgr_ptr  = 0x08ac0d98,
+        .cache_template_mgr_ptr   = 0x08a69178,
+        .level_cache_mgr_ptr      = 0x08aabda8,
+        .staticdata_mstate_ptr    = 0x083fcc38,
+        .gst_ptr                  = 0x08b25ce8,
+        .translated_string_repo_ptr = 0x08b26098,
+        .global_switches_ptr      = 0x08b25f40,  // App::CreateGlobalSwitches: adrp x8,#32453 @0x100c60910 + str [x8,#0xf40] (unchanged from 7398727)
+        .osiris_interface_ptr     = 0x08ab68f8,  // OsirisQuery: adrp x8,#11938 @0x105c143c0 + ldr [x8,#0x8f8] (unchanged from 7398727)
+        .status_proto_mgr_ptr     = 0x089f61d0,
+        .passives_ptr             = 0x089ec8c8,
+        .interrupt_proto_mgr_ptr  = 0x089eaf90,
+        .boost_proto_mgr_ptr      = 0x089c9bc8,
+        .baseapp_instance_ptr     = 0x08af1288,
+        .ecl_gamestate_evtmgr_ptr = 0x08a241e0, // ecl::GameStateEventManager::m_ptr
+        .esv_gamestate_evtmgr_ptr = 0x08a71280, // esv::GameStateEventManager::m_ptr
+        .global_template_bank_type_ptr = 0x08972f90, // (anon)::g_GlobalTemplateBankType
+        .tls_current_bank_type_ptr     = 0x08986b60, // (anon)::tls_CurrentBankType
+
+        /* Function offsets (symbol-resolved) */
+        .fn_feat_getfeats         = 0x01b56ef0,
+        .fn_getallfeats           = 0x011ed024,
+        .fn_get_background        = 0x02980bc0,
+        .fn_get_origin            = 0x0340c62c,
+        .fn_get_class             = 0x02616290,
+        .fn_get_progression       = 0x036881c4,
+        .fn_get_actionresource    = 0x011860d0,
+        .fn_get_template_raw      = 0x05f9cda4,
+        .fn_cache_template        = 0x05d2c6e8,
+        .fn_try_get_uuid_mapping  = 0x010be560,
+        .fn_storage_tryget        = 0x06382944,
+        .fn_spell_proto_init      = 0x01f54390,
+        .fn_status_proto_init     = 0x01ff482c,
+        .fn_interrupt_proto_get   = 0x01b784a8,
+        .fn_passives_get          = 0x01c0c958,
+        .fn_aigrid_to_tile_pos    = 0x0115f09c,
+        .fn_aigrid_get_metadata   = 0x011489c0,
+        .fn_aigrid_remove_path    = 0x0115f580,
+        .fn_aigrid_find_path      = 0x01160128,
+        .fn_aigrid_find_path_immediate = 0x011633c8,
+        .component_data_shift    = 0x00000000,
+        .component_data_shift_valid = false,
+
+        /* Stable function IDs (offsets from the image base) */
+        .game_functions = {
+            [GAME_FN_FIXED_STRING_CREATE] = 0x064d0cb4,
+            [GAME_FN_RESOURCE_GET] = 0x060e3cd0,
+            [GAME_FN_EXECUTE_STATS_FUNCTOR] = 0x0577e644,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_TARGET] = 0x05782524,
+            [GAME_FN_EXECUTE_FUNCTORS_ATTACK_POSITION] = 0x05782878,
+            [GAME_FN_EXECUTE_FUNCTORS_MOVE] = 0x05784368,
+            [GAME_FN_EXECUTE_FUNCTORS_TARGET] = 0x05785524,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKED] = 0x057890e4,
+            [GAME_FN_EXECUTE_FUNCTORS_NEARBY_ATTACKING] = 0x0578a7b4,
+            [GAME_FN_EXECUTE_FUNCTORS_EQUIP] = 0x0578b634,
+            [GAME_FN_EXECUTE_FUNCTORS_SOURCE] = 0x0578d69c,
+            [GAME_FN_EXECUTE_FUNCTORS_INTERRUPT] = 0x057911f0,
+            [GAME_FN_PROCESS_DEAL_DAMAGE_FUNCTORS] = 0x0538955c,
+            [GAME_FN_TRANSLATED_STRING_TRY_GET] = 0x0654bb4c,
+            [GAME_FN_TRANSLATED_STRING_GET] = 0x0654bf40,
+            [GAME_FN_TRANSLATED_STRING_ADD] = 0x06549388,
+            [GAME_FN_MESSAGE_FACTORY_GET_FREE_MESSAGE] = 0x063ec790,
+            [GAME_FN_STD_STRING_CTOR] = 0x06536958,
+            [GAME_FN_BINK_LOAD_VIDEO] = 0x03916374,
+            [GAME_FN_VALUELIST_INSERT] = 0x01c41ffc,
+            [GAME_FN_MEMORY_ALLOCATE] = 0x0650cf2c,
+            [GAME_FN_MEMORY_DEALLOCATE] = 0x0650d1dc,
+            [GAME_FN_ESV_GAMESTATEMACHINE_UPDATE] = 0x04a20ac8,  // was 0x04a20ad4 (-0xc)
+        },
+    },
 
 };
 

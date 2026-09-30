@@ -269,6 +269,25 @@ bool version_detect_matches(void) {
     return g_version_matches;
 }
 
+/* Builds whose data segment is byte-identical to BG3_KNOWN_VERSION's. Add a
+ * build here only after checking it: 4.1.1.7631656 (hotfix, 2026-09-29) had
+ * all 2,020 component TypeId globals referenced in src/ and every offset-table
+ * singleton slot at the same address as 7398727 (nm comparison, 2026-09-30);
+ * only code moved. */
+static const char *const g_data_compatible_builds[] = {
+    "4.1.1.7631656",
+};
+
+bool version_detect_data_layout_matches(void) {
+    if (g_version_matches) return true;
+    const char *v = version_detect_get_version();
+    if (!v) return false;
+    for (size_t i = 0; i < sizeof(g_data_compatible_builds) / sizeof(g_data_compatible_builds[0]); i++) {
+        if (strcmp(v, g_data_compatible_builds[i]) == 0) return true;
+    }
+    return false;
+}
+
 /**
  * Probe sentinel addresses to validate binary layout compatibility.
  * Reads known data-segment globals via vm_read. If all are readable,

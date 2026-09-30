@@ -47,6 +47,14 @@ const char *version_detect_get_version(void);
 bool version_detect_matches(void);
 
 /**
+ * True when the detected build shares BG3_KNOWN_VERSION's DATA layout: every
+ * TypeId global and singleton slot at the same address. Code addresses may
+ * differ, so this only licenses reading data addresses (generated TypeIds,
+ * replicated-type globals) -- never calling or hooking a hard-coded function.
+ */
+bool version_detect_data_layout_matches(void);
+
+/**
  * Set the main binary base address for sentinel probing.
  * Must be called after finding the BG3 binary in loaded images.
  *

@@ -309,9 +309,10 @@ bool component_typeid_ready(void) {
 // ============================================================================
 
 static bool component_typeid_runtime_build_matches(void) {
-    const char *detected_build = version_detect_get_version();
-    return detected_build != NULL && version_detect_matches() &&
-           strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) == 0;
+    /* The generated table holds data addresses (TypeId globals), so a build
+     * with the same data layout reads it correctly. */
+    return strcmp(BG3_KNOWN_VERSION, GENERATED_TYPEIDS_BUILD_ID) == 0 &&
+           version_detect_data_layout_matches();
 }
 
 static bool component_typeid_runtime_address(uint64_t preferred_va,

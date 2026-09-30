@@ -144,7 +144,7 @@ static ReplLocateResult replication_locate(void *entity_world,
                                            const char *component_name,
                                            uintptr_t *out_bitset,
                                            uintptr_t *out_sync) {
-    if (!entity_world || !version_detect_matches()) {
+    if (!entity_world || !version_detect_data_layout_matches()) {
         return REPL_LOCATE_ERROR;
     }
 
@@ -154,9 +154,8 @@ static ReplLocateResult replication_locate(void *entity_world,
         return REPL_LOCATE_ERROR;
     }
 
-    const char *detected_build = version_detect_get_version();
-    if (!detected_build ||
-        strcmp(detected_build, GENERATED_TYPEIDS_BUILD_ID) != 0 ||
+    if (strcmp(BG3_KNOWN_VERSION, GENERATED_TYPEIDS_BUILD_ID) != 0 ||
+        !version_detect_data_layout_matches() ||
         strcmp(replicated_type->build_id, GENERATED_TYPEIDS_BUILD_ID) != 0) {
         return REPL_LOCATE_ERROR;
     }
