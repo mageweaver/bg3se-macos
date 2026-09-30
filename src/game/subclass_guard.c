@@ -70,6 +70,21 @@ typedef void (*GetAvailableSubClassesForLevelUpFn)(
 
 static GetAvailableSubClassesForLevelUpFn s_orig_GetAvailableSubClasses = NULL;
 static void *s_binary_base = NULL;
+
+/* Per-build addresses, matched by the hook target's prologue so no version
+ * lookup is needed at install time. The helper is only used by the build whose
+ * target matched. */
+typedef struct {
+    uintptr_t target_rva;    /* eoc::character_creation::GetAvailableSubClassesForLevelUp */
+    uintptr_t get_prog_rva;  /* eoc::ProgressionManager::GetProgressionByTableUUID */
+    const char *build;
+} SubclassGuardAddrs;
+
+static const SubclassGuardAddrs k_builds[] = {
+    { 0x11e91f0, 0x1c2b54c, "4.1.1.7398727" },
+    { 0x11e91d8, 0x1c2b534, "4.1.1.7631656" },  /* hotfix: both moved -0x18 (nm) */
+};
+static uintptr_t s_get_prog_rva = 0;
 static bool s_installed = false;
 
 // Expected ARM64 instructions at eoc::character_creation::GetAvailableSubClassesForLevelUp (v4.1.1.7398727)
@@ -158,7 +173,7 @@ static void hooked_GetAvailableSubClassesForLevelUp(
          * ever reached when the prologue check below matched, so a build that
          * moved either function installs no hook at all and never gets here. */
         typedef void *(*GetProgressionFn)(void *this_ptr, uint64_t uuid_a, uint64_t uuid_b, int level, bool isMulticlass);
-        GetProgressionFn getProg = (GetProgressionFn)((uintptr_t)s_binary_base + 0x1c2b54c);
+        GetProgressionFn getProg = (GetProgressionFn)((uintptr_t)s_binary_base + s_get_prog_rva);
         void *prog = getProg(progMgr, tableUuid->a, tableUuid->b, targetLevel, isMulticlass);
         if (prog) {
             int32_t count = *(int32_t *)((const char *)prog + 0x44);
@@ -233,13 +248,21 @@ bool subclass_guard_init(void *binary_base) {
 
     s_binary_base = binary_base;
 
-    // Address of eoc::character_creation::GetAvailableSubClassesForLevelUp
-    void *target = (void *)((uintptr_t)binary_base + 0x11e91f0ULL);
-
-    // Verify prologue before hooking
-    if (memcmp(target, k_expected_prologue, sizeof(k_expected_prologue)) != 0) {
-        LOG_CORE_WARN("[SubclassGuard] NOT applied — target at %p does not match expected prologue (different game build?)",
-                      target);
+    // eoc::character_creation::GetAvailableSubClassesForLevelUp: the build
+    // whose target carries the expected prologue.
+    void *target = NULL;
+    for (size_t i = 0; i < sizeof(k_builds) / sizeof(k_builds[0]); i++) {
+        void *cand = (void *)((uintptr_t)binary_base + k_builds[i].target_rva);
+        if (memcmp(cand, k_expected_prologue, sizeof(k_expected_prologue)) == 0) {
+            target = cand;
+            s_get_prog_rva = k_builds[i].get_prog_rva;
+            LOG_CORE_INFO("[SubclassGuard] target matched for build %s", k_builds[i].build);
+            break;
+        }
+    }
+    if (!target) {
+        LOG_CORE_WARN("[SubclassGuard] NOT applied — no known target address carries the "
+                      "expected prologue (different game build?)");
         return false;
     }
 
