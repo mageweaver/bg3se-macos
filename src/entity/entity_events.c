@@ -32,6 +32,7 @@
 
 #include "../core/safe_memory.h"
 #include "../core/version_detect.h"
+#include "replication_flags.h"
 
 // ============================================================================
 // Configuration
@@ -1038,14 +1039,146 @@ EntitySubscriptionId entity_events_subscribe(
     return MAKE_SUB_ID(SUB_TYPE_COMPONENT, packed);
 }
 
+
+// ============================================================================
+// Replication subscriptions (Ext.Entity.Subscribe)
+// ============================================================================
+//
+// Upstream's Subscribe is not a component add/remove event: it fires when a
+// component is queued for client sync (ServerEntityReplicationEventHooks,
+// called from the server ECS PostUpdate). Aliasing it to create/destroy meant a
+// handler ran once when the component appeared and never again, so
+// AppearanceEditEnhanced never saw the post-load GameObjectVisual sync that it
+// answers by putting the resculpt back (Type 4 -> 2 + CopyAppearanceVisuals),
+// and every edited origin loaded looking like a default character.
+//
+// Fired from esv::GameServer::PostUpdate before EntityReplicationAuthority::Sync
+// (main.c), exactly where upstream reads the pools. Only types with a known
+// ReplicatedTypeContext index can be subscribed this way; others keep the old
+// create/destroy approximation.
+
+#define MAX_REPL_SUBSCRIPTIONS 64
+#define MAX_REPL_SNAPSHOT      512
+
+typedef struct {
+    bool active;
+    int lua_ref;
+    int repl_index;
+    uint64_t entity;      // 0 = every entity
+    uint64_t fields;      // upstream Fields mask
+    const char *type_name;
+} ReplicationHook;
+
+static ReplicationHook g_repl_hooks[MAX_REPL_SUBSCRIPTIONS];
+static bool g_repl_dispatch_available = false;
+
+void entity_events_set_replication_available(bool available) {
+    g_repl_dispatch_available = available;
+}
+
+static EntitySubscriptionId repl_subscribe(int repl_index, const char *type_name,
+                                           uint64_t entity, uint64_t fields, int ref) {
+    for (int i = 0; i < MAX_REPL_SUBSCRIPTIONS; i++) {
+        if (g_repl_hooks[i].active) continue;
+        g_repl_hooks[i] = (ReplicationHook){
+            .active = true, .lua_ref = ref, .repl_index = repl_index,
+            .entity = entity, .fields = fields, .type_name = type_name };
+        return MAKE_SUB_ID(SUB_TYPE_REPLICATION, (uint32_t)i + 1U);
+    }
+    return ENTITY_SUB_INVALID;
+}
+
+static bool repl_unsubscribe(uint32_t index, lua_State *L) {
+    if (index == 0 || index > MAX_REPL_SUBSCRIPTIONS) return false;
+    ReplicationHook *h = &g_repl_hooks[index - 1];
+    if (!h->active) return false;
+    if (L && h->lua_ref != LUA_NOREF && h->lua_ref != LUA_REFNIL) {
+        luaL_unref(L, LUA_REGISTRYINDEX, h->lua_ref);
+    }
+    h->active = false;
+    h->lua_ref = LUA_NOREF;
+    return true;
+}
+
+static void repl_clear_all(lua_State *L) {
+    for (uint32_t i = 1; i <= MAX_REPL_SUBSCRIPTIONS; i++) {
+        repl_unsubscribe(i, L);
+    }
+}
+
+void entity_events_fire_replication(lua_State *L, void *server_world) {
+    if (!L || !server_world) return;
+
+    bool any = false;
+    for (int i = 0; i < MAX_REPL_SUBSCRIPTIONS && !any; i++) any = g_repl_hooks[i].active;
+    if (!any || !replication_sync_dirty(server_world)) return;
+
+    // Snapshot every subscribed pool before any handler runs: a handler that
+    // calls Replicate() inserts into the map being read.
+    static uint64_t handles[MAX_REPL_SNAPSHOT];
+    static uint64_t fields[MAX_REPL_SNAPSHOT];
+    static int16_t  pool_of[MAX_REPL_SNAPSHOT];
+    int total = 0;
+    int seen[MAX_REPL_SUBSCRIPTIONS];
+    int seen_count = 0;
+    for (int i = 0; i < MAX_REPL_SUBSCRIPTIONS && total < MAX_REPL_SNAPSHOT; i++) {
+        if (!g_repl_hooks[i].active) continue;
+        int idx = g_repl_hooks[i].repl_index;
+        bool dup = false;
+        for (int k = 0; k < seen_count; k++) dup = dup || seen[k] == idx;
+        if (dup) continue;
+        seen[seen_count++] = idx;
+        int n = replication_pool_snapshot(server_world, idx, handles + total,
+                                          fields + total, MAX_REPL_SNAPSHOT - total);
+        for (int k = 0; k < n; k++) pool_of[total + k] = (int16_t)idx;
+        total += n;
+    }
+    if (total == 0) return;
+
+    LifetimeHandle scope = lifetime_lua_begin_scope(L);
+    for (int e = 0; e < total; e++) {
+        for (int i = 0; i < MAX_REPL_SUBSCRIPTIONS; i++) {
+            ReplicationHook *h = &g_repl_hooks[i];
+            if (!h->active || h->repl_index != pool_of[e]) continue;
+            if (h->entity && h->entity != handles[e]) continue;
+            if ((h->fields & fields[e]) == 0) continue;
+
+            static int s_logged = 0;
+            if (s_logged < 16) {
+                s_logged++;
+                log_message("[EntityEvents] replication event %s entity=0x%llx fields=0x%llx",
+                            h->type_name, (unsigned long long)handles[e],
+                            (unsigned long long)fields[e]);
+            }
+            lua_rawgeti(L, LUA_REGISTRYINDEX, h->lua_ref);
+            if (!lua_isfunction(L, -1)) { lua_pop(L, 1); continue; }
+            // upstream: (EntityHandle, ExtComponentType, uint64 fields)
+            lua_entity_push_handle(L, (EntityHandle)handles[e]);
+            lua_pushstring(L, h->type_name);
+            lua_pushinteger(L, (lua_Integer)fields[e]);
+            if (lua_pcall(L, 3, 0, 0) != LUA_OK) {
+                const char *err = lua_tostring(L, -1);
+                log_message("[ERROR] Entity replication event callback failed: %s",
+                            err ? err : "(unknown)");
+                lua_pop(L, 1);
+            }
+        }
+    }
+    lifetime_lua_end_scope(L);
+    (void)scope;
+}
+
 bool entity_events_unsubscribe(EntitySubscriptionId id, lua_State *L) {
     if (id == ENTITY_SUB_INVALID) return false;
 
     uint32_t type_tag = SUB_ID_TYPE(id);
     uint32_t packed = SUB_ID_INDEX(id);
 
+    if (type_tag == SUB_TYPE_REPLICATION) {
+        return repl_unsubscribe(packed, L);
+    }
     if (type_tag != SUB_TYPE_COMPONENT) {
-        // Replication and System subscriptions not yet implemented
+        // System subscriptions not yet implemented
         log_message("[WARN] [EntityEvents] Unsubscribe: unsupported type tag %u", type_tag);
         return false;
     }
@@ -1217,6 +1350,7 @@ void entity_events_on_destroy(uint16_t type_index, uint64_t entity_handle,
 void entity_events_cleanup(lua_State *L) {
     /* Restore every swapped UpdateProc before Lua runtimes are unregistered. */
     ecs_system_update_teardown();
+    repl_clear_all(L);
     if (!g_initialized) return;
 
     // Close the dispatch gate FIRST so signal handlers exit immediately if
@@ -1583,13 +1717,49 @@ static int lua_entity_on_destroy_deferred_once(lua_State *L) {
 }
 
 // --- Ext.Entity.Subscribe(type, func, entity?, flags?) ---
-// This is the replication subscription variant.
-// For now, maps to OnCreate (replication events fire on component changes).
+// Upstream's replication subscription: the handler runs (entity, typeName,
+// fields) whenever the component is queued for client sync. Types without a
+// known replication index keep the old create/destroy approximation.
 static int lua_entity_subscribe(lua_State *L) {
-    // Windows BG3SE Subscribe = replication events, not component events.
-    // For compatibility, treat as OnCreate+OnDestroy with deferred flag.
-    return lua_entity_subscribe_impl(L,
-        ENTITY_EVENT_CREATE | ENTITY_EVENT_DESTROY, true, false);
+    const char *name = luaL_checkstring(L, 1);
+    const char *short_name = NULL;
+    int repl_index = g_repl_dispatch_available ? replication_type_index(name, &short_name) : -1;
+    if (repl_index < 0 && g_repl_dispatch_available) {
+        const char *cls = component_upstream_name_to_class(name);
+        if (cls) repl_index = replication_type_index(cls, &short_name);
+    }
+    if (repl_index < 0) {
+        return lua_entity_subscribe_impl(L,
+            ENTITY_EVENT_CREATE | ENTITY_EVENT_DESTROY, true, false);
+    }
+
+    luaL_checktype(L, 2, LUA_TFUNCTION);
+
+    uint64_t entity = 0;
+    if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
+        if (lua_isuserdata(L, 3)) {
+            EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 3, "BG3Entity");
+            entity = (uint64_t)ud->handle;
+        } else {
+            entity = (uint64_t)luaL_checkinteger(L, 3);
+        }
+    }
+    uint64_t fields = UINT64_MAX;
+    if (lua_gettop(L) >= 4 && !lua_isnil(L, 4)) {
+        fields = (uint64_t)luaL_checkinteger(L, 4);
+    }
+
+    lua_pushvalue(L, 2);
+    int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    EntitySubscriptionId id = repl_subscribe(repl_index, short_name, entity, fields, ref);
+    if (id == ENTITY_SUB_INVALID) {
+        luaL_unref(L, LUA_REGISTRYINDEX, ref);
+        log_message("[WARN] [EntityEvents] Subscribe(%s): replication subscription table full", name);
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, (lua_Integer)id);
+    return 1;
 }
 
 /*

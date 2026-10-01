@@ -7089,6 +7089,35 @@ static void fake_EsvGameStateMachineUpdate(void *self, const void *gameTime) {
     }
 }
 
+/* esv::GameServer::PostUpdate: fire Ext.Entity.Subscribe (replication)
+ * handlers while SyncBuffers still holds this frame's queued components; the
+ * original then runs EntityReplicationAuthority::Sync, which drains them. */
+static void *orig_EsvGameServerPostUpdate = NULL;
+
+static void fake_EsvGameServerPostUpdate(void *self, const void *gameTime) {
+    lua_State *L = lua_runtime_server()->L;
+    ServerGameState gs = game_state_get_current();
+    /* Sync included: the engine's post-load visual sync, which AEE answers by
+     * restoring a resculpt, is queued before Running. Teardown states excluded. */
+    if (L && (gs == SERVER_STATE_SYNC || gs == SERVER_STATE_PAUSED ||
+              gs == SERVER_STATE_RUNNING)) {
+        lua_gate_lock();
+        L = lua_runtime_server()->L;
+        if (L) {
+            extern void *entity_get_world_for_context(bool server);
+            void *w = entity_get_world_for_context(true);
+            if (w) {
+                LuaContext prev = lua_context_get();
+                lua_context_set(LUA_CONTEXT_SERVER);
+                entity_events_fire_replication(L, w);
+                lua_context_set(prev);
+            }
+        }
+        lua_gate_unlock();
+    }
+    ((void (*)(void *, const void *))orig_EsvGameServerPostUpdate)(self, gameTime);
+}
+
 static bool fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
     event_call_count++;
 
@@ -7649,6 +7678,28 @@ init_subsystems:
                         } else {
                             LOG_HOOKS_WARN(" esv::GameStateMachine::Update offset unknown for this version — "
                                            "timers stay on the Osiris-event/GCD paths");
+                        }
+                    }
+
+                    // Replication events: esv::GameServer::PostUpdate pre-hook.
+                    // Prologue-checked (stp x20,x19 / stp x29,x30 / add / mov):
+                    // no PC-relative instruction for Dobby to relocate.
+                    if (!no_hooks && !hook_group_disabled("BG3SE_NO_HOOK_REPLICATION_EVENTS")) {
+                        void *postUpdate = offset_table_game_fn(GAME_FN_ESV_GAMESERVER_POSTUPDATE);
+                        static const uint32_t k_post_update_prologue[4] = {
+                            0xa9be4ff4u, 0xa9017bfdu, 0x910043fdu, 0xaa0103f3u };
+                        if (postUpdate && memcmp(postUpdate, k_post_update_prologue,
+                                                 sizeof(k_post_update_prologue)) == 0) {
+                            if (DobbyHook(postUpdate, (void *)fake_EsvGameServerPostUpdate,
+                                          &orig_EsvGameServerPostUpdate) == 0) {
+                                entity_events_set_replication_available(true);
+                                LOG_HOOKS_INFO("  esv::GameServer::PostUpdate hooked (replication events)");
+                            } else {
+                                LOG_HOOKS_ERROR(" Failed to hook esv::GameServer::PostUpdate");
+                            }
+                        } else {
+                            LOG_HOOKS_WARN(" esv::GameServer::PostUpdate unknown or moved on this version -- "
+                                           "Ext.Entity.Subscribe falls back to create/destroy events");
                         }
                     }
 

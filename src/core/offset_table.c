@@ -433,6 +433,7 @@ static const VersionOffsets g_offset_table[] = {
             [GAME_FN_MEMORY_ALLOCATE] = 0x0650cf2c,
             [GAME_FN_MEMORY_DEALLOCATE] = 0x0650d1dc,
             [GAME_FN_ESV_GAMESTATEMACHINE_UPDATE] = 0x04a20ac8,  // was 0x04a20ad4 (-0xc)
+            [GAME_FN_ESV_GAMESERVER_POSTUPDATE] = 0x0533ef34,
         },
     },
 

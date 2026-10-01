@@ -35,6 +35,18 @@ bool replication_flags_set(void *entity_world, uint64_t entity_handle,
                            const char *component_name, uint32_t qword,
                            uint64_t flags, bool *out_changed);
 
+/**
+ * Replication event support (upstream ServerEntityReplicationEventHooks).
+ * replication_type_index: SyncBuffers pool index for a replicated component
+ * (short or engine name), or -1; out_short_name gets the short API name.
+ * replication_pool_snapshot: copies up to max (entity handle, first flags
+ * qword) pairs out of that pool. Read-only.
+ */
+int replication_type_index(const char *component_name, const char **out_short_name);
+bool replication_sync_dirty(void *entity_world);
+int replication_pool_snapshot(void *entity_world, int replication_index,
+                              uint64_t *out_handles, uint64_t *out_fields, int max);
+
 #ifdef __cplusplus
 }
 #endif

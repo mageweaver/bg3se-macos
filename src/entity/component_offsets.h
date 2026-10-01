@@ -8597,6 +8597,41 @@ static const ComponentLayoutDef g_CharacterCreationAppearance_Layout = {
     .propertyCount = sizeof(g_CharacterCreationAppearance_Properties) / sizeof(g_CharacterCreationAppearance_Properties[0]),
 };
 
+/* eoc::character_creation::Appearance -- the struct AppearanceOverride wraps --
+ * is NOT the CharacterCreationAppearanceComponent layout above. It keeps
+ * upstream's order (GameDefinitions/CharacterCreation.h): ScratchBuffer Icon,
+ * five GUIDs, then the three arrays; 0xd8 bytes. Offsets read from the engine's
+ * own serializer on 4.1.1.7631656, ecs::sync::Serialize<character_creation::
+ * Appearance, ...> (VA 0x1014ec978): Icon size at +0x50 and data at +0x38/+0x48,
+ * GUIDs written from +0x58/+0x68/+0x78/+0x88/+0x98, arrays at +0xa8/+0xb8/+0xc8.
+ * The ComponentSizes stride for AppearanceOverride is 216 (0xd8) to match.
+ *
+ * Reusing the 0x70 component layout here put AppearanceEditEnhanced's Visuals
+ * write on top of the Icon ScratchBuffer. Harmless while nothing replicated the
+ * component; once Replicate() worked, the server serialized that buffer and
+ * SIGSEGV'd in ScratchBuffer::Write (2026-09-30). Icon stays unexposed: it
+ * owns heap memory this layer cannot manage. */
+static const ComponentPropertyDef g_Appearance_Properties[] = {
+    { "HairColor",         0x58, FIELD_TYPE_GUID, 0, false },
+    { "SkinColor",         0x68, FIELD_TYPE_GUID, 0, false },
+    { "EyeColor",          0x78, FIELD_TYPE_GUID, 0, false },
+    { "SecondEyeColor",    0x88, FIELD_TYPE_GUID, 0, false },
+    { "AccessorySet",      0x98, FIELD_TYPE_GUID, 0, false },
+    { "Visuals",           0xa8, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_GUID, 16 },
+    { "Elements",          0xb8, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_STRUCT, 0x30,
+      .structLayout = &g_AppearanceMaterialSetting_Layout },
+    { "AdditionalChoices", 0xc8, FIELD_TYPE_DYNAMIC_ARRAY, 0, false, ELEM_TYPE_FLOAT, 4 },
+};
+
+static const ComponentLayoutDef g_Appearance_Layout = {
+    .componentName = "eoc::character_creation::Appearance",
+    .shortName = "Appearance",
+    .componentTypeIndex = 0,
+    .componentSize = 0xd8,
+    .properties = g_Appearance_Properties,
+    .propertyCount = sizeof(g_Appearance_Properties) / sizeof(g_Appearance_Properties[0]),
+};
+
 /* eoc::object_visual::AppearanceOverrideComponent is a single
  * character_creation::Appearance at offset 0 (upstream
  * GameDefinitions/Components/Visual.h:50-55). Without a layout the named
@@ -8606,14 +8641,14 @@ static const ComponentLayoutDef g_CharacterCreationAppearance_Layout = {
  * the branch that copies the appearance in. */
 static const ComponentPropertyDef g_AppearanceOverrideComponent_Properties[] = {
     { "Visual", 0x00, FIELD_TYPE_STRUCT, 0, false, ELEM_TYPE_UNKNOWN, 0,
-      .structLayout = &g_CharacterCreationAppearance_Layout },
+      .structLayout = &g_Appearance_Layout },
 };
 
 static const ComponentLayoutDef g_AppearanceOverrideComponent_Layout = {
     .componentName = "eoc::object_visual::AppearanceOverrideComponent",
     .shortName = "AppearanceOverride",
     .componentTypeIndex = 0,
-    .componentSize = 0x70,
+    .componentSize = 0xd8,
     .properties = g_AppearanceOverrideComponent_Properties,
     .propertyCount = sizeof(g_AppearanceOverrideComponent_Properties) / sizeof(g_AppearanceOverrideComponent_Properties[0]),
 };

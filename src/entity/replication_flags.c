@@ -64,6 +64,28 @@ static const ReplicatedTypeGlobal k_replicated_type_globals[] = {
 
 #undef REPLICATED_TYPE_ENTRY
 
+/* Replicated components the generated table does not carry, added by hand
+ * because AppearanceEditEnhanced replicates every one of them after a resculpt
+ * and each Replicate() call failed with "no replication entry". Addresses are
+ * the ls::TypeId<T, ecs::sync::ReplicatedTypeContext>::m_TypeIndex globals
+ * (nm, 2026-09-30); data, identical on 7398727 and 7631656. */
+static const ReplicatedTypeGlobal k_extra_replicated_types[] = {
+    { "AppearanceOverride", "eoc::object_visual::AppearanceOverrideComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108935b70 },
+    { "CharacterCreationAppearance", "eoc::character_creation::AppearanceComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108938290 },
+    { "BodyType", "eoc::BodyTypeComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894a7d0 },
+    { "Race", "eoc::RaceComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894a7f0 },
+    { "CharacterCreationStats", "eoc::CharacterCreationStatsComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089383d0 },
+    { "Background", "eoc::BackgroundComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108941580 },
+    { "Voice", "eoc::VoiceComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108938400 },
+    { "CharacterDefinition", "eoc::character_creation::CharacterDefinitionComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089382e0 },
+    { "Equipable", "eoc::EquipableComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894ab00 },
+};
+
+/* Pool of the most recent replication_locate() that got that far; lets the
+ * writer insert a node for an entity the pool does not hold yet. Only touched
+ * on the Lua thread. */
+static uintptr_t s_last_pool = 0;
+
 static bool checked_add(uintptr_t base, uintptr_t offset, uintptr_t *out) {
     if (!out || UINTPTR_MAX - base < offset) {
         return false;
@@ -116,6 +138,13 @@ static const ReplicatedTypeGlobal *find_replicated_type(
              strcmp(component_name,
                     k_replicated_type_globals[i].component_name) == 0)) {
             return &k_replicated_type_globals[i];
+        }
+    }
+    for (size_t i = 0; i < sizeof(k_extra_replicated_types) /
+                               sizeof(k_extra_replicated_types[0]); i++) {
+        if (strcmp(component_name, k_extra_replicated_types[i].name) == 0 ||
+            strcmp(component_name, k_extra_replicated_types[i].component_name) == 0) {
+            return &k_extra_replicated_types[i];
         }
     }
 
@@ -206,6 +235,8 @@ static ReplLocateResult replication_locate(void *entity_world,
     if (!checked_add((uintptr_t)pools_ptr, pool_offset, &pool)) {
         return REPL_LOCATE_ERROR;
     }
+    s_last_pool = pool;
+    if (out_sync) *out_sync = sync;
 
     void *bucket_heads_ptr = NULL;
     void *next_indices_ptr = NULL;
@@ -343,14 +374,86 @@ bool replication_flags_get(void *entity_world, uint64_t entity_handle,
  * Both refusals are reported, so a caller learns the request was rejected
  * rather than silently dropped.
  */
+/* Engine helpers for the write path, as upstream's ReplicateComponent uses
+ * them: HashMap::EnsureNode is pool.add_key (find-or-insert, growing the
+ * parallel DynamicBitSet array itself), DynamicBitSet::Ensure is EnsureSize.
+ * Calling the engine's own code keeps its allocator and rehash policy; the
+ * prologue is checked before every first use so a build where either moved
+ * simply keeps the old "existing entries only" behaviour. */
+typedef uint64_t (*EnsureNodeFn)(void *map, const uint64_t *key);  /* tuple<int,bool> in x0 */
+typedef void (*BitSetEnsureFn)(void *bitset, int32_t bit, bool value);
+
+typedef struct {
+    const char *build;
+    uintptr_t ensure_node_rva;
+    uint32_t ensure_node_prologue[4];
+    uintptr_t bitset_ensure_rva;
+    uint32_t bitset_ensure_prologue[2];
+} ReplWriteFns;
+
+/* Upstream's EntityWorld puts SyncBuffers* Replication first (EntitySystem.h),
+ * matching the EntityWorld+0 walk above, and each ComponentPools entry is this
+ * exact HashMap<ID<EntityHandleTraits>, DynamicBitSet, RPLHashTableOps>
+ * instantiation (stride 0x40). The pools are empty unless something flags a
+ * component, which is why a sampler never saw them populated. */
+static const ReplWriteFns k_repl_write_fns[] = {
+    /* ...RPLHashTableOps>::EnsureNode<ls::ID<...> const&>,
+     * ls::DynamicBitSet<ls::TaggedAllocator<int>>::Ensure(int, bool) (nm) */
+    { "4.1.1.7631656",
+      0x636f0c4, { 0xd10283ffu, 0x6d0323e9u, 0xa9046ffcu, 0xa90567fau },
+      0x639d944, { 0xa9bd57f6u, 0xa9014ff4u } },
+};
+
+static bool repl_write_fns(EnsureNodeFn *out_node, BitSetEnsureFn *out_ensure) {
+    static int resolved = 0;            /* 0 = not tried, 1 = ok, -1 = unavailable */
+    static EnsureNodeFn s_node = NULL;
+    static BitSetEnsureFn s_ensure = NULL;
+    if (resolved == 0) {
+        resolved = -1;
+        const char *v = version_detect_get_version();
+        uint8_t *base = (uint8_t *)version_detect_get_binary_base();
+        for (size_t i = 0; v && base && i < sizeof(k_repl_write_fns) / sizeof(k_repl_write_fns[0]); i++) {
+            const ReplWriteFns *f = &k_repl_write_fns[i];
+            if (!f->build || strcmp(v, f->build) != 0) continue;
+            if (memcmp(base + f->ensure_node_rva, f->ensure_node_prologue, sizeof(f->ensure_node_prologue)) != 0 ||
+                memcmp(base + f->bitset_ensure_rva, f->bitset_ensure_prologue, sizeof(f->bitset_ensure_prologue)) != 0) {
+                LOG_ENTITY_WARN("Replicate: engine EnsureNode/Ensure prologue mismatch on %s; "
+                                "new replication entries disabled", v);
+                break;
+            }
+            s_node = (EnsureNodeFn)(void *)(base + f->ensure_node_rva);
+            s_ensure = (BitSetEnsureFn)(void *)(base + f->bitset_ensure_rva);
+            resolved = 1;
+            break;
+        }
+    }
+    if (resolved != 1) return false;
+    *out_node = s_node;
+    *out_ensure = s_ensure;
+    return true;
+}
+
 bool replication_flags_set(void *entity_world, uint64_t entity_handle,
                            const char *component_name, uint32_t qword,
                            uint64_t flags, bool *out_changed) {
     if (out_changed) *out_changed = false;
 
     uintptr_t bitset = 0, sync = 0;
+    s_last_pool = 0;
     ReplLocateResult r = replication_locate(entity_world, entity_handle,
                                             component_name, &bitset, &sync);
+    EnsureNodeFn ensure_node = NULL;
+    BitSetEnsureFn bitset_ensure = NULL;
+    bool have_fns = repl_write_fns(&ensure_node, &bitset_ensure);
+
+    /* Upstream GetOrCreateReplicationFlags: an entity with nothing pending
+     * has no node yet, which is the normal case for Replicate(). */
+    if (r == REPL_LOCATE_ABSENT && s_last_pool && have_fns) {
+        uint64_t key = entity_handle;
+        ensure_node((void *)s_last_pool, &key);
+        r = replication_locate(entity_world, entity_handle, component_name,
+                               &bitset, &sync);
+    }
     if (r != REPL_LOCATE_FOUND) return false;
 
     uint32_t size = 0, capacity = 0;
@@ -361,7 +464,17 @@ bool replication_flags_set(void *entity_world, uint64_t entity_handle,
     }
     uint64_t qword_count = ((uint64_t)size + 63U) / 64U;
     if ((uint64_t)qword >= qword_count) {
-        return false;   /* would require EnsureSize; see note above */
+        if (!have_fns) return false;
+        /* EnsureSize((qword + 1) * 64): Ensure(bit, value) grows to bit+1 and
+         * writes that bit; the flags are ORed in below either way. */
+        bitset_ensure((void *)bitset, (int32_t)(qword * 64U + 63U), false);
+        if (!read_u32_at(bitset, BITSET_SIZE_OFFSET, &size) ||
+            !read_u32_at(bitset, BITSET_CAPACITY_OFFSET, &capacity) ||
+            size > capacity) {
+            return false;
+        }
+        qword_count = ((uint64_t)size + 63U) / 64U;
+        if ((uint64_t)qword >= qword_count) return false;
     }
 
     uintptr_t slot;
@@ -503,3 +616,116 @@ void replication_flags_sample(void *entity_world) {
     }
 }
 
+
+/* ---------------------------------------------------------------------------
+ * Replication event support (upstream ServerEntityReplicationEventHooks).
+ *
+ * Upstream fires Ext.Entity.Subscribe handlers from the server ECS PostUpdate by
+ * walking SyncBuffers::ComponentPools before EntityReplicationAuthority::Sync
+ * drains them. These read the same pools; the caller snapshots them before any
+ * handler runs, because a handler that calls Replicate() inserts into the very
+ * map being read.
+ * ------------------------------------------------------------------------- */
+
+int replication_type_index(const char *component_name, const char **out_short_name) {
+    if (out_short_name) *out_short_name = NULL;
+    if (!version_detect_data_layout_matches() ||
+        strcmp(BG3_KNOWN_VERSION, GENERATED_TYPEIDS_BUILD_ID) != 0) {
+        return -1;
+    }
+    const ReplicatedTypeGlobal *t = find_replicated_type(component_name);
+    if (!t || strcmp(t->build_id, GENERATED_TYPEIDS_BUILD_ID) != 0 ||
+        t->replicated_type_va < GHIDRA_BASE) {
+        return -1;
+    }
+    void *base = version_detect_get_binary_base();
+    if (!base) return -1;
+    int32_t index = -1;
+    if (!safe_memory_read_i32((mach_vm_address_t)((uintptr_t)base +
+                                                  (t->replicated_type_va - GHIDRA_BASE)),
+                              &index) || index < 0) {
+        return -1;
+    }
+    if (out_short_name) *out_short_name = t->name;
+    return index;
+}
+
+bool replication_sync_dirty(void *entity_world) {
+    void *sync_ptr = NULL;
+    if (!entity_world ||
+        !read_pointer_at((uintptr_t)entity_world, 0, &sync_ptr) || !sync_ptr) {
+        return false;
+    }
+    uint8_t dirty = 0;
+    return safe_memory_read_u8((mach_vm_address_t)((uintptr_t)sync_ptr + 0x10), &dirty) &&
+           dirty != 0;
+}
+
+int replication_pool_snapshot(void *entity_world, int replication_index,
+                              uint64_t *out_handles, uint64_t *out_fields, int max) {
+    if (!entity_world || replication_index < 0 || !out_handles || !out_fields || max <= 0) {
+        return 0;
+    }
+    void *sync_ptr = NULL;
+    if (!read_pointer_at((uintptr_t)entity_world, 0, &sync_ptr) || !sync_ptr) return 0;
+    uintptr_t sync = (uintptr_t)sync_ptr;
+
+    int32_t pool_capacity = 0, pool_count = 0;
+    void *pools_ptr = NULL;
+    if (!read_i32_at(sync, SYNC_POOL_CAPACITY_OFFSET, &pool_capacity) ||
+        !read_i32_at(sync, SYNC_POOL_COUNT_OFFSET, &pool_count) ||
+        !read_pointer_at(sync, SYNC_POOLS_OFFSET, &pools_ptr) || !pools_ptr ||
+        pool_count < 0 || pool_count > pool_capacity ||
+        (uint32_t)pool_count > MAX_REPLICATION_POOLS ||
+        replication_index >= pool_count) {
+        return 0;
+    }
+    uintptr_t pool = (uintptr_t)pools_ptr +
+                     (uintptr_t)(uint32_t)replication_index * REPLICATION_POOL_STRIDE;
+
+    void *keys_ptr = NULL, *values_ptr = NULL;
+    int32_t key_capacity = 0, key_count = 0;
+    uint32_t value_count = 0;
+    if (!read_pointer_at(pool, MAP_KEYS_OFFSET, &keys_ptr) ||
+        !read_i32_at(pool, MAP_KEY_CAPACITY_OFFSET, &key_capacity) ||
+        !read_i32_at(pool, MAP_KEY_COUNT_OFFSET, &key_count) ||
+        !read_pointer_at(pool, MAP_VALUES_OFFSET, &values_ptr) ||
+        !read_u32_at(pool, MAP_VALUE_COUNT_OFFSET, &value_count)) {
+        return 0;
+    }
+    if (key_count <= 0 || key_count > key_capacity ||
+        (uint32_t)key_count > MAX_MAP_ENTRIES || value_count < (uint32_t)key_count ||
+        !keys_ptr || !values_ptr) {
+        return 0;
+    }
+
+    int n = 0;
+    for (int32_t i = 0; i < key_count && n < max; i++) {
+        uint64_t key = 0;
+        if (!read_u64_at((uintptr_t)keys_ptr, (uintptr_t)i * sizeof(uint64_t), &key)) break;
+
+        /* upstream passes *entity.Value().GetBuf(): the bitset's first qword,
+         * inline when capacity <= 64, otherwise behind the storage pointer. */
+        uintptr_t bitset = (uintptr_t)values_ptr + (uintptr_t)i * BITSET_STRIDE;
+        uint32_t size = 0, capacity = 0;
+        uint64_t fields = 0;
+        if (!read_u32_at(bitset, BITSET_SIZE_OFFSET, &size) ||
+            !read_u32_at(bitset, BITSET_CAPACITY_OFFSET, &capacity)) {
+            continue;
+        }
+        if (size > 0) {
+            if (capacity <= 64U) {
+                read_u64_at(bitset, BITSET_STORAGE_OFFSET, &fields);
+            } else {
+                void *heap = NULL;
+                if (read_pointer_at(bitset, BITSET_STORAGE_OFFSET, &heap) && heap) {
+                    read_u64_at((uintptr_t)heap, 0, &fields);
+                }
+            }
+        }
+        out_handles[n] = key;
+        out_fields[n] = fields;
+        n++;
+    }
+    return n;
+}

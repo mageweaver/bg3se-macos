@@ -2323,6 +2323,18 @@ static int lua_entity_replicate_impl(lua_State *L, uint64_t flags, uint32_t qwor
  * while leaving others alone will get more than it asked for, not less.
  */
 static int lua_entity_replicate(lua_State *L) {
+    /* Upstream entity:Replicate(component) is ReplicateComponent(entity,
+     * component, qword 0, all flags) -- mark that component dirty for sync
+     * (LuaEntityProxy.inl). This port sent the whole entity to each peer
+     * instead and ignored the component, so in single player (no peer) every
+     * mod's Replicate("GameObjectVisual"/"AppearanceOverride"/...) did
+     * nothing and AppearanceEditEnhanced resculpts never reached the renderer.
+     * The component form now follows upstream; the bare form keeps the peer
+     * behaviour. */
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        return lua_entity_replicate_impl(L, UINT64_MAX, 0);
+    }
+
     EntityUserdata *ud = (EntityUserdata *)luaL_checkudata(L, 1, "BG3Entity");
     if (!lifetime_lua_is_valid(L, ud->lifetime)) {
         return lifetime_lua_expired_error(L, "Entity");

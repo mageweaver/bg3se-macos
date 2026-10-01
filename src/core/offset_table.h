@@ -56,6 +56,11 @@ typedef enum GameFunctionId {
     // as upstream's ScriptExtender::PreUpdate does. Local symbol (nm 't'),
     // so it must be per-version.
     GAME_FN_ESV_GAMESTATEMACHINE_UPDATE,
+    // esv::GameServer::PostUpdate(ls::GameTime const&). Calls
+    // ecs::sync::EntityReplicationAuthority::Sync; pre-hooked to fire
+    // Ext.Entity.Subscribe replication handlers before the pools drain, as
+    // upstream's ScriptExtender ECS PostUpdate does. Local symbol.
+    GAME_FN_ESV_GAMESERVER_POSTUPDATE,
     GAME_FN_COUNT
 } GameFunctionId;
 

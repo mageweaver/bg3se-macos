@@ -132,6 +132,17 @@ bool entity_events_unsubscribe(EntitySubscriptionId id, struct lua_State *L);
 void entity_events_fire_deferred(struct lua_State *L);
 
 /**
+ * Fire Ext.Entity.Subscribe (replication) handlers for every entity queued in
+ * the server's SyncBuffers. Call on the server thread, with the Lua gate held,
+ * immediately before EntityReplicationAuthority::Sync drains the pools.
+ */
+void entity_events_fire_replication(struct lua_State *L, void *server_world);
+
+/** Set once the PostUpdate hook is in; until then Subscribe keeps the
+ *  create/destroy approximation instead of registering handlers that never fire. */
+void entity_events_set_replication_available(bool available);
+
+/**
  * Notify the event system of a component creation.
  * Called from Signal hooks or ECB scanning.
  *
