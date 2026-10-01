@@ -79,6 +79,11 @@ static const ReplicatedTypeGlobal k_extra_replicated_types[] = {
     { "Voice", "eoc::VoiceComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108938400 },
     { "CharacterDefinition", "eoc::character_creation::CharacterDefinitionComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089382e0 },
     { "Equipable", "eoc::EquipableComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894ab00 },
+    /* Subscribed by AEE: CCState flips HasDummy when the level-up/respec
+     * screen opens, and its handler swaps the origin's template visual to the
+     * resculpt so the dummy is built from it. */
+    { "CCState", "eoc::character_creation::StateComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089383c0 },
+    { "HotbarContainer", "eoc::hotbar::ContainerComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089322a0 },
 };
 
 /* Pool of the most recent replication_locate() that got that far; lets the
