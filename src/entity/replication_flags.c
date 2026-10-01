@@ -79,10 +79,14 @@ static const ReplicatedTypeGlobal k_extra_replicated_types[] = {
     { "Voice", "eoc::VoiceComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108938400 },
     { "CharacterDefinition", "eoc::character_creation::CharacterDefinitionComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089382e0 },
     { "Equipable", "eoc::EquipableComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894ab00 },
-    /* Subscribed by AEE: CCState flips HasDummy when the level-up/respec
-     * screen opens, and its handler swaps the origin's template visual to the
-     * resculpt so the dummy is built from it. */
-    { "CCState", "eoc::character_creation::StateComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089383c0 },
+    /* CCState (0x1089383c0) deliberately absent. With it, AEE's CCState
+     * handler runs ShiftEquipmentVisual(char) -- the forward shift that writes
+     * the throwaway's Copied* values onto the origin's live template -- and
+     * the next Osiris GetTemplate query took a SIGSEGV at 0x2f
+     * (esv::OsirisGameFunctions::GetTemplate, 2026-10-01 15:04, the same
+     * crash as the 2026-09-10 manual shift on Karlach). Without it the
+     * level-up preview shows the template body; restore only once template
+     * writes are proven safe. */
     { "HotbarContainer", "eoc::hotbar::ContainerComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089322a0 },
 };
 
