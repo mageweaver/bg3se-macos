@@ -457,7 +457,13 @@ bool replication_flags_set(void *entity_world, uint64_t entity_handle,
 
     /* Upstream GetOrCreateReplicationFlags: an entity with nothing pending
      * has no node yet, which is the normal case for Replicate(). */
-    if (r == REPL_LOCATE_ABSENT && s_last_pool && have_fns) {
+    /* New entries only for the components verified live (see below). */
+    bool wide = component_name &&
+        (strcmp(component_name, "AppearanceOverride") == 0 ||
+         strcmp(component_name, "eoc::object_visual::AppearanceOverrideComponent") == 0 ||
+         strcmp(component_name, "GameObjectVisual") == 0 ||
+         strcmp(component_name, "eoc::GameObjectVisualComponent") == 0);
+    if (r == REPL_LOCATE_ABSENT && s_last_pool && have_fns && wide) {
         uint64_t key = entity_handle;
         ensure_node((void *)s_last_pool, &key);
         r = replication_locate(entity_world, entity_handle, component_name,
@@ -471,21 +477,39 @@ bool replication_flags_set(void *entity_world, uint64_t entity_handle,
         size > capacity) {
         return false;
     }
-    uint64_t qword_count = ((uint64_t)size + 63U) / 64U;
-    if ((uint64_t)qword >= qword_count) {
+    /* Dirty bits must stay within fields the engine can serialize for this
+     * component. Upstream ORs all-ones after EnsureSize((qword+1)*64); on this
+     * build that crashes twice over (2026-10-01, Jared's save):
+     *  - all-ones into a small engine-created entry without growing it: the
+     *    client desynced and SIGBUS'd in DynamicBitSet::Resize(-1) inside
+     *    ComponentDeserializer<DisplayNameComponent>::DeserializeDirty;
+     *  - growing it to 64 instead: the server read index 0xffffffff in
+     *    EntityReplicationAuthority::Sync (bits for fields DisplayName does
+     *    not have / no EntitiesDirtyCollectionIndicesBuffer entry).
+     * So: an existing entry keeps its size and the flags are masked to it; a
+     * new entry gets 64 bits only for the components verified live with it
+     * (AppearanceOverride, GameObjectVisual: hours of AEE use), otherwise one
+     * bit -- field 0, which is what the engine itself marks for DisplayName. */
+    bool fresh = (size == 0);
+    if (fresh) {
         if (!have_fns) return false;
-        /* EnsureSize((qword + 1) * 64): Ensure(bit, value) grows to bit+1 and
-         * writes that bit; the flags are ORed in below either way. */
+        /* Only components verified live may get a new entry. Others are
+         * refused, as before f3bb95c: a bit-0 entry for DisplayName/Icon/Tag
+         * (Armory's transmog refresh) still desynced the client 77 s into
+         * Jared's save. */
+        if (!wide) return false;
         bitset_ensure((void *)bitset, (int32_t)(qword * 64U + 63U), false);
         if (!read_u32_at(bitset, BITSET_SIZE_OFFSET, &size) ||
             !read_u32_at(bitset, BITSET_CAPACITY_OFFSET, &capacity) ||
             size > capacity) {
             return false;
         }
-        qword_count = ((uint64_t)size + 63U) / 64U;
-        if ((uint64_t)qword >= qword_count) return false;
     }
-
+    uint64_t qword_count = ((uint64_t)size + 63U) / 64U;
+    if ((uint64_t)qword >= qword_count) return false;
+    uint64_t bits_here = (uint64_t)size - (uint64_t)qword * 64U;
+    if (bits_here < 64U) flags &= ((uint64_t)1 << bits_here) - 1U;
+    if (flags == 0) return false;
     uintptr_t slot;
     if (capacity <= 64U) {
         if (qword != 0) return false;
