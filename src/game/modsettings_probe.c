@@ -59,6 +59,16 @@ static void hooked_refresh(void *self) {
                   s_calls, nLoaded, nAvail);
     if (!loaded || !avail || nLoaded > 20000 || nAvail > 20000) return;
 
+    /* A short list means the engine is not holding modsettings.lsx's order;
+     * name what it holds instead. */
+    if (nLoaded <= 32) {
+        char nb[64];
+        for (uint32_t i = 0; i < nLoaded; i++) {
+            uint32_t u = *(const uint32_t *)(loaded + (size_t)i * 0x60);
+            LOG_CORE_WARN("[ModSettingsProbe]   loaded[%u] %s", i, fs_text(u, nb, sizeof(nb)));
+        }
+    }
+
     unsigned missing = 0;
     char b[64];
     for (uint32_t i = 0; i < nLoaded; i++) {
