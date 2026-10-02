@@ -60,6 +60,7 @@ typedef struct {
     ResourceFieldKind kind;
     const struct ResourceLayout *elem;  // RF_ARRAY_STRUCT: element layout
     uint16_t elem_size;                 // RF_ARRAY_STRUCT: array stride
+    uint8_t readonly;                   // upstream [[bg3::readonly]]: Lua writes raise
 } ResourceField;
 
 typedef struct ResourceLayout {

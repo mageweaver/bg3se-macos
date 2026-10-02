@@ -8001,6 +8001,10 @@ static void bg3se_init(void) {
         }
     }
 
+    // Before App::LoadConfig reads it: a ModCrashSanityCheck marker left by a
+    // launch that ended during startup would start this one with mods off.
+    modsettings_clear_mod_crash_marker();
+
     // Duplicate-image guard: the insert_dylib patch and DYLD_INSERT_LIBRARIES
     // can BOTH load a physical copy of this dylib (observed 2026-07-28,
     // PID 2556: build-tree + app-bundle images, two Lua states, two exception

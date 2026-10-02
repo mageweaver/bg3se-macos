@@ -23,21 +23,27 @@
 
 #define FIELDS(arr) arr, (int)(sizeof(arr) / sizeof(arr[0]))
 
-/* ls::GameObjectTemplate — GameObjectTemplate::Visit (0x105f79790). */
+/* ls::GameObjectTemplate — GameObjectTemplate::Visit (0x105f79790).
+ * Id / TemplateName / ParentTemplateId / Name are read-only, as upstream marks
+ * them [[bg3::readonly]] (RootTemplates.h). AppearanceEditEnhanced's
+ * ShiftEquipmentVisual writes every persisted key -- Id and Name included --
+ * through pcall; upstream refuses those and the pcall swallows it. Letting
+ * them through re-identified Wyll's live template and the next Osiris
+ * GetTemplate query took a SIGSEGV at 0x2f (2026-10-01 15:04). */
 static const ResourceField fields_GameObjectTemplate[] = {
-    { "Id",               0x10, RF_FIXEDSTRING, NULL, 0 },  // the root template GUID text
-    { "TemplateName",     0x14, RF_FIXEDSTRING, NULL, 0 },
-    { "ParentTemplateId", 0x18, RF_FIXEDSTRING, NULL, 0 },  // Visit tests it against -1 for "has parent"
-    { "Name",             0x20, RF_STDSTRING,   NULL, 0 },
+    { "Id",               0x10, RF_FIXEDSTRING, NULL, 0, 1 },  // the root template GUID text
+    { "TemplateName",     0x14, RF_FIXEDSTRING, NULL, 0, 1 },
+    { "ParentTemplateId", 0x18, RF_FIXEDSTRING, NULL, 0, 1 },  // Visit tests it against -1 for "has parent"
+    { "Name",             0x20, RF_STDSTRING,   NULL, 0, 1 },
 };
 
 /* eoc::CharacterTemplate — EoCGameObjectTemplate::Visit (0x1012a8ea0) and
  * CharacterTemplate::Visit (0x101216868). */
 static const ResourceField fields_CharacterTemplate[] = {
-    { "Id",                        0x10,  RF_FIXEDSTRING,      NULL, 0 },
-    { "TemplateName",              0x14,  RF_FIXEDSTRING,      NULL, 0 },
-    { "ParentTemplateId",          0x18,  RF_FIXEDSTRING,      NULL, 0 },
-    { "Name",                      0x20,  RF_STDSTRING,        NULL, 0 },
+    { "Id",                        0x10,  RF_FIXEDSTRING,      NULL, 0, 1 },
+    { "TemplateName",              0x14,  RF_FIXEDSTRING,      NULL, 0, 1 },
+    { "ParentTemplateId",          0x18,  RF_FIXEDSTRING,      NULL, 0, 1 },
+    { "Name",                      0x20,  RF_STDSTRING,        NULL, 0, 1 },
     { "DisplayName",               0xb8,  RF_TRANSLATEDSTRING, NULL, 0 },  // EoCGameObjectTemplate
     { "Icon",                      0x198, RF_FIXEDSTRING,      NULL, 0 },
     { "Stats",                     0x1a0, RF_FIXEDSTRING,      NULL, 0 },

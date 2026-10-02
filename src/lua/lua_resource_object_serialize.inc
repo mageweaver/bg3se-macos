@@ -131,6 +131,9 @@ bool lua_resource_object_unserialize(lua_State *L, int objIndex, int tableIndex)
     for (int i = 0; i < ud->layout->field_count; i++) {
         const char *name = ud->layout->fields[i].name;
         if (!name) continue;
+        /* Upstream's Unserialize skips read-only properties instead of
+         * failing the whole object (AEE clones whole templates this way). */
+        if (ud->layout->fields[i].readonly) continue;
 
         lua_getfield(L, absTable, name);
         if (!resource_serializable_value(L, -1)) {

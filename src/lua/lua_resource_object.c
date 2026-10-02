@@ -1246,6 +1246,9 @@ static int resource_object_newindex(lua_State *L) {
     if (!field) {
         return luaL_error(L, "%s has no field '%s'", ud->layout->type_name, key);
     }
+    if (field->readonly) {
+        return luaL_error(L, "%s.%s is read-only", ud->layout->type_name, key);
+    }
     write_field(L, ud->obj, field, 3);
     return 0;
 }
