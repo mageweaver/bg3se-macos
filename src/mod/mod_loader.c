@@ -14,6 +14,8 @@
 #include <string.h>
 #include <dirent.h>
 #include <strings.h>  // for strcasecmp
+#include <pthread.h>
+#include <sys/stat.h>
 
 #include <lauxlib.h>
 
@@ -268,6 +270,78 @@ char *mod_pak_get_config_json(const char *dir_name) {
     return content;
 }
 
+// Folder -> PAK index. mod_find_pak used to open every PAK in the Mods folder on
+// each call; MCM probes ~3 files per installed mod at startup, so with ~1000
+// PAKs that was ~47 s of the load. The index is built once by scanning every
+// PAK's entry list and is rebuilt when the Mods directory changes (mtime).
+// First PAK in readdir order wins, matching the old linear scan.
+typedef struct { char *folder; char *pak; } PakIndexEntry;
+static PakIndexEntry *g_pak_index = NULL;
+static size_t g_pak_index_len = 0, g_pak_index_cap = 0;
+static struct timespec g_pak_index_mtime = {0, 0};
+static int g_pak_index_valid = 0;
+static pthread_mutex_t g_pak_index_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void pak_index_clear(void) {
+    for (size_t i = 0; i < g_pak_index_len; i++) {
+        free(g_pak_index[i].folder);
+        free(g_pak_index[i].pak);
+    }
+    g_pak_index_len = 0;
+    g_pak_index_valid = 0;
+}
+
+static const char *pak_index_lookup(const char *folder) {
+    for (size_t i = 0; i < g_pak_index_len; i++) {
+        if (strcmp(g_pak_index[i].folder, folder) == 0) return g_pak_index[i].pak;
+    }
+    return NULL;
+}
+
+static void pak_index_add(const char *folder, size_t flen, const char *pak_path) {
+    for (size_t i = 0; i < g_pak_index_len; i++) {
+        if (strlen(g_pak_index[i].folder) == flen && strncmp(g_pak_index[i].folder, folder, flen) == 0) return;
+    }
+    if (g_pak_index_len == g_pak_index_cap) {
+        size_t cap = g_pak_index_cap ? g_pak_index_cap * 2 : 1024;
+        PakIndexEntry *grown = realloc(g_pak_index, cap * sizeof(*grown));
+        if (!grown) return;
+        g_pak_index = grown;
+        g_pak_index_cap = cap;
+    }
+    g_pak_index[g_pak_index_len].folder = strndup(folder, flen);
+    g_pak_index[g_pak_index_len].pak = strdup(pak_path);
+    g_pak_index_len++;
+}
+
+static void pak_index_build(const char *mods_dir) {
+    pak_index_clear();
+    DIR *dir = opendir(mods_dir);
+    if (!dir) return;
+    size_t paks = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        size_t name_len = strlen(entry->d_name);
+        if (name_len <= 4 || strcasecmp(entry->d_name + name_len - 4, ".pak") != 0) continue;
+        char pak_path[MAX_PATH_LEN];
+        snprintf(pak_path, sizeof(pak_path), "%s/%s", mods_dir, entry->d_name);
+        PakFile *pak = pak_open(pak_path);
+        if (!pak) continue;
+        paks++;
+        for (uint32_t i = 0; i < pak->num_files; i++) {
+            const char *name = pak->entries[i].name;
+            if (strncmp(name, "Mods/", 5) != 0) continue;
+            const char *folder = name + 5;
+            const char *slash = strchr(folder, '/');
+            if (slash && slash > folder) pak_index_add(folder, (size_t)(slash - folder), pak_path);
+        }
+        pak_close(pak);
+    }
+    closedir(dir);
+    g_pak_index_valid = 1;
+    LOG_MOD_INFO("PAK index: %zu mod folders across %zu PAKs", g_pak_index_len, paks);
+}
+
 int mod_find_pak(const char *mod_name, char *pak_path_out, size_t pak_path_size) {
     const char *home = getenv("HOME");
     if (!home) return 0;
@@ -276,39 +350,25 @@ int mod_find_pak(const char *mod_name, char *pak_path_out, size_t pak_path_size)
     snprintf(mods_dir, sizeof(mods_dir),
              "%s/Documents/Larian Studios/Baldur's Gate 3/Mods", home);
 
-    DIR *dir = opendir(mods_dir);
-    if (!dir) return 0;
+    struct stat st;
+    if (stat(mods_dir, &st) != 0) return 0;
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        size_t name_len = strlen(entry->d_name);
-        if (name_len > 4 && strcasecmp(entry->d_name + name_len - 4, ".pak") == 0) {
-            char pak_path[MAX_PATH_LEN];
-            snprintf(pak_path, sizeof(pak_path), "%s/%s", mods_dir, entry->d_name);
-
-            // Check if this PAK contains our mod
-            PakFile *pak = pak_open(pak_path);
-            if (pak) {
-                // Look for any file with our mod name in the path
-                char mod_prefix[512];
-                snprintf(mod_prefix, sizeof(mod_prefix), "Mods/%s/", mod_name);
-
-                for (uint32_t i = 0; i < pak->num_files; i++) {
-                    if (strncmp(pak->entries[i].name, mod_prefix, strlen(mod_prefix)) == 0) {
-                        pak_close(pak);
-                        closedir(dir);
-                        strncpy(pak_path_out, pak_path, pak_path_size - 1);
-                        pak_path_out[pak_path_size - 1] = '\0';
-                        return 1;
-                    }
-                }
-                pak_close(pak);
-            }
-        }
+    pthread_mutex_lock(&g_pak_index_lock);
+    if (!g_pak_index_valid ||
+        st.st_mtimespec.tv_sec != g_pak_index_mtime.tv_sec ||
+        st.st_mtimespec.tv_nsec != g_pak_index_mtime.tv_nsec) {
+        pak_index_build(mods_dir);
+        g_pak_index_mtime = st.st_mtimespec;
     }
-
-    closedir(dir);
-    return 0;
+    const char *pak = pak_index_lookup(mod_name);
+    int found = 0;
+    if (pak) {
+        strncpy(pak_path_out, pak, pak_path_size - 1);
+        pak_path_out[pak_path_size - 1] = '\0';
+        found = 1;
+    }
+    pthread_mutex_unlock(&g_pak_index_lock);
+    return found;
 }
 
 static mod_chunk_env_hook_t g_chunk_env_hook = NULL;
