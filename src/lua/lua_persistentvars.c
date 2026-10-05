@@ -176,52 +176,6 @@ static int persist_build_dir(void) {
     return ensure_directory(s_persistDir);
 }
 
-/* Seed a campaign's directory from the flat legacy one the first time it is
- * used, so playthroughs that predate per-campaign storage keep their state.
- * Copied per campaign rather than moved: entries are keyed by character UUID,
- * which repeats across playthroughs, so every campaign keeps working and they
- * diverge from here on. */
-static void persist_seed_from_legacy(void) {
-    const char *support = get_support_dir();
-    const char *key = campaign_key_get();
-    if (!support || !key) return;
-
-    char legacy[PATH_MAX];
-    snprintf(legacy, sizeof(legacy), "%s/%s", support, PERSIST_DIR_NAME);
-
-    DIR *dir = opendir(legacy);
-    if (!dir) return;
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        size_t n = strlen(entry->d_name);
-        if (n < 6 || strcmp(entry->d_name + n - 5, ".json") != 0) continue;
-
-        char dst_path[PATH_MAX];
-        snprintf(dst_path, sizeof(dst_path), "%s/%s", s_persistDir, entry->d_name);
-        if (access(dst_path, F_OK) == 0) continue;  // campaign already has it
-
-        char src_path[PATH_MAX];
-        snprintf(src_path, sizeof(src_path), "%s/%s", legacy, entry->d_name);
-
-        FILE *src = fopen(src_path, "rb");
-        if (!src) continue;
-        FILE *dst = fopen(dst_path, "wb");
-        if (!dst) { fclose(src); continue; }
-
-        char buf[8192];
-        size_t got;
-        bool ok = true;
-        while ((got = fread(buf, 1, sizeof(buf), src)) > 0) {
-            if (fwrite(buf, 1, got, dst) != got) { ok = false; break; }
-        }
-        fclose(src);
-        if (fclose(dst) != 0) ok = false;
-        if (!ok) unlink(dst_path);
-    }
-    closedir(dir);
-}
-
 void persist_on_campaign_changed(lua_State *L) {
     if (!s_initialized) return;
 
@@ -229,7 +183,9 @@ void persist_on_campaign_changed(lua_State *L) {
         LOG_PERSIST_ERROR("Failed to point persist dir at campaign");
         return;
     }
-    persist_seed_from_legacy();
+    /* No seeding from the flat legacy directory: a campaign starts empty, as a
+     * new save does upstream. Seeding copied another playthrough's state into
+     * every new game (ISF believed everything was already shipped). */
 
     LOG_PERSIST_INFO("Campaign storage: %s", s_persistDir);
 

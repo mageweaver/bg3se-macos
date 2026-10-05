@@ -88,54 +88,18 @@ static void build_persist_path(char *out, size_t out_size,
     snprintf(out, out_size, "%s/%s.json", dir_path, key);
 }
 
-/* First time a campaign is seen, seed it from the machine-wide file that
- * predates per-campaign storage, so an existing playthrough keeps its state.
- * Done per campaign rather than once overall: entries are keyed by character
- * UUID and origin UUIDs repeat across playthroughs, so importing into each
- * campaign preserves behaviour everywhere and they diverge from here on. The
- * legacy file is left alone; it can be deleted once every playthrough has been
- * loaded at least once. */
-static void migrate_legacy_store(const char *campaign_path, const char *legacy_name) {
-    if (!campaign_path || campaign_path[0] == '\0') return;
-    if (access(campaign_path, F_OK) == 0) return;  // campaign already has its own
-
-    const char *home = getenv("HOME");
-    if (!home) return;
-
-    char legacy_path[PATH_MAX];
-    snprintf(legacy_path, sizeof(legacy_path),
-             "%s/Library/Application Support/BG3SE/%s", home, legacy_name);
-    if (access(legacy_path, F_OK) != 0) return;
-
-    FILE *src = fopen(legacy_path, "rb");
-    if (!src) return;
-    FILE *dst = fopen(campaign_path, "wb");
-    if (!dst) { fclose(src); return; }
-
-    char buf[8192];
-    size_t n;
-    bool ok = true;
-    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-        if (fwrite(buf, 1, n, dst) != n) { ok = false; break; }
-    }
-    fclose(src);
-    if (fclose(dst) != 0) ok = false;
-
-    if (ok) {
-        LOG_LUA_INFO("Seeded %s for this campaign from %s", campaign_path, legacy_name);
-    } else {
-        LOG_LUA_ERROR("Failed seeding %s from %s", campaign_path, legacy_name);
-        unlink(campaign_path);
-    }
-}
-
+/* A campaign's store starts empty, as a new save does upstream (mod and user
+ * variables live in the savegame there). The machine-wide file that predates
+ * per-campaign storage (2026-09-11) used to be copied into every campaign seen
+ * for the first time; that also seeded brand-new games with another
+ * playthrough's state (ISF's "already shipped" marks, so a new game never got
+ * its items or camp-chest mailbox). The legacy file is now only the store for
+ * the main menu, before any campaign is known. */
 static const char* get_persist_path(void) {
     persist_paths_invalidate_if_campaign_changed();
     if (g_PersistPath[0] == '\0') {
         build_persist_path(g_PersistPath, sizeof(g_PersistPath),
                            "uservars", "uservars.json");
-        migrate_legacy_store(campaign_key_known() ? g_PersistPath : NULL,
-                             "uservars.json");
     }
     return g_PersistPath;
 }
@@ -145,8 +109,6 @@ static const char* get_mod_persist_path(void) {
     if (g_ModPersistPath[0] == '\0') {
         build_persist_path(g_ModPersistPath, sizeof(g_ModPersistPath),
                            "modvars", "modvars.json");
-        migrate_legacy_store(campaign_key_known() ? g_ModPersistPath : NULL,
-                             "modvars.json");
     }
     return g_ModPersistPath;
 }
