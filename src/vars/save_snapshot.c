@@ -392,9 +392,15 @@ bool save_snapshot_install(void) {
 /* Load side                                                                */
 /* ------------------------------------------------------------------------ */
 
+static bool read_snapshot_campaign(uint64_t hash, char *out, size_t out_size);
+
 static bool s_pending_load = false;
 static uint64_t s_pending_hash = 0;
 static uint64_t s_pending_bytes = 0;
+/* Last load whose story had a snapshot, for a rebuild that follows it. */
+static uint64_t s_snap_hash = 0;
+static uint64_t s_snap_bytes = 0;
+static time_t s_snap_time = 0;
 
 void save_snapshot_story_load_begin(void *smart_buf) {
     s_pending_load = false;
@@ -424,9 +430,36 @@ void save_snapshot_story_load_end(void *smart_buf, int result) {
                      result ? "ok" : "failed", (unsigned long long)s_load_tap.hash.bytes);
         return;
     }
-    s_pending_hash = s_load_tap.hash.hash;
+    uint64_t hash = s_load_tap.hash.hash;
+    char key[128];
+    bool has_snap = read_snapshot_campaign(hash, key, sizeof(key));
+
+    /* A changed mod list makes the game rebuild the story right after loading
+     * the save's: a second COsiris::Load with a hash no snapshot was ever
+     * written for. Replacing the pending hash with it lost the save's snapshot,
+     * so the campaign key had to wait for DB_Avatars and arrived after
+     * SessionLoaded; every mod restoring per-playthrough state on load
+     * (transmog, AEE) saw empty data. Keep the save's snapshot instead. The
+     * rebuild follows within seconds (2.6 s observed); 20 s keeps a New Game
+     * started after loading a save from inheriting that save's state. */
+    if (!has_snap && s_snap_hash != 0 && time(NULL) - s_snap_time < 20) {
+        s_pending_hash = s_snap_hash;
+        s_pending_bytes = s_snap_bytes;
+        s_pending_load = true;
+        LOG_LUA_INFO("[SaveSnapshot] story %016llx has no snapshot but follows %016llx "
+                     "(story rebuilt after a mod-list change); keeping the save's snapshot",
+                     (unsigned long long)hash, (unsigned long long)s_snap_hash);
+        return;
+    }
+
+    s_pending_hash = hash;
     s_pending_bytes = s_load_tap.hash.bytes;
     s_pending_load = true;
+    if (has_snap) {
+        s_snap_hash = hash;
+        s_snap_bytes = s_pending_bytes;
+        s_snap_time = time(NULL);
+    }
     LOG_LUA_INFO("[SaveSnapshot] story loaded: %016llx (%llu bytes)",
                  (unsigned long long)s_pending_hash, (unsigned long long)s_pending_bytes);
 }
