@@ -87,6 +87,26 @@ static const ReplicatedTypeGlobal k_extra_replicated_types[] = {
      * (template_layouts.c), so only the visual keys move. */
     { "CCState", "eoc::character_creation::StateComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089383c0 },
     { "HotbarContainer", "eoc::hotbar::ContainerComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089322a0 },
+    /* Item components TransmogEnhanced replicates after cloning stats onto an
+     * appearance item (Constants.Replications). m_TypeIndex globals, nm on
+     * 4.1.1.7631656, 2026-10-06. Mapping only: new replication entries for
+     * these are still refused by replication_flags_set until verified live. */
+    { "Armor", "eoc::ArmorComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894abb0 },
+    { "Data", "eoc::DataComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894aad0 },
+    { "ItemBoosts", "eoc::ItemBoostsComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894a8e0 },
+    { "Value", "eoc::ValueComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894aaf0 },
+    { "Use", "eoc::UseComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894ab10 },
+    { "Weapon", "eoc::WeaponComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894ab70 },
+    { "AttributeFlags", "eoc::AttributeFlagsComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894aae0 },
+    { "CanBeDisarmed", "eoc::CanBeDisarmedComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108943b68 },
+    { "ObjectSize", "eoc::ObjectSizeComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10893ec98 },
+    { "PassiveContainer", "eoc::PassiveContainerComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089492e8 },
+    { "StatusImmunities", "eoc::StatusImmunitiesComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894aab0 },
+    { "Tag", "eoc::TagComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108946898 },
+    { "TurnBased", "eoc::TurnBasedComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x1089468b8 },
+    { "GameplayLight", "eoc::GameplayLightComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x108934d68 },
+    { "Icon", "eoc::IconComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10892bd18 },
+    { "BoostsContainer", "eoc::BoostsContainerComponent", NULL, "ecs::sync::ReplicatedTypeContext", GENERATED_TYPEIDS_BUILD_ID, 0x10894a910 },
 };
 
 /* Pool of the most recent replication_locate() that got that far; lets the
