@@ -5799,7 +5799,11 @@ static const ComponentPropertyDef g_esv_Item_Properties[] = {
     { "OriginalTemplate", 0x50, FIELD_TYPE_TEMPLATE_PTR, 0, true },
     { "StatusManager", 0x70, FIELD_TYPE_STRUCT_PTR, 0, true,
       .structLayout = &g_esv_StatusMachine_Layout },
-    { "Stats", 0x9c, FIELD_TYPE_FIXEDSTRING, 0, true },
+    /* Writable as upstream has it (Item.h: plain FixedString Stats). The save
+     * writes this name for every item and the load rebuilds the item's stats
+     * from it, so a transmog that should keep the original item's stats has to
+     * land here; TransmogEnhanced's load restore never re-applies them. */
+    { "Stats", 0x9c, FIELD_TYPE_FIXEDSTRING, 0, false },
     { "PreviousLevel", 0xa0, FIELD_TYPE_FIXEDSTRING, 0, true },
     { "TreasureLevel", 0xa4, FIELD_TYPE_INT32, 0, true },
     { "Amount", 0xa8, FIELD_TYPE_INT32, 0, true },
