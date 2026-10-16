@@ -485,6 +485,25 @@ static void image_bounds(void) {
 #define NOESIS_UI_CALL_TIMEOUT_MS 400
 
 /*
+ * Circuit breaker (2026-10-16). A timeout means the main thread is not
+ * draining its queue -- and when it is not, it usually stays that way: on
+ * Quit the game tears down from inside the main thread's render loop and waits
+ * for the ServerWorker, which was running a mod's KeyInput handler that walks
+ * the UI tree (MCM). Every element cost a full 400 ms timeout, the handler
+ * never finished, ServerWorker::Deactivate never returned, and the game hung
+ * on every save-and-quit (sampled live: GameThread in App::Terminate ->
+ * ServerWorker::Deactivate, ServerWorker in events_fire_key_input -> nsop).
+ * So after one timeout, further calls fail immediately instead of queueing
+ * more blocks. The breaker closes again when any queued block finally runs,
+ * i.e. as soon as the main thread is draining its queue again.
+ */
+static _Atomic bool s_main_stalled = false;
+/* At most one no-op probe in flight while the breaker is open; when the main
+ * thread runs it, the breaker closes. Without it, a timed-out block that ran
+ * just before the breaker opened would leave it open forever. */
+static _Atomic bool s_probe_pending = false;
+
+/*
  * Heap box shared by the waiting thread and the dispatched block. Plain-C
  * blocks do NOT retain captured dispatch objects, and __block stack storage
  * dies with its frame, so everything either side may touch after a timeout
@@ -534,6 +553,18 @@ static void *noesis_ui_call(void (*fn)(void *), void *heap_payload) {
         return heap_payload;                    /* caller reads + frees */
     }
 
+    if (atomic_load_explicit(&s_main_stalled, memory_order_acquire)) {
+        bool expected = false;
+        if (atomic_compare_exchange_strong(&s_probe_pending, &expected, true)) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                atomic_store_explicit(&s_main_stalled, false, memory_order_release);
+                atomic_store_explicit(&s_probe_pending, false, memory_order_release);
+            });
+        }
+        free(heap_payload);
+        return NULL;                            /* breaker open: fail fast */
+    }
+
     UiCallBox *box = (UiCallBox *)malloc(sizeof *box);
     if (!box) { free(heap_payload); return NULL; }
     box->fn = fn;
@@ -544,6 +575,7 @@ static void *noesis_ui_call(void (*fn)(void *), void *heap_payload) {
 
     dispatch_async(dispatch_get_main_queue(), ^{
         box->fn(box->payload);                  /* payload untouched after this */
+        atomic_store_explicit(&s_main_stalled, false, memory_order_release);
         dispatch_semaphore_signal(box->sem);    /* box alive: we hold a ref */
         ui_call_box_release(box);
     });
@@ -553,8 +585,9 @@ static void *noesis_ui_call(void (*fn)(void *), void *heap_payload) {
                                 (int64_t)NOESIS_UI_CALL_TIMEOUT_MS * 1000000));
     if (timed_out) {
         LOG_IMGUI_WARN("Noesis: main-thread call timed out (%dms) — failing "
-                       "closed (main thread likely blocked on the Lua gate "
-                       "this caller holds)", NOESIS_UI_CALL_TIMEOUT_MS);
+                       "closed; further UI calls fail fast until the main "
+                       "thread drains its queue again", NOESIS_UI_CALL_TIMEOUT_MS);
+        atomic_store_explicit(&s_main_stalled, true, memory_order_release);
         ui_call_box_release(box);
         return NULL;
     }
